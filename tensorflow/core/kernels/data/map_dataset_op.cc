@@ -41,15 +41,17 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                                      &use_inter_op_parallelism_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
+    CapturedFunction::Params params;
+    params.use_inter_op_parallelism = use_inter_op_parallelism_;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 use_inter_op_parallelism_,
-                                                 &captured_func));
+                                                 params, &captured_func));
 
     MapIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
@@ -140,25 +142,12 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
 
       // Attr: f
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       AttrValue f_attr;
       b->BuildAttrValue(func_, &f_attr);
 

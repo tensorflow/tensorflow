@@ -510,22 +510,6 @@ class ElementWiseFusionTest(test.TestCase):
 
       return output, xla_run_count
 
-  def testElementWiseClustering(self):
-    arg0 = np.random.rand(2, 2).astype(np.float32)
-    arg1 = np.random.rand(2, 2).astype(np.float32)
-    os.environ["TF_XLA_FLAGS"] = (
-        "--tf_xla_fusion_only=true "
-        "--tf_xla_cpu_global_jit " + os.environ.get("TF_XLA_FLAGS", ""))
-    tf_op, tf_count = self.simpleTest(arg0, arg1,
-                                      config_pb2.OptimizerOptions.OFF)
-    self.assertEqual(0, tf_count)
-
-    tfef_op, tfef_count = self.simpleTest(arg0, arg1,
-                                          config_pb2.OptimizerOptions.ON_1)
-    self.assertEqual(2, tfef_count)
-
-    self.assertAllClose(tf_op, tfef_op, rtol=1e-1)
-
 
 class LazyCompilationTest(test.TestCase):
 

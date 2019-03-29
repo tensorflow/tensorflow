@@ -463,7 +463,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
-  const uint64 start_time_usecs = Env::Default()->NowMicros();
+  const uint64 start_time_usecs = options_.env->NowMicros();
   string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
   tracing::ScopedActivity activity(session_id_meta);
 
@@ -720,7 +720,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
-  metrics::UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+  metrics::UpdateGraphExecTime(options_.env->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }
@@ -738,9 +738,12 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Extract the inputs names for this run of the session.
   std::vector<string> input_tensor_names;
   input_tensor_names.reserve(inputs.size());
+  size_t input_size = 0;
   for (const auto& it : inputs) {
     input_tensor_names.push_back(it.first);
+    input_size += it.second.AllocatedBytes();
   }
+  metrics::RecordGraphInputTensors(input_size);
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
@@ -815,6 +818,7 @@ Status DirectSession::Run(const RunOptions& run_options,
       }
     }
     outputs->clear();
+    size_t output_size = 0;
     outputs->reserve(sorted_outputs.size());
     for (int i = 0; i < output_names.size(); ++i) {
       const string& output_name = output_names[i];
@@ -825,7 +829,9 @@ Status DirectSession::Run(const RunOptions& run_options,
       } else {
         outputs->push_back((*outputs)[first_indices[i]]);
       }
+      output_size += outputs->back().AllocatedBytes();
     }
+    metrics::RecordGraphOutputTensors(output_size);
   }
 
   return Status::OK();
@@ -1825,6 +1831,12 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
         "outputs.");
   }
 
+  size_t input_size = 0;
+  for (auto& tensor : feed_tensors) {
+    input_size += tensor.AllocatedBytes();
+  }
+  metrics::RecordGraphInputTensors(input_size);
+
   // A specialized CallFrame implementation that takes advantage of the
   // optimized RunCallable interface.
 
@@ -1838,6 +1850,14 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
   TF_RETURN_IF_ERROR(
       RunInternal(step_id, executors_and_keys->callable_options.run_options(),
                   &call_frame, executors_and_keys.get(), run_metadata));
+
+  if (fetch_tensors != nullptr) {
+    size_t output_size = 0;
+    for (auto& tensor : *fetch_tensors) {
+      output_size += tensor.AllocatedBytes();
+    }
+    metrics::RecordGraphOutputTensors(output_size);
+  }
 
   return Status::OK();
 }

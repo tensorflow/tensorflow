@@ -373,6 +373,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "xla"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }
@@ -630,7 +634,7 @@ tf_module {
   }
   member_method {
     name: "gather_nd"
-    argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'params\', \'indices\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "get_logger"
@@ -987,10 +991,6 @@ tf_module {
   member_method {
     name: "strided_slice"
     argspec: "args=[\'input_\', \'begin\', \'end\', \'strides\', \'begin_mask\', \'end_mask\', \'ellipsis_mask\', \'new_axis_mask\', \'shrink_axis_mask\', \'var\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'0\', \'0\', \'0\', \'0\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "string_split"
-    argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
   }
   member_method {
     name: "subtract"

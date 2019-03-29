@@ -427,6 +427,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Cos)
     HANDLE_OPERATORTYPENAME_CASE(Where)
     HANDLE_OPERATORTYPENAME_CASE(ReverseSequence)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiag)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -903,8 +905,9 @@ void CheckNonExistentIOArrays(const Model& model) {
     return;
   }
   static constexpr char general_comment[] =
-      "Is it a typo? To silence this message, pass this flag:  "
-      "allow_nonexistent_arrays";
+      "Is it a typo? This should not happen. If you trigger this error "
+      "please send a bug report (with code to reporduce this error), to the "
+      "TensorFlow Lite team.";
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
       continue;  // It is OK to request that a constant be an output.
@@ -1892,6 +1895,26 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
         // There is a bias vector. One more op per output value.
         *result += RequiredBufferSizeForShape(output_array.shape());
       }
+      break;
+    }
+    case OperatorType::kTransposeConv: {
+      const auto& input_array = model.GetArray(op.inputs[2]);
+      const auto& weights_array = model.GetArray(op.inputs[1]);
+      if (!input_array.has_shape() || !weights_array.has_shape()) {
+        return false;
+      }
+      const Shape& input = input_array.shape();
+      const Shape& weights = weights_array.shape();
+      // Compute op count from the seven nested loops of
+      // tflite::reference_ops::TransposeConv():
+      *result = 2 * input.dims(0) * input.dims(1) * input.dims(2) *
+                input.dims(3) * weights.dims(1) * weights.dims(2) *
+                weights.dims(0);
+      // Note that tflite::optimized_ops::TransposeConv() uses an im2col matrix
+      // and has a higher op count, by a factor of (output_height*output_width)
+      // vs. (input_height*input_width). Yet it generally performs better
+      // because of coherent memory access. (At least for 2x2 striding. But not
+      // likely for all cases.)
       break;
     }
     case OperatorType::kAdd:

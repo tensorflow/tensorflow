@@ -357,7 +357,7 @@ class _EagerDefinedFunction(object):
     self.python_grad_func = None
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
-    self._graph = graph
+    self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
 
   def add_to_graph(self, g=None):
@@ -367,7 +367,7 @@ class _EagerDefinedFunction(object):
     else:
       if self.name not in g._functions:
         g._add_function(self)
-      for f in self._graph._functions.values():
+      for f in self.graph._functions.values():
         if f.name not in g._functions:
           g._add_function(f)
     # pylint: enable=protected-access
@@ -433,6 +433,9 @@ class _EagerDefinedFunction(object):
     if executing_eagerly:
       return outputs
     else:
+      # TODO(b/128924522): This additional set_shape should not be
+      # necessary. ShapeRefiner likely needs to inspect handle_data. Remove this
+      # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
       for i, func_graph_output in enumerate(self._func_graph_outputs):
@@ -570,6 +573,7 @@ class ConcreteFunction(object):
       ValueError: If `args` contains anything other than Tensors or Variables.
     """
     ctx = context.context()
+    executing_eagerly = ctx.executing_eagerly()
 
     tape.variables_accessed(self._func_graph.variables)
 
@@ -587,6 +591,26 @@ class ConcreteFunction(object):
         variables_used.add(arg.handle)
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
+        if not executing_eagerly:
+          # If we're graph building, shape inference is on. We check for input
+          # compatibility up front to avoid hard to debug incompatibilities
+          # later.
+          graph_input_shape = tensor_shape.TensorShape(
+              self._func_graph.inputs[i].shape)
+          if not graph_input_shape.is_compatible_with(arg.shape):
+            if self._arg_keywords:
+              arg_name = "'{}'".format(self._arg_keywords[i])
+            else:
+              arg_name = "with index {}".format(i)
+            raise ValueError(
+                ("The argument {} (value {}) is not compatible with the shape "
+                 "this function was traced with. Expected shape {}, but got "
+                 "shape {}.\n\nIf you called get_concrete_function, you may "
+                 "need to pass a tf.TensorSpec(..., shape=...) with a less "
+                 "specific shape, having None on axes which can vary.").format(
+                     arg_name, arg,
+                     self._func_graph.inputs[i].shape,
+                     arg.shape))
       elif (self._signature is not None and
             isinstance(self._signature[i], tensor_spec.TensorSpec)):
         tensor_inputs.append(
@@ -735,7 +759,7 @@ class ConcreteFunction(object):
     # In case of eager execution, function definition gets added to context
     # during construction itself.
 
-    # TODO(allel/shivaniagrawal): rename this to register to reflect the
+    # TODO(allenl/shivaniagrawal): rename this to register to reflect the
     # method's functionality better. Remove register_gradient_functions argument
     # and figure out if these needs to be registered.
 
@@ -764,6 +788,11 @@ class ConcreteFunction(object):
     """Constructs the backprop function object for this function."""
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
+    # Keep track of the forward graph so that if the backwards graph
+    # tries to capture tensors those will be correctly captured first in
+    # the forward graph. This is an edge case that can only happen with
+    # tf.custom_gradient.
+    backwards_graph._forward_func_graph = self._func_graph  # pylint: disable=protected-access
     forward_function_name = _forward_name(self._func_graph.name)
     outputs = [x for x in self._func_graph.outputs
                if gradients_util.IsTrainable(x)]
@@ -971,6 +1000,8 @@ class FunctionSpec(object):
 
     if self._is_method:
       # Remove `self`: default arguments shouldn't be matched to it.
+      # TODO(b/127938157): Should this error out if there is no arg to
+      # be removed?
       args = fullargspec.args[1:]
     else:
       args = fullargspec.args
@@ -982,12 +1013,11 @@ class FunctionSpec(object):
     self.vararg_name = fullargspec.varargs
 
     # A cache mapping from arg index to default value, for canonicalization.
-    offset = len(args) - len(fullargspec.defaults or [])
+    offset = len(args) - len(self._default_values or [])
     self._arg_indices_to_default_values = {
         offset + index: default
-        for index, default in enumerate(fullargspec.defaults or [])
+        for index, default in enumerate(self._default_values or [])
     }
-    self._default_values_start_index = offset
     if input_signature is None:
       self._input_signature = None
     else:
@@ -1069,11 +1099,10 @@ class FunctionSpec(object):
     args = self._args_to_prepend + args
     kwargs = dict(kwargs, **self._kwargs_to_include)
     if not kwargs:
-      if self._default_values:
-        inputs = args + self._default_values[
-            len(args) - self._default_values_start_index:]
-      else:
-        inputs = args
+      inputs = args
+      for index in sorted(self._arg_indices_to_default_values.keys()):
+        if index >= len(args):
+          inputs += (self._arg_indices_to_default_values[index],)
     else:
       # Maps from index of arg to its corresponding value, according to `args`
       # and `kwargs`; seeded with the default values for the named args that

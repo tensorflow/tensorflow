@@ -303,6 +303,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # just manually initialize this field:
     self._train_distribute = None
     self._eval_distribute = None
+    self._experimental_max_worker_delay_secs = None
     self._device_fn = None
 
     gpu_options = config_pb2.GPUOptions(

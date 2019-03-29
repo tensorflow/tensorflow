@@ -388,6 +388,10 @@ def tridiagonal_solve(diagonals,
   The output is a tensor of the same shape as `rhs`: either `[..., M]` or
   `[..., M, K]`.
 
+  The op isn't guaranteed to raise an error if the input matrix is not
+  invertible. `tf.debugging.check_numerics` can be applied to the output to
+  detect invertibility problems.
+
   Args:
     diagonals: A `Tensor` or tuple of `Tensor`s describing left-hand sides. The
       shape depends of `diagonals_format`, see description above. Must be

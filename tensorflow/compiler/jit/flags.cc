@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <mutex>  // NOLINT
 
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -26,6 +27,7 @@ BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
+IntroduceFloatingPointJitterPassFlags* jitter_flags;
 
 std::vector<Flag>* flag_list;
 std::once_flag flags_init;
@@ -55,10 +57,6 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags->tf_xla_clustering_fuel,
            "Places an artificial limit on the number of ops marked as "
            "eligible for clustering."),
-      Flag("tf_xla_fusion_only",
-           &mark_for_compilation_flags->tf_xla_fusion_only,
-           "enable fusion of element-wise operations only using XLA when "
-           "global_jit_level is ON*."),
       Flag("tf_xla_disable_deadness_safety_checks_for_debugging",
            &mark_for_compilation_flags
                 ->tf_xla_disable_deadness_safety_checks_for_debugging,
@@ -70,17 +68,17 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
 void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
+  build_ops_flags->tf_xla_print_cluster_outputs = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->tf_xla_auto_jit = 0;
-  mark_for_compilation_flags->tf_xla_min_cluster_size = 2;
+  mark_for_compilation_flags->tf_xla_min_cluster_size = 4;
   mark_for_compilation_flags->tf_xla_max_cluster_size =
       std::numeric_limits<int32>::max();
   mark_for_compilation_flags->tf_xla_clustering_debug = false;
   mark_for_compilation_flags->tf_xla_cpu_global_jit = false;
   mark_for_compilation_flags->tf_xla_clustering_fuel =
       std::numeric_limits<int64>::max();
-  mark_for_compilation_flags->tf_xla_fusion_only = false;
   mark_for_compilation_flags
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
 
@@ -90,17 +88,38 @@ void AllocateAndParseFlags() {
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
 
-  flag_list = new std::vector<Flag>({
-      Flag("tf_xla_enable_lazy_compilation",
-           &build_ops_flags->tf_xla_enable_lazy_compilation, ""),
+  jitter_flags = new IntroduceFloatingPointJitterPassFlags;
+  jitter_flags->jitter_amount = 1e-5;
 
-      Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
-           "Switch a device into 'on-demand' mode, where instead of "
-           "autoclustering ops are compiled one by one just-in-time."),
+  auto setter_for_jitter_tensor_names = [](string sequence) {
+    jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
+    return true;
+  };
 
-      Flag("tf_xla_always_defer_compilation",
-           &ops_flags->tf_xla_always_defer_compilation, ""),
-  });
+  flag_list = new std::vector<Flag>(
+      {Flag("tf_xla_enable_lazy_compilation",
+            &build_ops_flags->tf_xla_enable_lazy_compilation, ""),
+       Flag("tf_xla_print_cluster_outputs",
+            &build_ops_flags->tf_xla_print_cluster_outputs,
+            "If true then insert Print nodes to print out values produced by "
+            "XLA clusters."),
+
+       Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
+            "Switch a device into 'on-demand' mode, where instead of "
+            "autoclustering ops are compiled one by one just-in-time."),
+
+       Flag("tf_xla_always_defer_compilation",
+            &ops_flags->tf_xla_always_defer_compilation, ""),
+
+       Flag("tf_introduce_floating_point_jitter_to_tensors",
+            setter_for_jitter_tensor_names, "",
+            "The amount of jitter to introduce.  This amount is added to each "
+            "element in the tensors named in `tensor_names."),
+       Flag("tf_introduce_floating_point_jitter_amount",
+            &jitter_flags->jitter_amount,
+            "The Tensors to add the jitter to.  The tensors are named in the "
+            "TensorId format of <node name>:<output idx>.")});
+
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
 }
@@ -127,9 +146,14 @@ const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
   return *ops_flags;
 }
 
+const IntroduceFloatingPointJitterPassFlags&
+GetIntroduceFloatingPointJitterPassFlags() {
+  std::call_once(flags_init, &AllocateAndParseFlags);
+  return *jitter_flags;
+}
+
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   std::call_once(flags_init, &AllocateAndParseFlags);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
 }
-
 }  // namespace tensorflow

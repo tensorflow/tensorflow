@@ -24,8 +24,6 @@ Overall, the different analyses have the functions listed below:
      levels
  * liveness, reaching_definitions: dataflow analyses based on the program's CFG
      and using the symbol information gathered by activity analysis
- * live_values, type_info: type and value inference based on dataflow
-     analysis and context information
 """
 
 from __future__ import absolute_import

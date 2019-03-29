@@ -34,7 +34,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -95,6 +98,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
     imported.weights.assign(4.0)
     self.assertEqual(8., imported.f(constant_op.constant(2.)).numpy())
+
+  def test_control_outputs(self, cycles):
+    exported = tracking.AutoTrackable()
+    exported.v = variables.Variable(1.)
+    exported.f = def_function.function(
+        lambda: exported.v.assign(2., name="should_be_control_output"))
+    exported_graph = exported.f.get_concrete_function().graph
+    self.assertIn(
+        exported_graph.get_operation_by_name("should_be_control_output"),
+        exported_graph.control_outputs)
+
+    imported = self.cycle(exported, cycles)
+    # Calling get_concrete_function wraps in a second call operation; we want to
+    # inspect the original function body for the control output; digging into
+    # graph.as_graph_def() and its FunctionDefLibrary is another option.
+    imported_concrete, = imported.f._concrete_functions
+    imported_graph = imported_concrete.graph
+    self.assertIn(
+        imported_graph.get_operation_by_name("should_be_control_output"),
+        imported_graph.control_outputs)
 
   def _make_asset(self, contents):
     filename = tempfile.mktemp(prefix=self.get_temp_dir())
@@ -374,6 +397,42 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
     self.assertEqual(5, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
+
+  def test_optimizer(self, cycles):
+
+    class _HasOptimizer(module.Module):
+
+      def __init__(self):
+        super(_HasOptimizer, self).__init__()
+        self.layer = core.Dense(1)
+        self.optimizer = adam.Adam(0.01)
+
+      @def_function.function
+      def __call__(self, x):
+        return self.layer(x)
+
+      @def_function.function
+      def train(self, x, y):
+        with backprop.GradientTape() as tape:
+          predicted = self(x)
+          loss = math_ops.reduce_sum(math_ops.abs(y - predicted))
+        train_vars = self.layer.trainable_variables
+        grads = tape.gradient(loss, train_vars)
+        self.optimizer.apply_gradients(zip(grads, train_vars))
+
+    root = _HasOptimizer()
+    train_input = dict(x=constant_op.constant([[1.]]),
+                       y=constant_op.constant([[2.]]))
+    root.train(**train_input)
+    imported = self.cycle(root, cycles)
+    self.assertAllClose(root.optimizer.learning_rate.numpy(),
+                        imported.optimizer.learning_rate.numpy())
+    self.assertAllClose(root(constant_op.constant([[-0.5]])),
+                        imported(constant_op.constant([[-0.5]])))
+    root.train(**train_input)
+    imported.train(**train_input)
+    self.assertAllClose(root(constant_op.constant([[-0.5]])),
+                        imported(constant_op.constant([[-0.5]])))
 
   def test_positional_arguments(self, cycles):
     def func(x, training=False, abc=7.1, defg=7.7):
@@ -1081,22 +1140,69 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
   def test_partial(self, cycles):
-    # TODO(vbardiovsky): Figure out the story for FunctionSpec vs partial vs
-    # input_signature.
+    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
     self.skipTest("Partial does not work for serialization.")
 
     def f(x, y):
       return x + y
 
     func = def_function.function(
-        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
+        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.ones([1])))
 
     root = tracking.AutoTrackable()
     root.f = func
-    self.assertAllEqual(root.f(), [0.0])
+    self.assertAllEqual(root.f(), [1.0])
 
     root = self.cycle(root, cycles)
-    self.assertAllEqual(root.f(), [0.0])
+    self.assertAllEqual(root.f(), [1.0])
+
+  def test_partial_with_non_tensor_defaults(self, cycles):
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(functools.partial(f, y=5))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(1), 6)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(1), 6)
+
+  def test_partial_with_positional(self, cycles):
+    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
+    self.skipTest("Partial does not work for serialization.")
+
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(functools.partial(f, constant_op.constant(5)))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(1), 6)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(1), 6)
+
+  def test_partial_with_passed_fn_as_default(self, cycles):
+    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
+    self.skipTest("Partial does not work for serialization.")
+
+    def f(x, y):
+      return x(3) + y
+
+    def my_func(a):
+      return 2 * a
+
+    func = def_function.function(functools.partial(f, my_func))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
+
+    root = self.cycle(root, cycles)
+    self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
 
   def test_convert_to_input_signature(self, cycles):
 
@@ -1112,6 +1218,72 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual([2], root.f([2]).numpy())
 
+  def test_named_tuple(self, cycles):
+
+    class NamedTupleType(collections.namedtuple("NamedTupleType", ["a", "b"])):
+      pass
+
+    @def_function.function
+    def f(x):
+      return x.a + x.b
+
+    f.get_concrete_function(
+        NamedTupleType(
+            a=tensor_spec.TensorSpec(None, dtypes.float32, name="a"),
+            b=tensor_spec.TensorSpec(None, dtypes.float32, name="b")))
+    obj = tracking.AutoTrackable()
+    obj.__call__ = f
+    imported = self.cycle(obj)
+    self.assertAllClose(3.,
+                        imported(NamedTupleType(a=constant_op.constant(1.),
+                                                b=constant_op.constant(2.))))
+
+  def test_extra_args(self, cycles):
+
+    @def_function.function
+    def f(x):
+      return math_ops.add(x["a"], 1.)
+    # Trigger a trace.
+    f({"a": constant_op.constant(2.0)})
+
+    obj = tracking.AutoTrackable()
+    obj.__call__ = f
+    imported = self.cycle(obj)
+
+    self.assertEqual(4.0, imported({"a": 3.0}).numpy())
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function to call"):
+      imported({"a": 2.0, "b": 3.0})
+
+  def test_shapes_available(self, cycles):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([None, 3], dtypes.int32),
+        tensor_spec.TensorSpec([None, 2], dtypes.int32)
+    ])
+    def func(x, y):
+      return array_ops.concat([x, y], axis=1)
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    root = self.cycle(root, cycles)
+
+    imported_graph = root.f.get_concrete_function().graph
+    input_x, input_y = imported_graph.inputs
+    self.assertEqual([None, 3], input_x.shape.as_list())
+    self.assertEqual([None, 2], input_y.shape.as_list())
+    output, = imported_graph.outputs
+    self.assertEqual([None, 5], output.shape.as_list())
+    signature = root.signatures["serving_default"]
+    self.assertEqual(
+        [None, 3], signature.inputs[0].shape.as_list())
+    self.assertEqual(
+        [None, 2], signature.inputs[1].shape.as_list())
+    self.assertEqual(
+        [None, 5], signature.outputs[0].shape.as_list())
+
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
@@ -1126,6 +1298,18 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     signature_output, = loaded.signatures["serving_default"](
         **model_input).values()
     self.assertAllClose([[1., 2.]], signature_output)
+
+  def test_dense_features_layer_fit(self, cycles):
+    columns = [feature_column_v2.numeric_column("x")]
+    model = sequential.Sequential(
+        [feature_column_v2.DenseFeatures(columns),
+         core.Dense(1)])
+    model_input = {"x": constant_op.constant([[1.]])}
+    model.compile(optimizer="adam", loss="mse")
+    model.fit(model_input, constant_op.constant([[3.]]))
+    loaded = self.cycle(model, cycles)
+    loaded._default_save_signature(model_input)
+    loaded.signatures["serving_default"](**model_input)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

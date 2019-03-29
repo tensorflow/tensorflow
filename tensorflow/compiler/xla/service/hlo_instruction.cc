@@ -303,6 +303,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_ASSIGN_OR_RETURN(auto literal,
                             Literal::CreateFromProto(proto.literal()));
         instruction = CreateConstant(std::move(literal));
+        // Literal's shape may have no/different tiling info.
+        CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(instruction->shape(),
+                                                        shape));
+        *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);
       }
@@ -703,6 +707,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -1408,6 +1413,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -1754,6 +1760,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
@@ -2135,6 +2142,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRsqrt:
@@ -2449,6 +2457,22 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
+bool HloInstruction::IsInputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
+}
+
+bool HloInstruction::IsLoopFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kLoop;
+}
+
+bool HloInstruction::IsOutputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kOutput;
+}
+
+bool HloInstruction::IsCustomFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kCustom;
+}
+
 bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
   if (tracing()) {
@@ -2600,6 +2624,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleIsFinite(this);
     case HloOpcode::kNot:
       return visitor->HandleNot(this);
+    case HloOpcode::kPopulationCount:
+      return visitor->HandlePopulationCount(this);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
@@ -3076,6 +3102,16 @@ string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
+  std::vector<string> replica_group_str;
+  replica_group_str.reserve(replica_groups.size());
+  for (const ReplicaGroup& group : replica_groups) {
+    replica_group_str.push_back(
+        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
+  }
+  return StrCat("{", StrJoin(replica_group_str, ","), "}");
+}
+
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
   static std::unordered_map<string, RandomDistribution>* map = [] {
     static auto* map = new std::unordered_map<string, RandomDistribution>;
@@ -3383,6 +3419,11 @@ HloInstruction::parameter_replicated_at_leaf_buffers() const {
 
 int64 HloInstruction::tuple_index() const {
   return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
+}
+
+void HloInstruction::set_tuple_index(int64 new_tuple_index) {
+  return Cast<HloGetTupleElementInstruction>(this)->set_tuple_index(
+      new_tuple_index);
 }
 
 int32 HloInstruction::exponent_bits() const {

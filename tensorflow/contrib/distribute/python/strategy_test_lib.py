@@ -221,7 +221,7 @@ class DistributionTestBase(test.TestCase):
       """Function executed for each replica."""
       with summary_writer.as_default():
         replica_id = ds_context.get_replica_context().replica_id_in_sync_group
-        return summary_ops.scalar("a", replica_id)
+        return summary_ops.write("a", replica_id)
 
     with self.cached_session() as sess, d.scope(), \
         summary_ops.always_record_summaries():
@@ -232,6 +232,7 @@ class DistributionTestBase(test.TestCase):
         # When executing eagerly, variables are initialized immediately after
         # creation, and its initializer will be None.
         global_step.initializer.run()
+      summary_ops.set_step(0)
       summary_writer = summary_ops.create_file_writer(logdir)
       output = d.extended.call_for_each_replica(run_fn)
       unwrapped = d.unwrap(output)
@@ -346,7 +347,7 @@ class DistributionTestBase(test.TestCase):
 
       train_ops, value = strategy.extended.call_for_each_replica(model_fn)
       self.evaluate(strategy.group(train_ops))
-      global_step_tensors = strategy.unwrap(value)
+      global_step_tensors = strategy.experimental_local_results(value)
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
 
@@ -365,7 +366,8 @@ class DistributionTestBase(test.TestCase):
 
       def run_and_concatenate(strategy, i):
         x, y = strategy.experimental_run(lambda z: z, i)
-        x, y = self.evaluate((strategy.unwrap(x), strategy.unwrap(y)))
+        x, y = self.evaluate((strategy.experimental_local_results(x),
+                              strategy.experimental_local_results(y)))
         return np.concatenate(x), np.concatenate(y)
 
       x_1, y_1 = run_and_concatenate(strategy, i)
@@ -424,7 +426,8 @@ class OneDeviceDistributionTestBase(test.TestCase):
 
     self.evaluate(inputs.initialize())
     outputs = self.evaluate(
-        list(map(strategy.unwrap, strategy.experimental_run(comm_fn, inputs))))
+        list(map(strategy.experimental_local_results,
+                 strategy.experimental_run(comm_fn, inputs))))
     self.assertAllEqual([expected[0]], outputs[0])
     self.assertAllEqual([expected[1]], outputs[1])
 
@@ -444,7 +447,8 @@ class OneDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+        self.evaluate(strategy.experimental_local_results(
+            strategy.experimental_run(step, inputs))))
 
   def _test_collective_comms_gradient_tape(
       self, strategy, comm_fn, inputs, expected_grads):
@@ -461,7 +465,8 @@ class OneDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+        self.evaluate(strategy.experimental_local_results(
+            strategy.experimental_run(step, inputs))))
 
 
 class TwoDeviceDistributionTestBase(test.TestCase):
@@ -515,7 +520,8 @@ class TwoDeviceDistributionTestBase(test.TestCase):
 
     self.evaluate(inputs.initialize())
     outputs = self.evaluate(
-        list(map(strategy.unwrap, strategy.experimental_run(comm_fn, inputs))))
+        list(map(strategy.experimental_local_results,
+                 strategy.experimental_run(comm_fn, inputs))))
     self.assertAllEqual([expected[0], expected[0]], outputs[0])
     self.assertAllEqual([expected[1], expected[1]], outputs[1])
 
@@ -535,7 +541,8 @@ class TwoDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+        self.evaluate(strategy.experimental_local_results(
+            strategy.experimental_run(step, inputs))))
 
   def _test_collective_comms_gradient_tape(
       self, strategy, comm_fn, inputs, expected_grads):
@@ -552,7 +559,8 @@ class TwoDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+        self.evaluate(strategy.experimental_local_results(
+            strategy.experimental_run(step, inputs))))
 
 
 def _all_sum(value):

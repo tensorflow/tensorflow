@@ -40,8 +40,10 @@ Status StatefulRandomShape(shape_inference::InferenceContext* c) {
       .Attr("shape_dtype : type = DT_INT64")      \
       .SetShapeFn(StatefulRandomShape);
 
+REGISTER_STATEFUL_OP("StatefulUniform", DT_FLOAT);
 REGISTER_STATEFUL_OP("StatefulUniformFullInt", DT_UINT64);
 REGISTER_STATEFUL_OP("StatefulStandardNormalV2", DT_FLOAT);
+REGISTER_STATEFUL_OP("StatefulTruncatedNormal", DT_FLOAT);
 
 REGISTER_OP("StatefulUniformInt")
     .Input("resource: resource")
@@ -84,6 +86,7 @@ REGISTER_OP("NonDeterministicInts")
 // version where the 'resource' variable also contains the algorithm tag.
 // It is deprecated in favor of 'StatefulStandardNormalV2'.
 REGISTER_OP("StatefulStandardNormal")
+    .Deprecated(29, "Use StatefulStandardNormalV2 instead")
     .Input("resource: resource")
     .Input("shape: shape_dtype")
     .Output("output: dtype")

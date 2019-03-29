@@ -392,6 +392,9 @@ class Model {
   // Records that a node has produced an element.
   void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
 
+  // Returns the number of elements that the input pipeline has produced.
+  int64 NumElements(const string& name) LOCKS_EXCLUDED(mu_);
+
   // Records that the given node has started work. If `stop_output` is set, it
   // also records that the output of the given node has stopped work.
   void RecordStart(const string& name, bool stop_output) LOCKS_EXCLUDED(mu_);

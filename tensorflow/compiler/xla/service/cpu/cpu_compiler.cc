@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
@@ -257,6 +258,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
+  pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
   pipeline.AddPass<CholeskyExpander>();
@@ -409,10 +411,20 @@ auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
-  llvm_ir::SetTargetOptions(
-      /*fast_math_enabled=*/module_config.debug_options()
-          .xla_cpu_enable_fast_math(),
-      &target_options);
+  // In LLVM backend flags, UnsafeFPMath does not explicitly imply NoInfs, etc.
+  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
+    target_options.UnsafeFPMath = true;
+    target_options.NoInfsFPMath =
+        module_config.debug_options().xla_cpu_fast_math_honor_infs();
+    target_options.NoNaNsFPMath =
+        module_config.debug_options().xla_cpu_fast_math_honor_nans();
+    target_options.NoSignedZerosFPMath = true;
+  } else {
+    target_options.UnsafeFPMath = false;
+    target_options.NoInfsFPMath = false;
+    target_options.NoNaNsFPMath = false;
+    target_options.NoSignedZerosFPMath = false;
+  }
   return target_options;
 }
 

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import nest
@@ -82,8 +84,13 @@ def trace_model_call(model, input_signature=None):
     input_specs = nest.pack_sequence_as(structure=inputs,
                                         flat_sequence=flat_input_specs)
     # The input signature of the call function is a list with one element, since
-    # all tensor inputs must be passed in as the first argument.
-    input_signature = [input_specs] if len(input_specs) > 1 else input_specs
+    # all tensor inputs must be passed in as the first argument. Single-element
+    # dictionaries and other non-sequence types must also be wrapped.
+    if (len(input_specs) > 1
+        or not isinstance(input_specs, collections.Sequence)):
+      input_signature = [input_specs]
+    else:
+      input_signature = input_specs
 
   # TODO(mdan): Should the model's call be autographed by default?
   @def_function.function(input_signature=input_signature, autograph=False)

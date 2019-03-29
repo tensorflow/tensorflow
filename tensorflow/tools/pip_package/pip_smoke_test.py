@@ -33,6 +33,9 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 # List of file paths containing BUILD files that should not be included for the
 # pip smoke test.
 BUILD_BLACKLIST = [
+    "tensorflow/lite/delegates/gpu",
+    "tensorflow/lite/delegates/gpu/metal",
+    "tensorflow/lite/delegates/gpu/metal/kernels",
     "tensorflow/lite/examples/android",
     "tensorflow/lite/experimental/objc",
     "tensorflow/lite/experimental/swift",

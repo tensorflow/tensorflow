@@ -193,6 +193,9 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      std::unordered_map<int, TensorShape> input_tensor_shapes,
+      std::unordered_map<int, std::pair<DataType, TensorShape>>
+          input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device)
@@ -200,7 +203,10 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
                         host_cpu_device),
         pflr_(pflr),
         handle_(kInvalidHandle),
-        input_devices_(std::move(input_devices)) {}
+        input_devices_(std::move(input_devices)),
+        input_tensor_shapes_(std::move(input_tensor_shapes)),
+        input_resource_dtypes_and_shapes_(
+            std::move(input_resource_dtypes_and_shapes)) {}
 
   virtual ~KernelAndDeviceFunc();
 
@@ -236,6 +242,9 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  std::unordered_map<int, TensorShape> input_tensor_shapes_;
+  std::unordered_map<int, std::pair<DataType, TensorShape>>
+      input_resource_dtypes_and_shapes_;
 
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;

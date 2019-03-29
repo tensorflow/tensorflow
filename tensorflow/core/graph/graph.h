@@ -662,7 +662,8 @@ class Graph {
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
                      const Node* cost_node);
   void ReleaseNode(Node* node);
-
+  // Insert edge in free_edges_ for possible reuse.
+  void RecycleEdge(const Edge* edge);
   // Registry of all known ops, including functions.
   FunctionLibraryDefinition ops_;
 

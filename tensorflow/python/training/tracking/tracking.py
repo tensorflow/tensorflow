@@ -93,7 +93,7 @@ class AutoTrackable(base.Trackable):
 
   def _list_functions_for_serialization(self):
     """Return a dict of `Function`s of a trackable."""
-    functions = dict()
+    functions = {}
     for attribute_name in dir(self):
       try:
         attribute_value = getattr(self, attribute_name, None)

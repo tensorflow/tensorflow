@@ -199,7 +199,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       }
 
       mutex mu_;
-      // TODO(shivaniagrawal): explore ways to seek into a SQLite databases.
+      // TODO(b/129062371): explore ways to seek into a SQLite databases.
       int64 next_calls_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<sql::QueryConnection> query_connection_ GUARDED_BY(mu_);
       bool query_connection_initialized_ GUARDED_BY(mu_) = false;

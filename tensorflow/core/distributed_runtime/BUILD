@@ -205,6 +205,7 @@ tf_cuda_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/distributed_runtime:recent_request_ids",
     ],
 )
 
@@ -334,6 +335,7 @@ cc_library(
         ":call_options",
         ":master_env",
         ":message_wrappers",
+        ":request_id",
         ":scheduler",
         ":worker_cache",
         ":worker_interface",

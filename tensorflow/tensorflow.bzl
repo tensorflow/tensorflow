@@ -211,6 +211,12 @@ def if_windows(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_windows_cuda(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow:with_cuda_support_windows_override"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_not_windows_cuda(a):
     return select({
         clean_dep("//tensorflow:with_cuda_support_windows_override"): [],
@@ -1233,7 +1239,7 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(cuda_deps + [
-            # rocm_header placeholder
+            "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
@@ -2176,7 +2182,16 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu") + if_windows(" --key_value msvcp_dll_name=msvcp140.dll", ""),
+            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " +
+            if_cuda("cuda", "cpu") +
+            " --key_value " +
+            if_cuda(" cuda_version_number=$${TF_CUDA_VERSION:-} cudnn_version_number=$${TF_CUDNN_VERSION:-} ", "") +
+            if_windows(" msvcp_dll_name=msvcp140.dll ", "") +
+            if_windows_cuda(" ".join([
+                "nvcuda_dll_name=nvcuda.dll",
+                "cudart_dll_name=cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
+                "cudnn_dll_name=cudnn64_$${TF_CUDNN_VERSION:-}.dll",
+            ]), ""),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
     )
@@ -2197,3 +2212,105 @@ register_extension_info(
 
 def tensorflow_opensource_extra_deps():
     return []
+
+def tf_pybind_extension(
+        name,
+        srcs,
+        hdrs,
+        module_name,
+        features = [],
+        srcs_version = "PY2AND3",
+        data = [],
+        copts = None,
+        nocopts = None,
+        linkopts = [],
+        deps = [],
+        visibility = None,
+        testonly = None,
+        licenses = None,
+        compatible_with = None,
+        restricted_to = None,
+        deprecation = None):
+    """Builds a Python extension module."""
+    _ignore = [module_name]
+    p = name.rfind("/")
+    if p == -1:
+        sname = name
+        prefix = ""
+    else:
+        sname = name[p + 1:]
+        prefix = name[:p + 1]
+    so_file = "%s%s.so" % (prefix, sname)
+    pyd_file = "%s%s.pyd" % (prefix, sname)
+    symbol = "init%s" % sname
+    symbol2 = "init_%s" % sname
+    symbol3 = "PyInit_%s" % sname
+    exported_symbols_file = "%s-exported-symbols.lds" % name
+    version_script_file = "%s-version-script.lds" % name
+    native.genrule(
+        name = name + "_exported_symbols",
+        outs = [exported_symbols_file],
+        cmd = "echo '%s\n%s\n%s' >$@" % (symbol, symbol2, symbol3),
+        output_licenses = ["unencumbered"],
+        visibility = ["//visibility:private"],
+        testonly = testonly,
+    )
+
+    native.genrule(
+        name = name + "_version_script",
+        outs = [version_script_file],
+        cmd = "echo '{global:\n %s;\n %s;\n %s;\n local: *;};' >$@" % (symbol, symbol2, symbol3),
+        output_licenses = ["unencumbered"],
+        visibility = ["//visibility:private"],
+        testonly = testonly,
+    )
+    native.cc_binary(
+        name = so_file,
+        srcs = srcs + hdrs,
+        data = data,
+        copts = copts,
+        nocopts = nocopts,
+        linkopts = linkopts + select({
+            "//conditions:default": [
+                "-Wl,--version-script",
+                "$(location %s)" % version_script_file,
+            ],
+        }),
+        deps = deps + [
+            exported_symbols_file,
+            version_script_file,
+        ],
+        features = features,
+        linkshared = 1,
+        testonly = testonly,
+        licenses = licenses,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+    )
+    native.genrule(
+        name = name + "_pyd_copy",
+        srcs = [so_file],
+        outs = [pyd_file],
+        cmd = "cp $< $@",
+        output_to_bindir = True,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+    )
+    native.py_library(
+        name = name,
+        data = select({
+            "@org_tensorflow//tensorflow:windows": [pyd_file],
+            "//conditions:default": [so_file],
+        }),
+        srcs_version = srcs_version,
+        licenses = licenses,
+        testonly = testonly,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+    )

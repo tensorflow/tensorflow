@@ -278,12 +278,14 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
     arg.initialized = true;
     xla_args.push_back(std::move(arg));
 
-    // We want to alias the input and output of the variable, so the updates are
-    // carried out in-place.
-    xla_aliases.push_back({/*output_index=*/{output_num},
-                           /*param_number=*/input_num, /*param_index=*/{}});
+    if (!variable.readonly()) {
+      // We want to alias the input and output of the variable, so the updates
+      // are carried out in-place.
+      xla_aliases.push_back({/*output_index=*/{output_num},
+                             /*param_number=*/input_num, /*param_index=*/{}});
+      ++output_num;
+    }
     ++input_num;
-    ++output_num;
   }
 
   // Compile the graph into an XLA computation.
@@ -323,6 +325,24 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
         num_const_results,
         " constant results.  The configuration of "
         "the output args (i.e. fetch ids) is probably wrong.");
+  }
+  {
+    // Verify that the readonly bits on variables are set correctly by the user.
+    std::vector<bool> updated_inputs(xla_args.size());
+    for (const XlaCompiler::ResourceUpdate& update : result.resource_updates) {
+      updated_inputs[update.input_index] = true;
+    }
+    int64 input_index = xla_args.size() - config.variable_size();
+    for (const tf2xla::Variable& variable : config.variable()) {
+      if (variable.readonly() == updated_inputs[input_index]) {
+        return errors::InvalidArgument(
+            "Variable \"", variable.node_name(), "\" is marked as ",
+            variable.readonly() ? "" : "not ", "readonly, but is ",
+            updated_inputs[input_index] ? "" : "not ",
+            "modified by the computation.");
+      }
+      ++input_index;
+    }
   }
   return Status::OK();
 }

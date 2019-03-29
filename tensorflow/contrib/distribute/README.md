@@ -187,7 +187,7 @@ in the input function gives a solid boost in performance. When using
 For multi-worker training, no code change is required to the `Estimator` code.
 You can run the same model code for all tasks in your cluster including
 parameter servers and the evaluator. But you need to use
-`tf.estimator.train_and_evaluate`, explicitly specify `num_gpus_per_workers`
+`tf.estimator.train_and_evaluate`, explicitly specify `num_gpus_per_worker`
 for your strategy object, and set "TF\_CONFIG" environment variables for each
 binary running in your cluster. We'll provide a Kubernetes template in the
 [tensorflow/ecosystem](https://github.com/tensorflow/ecosystem) repo which sets

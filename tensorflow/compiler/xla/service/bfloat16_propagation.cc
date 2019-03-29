@@ -674,11 +674,13 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
       }
-      if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
+      if (!Shape::Equal().MinorToMajorOnlyInLayout()(hlo->literal().shape(),
+                                                     hlo->shape())) {
         TF_ASSIGN_OR_RETURN(auto converted_literal,
                             hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
+        UpdateLayout(new_constant->mutable_shape());
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
       }
     }
@@ -797,6 +799,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
       auto subshape = entry.first;
       CHECK_EQ(subshape->element_type(), F32);
       subshape->set_element_type(BF16);
+      UpdateLayout(subshape);
       changed_ = true;
     }
   }

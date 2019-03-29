@@ -26,6 +26,12 @@ import tempfile
 
 CodeLine = collections.namedtuple("CodeLine", ["cell_number", "code"])
 
+def is_python(cell):
+  """Checks if the cell consists of Python code."""
+  return (cell["cell_type"] == "code"  # code cells only
+          and cell["source"]  # non-empty cells
+          and not cell["source"][0].startswith("%%"))  # multiline eg: %%bash
+
 
 def process_file(in_filename, out_filename, upgrader):
   """The function where we inject the support for ipynb upgrade."""
@@ -66,7 +72,7 @@ def _get_code(input_file):
 
   cell_index = 0
   for cell in notebook["cells"]:
-    if cell["cell_type"] == "code":
+    if is_python(cell):
       cell_lines = cell["source"]
 
       for line_idx, code_line in enumerate(cell_lines):

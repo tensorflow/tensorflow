@@ -156,9 +156,20 @@ message DebugOptions {
   //
   //  - Reducing the precision of operations (e.g. using an approximate sin
   //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
+  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
   //  - Assuming that +0 and -0 are indistinguishable.
   bool xla_cpu_enable_fast_math = 99;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_nans = 120;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce infinites.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_infs = 121;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
@@ -190,14 +201,15 @@ message DebugOptions {
   bool xla_allow_scalar_index_dynamic_ops = 107;
 
   enum StepMarkerLocation {
-    // Generate step mark at each iteration of top level while loop, which
-    // is assumed to be a training loop. This is the default.
+    // Generate a step marker at the program entry. This handles the case where
+    // each step is done by one or multiple program execution(s). Only the first
+    // program will be tagged for generating a step marker at the program entry.
+    // This is the default.
     STEP_MARK_AT_ENTRY = 0;
-    // Generate step mark at program entry. This handles the case where each
-    // step are done by one or multiple programs execution. Only the first
-    // program will be tagged for generating step mark at program entry.
+    // Generate a step marker at each iteration of the top level while loop,
+    // which is assumed to be a training loop.
     STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
-    // No step mark.
+    // No step marker generated.
     STEP_MARK_NONE = 2;
   }
   // Option to emit a target-specific marker to indicate the start of a training
@@ -250,7 +262,7 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 119
+  // Next id: 121
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -288,6 +300,10 @@ message ExecutionOptions {
   // Number of replicas of the computation to run. If zero, uses the default
   // number of replicas for the XLA service.
   int32 num_replicas = 6;
+
+  // This optional field specifies the device assignment if known at compile
+  // time.
+  DeviceAssignmentProto device_assignment = 7;
 }
 
 message GetDeviceHandlesRequest {

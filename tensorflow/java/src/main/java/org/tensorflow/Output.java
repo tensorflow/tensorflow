@@ -28,12 +28,6 @@ import java.util.Objects;
  */
 public final class Output<T> implements Operand<T> {
 
-  /** Handle to the idx-th output of the Operation {@code op}. */
-  public Output(Operation op, int idx) {
-    operation = op;
-    index = idx;
-  }
-
   /** Returns the Operation that will produce the tensor referred to by this Output. */
   public Operation op() {
     return operation;
@@ -83,6 +77,16 @@ public final class Output<T> implements Operand<T> {
         operation.type(), operation.name(), index, shape().toString(), dataType());
   }
 
-  private final Operation operation;
+  /** Handle to the idx-th output of the Operation {@code op}. */
+  Output(AbstractOperation op, int idx) {
+    operation = op;
+    index = idx;
+  }
+
+  long getUnsafeNativeHandle() {
+    return operation.getUnsafeNativeHandle(index);
+  }
+
+  private final AbstractOperation operation;
   private final int index;
 }

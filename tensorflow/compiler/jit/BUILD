@@ -212,6 +212,7 @@ cc_library(
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:optional_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
+        "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -236,6 +237,7 @@ cc_library(
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -496,6 +498,7 @@ cc_library(
         "encapsulate_xla_computations_pass.cc",
         "extract_outside_compilation_pass.cc",
         "increase_dynamism_for_auto_jit_pass.cc",
+        "introduce_floating_point_jitter_pass.cc",
         "mark_for_compilation_pass.cc",
         "mark_for_compilation_pass_test_helper.cc",
         "partially_decluster_pass.cc",
@@ -508,6 +511,7 @@ cc_library(
         "encapsulate_xla_computations_pass.h",
         "extract_outside_compilation_pass.h",
         "increase_dynamism_for_auto_jit_pass.h",
+        "introduce_floating_point_jitter_pass.h",
         "mark_for_compilation_pass.h",
         "mark_for_compilation_pass_test_helper.h",
         "partially_decluster_pass.h",
@@ -522,6 +526,7 @@ cc_library(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/ops:xla_ops",
@@ -532,6 +537,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -549,6 +555,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -630,11 +637,12 @@ tf_cc_test(
     srcs = [
         "build_xla_ops_pass_test.cc",
         "clone_constants_for_better_clustering_test.cc",
-        "compilation_passes_test_main.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",
         "increase_dynamism_for_auto_jit_pass_test.cc",
+        "introduce_floating_point_jitter_pass_internal.h",
+        "introduce_floating_point_jitter_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
         "partially_decluster_pass_test.cc",
     ],
@@ -676,6 +684,7 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

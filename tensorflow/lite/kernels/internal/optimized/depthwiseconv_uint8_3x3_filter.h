@@ -55,37 +55,36 @@ constexpr int kWorkspaceExtension = 16;
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
 
 #ifndef __aarch64__
-inline int8x16_t vqtbl4q_s8(int8x16x4_t a, uint8x16_t b) {
-  const uint8x16_t mask = vtstq_u8(b, vdupq_n_u8(8));
+inline int8x16_t vqtbl4q_s8(int8x16x4_t a, int8x16_t b) {
+  const uint8x16_t mask = vtstq_s8(b, vdupq_n_s8(8));
 
   // Delete bit 3 from the indices.
-  const uint8x16_t high_bits = vshrq_n_u8(b, 4);
-  uint8x16_t deleted_bit_3 = b;
-  deleted_bit_3 = vsliq_n_u8(deleted_bit_3, high_bits, 3);
+  const int8x16_t high_bits = vshrq_n_s8(b, 4);
+  int8x16_t deleted_bit_3 = b;
+  deleted_bit_3 = vsliq_n_s8(deleted_bit_3, high_bits, 3);
 
   int8x8x4_t repacked_data;
 
   // Calculate for lower indices.
-  repacked_data.val[0] = vget_low_u8(a.val[0]);
-  repacked_data.val[1] = vget_low_u8(a.val[1]);
-  repacked_data.val[2] = vget_low_u8(a.val[2]);
-  repacked_data.val[3] = vget_low_u8(a.val[3]);
+  repacked_data.val[0] = vget_low_s8(a.val[0]);
+  repacked_data.val[1] = vget_low_s8(a.val[1]);
+  repacked_data.val[2] = vget_low_s8(a.val[2]);
+  repacked_data.val[3] = vget_low_s8(a.val[3]);
   const int8x16_t output_for_lower =
-      vcombine_u8(vtbl4_s8(repacked_data, vget_low_u8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_u8(deleted_bit_3)));
+      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
+                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
 
   // Calculate for high indices.
-  repacked_data.val[0] = vget_high_u8(a.val[0]);
-  repacked_data.val[1] = vget_high_u8(a.val[1]);
-  repacked_data.val[2] = vget_high_u8(a.val[2]);
-  repacked_data.val[3] = vget_high_u8(a.val[3]);
+  repacked_data.val[0] = vget_high_s8(a.val[0]);
+  repacked_data.val[1] = vget_high_s8(a.val[1]);
+  repacked_data.val[2] = vget_high_s8(a.val[2]);
+  repacked_data.val[3] = vget_high_s8(a.val[3]);
   const int8x16_t output_for_higher =
-      vcombine_u8(vtbl4_s8(repacked_data, vget_low_u8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_u8(deleted_bit_3)));
+      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
+                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
 
   // Merge.
-  int8x16_t output = mask;
-  output = vbslq_u8(output, output_for_higher, output_for_lower);
+  int8x16_t output = vbslq_s8(mask, output_for_higher, output_for_lower);
   return output;
 }
 #endif  // !__aarch64__
@@ -120,6 +119,15 @@ inline void vtrn1_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
   *a = vreinterpretq_s8_s16(r16x8.val[0]);
 }
 
+// Similar rationale to the zip-in_place functions, but callers only actually
+// need the ZIP1 or ZIP2 asm instruction results.
+inline int8x16_t vzip1q_s8(int8x16_t a, int8x16_t b) {
+  return vzipq_s8(a, b).val[0];
+}
+inline int8x16_t vzip2q_s8(int8x16_t a, int8x16_t b) {
+  return vzipq_s8(a, b).val[1];
+}
+
 inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
   *left = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*left), 8));
   *left = vreinterpretq_s8_u32(vsliq_n_u32(vreinterpretq_u32_s8(*left),
@@ -128,7 +136,7 @@ inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
 }
 
 #ifndef __aarch64__
-inline int32x4_t vpaddq_s32(int32x4_t a, int8x16_t b) {
+inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
   int32x4x2_t deinterleaved = vuzpq_s32(a, b);
   return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
 }
@@ -186,7 +194,7 @@ inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
   return vaddq_s32(acc, sum);
 }
 
-#endif  // !DOTPROD
+#endif  // !__ARM_FEATURE_DOTPROD
 #endif  // ARM NEON
 
 template <DepthwiseConvOutputRounding output_rounding>
@@ -370,7 +378,6 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
                   OFFSET_OUTPUT_HEIGHT,
               "");
 #endif  // __aarch64__
-
 #endif  // ARM NEON
 
 // Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
@@ -380,37 +387,192 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
 struct DepthwiseConvDotProdParams {
   int64_t input_depth;
   int64_t output_depth;
-  int32 workspace_height_stride;
-  int32 input_width_overall_micro_repeats;
-  int32 input_width_micro_repeats;
-  int32 depth_micro_repeats;
-  int32 inbound_block_height;
-  int32 residual_width;
-  int32 input_height_stride;
   int32 stride;
-  int32 output_width_overall_micro_repeats;
-  int32 output_width_micro_repeats;
-  int32 output_residual_width;
-  int32 output_height_stride;
   int32 bias_increment;
-  int32 padding_left;
-  int32 padding_right;
-  int32 padding_top;
-  int32 padding_bottom;
-  int32 height_macro_count;
-  int32 width_macro_count;
-  int32 outbound_block_height;
-  int32 workspace_width_micro_repeats;
+  //
   int32 input_offset;
   int32 output_offset;
   int32 output_multiplier;
   int32 output_shift;
   int32 quantized_activation_min;
   int32 quantized_activation_max;
+  //
+  int32 padding_left;
+  int32 padding_right;
+  int32 padding_top;
+  int32 padding_bottom;
+  //
+  int32 depth_micro_repeats;
+  //
+  int32 width_macro_count;
+  int32 input_width_overall_micro_repeats;
+  int32 input_width_micro_repeats;
+  int32 residual_width;
+  int32 output_width_overall_micro_repeats;
+  int32 output_width_micro_repeats;
+  int32 output_residual_width;
+  int32 workspace_width_micro_repeats;
+  //
+  int32 height_macro_count;
+  int32 inbound_block_height;
+  int32 outbound_block_height;
+  int32 input_height_stride;
+  int32 output_height_stride;
+  int32 workspace_height_stride;
+  //
   int32 four_over_stride;
 };
 
 #ifdef USE_NEON
+#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
+// Represents the number of bytes offset from the start of the
+// DepthwiseConvDotProdParams struct. This is used in the asm to load
+// parameters. Keep these values in sync with the static_asserts below.
+
+#define DP_OFFSET_INPUT_DEPTH 0
+#define DP_OFFSET_OUTPUT_DEPTH DP_OFFSET_INPUT_DEPTH + 8
+#define DP_OFFSET_STRIDE DP_OFFSET_OUTPUT_DEPTH + 8
+#define DP_OFFSET_BIAS_INCREMENT DP_OFFSET_STRIDE + 4
+//
+#define DP_OFFSET_INPUT_OFFSET 24
+#define DP_OFFSET_OUTPUT_OFFSET DP_OFFSET_INPUT_OFFSET + 4
+#define DP_OFFSET_OUTPUT_MULTIPLIER DP_OFFSET_OUTPUT_OFFSET + 4
+#define DP_OFFSET_OUTPUT_SHIFT DP_OFFSET_OUTPUT_MULTIPLIER + 4
+#define DP_OFFSET_QUANTIZED_ACTIVATION_MIN DP_OFFSET_OUTPUT_SHIFT + 4
+#define DP_OFFSET_QUANTIZED_ACTIVATION_MAX \
+  DP_OFFSET_QUANTIZED_ACTIVATION_MIN + 4
+//
+#define DP_OFFSET_PADDING_LEFT 48
+#define DP_OFFSET_PADDING_RIGHT DP_OFFSET_PADDING_LEFT + 4
+#define DP_OFFSET_PADDING_TOP DP_OFFSET_PADDING_RIGHT + 4
+#define DP_OFFSET_PADDING_BOTTOM DP_OFFSET_PADDING_TOP + 4
+//
+#define DP_OFFSET_DEPTH_MICRO_REPEATS DP_OFFSET_PADDING_BOTTOM + 4
+//
+#define DP_OFFSET_WIDTH_MACRO_COUNT 68
+#define DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS \
+  DP_OFFSET_WIDTH_MACRO_COUNT + 4
+#define DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS \
+  DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS + 4
+#define DP_OFFSET_RESIDUAL_WIDTH DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS + 4
+#define DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS \
+  DP_OFFSET_RESIDUAL_WIDTH + 4
+#define DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS \
+  DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS + 4
+#define DP_OFFSET_OUTPUT_RESIDUAL_WIDTH DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS + 4
+#define DP_OFFSET_WORKSPACE_WIDTH_MICRO_REPEATS \
+  DP_OFFSET_OUTPUT_RESIDUAL_WIDTH + 4
+//
+#define DP_OFFSET_HEIGHT_MACRO_COUNT 100
+#define DP_OFFSET_INBOUND_BLOCK_HEIGHT DP_OFFSET_HEIGHT_MACRO_COUNT + 4
+#define DP_OFFSET_OUTBOUND_BLOCK_HEIGHT DP_OFFSET_INBOUND_BLOCK_HEIGHT + 4
+#define DP_OFFSET_INPUT_HEIGHT_STRIDE DP_OFFSET_OUTBOUND_BLOCK_HEIGHT + 4
+#define DP_OFFSET_OUTPUT_HEIGHT_STRIDE DP_OFFSET_INPUT_HEIGHT_STRIDE + 4
+#define DP_OFFSET_WORKSPACE_HEIGHT_STRIDE DP_OFFSET_OUTPUT_HEIGHT_STRIDE + 4
+//
+#define DP_OFFSET_FOUR_OVER_STRIDE DP_OFFSET_WORKSPACE_HEIGHT_STRIDE + 4
+
+static_assert(offsetof(DepthwiseConvDotProdParams, input_depth) ==
+                  DP_OFFSET_INPUT_DEPTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_depth) ==
+                  DP_OFFSET_OUTPUT_DEPTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, stride) == DP_OFFSET_STRIDE,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, bias_increment) ==
+                  DP_OFFSET_BIAS_INCREMENT,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, input_offset) ==
+                  DP_OFFSET_INPUT_OFFSET,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_offset) ==
+                  DP_OFFSET_OUTPUT_OFFSET,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_multiplier) ==
+                  DP_OFFSET_OUTPUT_MULTIPLIER,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_shift) ==
+                  DP_OFFSET_OUTPUT_SHIFT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, quantized_activation_min) ==
+                  DP_OFFSET_QUANTIZED_ACTIVATION_MIN,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, quantized_activation_max) ==
+                  DP_OFFSET_QUANTIZED_ACTIVATION_MAX,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_left) ==
+                  DP_OFFSET_PADDING_LEFT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_right) ==
+                  DP_OFFSET_PADDING_RIGHT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_top) ==
+                  DP_OFFSET_PADDING_TOP,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_bottom) ==
+                  DP_OFFSET_PADDING_BOTTOM,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, depth_micro_repeats) ==
+                  DP_OFFSET_DEPTH_MICRO_REPEATS,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, width_macro_count) ==
+                  DP_OFFSET_WIDTH_MACRO_COUNT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       input_width_overall_micro_repeats) ==
+                  DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, input_width_micro_repeats) ==
+                  DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, residual_width) ==
+                  DP_OFFSET_RESIDUAL_WIDTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       output_width_overall_micro_repeats) ==
+                  DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       output_width_micro_repeats) ==
+                  DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_residual_width) ==
+                  DP_OFFSET_OUTPUT_RESIDUAL_WIDTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       workspace_width_micro_repeats) ==
+                  DP_OFFSET_WORKSPACE_WIDTH_MICRO_REPEATS,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, height_macro_count) ==
+                  DP_OFFSET_HEIGHT_MACRO_COUNT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, inbound_block_height) ==
+                  DP_OFFSET_INBOUND_BLOCK_HEIGHT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, outbound_block_height) ==
+                  DP_OFFSET_OUTBOUND_BLOCK_HEIGHT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, input_height_stride) ==
+                  DP_OFFSET_INPUT_HEIGHT_STRIDE,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_height_stride) ==
+                  DP_OFFSET_OUTPUT_HEIGHT_STRIDE,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, workspace_height_stride) ==
+                  DP_OFFSET_WORKSPACE_HEIGHT_STRIDE,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, four_over_stride) ==
+                  DP_OFFSET_FOUR_OVER_STRIDE,
+              "");
+#endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
+
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
@@ -3536,7 +3698,7 @@ inline void DepthwiseConv3x3Filter(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
   DepthwiseConvParams params;
 
@@ -3587,6 +3749,7 @@ inline void DepthwiseConv3x3Filter(
   TFLITE_DCHECK(pad_height == 0 || pad_height == 1);
   TFLITE_DCHECK(pad_width == 0 || pad_width == 1);
   TFLITE_DCHECK(pad_width == pad_height);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   const int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int64_t input_batch_size = params.input_row_size * params.input_height;
@@ -3620,14 +3783,35 @@ inline void DepthwiseConv3x3Filter(
   // used in gemmlowp.
   uint8 shuffle_workspace[kDepthwiseConvScratchWorkspaceSize];
 
-  for (int32 b = 0; b < batches; ++b) {
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = params.output_height;
+
+  switch (thread_dim) {
+    case 0:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      break;
+    case 1:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, params.output_height);
+      row_start = thread_start;
+      row_end = thread_end;
+      break;
+  }
+
+  for (int32 b = batch_start; b < batch_end; ++b) {
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size;
+    uint8* output_ptr = output_data + b * output_batch_size +
+                        row_start * params.output_width * params.output_depth;
 
     int32 out_x = 0;
-    int32 out_y = 0;
+    int32 out_y = row_start;
     int32 end_x = params.output_width;
-    int32 end_y = params.output_height;
+    int32 end_y = row_end;
 
     if (pad_width == 1 && pad_height == 1) {
       DepthwiseConvHandlePadding(input_ptr, filter_data, bias_data, output_ptr,
@@ -3636,8 +3820,8 @@ inline void DepthwiseConv3x3Filter(
       // Update extents now that the edges have been handled.
       out_x = 1;
       end_x = params.output_width - 1;
-      out_y = 1;
-      end_y = params.output_height - 1;
+      out_y = std::max(1, out_y);
+      end_y = std::min(params.output_height - 1, end_y);
       const int in_x = (out_x * stride_width) - pad_width;
       const int in_y = (out_y * stride_height) - pad_height;
       input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
@@ -3767,24 +3951,25 @@ inline void PreloadInputBlock(
   const int input_height_stride = function_params->input_height_stride;
   const int input_depth = function_params->input_depth;
 
-  {
-    const int total_width = 4 * input_width_micro_repeats + residual_width;
-    const uint8* row_ptr = input_block_data;
-    for (int k_height = 0; k_height < block_height; ++k_height) {
-      const uint8* ptr = row_ptr;
-      for (int j = 0; j < total_width; ++j) {
-        // Input data is loaded once.
-        asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-        ptr += input_depth;
-      }
-      row_ptr += input_height_stride;
+  const int total_width = 4 * input_width_micro_repeats + residual_width;
+  const uint8* row_ptr = input_block_data;
+  for (int k_height = 0; k_height < block_height; ++k_height) {
+    const uint8* ptr = row_ptr;
+    for (int j = 0; j < total_width; ++j) {
+      // Input data is loaded once.
+      asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+      ptr += input_depth;
     }
+    row_ptr += input_height_stride;
   }
 }
+#endif  // USE_NEON &&__aarch64__
+
+#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
 
 template <>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
-  static void ProcessPerDepthIntrinsics(
+  static void ProcessPerDepthNeon(
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
       const DepthwiseConvDotProdParams* function_params) {
@@ -3902,8 +4087,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
   static inline void Run(const uint8* filter_data, const int32* bias_data,
                          int8* shuffled_filter_data, int32* adjusted_bias_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    ProcessPerDepthIntrinsics(filter_data, bias_data, shuffled_filter_data,
-                              adjusted_bias_data, function_params);
+    ProcessPerDepthNeon(filter_data, bias_data, shuffled_filter_data,
+                        adjusted_bias_data, function_params);
   }
 };
 
@@ -3930,12 +4115,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int input_height_stride = function_params->input_height_stride;
     const int input_depth = function_params->input_depth;
 
-    static const uint8 perm_data[64] = {
-        0,  16, 32, 48, 1,  17, 33, 49, 2,  18, 34, 50, 3,  19, 35, 51,  //
-        4,  20, 36, 52, 5,  21, 37, 53, 6,  22, 38, 54, 7,  23, 39, 55,
-        8,  24, 40, 56, 9,  25, 41, 57, 10, 26, 42, 58, 11, 27, 43, 59,
-        12, 28, 44, 60, 13, 29, 45, 61, 14, 30, 46, 62, 15, 31, 47, 63};
-
     TFLITE_DCHECK_GE(depth_micro_repeats, 0);
     constexpr uint8 kSignBit = 0x80;
     const int micro_block_size = 4 * 8;
@@ -3951,10 +4130,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     // code. Note the blocks of 4x4 are still interleaved down the depth.
     int8x16_t work_reg_a;
     int8x16_t work_reg_b;
-    const int8x16_t perm_data_0 = vld1q_u8(perm_data);
-    const int8x16_t perm_data_1 = vld1q_u8(perm_data + 16);
-    const int8x16_t perm_data_2 = vld1q_u8(perm_data + 32);
-    const int8x16_t perm_data_3 = vld1q_u8(perm_data + 48);
 
     // Effect subtraction of zero-point = 128 by XOR of sign bit.
     const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
@@ -3964,9 +4139,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
     for (int k_height = 0; k_height < block_height; ++k_height) {
       const uint8* input_data_0 = input_block_data;
-      const uint8* input_data_1 = input_block_data + input_depth;
-      const uint8* input_data_2 = input_block_data + 2 * input_depth;
-      const uint8* input_data_3 = input_block_data + 3 * input_depth;
 
       // Traverse the width one point at a time, but the depth in (micro) blocks
       // of size 8.
@@ -3975,68 +4147,108 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
       // larger than is strictly needed to calculate output. This is because the
       // conv calculation is performed across complete micro blocks.
       for (int j_width = 0; j_width < input_width_micro_repeats; ++j_width) {
+        int8x16_t input_data_a;
+        int8x16_t input_data_b;
+        int8x16_t input_data_c;
+        int8x16_t input_data_d;
+        int8x16_t work_reg_a_sp;
+        int8x16_t work_reg_b_sp;
+
         int i_depth = 0;
-        for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
-          int8x16x4_t input_data;
-          input_data.val[0] = vld1q_u8(input_data_0);
-          input_data.val[1] = vld1q_u8(input_data_1);
-          input_data.val[2] = vld1q_u8(input_data_2);
-          input_data.val[3] = vld1q_u8(input_data_3);
-          input_data_1 += 16;
+
+        if (depth_micro_repeats >= 2) {
+          i_depth += 2;
+
+          //
+
+          input_data_a = vld1q_u8(input_data_0);
+          input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+          input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+          input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
           input_data_0 += 16;
 
-          int8x16_t tmp_0 = vqtbl4q_s8(input_data, perm_data_0);
-          int8x16_t tmp_1 = vqtbl4q_s8(input_data, perm_data_1);
-          work_reg_a = veorq_s8(tmp_0, sign_bit);
-          work_reg_b = veorq_s8(tmp_1, sign_bit);
+          //
 
+          for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
+            work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+            work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+            vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+            work_reg_a = veorq_s8(work_reg_a, sign_bit);
+            work_reg_b = veorq_s8(work_reg_b, sign_bit);
+
+            work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+            work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+            vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+
+            input_data_a = vld1q_u8(input_data_0);
+            input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+            vst1q_s8(scratch_data_0, work_reg_a);
+            vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+            scratch_data_0 += depth_advance;
+
+            work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+            work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+            input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+            input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+            vst1q_s8(scratch_data_0, work_reg_a_sp);
+            vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+            scratch_data_0 += depth_advance;
+
+            //
+
+            input_data_0 += 16;
+          }
+
+          work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+          work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+          vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+          work_reg_a = veorq_s8(work_reg_a, sign_bit);
+          work_reg_b = veorq_s8(work_reg_b, sign_bit);
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
           scratch_data_0 += depth_advance;
-          input_data_2 += 16;
-          input_data_3 += 16;
+          //
 
-          tmp_0 = vqtbl4q_s8(input_data, perm_data_2);
-          tmp_1 = vqtbl4q_s8(input_data, perm_data_3);
-          work_reg_a = veorq_s8(tmp_0, sign_bit);
-          work_reg_b = veorq_s8(tmp_1, sign_bit);
+          work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+          work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+          vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+          work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+          work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
 
-          vst1q_s8(scratch_data_0, work_reg_a);
-          vst1q_s8(scratch_data_0 + 16, work_reg_b);
+          vst1q_s8(scratch_data_0, work_reg_a_sp);
+          vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
 
           scratch_data_0 += depth_advance;
         }
         for (; i_depth < depth_micro_repeats; ++i_depth) {
-          int8x16x4_t input_data;
-          input_data.val[0] =
-              vld1q_lane_s8x8(input_data_0, input_data.val[0], 0);
-          input_data.val[1] =
-              vld1q_lane_s8x8(input_data_1, input_data.val[1], 0);
-          input_data.val[2] =
-              vld1q_lane_s8x8(input_data_2, input_data.val[2], 0);
-          input_data.val[3] =
-              vld1q_lane_s8x8(input_data_3, input_data.val[3], 0);
-          input_data_1 += 8;
+          input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
+          input_data_a =
+              vld1q_lane_s8x8(input_data_0 + 2 * input_depth, input_data_a, 1);
+          input_data_b =
+              vld1q_lane_s8x8(input_data_0 + 1 * input_depth, input_data_b, 0);
+          input_data_b =
+              vld1q_lane_s8x8(input_data_0 + 3 * input_depth, input_data_b, 1);
+
+          work_reg_a = input_data_a;
+          work_reg_b = input_data_b;
           input_data_0 += 8;
 
-          int8x16_t tmp_0 = vqtbl4q_s8(input_data, perm_data_0);
-          int8x16_t tmp_1 = vqtbl4q_s8(input_data, perm_data_1);
-          work_reg_a = veorq_s8(tmp_0, sign_bit);
-          work_reg_b = veorq_s8(tmp_1, sign_bit);
+          vzipq_s8_in_place(&work_reg_a, &work_reg_b);
+          vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+          work_reg_a = veorq_s8(work_reg_a, sign_bit);
+          work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
           vst1q_s8(scratch_data_0, work_reg_a);
           vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
           scratch_data_0 += depth_advance;
-          input_data_2 += 8;
-          input_data_3 += 8;
         }
         scratch_data_0 += width_advance;
         input_data_0 += input_depth_skip;
-        input_data_1 += input_depth_skip;
-        input_data_2 += input_depth_skip;
-        input_data_3 += input_depth_skip;
       }
       if (width_overall_micro_repeats > input_width_micro_repeats) {
         TFLITE_DCHECK_EQ(width_overall_micro_repeats,
@@ -4066,15 +4278,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           scratch_data_0 += depth_advance;
           input_data_0 += 8;
-          input_data_1 += 8;
-          input_data_2 += 8;
-          input_data_3 += 8;
         }
         scratch_data_0 += width_advance;
         input_data_0 += input_depth_skip;
-        input_data_1 += input_depth_skip;
-        input_data_2 += input_depth_skip;
-        input_data_3 += input_depth_skip;
       }
       scratch_data_0 += height_advance;
       input_block_data += input_height_stride;
@@ -6961,7 +7167,44 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
   }
 };
 
-#endif  // USE_NEON && __aarch64__
+#undef DP_OFFSET_INPUT_DEPTH
+#undef DP_OFFSET_OUTPUT_DEPTH
+#undef DP_OFFSET_STRIDE
+#undef DP_OFFSET_BIAS_INCREMENT
+//
+#undef DP_OFFSET_INPUT_OFFSET
+#undef DP_OFFSET_OUTPUT_OFFSET
+#undef DP_OFFSET_OUTPUT_MULTIPLIER
+#undef DP_OFFSET_OUTPUT_SHIFT
+#undef DP_OFFSET_QUANTIZED_ACTIVATION_MIN
+#undef DP_OFFSET_QUANTIZED_ACTIVATION_MAX
+//
+#undef DP_OFFSET_PADDING_LEFT
+#undef DP_OFFSET_PADDING_RIGHT
+#undef DP_OFFSET_PADDING_TOP
+#undef DP_OFFSET_PADDING_BOTTOM
+//
+#undef DP_OFFSET_DEPTH_MICRO_REPEATS
+//
+#undef DP_OFFSET_WIDTH_MACRO_COUNT
+#undef DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS
+#undef DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS
+#undef DP_OFFSET_RESIDUAL_WIDTH
+#undef DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS
+#undef DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS
+#undef DP_OFFSET_OUTPUT_RESIDUAL_WIDTH
+#undef DP_OFFSET_WORKSPACE_WIDTH_MICRO_REPEATS
+//
+#undef DP_OFFSET_HEIGHT_MACRO_COUNT
+#undef DP_OFFSET_INBOUND_BLOCK_HEIGHT
+#undef DP_OFFSET_OUTBOUND_BLOCK_HEIGHT
+#undef DP_OFFSET_INPUT_HEIGHT_STRIDE
+#undef DP_OFFSET_OUTPUT_HEIGHT_STRIDE
+#undef DP_OFFSET_WORKSPACE_HEIGHT_STRIDE
+//
+#undef DP_OFFSET_FOUR_OVER_STRIDE
+
+#endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
 
 // Top-level implementation function for 3x3 depthwise convolution using NEON
 // dot-product instructions.

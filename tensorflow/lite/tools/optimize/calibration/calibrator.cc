@@ -171,7 +171,8 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
 
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
   }
 
   auto status = kernel_invoke(context, node);
@@ -182,7 +183,8 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
 
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];
-    logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
   }
 
   return status;
@@ -218,9 +220,7 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
     const std::unordered_map<int, OperatorInfo>& node_to_opinfo,
     tflite::Interpreter* const interpreter,
     std::unordered_map<const TfLiteNode*, OperatorInfo>* node_ptr_opinfo_map,
-    const TfLiteContext** context
-
-) {
+    const TfLiteContext** context) {
   NodeInfoDelegateObserver delegate_observer(node_to_opinfo,
                                              node_ptr_opinfo_map);
   NodeInfoDelegateParams delegate_params;
