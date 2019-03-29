@@ -1229,6 +1229,20 @@ TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
   ASSERT_NE(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
+
+  // Deliberately try to set tensor params with quantization while immutable,
+  // ensuring quantization is properly freed.
+  TfLiteQuantization quant = {};
+  quant.type = kTfLiteAffineQuantization;
+  auto quant_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  quant_params->scale = nullptr;
+  quant_params->zero_point = nullptr;
+  quant_params->quantized_dimension = 0;
+  quant.params = quant_params;
+  ASSERT_NE(interpreter_->SetTensorParametersReadWrite(0, kTfLiteInt8, "", {3},
+                                                       quant),
+            kTfLiteOk);
 }
 
 TEST_F(TestDelegate, ComplexDelegate) {

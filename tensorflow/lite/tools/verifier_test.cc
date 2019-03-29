@@ -102,17 +102,22 @@ class TfLiteFlatbufferModelBuilder {
         /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS));
   }
 
+  enum BuilderMode {
+    kBuilderModeEmptyVectorIsEmpty,
+    kBuilderModeEmptyVectorIsNull,
+    kBuilderModeDefault = kBuilderModeEmptyVectorIsEmpty,
+  };
   void FinishModel(const std::vector<int32_t>& inputs,
-                   const std::vector<int32_t>& outputs) {
+                   const std::vector<int32_t>& outputs,
+                   BuilderMode mode = kBuilderModeDefault) {
     auto subgraph = std::vector<Offset<SubGraph>>({CreateSubGraph(
-        builder_, builder_.CreateVector(tensors_),
-        builder_.CreateVector(inputs), builder_.CreateVector(outputs),
-        builder_.CreateVector(operators_),
+        builder_, CreateVector(tensors_, mode), CreateVector(inputs, mode),
+        CreateVector(outputs, mode), CreateVector(operators_, mode),
         builder_.CreateString("test_subgraph"))});
     auto result = CreateModel(
-        builder_, TFLITE_SCHEMA_VERSION, builder_.CreateVector(operator_codes_),
-        builder_.CreateVector(subgraph), builder_.CreateString("test_model"),
-        builder_.CreateVector(buffers_));
+        builder_, TFLITE_SCHEMA_VERSION, CreateVector(operator_codes_, mode),
+        CreateVector(subgraph, mode), builder_.CreateString("test_model"),
+        CreateVector(buffers_, mode));
     tflite::FinishModelBuffer(builder_, result);
   }
 
@@ -124,6 +129,15 @@ class TfLiteFlatbufferModelBuilder {
   string GetErrorString() { return mock_reporter_.GetAsString(); }
 
  private:
+  template <typename T>
+  flatbuffers::Offset<flatbuffers::Vector<T>> CreateVector(
+      const std::vector<T>& v, BuilderMode mode) {
+    if (mode == kBuilderModeEmptyVectorIsNull && v.empty()) {
+      return 0;
+    }
+    return builder_.CreateVector(v);
+  }
+
   FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
   TfLiteRegistration fake_op_;
@@ -172,6 +186,41 @@ TEST(VerifyModel, TestSimpleModel) {
       "data");
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
   builder.FinishModel({0, 1}, {2});
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+}
+
+TEST(VerifyModel, TestNullTensors) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.FinishModel(
+      {}, {2}, TfLiteFlatbufferModelBuilder::kBuilderModeEmptyVectorIsNull);
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ(builder.GetErrorString(),
+            "Input tensor 0 to op 0 (CUSTOM) is not produced");
+}
+
+TEST(VerifyModel, TestNullOperators) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.FinishModel(
+      {0, 1}, {2}, TfLiteFlatbufferModelBuilder::kBuilderModeEmptyVectorIsNull);
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_THAT(
+      builder.GetErrorString(),
+      ::testing::ContainsRegex("Missing 'operators' section in subgraph"));
+}
+
+TEST(VerifyModel, TestNullInputs) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
+  builder.FinishModel(
+      {}, {2}, TfLiteFlatbufferModelBuilder::kBuilderModeEmptyVectorIsNull);
   ASSERT_TRUE(builder.Verify());
   EXPECT_EQ("", builder.GetErrorString());
 }
