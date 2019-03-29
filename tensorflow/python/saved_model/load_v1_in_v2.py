@@ -98,7 +98,11 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     """Creates ConcreteFunctions for signatures in `meta_graph_def`."""
     signature_functions = {}
     for signature_key, signature_def in meta_graph_def.signature_def.items():
-      input_names, input_specs = zip(*signature_def.inputs.items())
+      if signature_def.inputs:
+        input_names, input_specs = zip(*signature_def.inputs.items())
+      else:
+        input_names = []
+        input_specs = []
       # TODO(allenl): Support optional arguments
       signature_fn = wrapped.prune(
           feeds=[wrapped.graph.as_graph_element(inp.name)
