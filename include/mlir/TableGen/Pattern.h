@@ -220,6 +220,9 @@ public:
   // Returns the constraints.
   std::vector<AppliedConstraint> getConstraints() const;
 
+  // Returns the benefit score of the pattern.
+  int getBenefit() const;
+
 private:
   // The TableGen definition of this pattern.
   const llvm::Record &def;

@@ -716,6 +716,9 @@ class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
 // Pattern definitions
 //===----------------------------------------------------------------------===//
 
+// Marker used to identify the delta value added to the default benefit value.
+def addBenefit;
+
 // Base class for op+ -> op+ rewrite rules. These allow declaratively
 // specifying rewrite rules.
 //
@@ -729,18 +732,25 @@ class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
 // the result pattern, `arg*` can be used to refer to a previously bound name,
 // with potential transformations (e.g., using tAttr, etc.). `arg*` can itself
 // be nested DAG node.
-class Pattern<dag source, list<dag> results, list<dag> preds = []> {
+class Pattern<dag source, list<dag> results, list<dag> preds = [],
+  dag benefitAdded = (addBenefit 0)> {
   dag sourcePattern = source;
   list<dag> resultPatterns = results;
   // Multi-entity constraints. Each constraint here involves multiple entities
   // matched in source pattern and places further constraints on them as a
   // whole.
   list<dag> constraints = preds;
+  // The delta value added to the default benefit value. The default value is
+  // the number of ops in the source pattern. The rule with the highest final
+  // benefit value will be applied first if there are multiple rules matches.
+  // This delta value can be either positive or negative.
+  dag benefitDelta = benefitAdded;
 }
 
 // Form of a pattern which produces a single result.
-class Pat<dag pattern, dag result, list<dag> preds = []> :
-  Pattern<pattern, [result], preds>;
+class Pat<dag pattern, dag result, list<dag> preds = [],
+  dag benefitAdded = (addBenefit 0)> :
+  Pattern<pattern, [result], preds, benefitAdded>;
 
 // Attribute transformation. This is the base class to specify a transformation
 // of matched attributes. Used on the output attribute of a rewrite rule.

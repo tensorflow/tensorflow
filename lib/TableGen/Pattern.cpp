@@ -257,3 +257,13 @@ std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
   }
   return ret;
 }
+
+int tblgen::Pattern::getBenefit() const {
+  // The default benefit value is a heristic with number of ops in the source
+  // pattern.
+  const int defaultBenefit = getSourcePattern().getNumOps();
+  llvm::DagInit *delta = def.getValueAsDag("benefitDelta");
+  if (delta->getNumArgs() != 1 || !isa<llvm::IntInit>(delta->getArg(0)))
+    PrintFatalError(def.getLoc(), "The 'AddedBenefit' can only be an integer");
+  return defaultBenefit + dyn_cast<llvm::IntInit>(delta->getArg(0))->getValue();
+}

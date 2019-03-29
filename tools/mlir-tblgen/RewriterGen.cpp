@@ -340,17 +340,13 @@ void PatternEmitter::emit(StringRef rewriteName) {
   // Get the DAG tree for the source pattern
   DagNode tree = pattern.getSourcePattern();
 
-  // TODO(jpienaar): the benefit metric is simply number of ops matched at the
-  // moment, revise.
-  unsigned benefit = tree.getNumOps();
-
   const Operator &rootOp = pattern.getSourceRootOp();
   auto rootName = rootOp.getOperationName();
 
   // Emit RewritePattern for Pattern.
   os << formatv(R"(struct {0} : public RewritePattern {
   {0}(MLIRContext *context) : RewritePattern("{1}", {2}, context) {{})",
-                rewriteName, rootName, benefit)
+                rewriteName, rootName, pattern.getBenefit())
      << "\n";
 
   // Emit matched state.
