@@ -237,7 +237,8 @@ class Delegate {
                                                 runtimeOptions:runtime_options]);
     std::map<::tflite::gpu::ValueId, BHWC> output_dimensions;
     RETURN_IF_ERROR([inference_context_ setInputDimensions:input_dimensions
-                                          outputDimensions:&output_dimensions]);
+                                          outputDimensions:&output_dimensions
+                                           taskDescriptors:optimized_model]);
     return OkStatus();
   }
 

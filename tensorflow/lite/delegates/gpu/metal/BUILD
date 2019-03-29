@@ -124,6 +124,7 @@ objc_library(
         ":compute_task",
         ":compute_task_descriptor",
         ":runtime_options",
+        "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
