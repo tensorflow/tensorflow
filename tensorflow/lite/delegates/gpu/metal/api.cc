@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/environment.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/abs.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/sigmoid.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/sub.h"
@@ -97,10 +96,8 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
     }
 
     std::vector<ComputeTaskDescriptorPtr> tasks;
-    switch (OperationTypeFromString(node->operation.type)) {
-      case OperationType::ABS:
-        tasks = Abs(node_id, inputs[0], outputs[0]);
-        break;
+    auto op_type = OperationTypeFromString(node->operation.type);
+    switch (op_type) {
       case OperationType::ADD:
         tasks = AddTable(node_id, inputs, outputs[0]);
         break;
@@ -178,9 +175,6 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             absl::any_cast<ReshapeAttributes>(node->operation.attributes)
                 .new_shape);
         break;
-      case OperationType::SIGMOID:
-        tasks = Sigmoid(node_id, inputs[0], outputs[0]);
-        break;
       case OperationType::SLICE:
         tasks =
             Slice(node_id, inputs[0], outputs[0],
@@ -198,19 +192,24 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             node_id, inputs[0], outputs[0],
             absl::any_cast<Upsample2DAttributes>(node->operation.attributes));
         break;
-      case OperationType::APPLY_MASK:
-      case OperationType::BATCH_NORMALIZATION:
-      case OperationType::CONST:
+
+      case OperationType::ABS:
       case OperationType::COS:
       case OperationType::LOG:
-      case OperationType::LSTM:
-      case OperationType::MUL:
-      case OperationType::RESIZE:
       case OperationType::RSQRT:
+      case OperationType::SIGMOID:
       case OperationType::SIN:
       case OperationType::SQRT:
       case OperationType::SQUARE:
       case OperationType::TANH:
+        tasks = Elementwise(node_id, inputs[0], outputs[0], op_type);
+        break;
+      case OperationType::APPLY_MASK:
+      case OperationType::BATCH_NORMALIZATION:
+      case OperationType::CONST:
+      case OperationType::LSTM:
+      case OperationType::MUL:
+      case OperationType::RESIZE:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }
