@@ -235,8 +235,10 @@ def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
   return sigmoid_cross_entropy_with_logits(
       logits=logits, labels=labels, name=name)
 
-@tf_export("nn.weighted_cross_entropy_with_logits")
-def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
+
+@tf_export("nn.weighted_cross_entropy_with_logits", v1=[])
+def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
+                                          name=None):
   """Computes a weighted cross entropy.
 
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
@@ -245,21 +247,21 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
 
   The usual cross-entropy cost is defined as:
 
-      targets * -log(sigmoid(logits)) +
-          (1 - targets) * -log(1 - sigmoid(logits))
+      labels * -log(sigmoid(logits)) +
+          (1 - labels) * -log(1 - sigmoid(logits))
 
   A value `pos_weights > 1` decreases the false negative count, hence increasing
   the recall.
   Conversely setting `pos_weights < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
-  multiplicative coefficient for the positive targets term
+  multiplicative coefficient for the positive labels term
   in the loss expression:
 
-      targets * -log(sigmoid(logits)) * pos_weight +
-          (1 - targets) * -log(1 - sigmoid(logits))
+      labels * -log(sigmoid(logits)) * pos_weight +
+          (1 - labels) * -log(1 - sigmoid(logits))
 
-  For brevity, let `x = logits`, `z = targets`, `q = pos_weight`.
+  For brevity, let `x = logits`, `z = labels`, `q = pos_weight`.
   The loss is:
 
         qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
@@ -274,10 +276,10 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
 
       (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
 
-  `logits` and `targets` must have the same type and shape.
+  `logits` and `labels` must have the same type and shape.
 
   Args:
-    targets: A `Tensor` of the same type and shape as `logits`.
+    labels: A `Tensor` of the same type and shape as `logits`.
     logits: A `Tensor` of type `float32` or `float64`.
     pos_weight: A coefficient to use on the positive examples.
     name: A name for the operation (optional).
@@ -287,17 +289,16 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
     weighted logistic losses.
 
   Raises:
-    ValueError: If `logits` and `targets` do not have the same shape.
+    ValueError: If `logits` and `labels` do not have the same shape.
   """
-  with ops.name_scope(name, "logistic_loss", [logits, targets]) as name:
+  with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
-    targets = ops.convert_to_tensor(targets, name="targets")
+    labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      targets.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError(
-          "logits and targets must have the same shape (%s vs %s)" %
-          (logits.get_shape(), targets.get_shape()))
+      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
+                       (logits.get_shape(), labels.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -305,12 +306,65 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(x)) - l * x
     # To avoid branching, we use the combined version
     #   (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
-    log_weight = 1 + (pos_weight - 1) * targets
+    log_weight = 1 + (pos_weight - 1) * labels
     return math_ops.add(
-        (1 - targets) * logits,
+        (1 - labels) * logits,
         log_weight * (math_ops.log1p(math_ops.exp(-math_ops.abs(logits))) +
                       nn_ops.relu(-logits)),
         name=name)
+
+
+@tf_export(v1=["nn.weighted_cross_entropy_with_logits"])
+@deprecated_args(None, "targets is deprecated, use labels instead", "targets")
+def weighted_cross_entropy_with_logits(labels=None,
+                                       logits=None,
+                                       pos_weight=None,
+                                       name=None,
+                                       targets=None):
+  """Computes a weighted cross entropy.
+
+  This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
+  allows one to trade off recall and precision by up- or down-weighting the
+  cost of a positive error relative to a negative error.
+  The usual cross-entropy cost is defined as:
+      labels * -log(sigmoid(logits)) +
+          (1 - labels) * -log(1 - sigmoid(logits))
+  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  the recall.
+  Conversely setting `pos_weights < 1` decreases the false positive count and
+  increases the precision.
+  This can be seen from the fact that `pos_weight` is introduced as a
+  multiplicative coefficient for the positive labels term
+  in the loss expression:
+      labels * -log(sigmoid(logits)) * pos_weight +
+          (1 - labels) * -log(1 - sigmoid(logits))
+  For brevity, let `x = logits`, `z = labels`, `q = pos_weight`.
+  The loss is:
+        qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      = qz * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
+      = qz * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
+      = qz * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
+      = (1 - z) * x + (qz +  1 - z) * log(1 + exp(-x))
+      = (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
+  Setting `l = (1 + (q - 1) * z)`, to ensure stability and avoid overflow,
+  the implementation uses
+      (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
+  `logits` and `labels` must have the same type and shape.
+  Args:
+    labels: A `Tensor` of the same type and shape as `logits`.
+    logits: A `Tensor` of type `float32` or `float64`.
+    pos_weight: A coefficient to use on the positive examples.
+    name: A name for the operation (optional).
+    targets: Deprecated alias for labels.
+
+  Returns:
+    A `Tensor` of the same shape as `logits` with the componentwise
+    weighted logistic losses.
+  Raises:
+    ValueError: If `logits` and `labels` do not have the same shape.
+  """
+  labels = deprecated_argument_lookup("labels", labels, "targets", targets)
+  return weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name)
 
 
 @tf_export(v1=["nn.relu_layer"])

@@ -410,7 +410,7 @@ tf_module {
   }
   member_method {
     name: "weighted_cross_entropy_with_logits"
-    argspec: "args=[\'targets\', \'logits\', \'pos_weight\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'pos_weight\', \'name\', \'targets\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "weighted_moments"
