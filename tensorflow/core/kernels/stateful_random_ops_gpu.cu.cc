@@ -138,4 +138,4 @@ template struct UpdateVariableAndFill_Philox<
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOR_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
