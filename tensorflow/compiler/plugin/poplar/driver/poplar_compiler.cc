@@ -509,8 +509,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         },
         DefaultMemoryScheduler);
 
-    bool ok;
-    TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));
+    TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
   }
 
   HloComputation* entry = module->entry_computation();
