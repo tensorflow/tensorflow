@@ -8,9 +8,7 @@ cc_library(
         ":abs",
         ":add",
         ":concat",
-        ":convolution",
-        ":convolution1x1",
-        ":convolution_generic",
+        ":conv",
         ":depthwise_conv",
         ":fully_connected",
         ":max_unpooling",
@@ -70,41 +68,9 @@ cc_library(
 )
 
 cc_library(
-    name = "convolution",
-    srcs = ["convolution.cc"],
-    hdrs = ["convolution.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "convolution1x1",
-    srcs = ["convolution1x1.cc"],
-    hdrs = ["convolution1x1.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "convolution_generic",
-    srcs = ["convolution_generic.cc"],
-    hdrs = ["convolution_generic.h"],
+    name = "conv",
+    srcs = ["conv.cc"],
+    hdrs = ["conv.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONVOLUTION_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONVOLUTION_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONV_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONV_H_
 
 #include <vector>
 
@@ -32,8 +32,30 @@ std::vector<ComputeTaskDescriptorPtr> Convolution(
     const Convolution2DAttributes& params,
     const metal::RuntimeOptions& options);
 
+// Convolution for kernel 1x1
+// require:
+//   kernel_size = 1x1;
+//   padding prepended and appended = 0x0
+//   dilation = 1x1;
+//   stride = 1x1;
+// Works very good on A12 (IPhoneXS, etc).
+// Works good on A9/A10/A11 (IPhone6S, IPhone7, IPhoneX, etc).
+// Works bad on A7/A8 (IPhone5S, IPhone6, etc).
+std::vector<ComputeTaskDescriptorPtr> Convolution1x1(
+    int id, ValueId input_id, ValueId output_id,
+    const Convolution2DAttributes& params, const RuntimeOptions& options);
+
+// This convolution pass all conv parameters (beside output_channels)
+// as dynamic arguments (uniform buffer) to kernel.
+// Depending on output_channels can be generated different kernels
+// Kernel can proceed 4/8/12/16 output channels per one thread.
+// 16 channels output is the fastest but the least flexible.
+std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
+    int id, ValueId input_id, ValueId output_id,
+    const Convolution2DAttributes& params, const RuntimeOptions& options);
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONVOLUTION_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONV_H_
