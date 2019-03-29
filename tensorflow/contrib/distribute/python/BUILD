@@ -19,6 +19,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":keras_correctness_test_lib",
+        ":keras_multi_worker_test_base",
         ":keras_test_lib",
         ":single_loss_example",
         ":strategy_test_lib",
@@ -253,11 +254,45 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras:engine",
     ],
     shard_count = 3,
     tags = [
         # TODO(b/124344198): Add "multi_and_single_gpu",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_multi_worker_correctness_test",
+    srcs = ["keras_multi_worker_correctness_test.py"],
+    additional_deps = [
+        ":keras_multi_worker_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+    ],
+)
+
+py_library(
+    name = "keras_multi_worker_test_base",
+    srcs = ["keras_multi_worker_test_base.py"],
+    deps = [
+        "//tensorflow/contrib/distribute/python:collective_all_reduce_strategy",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:parameter_server_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
     ],
 )
 
