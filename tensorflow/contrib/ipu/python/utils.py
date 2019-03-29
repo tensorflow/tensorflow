@@ -54,7 +54,8 @@ def create_ipu_config(profiling=False,
                       report_every_nth_execution=0,
                       always_rearrange_copies_on_the_host=False,
                       disable_graph_convolution_caching=False,
-                      retain_control_dependencies=False):
+                      retain_control_dependencies=False,
+                      max_cross_replica_sum_buffer_size=0):
   """Create an empty IPU session configuration structure.
 
   Args:
@@ -77,13 +78,13 @@ def create_ipu_config(profiling=False,
                                                 this option the rearrangment
                                                 will be perfomed on the host at
                                                 the expense of latency.
-    :param disable_graph_convolution_caching: By default, the convolution  
-                                              opeartion searches for an 
+    :param disable_graph_convolution_caching: By default, the convolution
+                                              operation searches for an
                                               equivalent cached operation, and
-                                              uses this  instead of creating a  
-                                              new convolution. Setting this flag 
-                                              forces the creation of a new 
-                                              convoltuion. This can improve 
+                                              uses this  instead of creating a
+                                              new convolution. Setting this flag
+                                              forces the creation of a new
+                                              convolution. This can improve
                                               runtime at the expense of graph
                                               size.
     :param retain_control_dependencies: When set to true, control dependencies
@@ -92,6 +93,9 @@ def create_ipu_config(profiling=False,
                                         in a different memory size due to
                                         differing constraints on the operation
                                         scheduler.
+    :param max_cross_replica_sum_buffer_size: The maximum number of bytes that
+                                              can be waiting before a cross
+                                              replica sum op is scheduled.
 
   Returns:
 
@@ -119,6 +123,7 @@ def create_ipu_config(profiling=False,
   opts.speed_size_config.disable_graph_convolution_caching = disable_graph_convolution_caching
 
   opts.retain_control_dependencies = retain_control_dependencies
+  opts.max_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
 
   return opts
 

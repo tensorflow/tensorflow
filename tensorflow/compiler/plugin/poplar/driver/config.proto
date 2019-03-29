@@ -97,4 +97,7 @@ message IpuOptions {
 
   // Retain control dependencies from the Tensorflow graph
   bool retain_control_dependencies = 9;
+
+  // The maximum number of bytes to wait before scheduling an all-reduce
+  int64 max_cross_replica_sum_buffer_size = 10;
 };

@@ -312,6 +312,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     }
   }
 
+  int64 GetMaxAllReduceBufferSize() const {
+    return current_config_.max_cross_replica_sum_buffer_size();
+  }
+
   void AddCompileBeginEventRecord(const std::string& module_name,
                                   const std::string& xla_graph);
 

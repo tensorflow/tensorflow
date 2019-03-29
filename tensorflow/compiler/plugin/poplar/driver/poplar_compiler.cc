@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/entry_visitor.h"
@@ -503,11 +504,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
     pipeline.AddPass<HloPassFix<ForwardAllocation>>(resources.annotations);
-    pipeline.AddPass<HloMemoryScheduler>(
-        [](const BufferValue& buffer) {
-          return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
-        },
-        DefaultMemoryScheduler);
+
+    auto size_function = [](const BufferValue& buffer) {
+      return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
+    };
+    if (poplarExecutor->GetMaxAllReduceBufferSize() == 0) {
+      pipeline.AddPass<HloMemoryScheduler>(size_function,
+                                           DefaultMemoryScheduler);
+    } else {
+      pipeline.AddPass<HloMemoryScheduler>(
+          size_function, CreateSyncListMemoryScheduler(
+                             poplarExecutor->GetMaxAllReduceBufferSize()));
+    }
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
   }
