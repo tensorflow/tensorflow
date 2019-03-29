@@ -177,6 +177,7 @@ class ControlFlowTransformer(converter.Base):
     orelse_scope = anno.getanno(node, annos.NodeAnno.ORELSE_SCOPE)
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
+    origin_info = anno.getanno(node, anno.Basic.ORIGIN, default=None)
 
     # Note: this information needs to be extracted before the body conversion
     # that happens in the call to generic_visit below, because the conversion
@@ -291,8 +292,13 @@ class ControlFlowTransformer(converter.Base):
                                        orelse_name, state_getter_name,
                                        state_setter_name)
 
-    return (undefined_assigns + cond_assign + composite_defs + body_def +
-            orelse_def + cond_expr)
+    # TODO(b/129493607): investigate how to generalize copying origin
+    # information to all cases where we make new nodes.
+    if_ast = (undefined_assigns + cond_assign + composite_defs + body_def +
+              orelse_def + cond_expr)
+    for node in if_ast:
+      anno.setanno(node, anno.Basic.ORIGIN, origin_info)
+    return if_ast
 
   def _get_loop_state(self, node):
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
