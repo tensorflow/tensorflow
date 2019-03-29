@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.contrib.ipu.python import sharding
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.platform import tf_logging as logging
 
 
 def tensor_memory_use(t):
@@ -126,11 +127,7 @@ def find_all_subgraphs(graph, splitting_edges, input_node, output_node):
   return subgraphs, edges
 
 
-def automatic_sharding(num_shards,
-                       input_ts,
-                       loss_ts,
-                       train_ops=None,
-                       edge_filter=None):
+def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
 
   Args:
@@ -145,10 +142,6 @@ def automatic_sharding(num_shards,
   """
 
   loss_op = loss_ts.op
-
-  roots = [loss_op]
-  if train_ops:
-    roots += train_ops
 
   all_ops = loss_op.graph.get_operations()
   op_list = list(filter(lambda o: 'IPU' in o.device, all_ops))
@@ -204,12 +197,16 @@ def automatic_sharding(num_shards,
     splitting_edges = list(
         filter(lambda e: not edge_filter(e), splitting_edges))
 
+  logging.debug('Possible splitting edges ' + str(splitting_edges))
+
   # given the splitting edges found find all of the subgraphs created and order
   # them
   subgraphs, edges = find_all_subgraphs(graph_fwd, splitting_edges, input_name,
                                         loss_op.name)
 
   subgraph_mem = [calculate_memory(graph_fwd, g) for g in subgraphs]
+
+  logging.debug('Subgraph memory use ' + str(subgraph_mem))
 
   # Split the ordered subgraphs into n groups and calculate the memory for each
   # possible combination
@@ -250,6 +247,9 @@ def automatic_sharding(num_shards,
 
   # if still tied choose the first option in the list
   best_ind = best_ind[0]
+
+  logging.debug('Splitting edges ' +
+                str(list(map(lambda x: str(splitting_edges[x]), best_ind))))
 
   ind_pad = [0] + [i + 1 for i in best_ind] + [len(subgraph_mem)]
   per_shard_subgraphs = [

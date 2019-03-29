@@ -39,12 +39,23 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_util",
+    srcs = [
+      "python/tests/test_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+    ],
+)
+
 tf_py_test(
     name = "ops_test",
     size = "small",
     srcs = ["python/tests/ops_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
@@ -57,6 +68,7 @@ tf_py_test(
     srcs = ["python/tests/while_loop_perf_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/contrib/compiler:xla",
@@ -74,6 +86,7 @@ tf_py_test(
     srcs = ["python/tests/mapping_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/contrib/compiler:xla",
@@ -91,6 +104,7 @@ tf_py_test(
     srcs = ["python/tests/conditional_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -109,6 +123,7 @@ tf_py_test(
     srcs = ["size_speed_tests/resnet18_nobn_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
@@ -121,6 +136,7 @@ tf_py_test(
     srcs = ["size_speed_tests/lstm_size_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
@@ -133,6 +149,7 @@ tf_py_test(
     srcs = ["training_tests/lstm_training_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
@@ -145,6 +162,7 @@ tf_py_test(
     srcs = ["python/tests/while_loop_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
@@ -161,6 +179,7 @@ tf_py_test(
     srcs = ["python/tests/while_loop_sharded_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
@@ -178,6 +197,7 @@ tf_py_test(
     srcs = ["python/tests/multi_ipu_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/plugin/poplar:test_utils_py",
         "//tensorflow/contrib/compiler:xla",
@@ -195,6 +215,7 @@ tf_py_test(
     srcs = ["python/tests/sort_op_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
@@ -211,6 +232,7 @@ tf_py_test(
     srcs = ["python/tests/popops_cross_replica_sum_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
@@ -227,6 +249,7 @@ tf_py_test(
     srcs = ["python/tests/infeed_outfeed_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
@@ -243,6 +266,7 @@ tf_py_test(
     srcs = ["python/tests/autoshard_cnn_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework",
@@ -256,6 +280,7 @@ tf_py_test(
     srcs = ["python/tests/popnn_normalization_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
@@ -269,6 +294,7 @@ tf_py_test(
     srcs = ["python/tests/replicated_graph_test.py"],
     additional_deps = [
         ":ipu",
+        ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/plugin/poplar:test_utils_py",
         "//tensorflow/contrib/compiler:xla",

@@ -16,9 +16,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executable.pb.h"
-#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 
 namespace xla {

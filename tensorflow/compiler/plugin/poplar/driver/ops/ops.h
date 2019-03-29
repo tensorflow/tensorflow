@@ -76,6 +76,10 @@ poplar::Graph& GetReplicatedGraph(CompilerResources&);
 // Get the appropriate virtual graph, or the replicated/master graph if not
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
 
+// Get the shard Id for a given output of the given instruction.
+uint64 GetShardForOutputIndex(const HloInstruction* inst,
+                              int flattened_output_tuple_index);
+
 // Get the virtual graph for a particular output of an operation. Operations
 // like Parameter, Infeed, Call, While, Tuple can have multiple tensor
 // outputs on different IPUs.

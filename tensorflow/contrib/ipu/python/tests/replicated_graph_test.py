@@ -16,46 +16,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import fnmatch
-import json
 import numpy as np
+import test_util as tu
 
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import constant_op
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.framework import errors
 from tensorflow.contrib.ipu.python import popops_cross_replica_sum
-from tensorflow.python.data.ops.dataset_ops import Dataset
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.contrib.ipu import ipu_infeed_queue
 from tensorflow.contrib.ipu import ipu_outfeed_queue
 from tensorflow.contrib.ipu import loops
-
-
-def create_increasing_dataset(value, shape=[4, 4], dtype=np.float32):
-  def _get_one_input(data):
-    return math_ops.cast(
-        gen_array_ops.broadcast_to(data, shape=shape), dtype=dtype)
-
-  dataset = Dataset.range(value).repeat().map(_get_one_input)
-  return dataset
 
 
 class ReplicatedGraphTest(test_util.TensorFlowTestCase):
@@ -116,7 +94,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
   def testCreateSimpleReplicatedInfeedOutfeed(self):
     shape = [2]
-    dataset = create_increasing_dataset(3, shape=shape)
+    dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
         dataset, replication_factor=2)
@@ -166,7 +144,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
   def testCreateSimpleReplicatedInfeedOutfeedTuple(self):
     shape = [2]
-    dataset = create_increasing_dataset(3, shape=shape)
+    dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
         dataset, replication_factor=2)
@@ -227,7 +205,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
   def testCreateSimpleReplicatedInfeedOutfeedDict(self):
     shape = [2]
-    dataset = create_increasing_dataset(3, shape=shape)
+    dataset = tu.create_single_increasing_dataset(3, shape)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
         dataset, replication_factor=2)

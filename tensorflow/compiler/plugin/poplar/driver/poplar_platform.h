@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_PLATFORM_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_PLATFORM_H_
 
 #include <list>
 #include <memory>

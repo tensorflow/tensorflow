@@ -19,17 +19,17 @@ limitations under the License.
 // Declares the PoplarExecutor class, which is a CPU-only implementation of
 // the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXECUTOR_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXECUTOR_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_EXECUTOR_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_EXECUTOR_H_
 
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
-#include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"

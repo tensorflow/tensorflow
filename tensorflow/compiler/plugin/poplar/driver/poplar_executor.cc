@@ -18,15 +18,15 @@ limitations under the License.
 
 #include "include/json/json.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
-#include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hlo_hash.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -354,24 +354,27 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
             if (end_of_sequence) {
               LOG(INFO) << "The dataset iterator has reached the end of the "
                            "dataset.";
+              infeed_thread_cancelled_ = true;
             }
             absl::c_fill(infeed_dataset_iterator->used, false);
           }
         }
 
-        for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
-          auto tensor = infeed_dataset_iterator->tensors[j];
+        if (!infeed_thread_cancelled_) {
+          for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
+            auto tensor = infeed_dataset_iterator->tensors[j];
 
-          const char* tensor_data = tensor.tensor_data().data();
-          const auto& shape = infeed_dataset_iterator->shapes[j];
+            const char* tensor_data = tensor.tensor_data().data();
+            const auto& shape = infeed_dataset_iterator->shapes[j];
 
-          auto literal = MutableBorrowingLiteral(tensor_data, shape);
-          auto status =
-              transfer_manager->TransferLiteralToInfeed(executor, literal);
+            auto literal = MutableBorrowingLiteral(tensor_data, shape);
+            auto status =
+                transfer_manager->TransferLiteralToInfeed(executor, literal);
 
-          if (false == status.ok()) {
-            infeed_thread_cancelled_ = true;
-            return;
+            if (false == status.ok()) {
+              infeed_thread_cancelled_ = true;
+              return;
+            }
           }
         }
 
@@ -1242,6 +1245,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
 
     // perform device -> host read
     if (total_count > 0) {
+      current_engine_->disableExecutionProfiling();
       current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
     }
 
@@ -1300,6 +1304,7 @@ Status PoplarExecutor::MoveHostToDevice() {
     Json::StreamWriterBuilder json_builder;
     std::string json_msg = Json::writeString(json_builder, root);
 
+    current_engine_->disableExecutionProfiling();
     current_engine_->run(PoplarProgramType::HOST_TO_DEVICE);
 
     if (current_config_.profiling().enable_ipu_trace_events() &&
@@ -1512,6 +1517,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       // Run the main engine
+      current_engine_->enableExecutionProfiling();
       current_engine_->run(PoplarProgramType::MAIN_SEQUENCE);
 
       // We need to call post process to make sure all the data is in the

@@ -14,11 +14,7 @@
 # =============================================================================
 
 
-def automatic_sharding(num_shards,
-                       input_ts,
-                       loss_ts,
-                       train_ops=None,
-                       edge_filter=None):
+def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
 
   Args:
@@ -32,5 +28,4 @@ def automatic_sharding(num_shards,
                         name of the destination op.
   """
   from tensorflow.contrib.ipu.python import autoshard_cnn
-  autoshard_cnn.automatic_sharding(num_shards, input_ts, loss_ts, train_ops,
-                                   edge_filter)
+  autoshard_cnn.automatic_sharding(num_shards, input_ts, loss_ts, edge_filter)

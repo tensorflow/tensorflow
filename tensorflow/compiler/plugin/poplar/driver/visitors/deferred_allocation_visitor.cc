@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/deferred_allocation_visitor.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -33,7 +33,11 @@ Status DeferredAllocationVisitor::AllocateInput(const HloInstruction* inst,
       GetGraphWithOutputIndex(resources_, inst, flat_tuple_index);
 
   auto source = std::make_pair(inst, flat_tuple_index);
-  // Do the allocation.
+
+  // Do the allocation
+  VLOG(2) << "Allocating input tensor for " << inst->name() << ":"
+          << flat_tuple_index << " shape " << shape.ToString() << " on shard "
+          << GetShardForOutputIndex(inst, flat_tuple_index);
   TF_ASSIGN_OR_RETURN(poplar::Tensor out,
                       AddTensor(graph, source, shape, resources_, tensor_map));
 

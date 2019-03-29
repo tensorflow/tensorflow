@@ -5,7 +5,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import test_util as tu
 
 from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu.python import autoshard
@@ -35,24 +35,9 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent as gd
 
 
-def create_increasing_dataset(value,
-                              data_shape=[1, 32, 32, 4],
-                              label_shape=[1, 8],
-                              dtype=np.float32):
-  def _get_one_input(data):
-    return (math_ops.cast(
-        gen_array_ops.broadcast_to(data, shape=data_shape), dtype=dtype),
-            math_ops.cast(
-                gen_array_ops.broadcast_to(data, shape=label_shape),
-                dtype=dtype))
-
-  dataset = Dataset.range(value).repeat().map(_get_one_input)
-  return dataset
-
-
 class WhileLoopShardedTest(test_util.TensorFlowTestCase):
   def testSimpleXlaCompileTrainingInLoopWithParam(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_dual_increasing_dataset(3)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
@@ -72,7 +57,7 @@ class WhileLoopShardedTest(test_util.TensorFlowTestCase):
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
           train = optim.minimize(cross_entropy)
 
-          autoshard.automatic_sharding(2, inp, loss, [])
+          autoshard.automatic_sharding(2, inp, loss)
 
           return [lr, loss, train]
 

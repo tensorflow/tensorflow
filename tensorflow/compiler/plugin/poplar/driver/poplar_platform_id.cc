@@ -13,15 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_ID_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_ID_H_
-
-#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
 
 namespace xla {
 namespace poplarplugin {
-extern const stream_executor::Platform::Id kPoplarPlatformId;
+
+PLATFORM_DEFINE_ID(kPoplarPlatformId);
 }
 }  // namespace xla
-
-#endif
