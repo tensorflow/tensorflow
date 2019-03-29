@@ -229,6 +229,10 @@ if __name__ == "__main__":
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in (np.int32, np.int64, np.float16, np.float32, np.float64,
                   np.complex64, np.complex128):
+      if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
+        # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
+        # bug in Windows (b/35935459).
+        continue
       for m in sizes:
         for n in sizes:
           for k in sizes:
