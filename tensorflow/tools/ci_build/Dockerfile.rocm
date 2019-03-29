@@ -73,7 +73,7 @@ RUN apt-get update --allow-insecure-repositories && \
 # Build HIP from source
 RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git && \
     mkdir HIP/build && cd HIP/build && \
-    git checkout -b 2019-03-06 0c4a40efcc974e5a4b2935fb84b3e8d368e9880b && \
+    git checkout -b 2019-03-29 4b7177ac4225c32ed0b02096a83b78fab0b9347a && \
     cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Set up paths
