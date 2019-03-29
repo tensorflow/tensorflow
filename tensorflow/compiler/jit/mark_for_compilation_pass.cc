@@ -261,7 +261,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   }
 
   FunctionLibraryRuntime::Handle handle;
-  Status status = InstantiateFunctionCall(call_def, *lib_runtime, &handle);
+  Status status = InstantiateFunctionCall(call_def, lib_runtime, &handle);
   if (!status.ok()) {
     VLOG(2) << "Rejecting " << call_def.DebugString()
             << ": could not instantiate: " << status;
