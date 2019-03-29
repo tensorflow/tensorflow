@@ -1350,7 +1350,10 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   // the dims are unknown or need to be inferred. And we don't do further checks
   // but rely on the caller to not make mistakes.
   // Otherwise we do simple check to make sure the total sizes are the same.
-  if (AreDimsStaticWithDifferentSize(input_dims, dims, input.is_tensor())) {
+  // If an input is a weight, it is going to become a tensor via
+  // CreateConstantLayer. So we can treat it as a tensor for
+  // AreDimsStaticWithDifferentSize(). This really only matters for 0-D tensors.
+  if (AreDimsStaticWithDifferentSize(input_dims, dims, /*is_tensor=*/true)) {
     return errors::InvalidArgument(
         "Incompatible shapes: ", DebugString(input_dims), " vs. ",
         DebugString(dims));
