@@ -29,16 +29,15 @@ using namespace mlir::detail;
 /// Integer Type.
 
 /// Verify the construction of an integer type.
-bool IntegerType::verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                               MLIRContext *context,
-                                               unsigned width) {
+LogicalResult IntegerType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, unsigned width) {
   if (width > IntegerType::kMaxWidth) {
     if (loc)
       context->emitError(*loc, "integer bitwidth is limited to " +
                                    Twine(IntegerType::kMaxWidth) + " bits");
-    return true;
+    return failure();
   }
-  return false;
+  return success();
 }
 
 IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
@@ -194,29 +193,28 @@ VectorType VectorType::getChecked(ArrayRef<int64_t> shape, Type elementType,
                           StandardTypes::Vector, shape, elementType);
 }
 
-bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                              MLIRContext *context,
-                                              ArrayRef<int64_t> shape,
-                                              Type elementType) {
+LogicalResult VectorType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
+    Type elementType) {
   if (shape.empty()) {
     if (loc)
       context->emitError(*loc, "vector types must have at least one dimension");
-    return true;
+    return failure();
   }
 
   if (!isValidElementType(elementType)) {
     if (loc)
       context->emitError(*loc, "vector elements must be int or float type");
-    return true;
+    return failure();
   }
 
   if (any_of(shape, [](int64_t i) { return i <= 0; })) {
     if (loc)
       context->emitError(*loc,
                          "vector types must have positive constant sizes");
-    return true;
+    return failure();
   }
-  return false;
+  return success();
 }
 
 ArrayRef<int64_t> VectorType::getShape() const { return getImpl()->getShape(); }
@@ -224,16 +222,16 @@ ArrayRef<int64_t> VectorType::getShape() const { return getImpl()->getShape(); }
 /// TensorType
 
 // Check if "elementType" can be an element type of a tensor. Emit errors if
-// location is not nullptr.  Returns true if check failed.
-static inline bool checkTensorElementType(Optional<Location> location,
-                                          MLIRContext *context,
-                                          Type elementType) {
+// location is not nullptr.  Returns failure if check failed.
+static inline LogicalResult checkTensorElementType(Optional<Location> location,
+                                                   MLIRContext *context,
+                                                   Type elementType) {
   if (!TensorType::isValidElementType(elementType)) {
     if (location)
       context->emitError(*location, "invalid tensor element type");
-    return true;
+    return failure();
   }
-  return false;
+  return success();
 }
 
 /// RankedTensorType
@@ -251,14 +249,14 @@ RankedTensorType RankedTensorType::getChecked(ArrayRef<int64_t> shape,
                           StandardTypes::RankedTensor, shape, elementType);
 }
 
-bool RankedTensorType::verifyConstructionInvariants(
+LogicalResult RankedTensorType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
     Type elementType) {
   for (int64_t s : shape) {
     if (s < -1) {
       if (loc)
         context->emitError(*loc, "invalid tensor dimension size");
-      return true;
+      return failure();
     }
   }
   return checkTensorElementType(loc, context, elementType);
@@ -281,7 +279,7 @@ UnrankedTensorType UnrankedTensorType::getChecked(Type elementType,
                           StandardTypes::UnrankedTensor, elementType);
 }
 
-bool UnrankedTensorType::verifyConstructionInvariants(
+LogicalResult UnrankedTensorType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
   return checkTensorElementType(loc, context, elementType);
 }

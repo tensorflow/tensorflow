@@ -71,15 +71,14 @@ Identifier UnknownType::getDialectNamespace() const {
 StringRef UnknownType::getTypeData() const { return getImpl()->typeData; }
 
 /// Verify the construction of an unknown type.
-bool UnknownType::verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                               MLIRContext *context,
-                                               Identifier dialect,
-                                               StringRef typeData) {
+LogicalResult UnknownType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
+    StringRef typeData) {
   if (!Dialect::isValidNamespace(dialect.strref())) {
     if (loc)
       context->emitError(*loc, "invalid dialect namespace '" +
                                    dialect.strref() + "'");
-    return true;
+    return failure();
   }
-  return false;
+  return success();
 }

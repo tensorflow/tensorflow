@@ -21,6 +21,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
 
@@ -56,14 +57,15 @@ struct UnknownTypeStorage;
 ///        current type. Used for isa/dyn_cast casting functionality.
 ///
 ///  * Optional:
-///    - static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+///    - static LogicalResult verifyConstructionInvariants(
+///                                               llvm::Optional<Location> loc,
 ///                                               MLIRContext *context,
 ///                                               Args... args)
 ///      * This method is invoked when calling the 'TypeBase::get/getChecked'
 ///        methods to ensure that the arguments passed in are valid to construct
 ///        a type instance with.
-///      * This method is expected to return true if a type cannot be
-///        constructed with 'args'.
+///      * This method is expected to return failure if a type cannot be
+///        constructed with 'args', success otherwise.
 ///      * 'args' must correspond with the arguments passed into the
 ///        'TypeBase::get' call after the type kind.
 ///
@@ -141,8 +143,8 @@ public:
     template <typename... Args>
     static ConcreteType get(MLIRContext *context, unsigned kind, Args... args) {
       // Ensure that the invariants are correct for type construction.
-      assert(!ConcreteType::verifyConstructionInvariants(llvm::None, context,
-                                                         args...));
+      assert(succeeded(ConcreteType::verifyConstructionInvariants(
+          llvm::None, context, args...)));
       return detail::TypeUniquer::get<ConcreteType>(context, kind, args...);
     }
 
@@ -153,17 +155,18 @@ public:
     static ConcreteType getChecked(Location loc, MLIRContext *context,
                                    unsigned kind, Args... args) {
       // If the construction invariants fail then we return a null type.
-      if (ConcreteType::verifyConstructionInvariants(loc, context, args...))
+      if (failed(ConcreteType::verifyConstructionInvariants(loc, context,
+                                                            args...)))
         return ConcreteType();
       return detail::TypeUniquer::get<ConcreteType>(context, kind, args...);
     }
 
-    /// Default implementation that just returns false for success.
+    /// Default implementation that just returns success.
     template <typename... Args>
-    static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                             MLIRContext *context,
-                                             Args... args) {
-      return false;
+    static LogicalResult
+    verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                 MLIRContext *context, Args... args) {
+      return success();
     }
 
     /// Utility for easy access to the storage instance.
@@ -302,10 +305,10 @@ public:
   StringRef getTypeData() const;
 
   /// Verify the construction of an unknown type.
-  static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                           MLIRContext *context,
-                                           Identifier dialect,
-                                           StringRef typeData);
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, Identifier dialect,
+                               StringRef typeData);
 
   static bool kindof(unsigned kind) { return kind == Kind::Unknown; }
 };
