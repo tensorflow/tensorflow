@@ -101,25 +101,33 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// If no index is found to be invariant, 0 is added to the permutation_map and
 /// corresponds to a vector broadcast along that dimension.
 ///
+/// Returns an empty AffineMap if `enclosingLoopToVectorDim` is empty,
+/// signalling that no permutation map can be constructed given
+/// `enclosingLoopToVectorDim`.
+///
 /// Examples can be found in the documentation of `makePermutationMap`, in the
 /// header file.
 static AffineMap makePermutationMap(
-    MLIRContext *context,
-    llvm::iterator_range<Operation::operand_iterator> indices,
+    llvm::iterator_range<Operation::operand_iterator> operands,
     const DenseMap<Operation *, unsigned> &enclosingLoopToVectorDim) {
+  if (enclosingLoopToVectorDim.empty())
+    return AffineMap();
+  MLIRContext *context =
+      enclosingLoopToVectorDim.begin()->getFirst()->getContext();
   using functional::makePtrDynCaster;
   using functional::map;
-  auto unwrappedIndices = map(makePtrDynCaster<Value, Value>(), indices);
+  SmallVector<Value *, 8> indices(operands);
   SmallVector<AffineExpr, 4> perm(enclosingLoopToVectorDim.size(),
                                   getAffineConstantExpr(0, context));
+
   for (auto kvp : enclosingLoopToVectorDim) {
     assert(kvp.second < perm.size());
     auto invariants = getInvariantAccesses(
-        *kvp.first->cast<AffineForOp>().getInductionVar(), unwrappedIndices);
-    unsigned numIndices = unwrappedIndices.size();
+        kvp.first->cast<AffineForOp>().getInductionVar(), indices);
+    unsigned numIndices = indices.size();
     unsigned countInvariantIndices = 0;
     for (unsigned dim = 0; dim < numIndices; ++dim) {
-      if (!invariants.count(unwrappedIndices[dim])) {
+      if (!invariants.count(indices[dim])) {
         assert(perm[kvp.second] == getAffineConstantExpr(0, context) &&
                "permutationMap already has an entry along dim");
         perm[kvp.second] = getAffineDimExpr(dim, context);
@@ -132,7 +140,7 @@ static AffineMap makePermutationMap(
            "Vectorization prerequisite violated: at most 1 index may be "
            "invariant wrt a vectorized loop");
   }
-  return AffineMap::get(unwrappedIndices.size(), 0, perm, {});
+  return AffineMap::get(indices.size(), 0, perm, {});
 }
 
 /// Implementation detail that walks up the parents and records the ones with
@@ -170,13 +178,11 @@ AffineMap mlir::makePermutationMap(
   }
 
   if (auto load = op->dyn_cast<LoadOp>()) {
-    return ::makePermutationMap(op->getContext(), load.getIndices(),
-                                enclosingLoopToVectorDim);
+    return ::makePermutationMap(load.getIndices(), enclosingLoopToVectorDim);
   }
 
   auto store = op->cast<StoreOp>();
-  return ::makePermutationMap(op->getContext(), store.getIndices(),
-                              enclosingLoopToVectorDim);
+  return ::makePermutationMap(store.getIndices(), enclosingLoopToVectorDim);
 }
 
 bool mlir::matcher::operatesOnSuperVectors(Operation &op,

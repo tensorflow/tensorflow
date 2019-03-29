@@ -71,34 +71,34 @@ uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
 ///
 /// Returns false in cases with more than one AffineApplyOp, this is
 /// conservative.
-bool isAccessInvariant(Value &iv, Value &index);
+bool isAccessInvariant(Value *iv, Value *index);
 
 /// Given an induction variable `iv` of type AffineForOp and `indices` of type
 /// IndexType, returns the set of `indices` that are independent of `iv`.
 ///
 /// Prerequisites (inherited from `isAccessInvariant` above):
 ///   1. `iv` and `indices` of the proper type;
-///   2. at most one reachable AffineApplyOp from index;
+///   2. at most one affine.apply is reachable from each index in `indices`;
 ///
-/// Returns false in cases with more than one AffineApplyOp, this is
-/// conservative.
+/// Emits a note if it encounters a chain of affine.apply and conservatively
+///  those cases.
 llvm::DenseSet<Value *, llvm::DenseMapInfo<Value *>>
-getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices);
+getInvariantAccesses(Value *iv, llvm::ArrayRef<Value *> indices);
 
 using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 
 /// Checks whether the loop is structurally vectorizable; i.e.:
-/// 1. no conditionals are nested under the loop;
-/// 2. all nested load/stores are to scalar MemRefs.
+///   1. no conditionals are nested under the loop;
+///   2. all nested load/stores are to scalar MemRefs.
 /// TODO(ntv): relax the no-conditionals restriction
 bool isVectorizableLoopBody(AffineForOp loop);
 
 /// Checks whether the loop is structurally vectorizable and that all the LoadOp
 /// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
-///   2. varying along the 'fastestVaryingDim' memory dimension.
-bool isVectorizableLoopBodyAlongFastestVaryingMemRefDim(
-    AffineForOp loop, unsigned fastestVaryingDim);
+///   2. varying along at most one memory dimension. If such a unique dimension
+///      is found, it is written into `memRefDim`.
+bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim);
 
 /// Checks where SSA dominance would be violated if a for op's body
 /// operations are shifted by the specified shifts. This method checks if a

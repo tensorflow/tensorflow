@@ -174,36 +174,36 @@ uint64_t mlir::getLargestDivisorOfTripCount(AffineForOp forOp) {
   return gcd.getValue();
 }
 
-bool mlir::isAccessInvariant(Value &iv, Value &index) {
-  assert(isForInductionVar(&iv) && "iv must be a AffineForOp");
-  assert(index.getType().isa<IndexType>() && "index must be of IndexType");
+bool mlir::isAccessInvariant(Value *iv, Value *index) {
+  assert(isForInductionVar(iv) && "iv must be a AffineForOp");
+  assert(index->getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<Operation *, 4> affineApplyOps;
-  getReachableAffineApplyOps({&index}, affineApplyOps);
+  getReachableAffineApplyOps({index}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
     // Pointer equality test because of Value pointer semantics.
-    return &index != &iv;
+    return index != iv;
   }
 
   if (affineApplyOps.size() > 1) {
-    affineApplyOps[0]->emitError(
+    affineApplyOps[0]->emitNote(
         "CompositionAffineMapsPass must have been run: there should be at most "
-        "one AffineApplyOp");
+        "one AffineApplyOp, returning false conservatively.");
     return false;
   }
 
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   // We need yet another level of indirection because the `dim` index of the
   // access may not correspond to the `dim` index of composeOp.
-  return !(AffineValueMap(composeOp).isFunctionOf(0, &iv));
+  return !(AffineValueMap(composeOp).isFunctionOf(0, iv));
 }
 
 llvm::DenseSet<Value *>
-mlir::getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices) {
+mlir::getInvariantAccesses(Value *iv, llvm::ArrayRef<Value *> indices) {
   llvm::DenseSet<Value *> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
     auto *val = indices[idx];
-    if (isAccessInvariant(iv, *val)) {
+    if (isAccessInvariant(iv, val)) {
       res.insert(val);
     }
   }
@@ -213,31 +213,30 @@ mlir::getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices) {
 /// Given:
 ///   1. an induction variable `iv` of type AffineForOp;
 ///   2. a `memoryOp` of type const LoadOp& or const StoreOp&;
-///   3. the index of the `fastestVaryingDim` along which to check;
-/// determines whether `memoryOp`[`fastestVaryingDim`] is a contiguous access
-/// along `iv`.
-/// Contiguous is defined as either invariant or varying only along
-/// `fastestVaryingDim`.
+/// determines whether `memoryOp` has a contiguous access along `iv`. Contiguous
+/// is defined as either invariant or varying only along a unique MemRef dim.
+/// Upon success, the unique MemRef dim is written in `memRefDim` (or -1 to
+/// convey the memRef access is invariant along `iv`).
 ///
 /// Prerequisites:
-///   1. `iv` of the proper type;
-///   2. the MemRef accessed by `memoryOp` has no layout map or at most an
+///   1. `memRefDim` ~= nullptr;
+///   2. `iv` of the proper type;
+///   3. the MemRef accessed by `memoryOp` has no layout map or at most an
 ///      identity layout map.
 ///
 /// Currently only supports no layoutMap or identity layoutMap in the MemRef.
-/// Returns false if the MemRef has a non-identity layoutMap or more than
-/// 1 layoutMap. This is conservative.
+/// Returns false if the MemRef has a non-identity layoutMap or more than 1
+/// layoutMap. This is conservative.
 ///
 // TODO(ntv): check strides.
 template <typename LoadOrStoreOp>
-static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
-                               unsigned fastestVaryingDim) {
+static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
+                               int *memRefDim) {
   static_assert(std::is_same<LoadOrStoreOp, LoadOp>::value ||
                     std::is_same<LoadOrStoreOp, StoreOp>::value,
                 "Must be called on either const LoadOp & or const StoreOp &");
+  assert(memRefDim && "memRefDim == nullptr");
   auto memRefType = memoryOp.getMemRefType();
-  if (fastestVaryingDim >= memRefType.getRank())
-    return false;
 
   auto layoutMap = memRefType.getAffineMaps();
   // TODO(ntv): remove dependence on Builder once we support non-identity
@@ -250,17 +249,26 @@ static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
     return memoryOp.emitError("NYI: non-trivial layoutMap"), false;
   }
 
+  int uniqueVaryingIndexAlongIv = -1;
   auto indices = memoryOp.getIndices();
-  auto numIndices = llvm::size(indices);
-  unsigned d = 0;
-  for (auto index : indices) {
-    if (fastestVaryingDim == (numIndices - 1) - d++) {
-      continue;
+  unsigned numIndices = llvm::size(indices);
+  unsigned dim = 0;
+  for (auto *index : indices) {
+    if (!isAccessInvariant(iv, index)) {
+      if (uniqueVaryingIndexAlongIv != -1) {
+        // 2+ varying indices -> do not vectorize along iv.
+        return false;
+      }
+      uniqueVaryingIndexAlongIv = dim;
     }
-    if (!isAccessInvariant(iv, *index)) {
-      return false;
-    }
+    ++dim;
   }
+
+  if (uniqueVaryingIndexAlongIv == -1)
+    *memRefDim = -1;
+  else
+    *memRefDim = numIndices - (uniqueVaryingIndexAlongIv + 1);
+
   return true;
 }
 
@@ -328,15 +336,12 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
   return true;
 }
 
-bool mlir::isVectorizableLoopBodyAlongFastestVaryingMemRefDim(
-    AffineForOp loop, unsigned fastestVaryingDim) {
-  VectorizableOpFun fun([fastestVaryingDim](AffineForOp loop, Operation &op) {
+bool mlir::isVectorizableLoopBody(AffineForOp loop, int *memRefDim) {
+  VectorizableOpFun fun([memRefDim](AffineForOp loop, Operation &op) {
     auto load = op.dyn_cast<LoadOp>();
     auto store = op.dyn_cast<StoreOp>();
-    return load ? isContiguousAccess(*loop.getInductionVar(), load,
-                                     fastestVaryingDim)
-                : isContiguousAccess(*loop.getInductionVar(), store,
-                                     fastestVaryingDim);
+    return load ? isContiguousAccess(loop.getInductionVar(), load, memRefDim)
+                : isContiguousAccess(loop.getInductionVar(), store, memRefDim);
   });
   return isVectorizableLoopBodyWithOpCond(loop, fun);
 }
@@ -348,8 +353,8 @@ bool mlir::isVectorizableLoopBody(AffineForOp loop) {
 /// Checks whether SSA dominance would be violated if a for op's body
 /// operations are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
-// TODO(mlir-team): extend this to check for memory-based dependence
-// violation when we have the support.
+// TODO(mlir-team): extend this to check for memory-based dependence violation
+// when we have the support.
 bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
   auto *forBody = forOp.getBody();
   assert(shifts.size() == forBody->getOperations().size());

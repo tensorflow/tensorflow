@@ -1,7 +1,15 @@
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 4 -virtual-vector-size 8 | FileCheck %s -check-prefix=VECT
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=1 --test-fastest-varying=0 | FileCheck %s
 
 // Permutation maps used in vectorization.
-// CHECK: #[[map_proj_d0d1_d0d1:map[0-9]+]] = (d0, d1) -> (d0, d1)
+// CHECK-DAG: #[[map_id1:map[0-9]+]] = (d0) -> (d0)
+// CHECK-DAG: #[[map_id2:map[0-9]+]] = (d0, d1) -> (d0, d1)
+// CHECK-DAG: #[[map_proj_d0d1_zerod1:map[0-9]+]] = (d0, d1) -> (0, d1)
+// CHECK-DAG: #[[map_proj_d0d1_d0zero:map[0-9]+]] = (d0, d1) -> (d0, 0)
+// VECT-DAG: #[[map_id1:map[0-9]+]] = (d0) -> (d0)
+// VECT-DAG: #[[map_id2:map[0-9]+]] = (d0, d1) -> (d0, d1)
+// VECT-DAG: #[[map_proj_d0d1_zerod1:map[0-9]+]] = (d0, d1) -> (0, d1)
+// VECT-DAG: #[[map_proj_d0d1_d0zero:map[0-9]+]] = (d0, d1) -> (d0, 0)
 
 func @vec2d(%A : memref<?x?x?xf32>) {
    %M = dim %A, 0 : memref<?x?x?xf32>
@@ -46,7 +54,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   affine.for %i0 = 0 to %M {
     affine.for %i1 = 0 to %N {
       // CHECK: [[C1:%.*]] = constant splat<vector<32x256xf32>, 1.000000e+00> : vector<32x256xf32>
-      // CHECK: vector_transfer_write [[C1]], {{.*}} {permutation_map: #[[map_proj_d0d1_d0d1]]} : vector<32x256xf32>, memref<?x?xf32>, index, index
+      // CHECK: vector_transfer_write [[C1]], {{.*}} {permutation_map: #[[map_id2]]} : vector<32x256xf32>, memref<?x?xf32>, index, index
       // non-scoped %f1
       store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
     }
@@ -54,22 +62,22 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   affine.for %i2 = 0 to %M {
     affine.for %i3 = 0 to %N {
       // CHECK: [[C3:%.*]] = constant splat<vector<32x256xf32>, 2.000000e+00> : vector<32x256xf32>
-      // CHECK: vector_transfer_write [[C3]], {{.*}} {permutation_map: #[[map_proj_d0d1_d0d1]]}  : vector<32x256xf32>, memref<?x?xf32>, index, index
+      // CHECK: vector_transfer_write [[C3]], {{.*}} {permutation_map: #[[map_id2]]}  : vector<32x256xf32>, memref<?x?xf32>, index, index
       // non-scoped %f2
       store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
     }
   }
   affine.for %i4 = 0 to %M {
     affine.for %i5 = 0 to %N {
-      // CHECK: [[A5:%.*]] = vector_transfer_read %0, {{.*}} {permutation_map: #[[map_proj_d0d1_d0d1]]} : (memref<?x?xf32>, index, index) -> vector<32x256xf32>
-      // CHECK: [[B5:%.*]] = vector_transfer_read %1, {{.*}} {permutation_map: #[[map_proj_d0d1_d0d1]]} : (memref<?x?xf32>, index, index) -> vector<32x256xf32>
+      // CHECK: [[A5:%.*]] = vector_transfer_read %0, {{.*}} {permutation_map: #[[map_id2]]} : (memref<?x?xf32>, index, index) -> vector<32x256xf32>
+      // CHECK: [[B5:%.*]] = vector_transfer_read %1, {{.*}} {permutation_map: #[[map_id2]]} : (memref<?x?xf32>, index, index) -> vector<32x256xf32>
       // CHECK: [[S5:%.*]] = addf [[A5]], [[B5]] : vector<32x256xf32>
       // CHECK: [[SPLAT1:%.*]] = constant splat<vector<32x256xf32>, 1.000000e+00> : vector<32x256xf32>
       // CHECK: [[S6:%.*]] = addf [[S5]], [[SPLAT1]] : vector<32x256xf32>
       // CHECK: [[SPLAT2:%.*]] = constant splat<vector<32x256xf32>, 2.000000e+00> : vector<32x256xf32>
       // CHECK: [[S7:%.*]] = addf [[S5]], [[SPLAT2]] : vector<32x256xf32>
       // CHECK: [[S8:%.*]] = addf [[S7]], [[S6]] : vector<32x256xf32>
-      // CHECK: vector_transfer_write [[S8]], {{.*}} {permutation_map: #[[map_proj_d0d1_d0d1]]} : vector<32x256xf32>, memref<?x?xf32>, index, index
+      // CHECK: vector_transfer_write [[S8]], {{.*}} {permutation_map: #[[map_id2]]} : vector<32x256xf32>, memref<?x?xf32>, index, index
       //
       %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
       %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
@@ -89,3 +97,46 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   return %res : f32
 }
 
+// VECT-LABEL: func @vectorize_matmul
+func @vectorize_matmul(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
+  %c0 = constant 0 : index
+  %M = dim %arg0, 0 : memref<?x?xf32>
+  %K = dim %arg0, 1 : memref<?x?xf32>
+  %N = dim %arg2, 1 : memref<?x?xf32>
+  //      VECT: %[[C0:.*]] = constant 0 : index
+  // VECT-NEXT: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
+  // VECT-NEXT: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
+  // VECT-NEXT: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
+  //      VECT: {{.*}} #[[map_id1]](%[[M]]) step 4 {
+  // VECT-NEXT:   {{.*}} #[[map_id1]](%[[N]]) step 8 {
+  //      VECT:     %[[VC0:.*]] = constant splat<vector<4x8xf32>, 0.000000e+00> : vector<4x8xf32>
+  // VECT-NEXT:     vector_transfer_write %[[VC0]], %arg2, %{{.*}}, %{{.*}} {permutation_map: #[[map_id2]]}
+  affine.for %i0 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%M) {
+    affine.for %i1 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%N) {
+      %cst = constant 0.000000e+00 : f32
+      store %cst, %arg2[%i0, %i1] : memref<?x?xf32>
+    }
+  }
+  //      VECT:  affine.for %[[I2:.*]] = #[[map_id1]](%[[C0]]) to #[[map_id1]](%[[M]]) step 4 {
+  // VECT-NEXT:    affine.for %[[I3:.*]] = #[[map_id1]](%[[C0]]) to #[[map_id1]](%[[N]]) step 8 {
+  // VECT-NEXT:      affine.for %[[I4:.*]] = #map5(%[[C0]]) to #[[map_id1]](%[[K]]) {
+  // VECT-NEXT:        %[[A:.*]] = vector_transfer_read %arg1, %[[I4]], %[[I3]] {permutation_map: #[[map_proj_d0d1_zerod1]]} 
+  // VECT-NEXT:        %[[B:.*]] = vector_transfer_read %arg0, %[[I2]], %[[I4]] {permutation_map: #[[map_proj_d0d1_d0zero]]} 
+  // VECT-NEXT:        %[[C:.*]] = mulf %[[B]], %[[A]] : vector<4x8xf32>
+  // VECT-NEXT:        %[[D:.*]] = vector_transfer_read %arg2, %[[I2]], %[[I3]] {permutation_map: #[[map_id2]]} 
+  // VECT-NEXT:        %[[E:.*]] = addf %[[D]], %[[C]] : vector<4x8xf32>
+  // VECT-NEXT:        vector_transfer_write %[[E]], %arg2, %[[I2]], %[[I3]] {permutation_map: #[[map_id2]]} : vector<4x8xf32>, memref<?x?xf32>, index, index
+  affine.for %i2 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%M) {
+    affine.for %i3 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%N) {
+      affine.for %i4 = (d0) -> (d0)(%c0) to (d0) -> (d0)(%K) {
+        %6 = load %arg1[%i4, %i3] : memref<?x?xf32>
+        %7 = load %arg0[%i2, %i4] : memref<?x?xf32>
+        %8 = mulf %7, %6 : f32
+        %9 = load %arg2[%i2, %i3] : memref<?x?xf32>
+        %10 = addf %9, %8 : f32
+        store %10, %arg2[%i2, %i3] : memref<?x?xf32>
+      }
+    }
+  }
+  return
+}
