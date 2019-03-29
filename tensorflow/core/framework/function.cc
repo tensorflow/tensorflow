@@ -177,7 +177,8 @@ class FunctionInstantiationHelper {
       } else {
         gnode->set_op(FunctionLibraryDefinition::kArgOp);
       }
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
@@ -343,7 +344,8 @@ class FunctionInstantiationHelper {
         gnode->set_op(FunctionLibraryDefinition::kRetOp);
       }
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = ret_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", (*ret_index)++, gnode);
       result_.ret_types.push_back(dtypes[i]);
     }
@@ -906,6 +908,18 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   for (int i = 0; i < options.output_devices.size(); ++i) {
     entries.push_back(strings::StrCat(
         "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
+  }
+  for (const auto& iter : options.input_tensor_shapes) {
+    entries.push_back(
+        strings::StrCat("_input_tensor_shape", iter.first, "=",
+                        str_util::CEscape(iter.second.DebugString())));
+  }
+  for (const auto& iter : options.input_resource_dtypes_and_shapes) {
+    entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
+                                      DataTypeString(iter.second.first)));
+    entries.push_back(
+        strings::StrCat("_input_resource_shape", iter.first, "=",
+                        str_util::CEscape(iter.second.second.DebugString())));
   }
   if (options.lib_def) {
     entries.push_back(strings::StrCat(

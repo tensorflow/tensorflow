@@ -207,7 +207,12 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  Literal literal(shape);
+  // Clear tiles/element size in shape's layout before using it for creating
+  // literal.
+  Shape new_shape = shape;
+  new_shape.mutable_layout()->clear_tiles();
+  new_shape.mutable_layout()->set_element_size_in_bits(0);
+  Literal literal(new_shape);
   switch (shape.element_type()) {
     case BF16:
       PopulateWithFloatingPointData<bfloat16>(&literal, engine, no_duplicates);
@@ -300,7 +305,12 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  Literal literal(shape);
+  // Clear tiles/element size in shape's layout before using it for creating
+  // literal.
+  Shape new_shape = shape;
+  new_shape.mutable_layout()->clear_tiles();
+  new_shape.mutable_layout()->set_element_size_in_bits(0);
+  Literal literal(new_shape);
   switch (shape.element_type()) {
     case S8:
       PopulateWithRandomIntegralDataWithBounds<int8>(

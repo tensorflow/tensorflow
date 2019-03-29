@@ -327,11 +327,10 @@ bool DeviceNameUtils::IsCompleteSpecification(const ParsedName& pattern,
   return true;
 }
 
-namespace {
-Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
-                         const DeviceNameUtils::ParsedName& other,
-                         bool allow_soft_placement, bool override_conflicts) {
-  const auto& ParsedNameToString = DeviceNameUtils::ParsedNameToString;
+/* static */
+Status DeviceNameUtils::MergeDevNames(ParsedName* target,
+                                      const ParsedName& other,
+                                      bool allow_soft_placement) {
   if (other.has_job) {
     if (target->has_job && target->job != other.job) {
       return errors::InvalidArgument(
@@ -375,8 +374,6 @@ Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
             "Cannot merge devices with incompatible types: '",
             ParsedNameToString(*target), "' and '", ParsedNameToString(other),
             "'");
-      } else if (override_conflicts) {
-        target->type = other.type;
       } else {
         target->has_id = false;
         target->has_type = false;
@@ -395,8 +392,6 @@ Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
             "Cannot merge devices with incompatible ids: '",
             ParsedNameToString(*target), "' and '", ParsedNameToString(other),
             "'");
-      } else if (override_conflicts) {
-        target->id = other.id;
       } else {
         target->has_id = false;
         return Status::OK();
@@ -408,23 +403,6 @@ Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
   }
 
   return Status::OK();
-}
-
-}  // namespace
-
-/* static */
-Status DeviceNameUtils::MergeDevNames(ParsedName* target,
-                                      const ParsedName& other,
-                                      bool allow_soft_placement) {
-  return MergeDevNamesImpl(target, other, allow_soft_placement,
-                           /*override_conflicts=*/false);
-}
-
-/* static */
-Status DeviceNameUtils::MergeOverrideDevNames(ParsedName* target,
-                                              const ParsedName& other) {
-  return MergeDevNamesImpl(target, other, /*allow_soft_placement=*/true,
-                           /*override_conflicts=*/true);
 }
 
 /* static */

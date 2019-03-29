@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -320,6 +321,43 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
   return &node.requested_device();
 }
 
+Status SetArgShape(
+    const std::unordered_map<int, TensorShape>& input_tensor_shapes,
+    const std::unordered_map<int, std::pair<DataType, TensorShape>>&
+        input_resource_dtypes_and_shapes,
+    const std::vector<Node*>& arg_nodes) {
+  for (Node* n : arg_nodes) {
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    if (dtype != DT_RESOURCE) {
+      auto shape_iter = input_tensor_shapes.find(index);
+      if (shape_iter != input_tensor_shapes.end()) {
+        TensorShapeProto shape_proto;
+        shape_iter->second.AsProto(&shape_proto);
+        AttrValue attr_value;
+        *attr_value.mutable_list()->add_shape() = shape_proto;
+        n->AddAttr("_output_shapes", attr_value);
+      }
+    } else {
+      auto dtype_and_shape_iter = input_resource_dtypes_and_shapes.find(index);
+      if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
+        AttrValue dtype_attr_value;
+        dtype_attr_value.mutable_list()->add_type(
+            dtype_and_shape_iter->second.first);
+        n->AddAttr("_handle_dtypes", dtype_attr_value);
+        TensorShapeProto shape_proto;
+        dtype_and_shape_iter->second.second.AsProto(&shape_proto);
+        AttrValue shape_attr_value;
+        *shape_attr_value.mutable_list()->add_shape() = shape_proto;
+        n->AddAttr("_handle_shapes", shape_attr_value);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
@@ -578,6 +616,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     device_set.AddDevice(d);
   }
 
+  TF_RETURN_IF_ERROR(SetArgShape(options.input_tensor_shapes,
+                                 options.input_resource_dtypes_and_shapes,
+                                 arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(options.input_devices,
                                     options.output_devices, device_set,
                                     arg_nodes, ret_nodes));

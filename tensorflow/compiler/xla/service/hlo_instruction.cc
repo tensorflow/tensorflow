@@ -304,8 +304,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                             Literal::CreateFromProto(proto.literal()));
         instruction = CreateConstant(std::move(literal));
         // Literal's shape may have no/different tiling info.
-        CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(instruction->shape(),
-                                                        shape));
+        TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+            instruction->shape(), shape));
         *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);

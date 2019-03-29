@@ -641,7 +641,7 @@ def tf_gen_op_wrappers_cc(
         op_gen = clean_dep("//tensorflow/cc:cc_op_gen_main"),
         include_internal_ops = 0,
         visibility = None,
-        # ApiDefs will be loaded in the order apecified in this list.
+        # ApiDefs will be loaded in the order specified in this list.
         api_def_srcs = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]

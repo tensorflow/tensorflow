@@ -46,7 +46,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
+  if (!while_op->parent()->IsRemovable(while_op)) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -300,8 +300,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   }
   HloInstruction* new_tuple =
       computation->AddInstruction(HloInstruction::CreateTuple(new_tuple_elems));
-  TF_RETURN_IF_ERROR(while_op->ReplaceAllUsesWith(new_tuple));
-
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, new_tuple));
   return true;
 }
 
@@ -473,8 +472,7 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
 
   // Remove while loops with static trip count of 0.
   optional<int64> trip_count =
-      ComputeWhileLoopTripCount(while_op,
-                                /*max_value_returned=*/1);
+      ComputeWhileLoopTripCount(while_op, /*max_brute_force_iters=*/1);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
     // "init" operand.

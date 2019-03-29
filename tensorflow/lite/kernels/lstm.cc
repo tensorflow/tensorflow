@@ -840,6 +840,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     default:
       return nullptr;
   }
+  return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
   gemm_support::DecrementUsageCounter(context);
@@ -857,6 +858,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     default:
       return kTfLiteError;
   }
+  return kTfLiteError;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -869,6 +871,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       return kTfLiteError;
   }
+  return kTfLiteError;
 }
 
 }  // namespace lstm

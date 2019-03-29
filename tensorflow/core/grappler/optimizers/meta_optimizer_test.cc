@@ -367,8 +367,8 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
       if (node.name() == "my_mul/inlined_inputs" && ++count) {
         EXPECT_EQ("IdentityN", node.op());
         EXPECT_EQ(2, node.input_size());
-        EXPECT_EQ("x:0", node.input(0));
-        EXPECT_EQ("x:0", node.input(1));
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("x", node.input(1));
       } else if (node.name() == "my_mul/x" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
@@ -623,17 +623,17 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
   MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define simple function library with two identical mul functions.
-  FunctionDef mul_func_1 =
-      FunctionDefHelper::Create("MyMul1", {"x:float", "y:float"}, {"z:float"},
-                                {}, {{{"mul"}, "Mul", {"x", "y"}, {}}},
-                                /*ret_def=*/
-                                {{"z", "mul:z:0"}});
+  FunctionDef mul_func_1 = FunctionDefHelper::Create(
+      "MyMul1", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
 
-  FunctionDef mul_func_2 =
-      FunctionDefHelper::Create("MyMul2", {"x:float", "y:float"}, {"z:float"},
-                                {}, {{{"mul"}, "Mul", {"x", "y"}, {}}},
-                                /*ret_def=*/
-                                {{"z", "mul:z:0"}});
+  FunctionDef mul_func_2 = FunctionDefHelper::Create(
+      "MyMul2", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
 
   // Tensorflow graph:
   //
