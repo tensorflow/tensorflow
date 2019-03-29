@@ -2216,8 +2216,8 @@ def tensorflow_opensource_extra_deps():
 def tf_pybind_extension(
         name,
         srcs,
-        hdrs,
         module_name,
+        hdrs = [],
         features = [],
         srcs_version = "PY2AND3",
         data = [],
@@ -2250,7 +2250,7 @@ def tf_pybind_extension(
     native.genrule(
         name = name + "_exported_symbols",
         outs = [exported_symbols_file],
-        cmd = "echo '%s\n%s\n%s' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '_%s\n_%s\n_%s' >$@" % (symbol, symbol2, symbol3),
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,

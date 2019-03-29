@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""An XLA client in Python, supporting AOT compilation."""
+"""An XLA client in Python."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -35,34 +35,13 @@ from six.moves import xrange
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
 
-from tensorflow.compiler.xla.python import pywrap_xla as c_api
-
+from tensorflow.compiler.xla.python import xla_extension as _xla
+from tensorflow.compiler.xla.python.xla_extension import ops
 
 # Most functions are snake_case for consistency with other modules, whereas
 # method names of ComputationBuilder and Computation are CamelCase for
 # consistency with XLA.
 # pylint: disable=invalid-name
-
-
-# Version of the XLA Python client.
-#
-# JAX packages the XLA python plugin as a binary pip module (jaxlib) that is
-# packaged separately from the Python code that consumes it (jax).
-#
-# We occasionally need to make backwards-incompatible changes to jaxlib, in
-# which case we need to be able to detect when incompatible versions are
-# installed.
-def version():
-  return (0, 1, 8)
-
-
-_OP_METADATA_FIELDS = [
-    'op_type',
-    'op_name',
-    'source_file',
-    'source_line',
-]
-OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -111,13 +90,6 @@ class Backend(object):
     """Runs an executable in a replicated manner."""
 
 
-def _maybe_encode_string(s):
-  if six.PY3:
-    return s.encode('utf-8')
-  else:
-    return s
-
-
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
@@ -129,37 +101,38 @@ class LocalBackend(Backend):
       xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = c_api.LocalClient.Get(_maybe_encode_string(xla_platform_id))
-    self._delete_buffer = c_api.DeleteLocalShapedBuffer
-    self._delete_executable = c_api.DeleteLocalExecutable
+    self.client = _xla.LocalClient.Get(xla_platform_id)
 
   def device_count(self):
     return self.client.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return c_api.LocalShapedBuffer.FromLiteral(pyval, None, self.client, device)
+    return _xla.LocalShapedBuffer.FromPython(pyval, self.client, device)
 
   def delete_buffer(self, c_buffer):
-    self._delete_buffer(c_buffer)
+    c_buffer.Delete()
 
   def destructure_tuple(self, c_buffer):
-    result = c_buffer.DestructureTuple()
-    return [result.Release(i) for i in xrange(result.size())]
+    return c_buffer.DestructureTuple()
 
   def compile(self, c_computation, argument_shapes, result_shape,
               compile_options):
-    return c_computation.Compile(argument_shapes, compile_options, self.client)
+    options = _xla.ExecutableBuildOptions()
+    options.num_replicas = compile_options.num_replicas
+    if compile_options.result_layout:
+      options.result_layout = compile_options.result_layout.as_xla_shape()
+    argument_shapes = [s.as_xla_shape() for s in argument_shapes]
+    return _xla.LocalExecutable.Compile(c_computation, argument_shapes, options,
+                                        self.client)
 
   def delete_executable(self, executable):
-    self._delete_executable(executable)
+    executable.Delete()
 
   def execute(self, executable, args):
     return executable.Execute(args)
 
   def execute_replicated(self, executable, per_replica_args):
-    output_buffer_tup = executable.ExecutePerReplica(per_replica_args)
-    size = output_buffer_tup.size()
-    return [output_buffer_tup.Release(i) for i in xrange(size)]
+    return executable.ExecutePerReplica(per_replica_args)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -239,6 +212,17 @@ def initialize_platform_name(platform_name):
   _default_platform_name = platform_name
 
 
+class OpMetadata(object):
+  """Python representation of a xla.OpMetadata protobuf."""
+  __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
+
+  def __init__(self, op_type='', op_name='', source_file='', source_line=0):
+    self.op_type = op_type
+    self.op_name = op_name
+    self.source_file = source_file
+    self.source_line = source_line
+
+
 def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
   """Helper for use in source mapping that returns an OpMetadata object."""
   full_filename, lineno = inspect.stack()[skip_frames][1:3]
@@ -275,106 +259,18 @@ def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
     return [(0, 0)] * len(window_strides)
   elif padding_type == PaddingType.SAME:
     out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
-    pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
-                 for out_size, stride, filter_size, in_size
-                 in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
+    pad_sizes = [
+        max((out_size - 1) * stride + filter_size - in_size, 0)
+        for out_size, stride, filter_size, in_size in zip(
+            out_shape, window_strides, rhs_dims, lhs_dims)
+    ]
     return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
   else:
     msg = 'Unexpected PaddingType value: {}'
     raise ValueError(msg.format(padding_type))
 
 
-_UNARY_OPS = [
-    'Not',
-    'Clz',
-    'Abs',
-    'Exp',
-    'Expm1',
-    'Floor',
-    'Round',
-    'Ceil',
-    'Log',
-    'Log1p',
-    'Sign',
-    'Cos',
-    'Sin',
-    'Tanh',
-    'IsFinite',
-    'Sqrt',
-    'Rsqrt',
-    'Square',
-    'Reciprocal',
-    'Neg',
-    'Erf',
-    'Erfc',
-    'ErfInv',
-    'Lgamma',
-    'Digamma',
-    'Acos',
-    'Asin',
-    'Atan',
-    'Tan',
-    'Acosh',
-    'Asinh',
-    'Atanh',
-    'Cosh',
-    'Sinh',
-    'Real',
-    'Imag',
-    'Conj',
-]
-
-_BINARY_OPS = [
-    'Eq',
-    'Ne',
-    'Ge',
-    'Gt',
-    'Lt',
-    'Le',
-    'Add',
-    'Sub',
-    'Mul',
-    'Div',
-    'Rem',
-    'Max',
-    'Min',
-    'And',
-    'Or',
-    'Xor',
-    'Pow',
-    'ShiftLeft',
-    'ShiftRightArithmetic',
-    'ShiftRightLogical',
-    'Atan2',
-    'Complex',
-]
-
-
-class PrimitiveType(enum.IntEnum):
-  """Python copy of the XLA PrimitiveType enum.
-
-  Must match the corresponding protocol buffer.
-  """
-  PRIMITIVE_TYPE_INVALID = 0
-  PRED = 1
-  S8 = 2
-  S16 = 3
-  S32 = 4
-  S64 = 5
-  U8 = 6
-  U16 = 7
-  U32 = 8
-  U64 = 9
-  BF16 = 16
-  F16 = 10
-  F32 = 11
-  F64 = 12
-  C64 = 15
-  C128 = 18
-  TUPLE = 13
-  OPAQUE = 14
-  TOKEN = 17
-
+PrimitiveType = _xla.PrimitiveType
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -429,7 +325,7 @@ class LocalBuffer(object):
     return LocalBuffer(cbuf, backend, device)
 
   def to_py(self):
-    return self.c_buffer.ToLiteral()
+    return self.c_buffer.ToPython()
 
   def shape(self):
     return _wrap_shape(self.c_buffer.shape())
@@ -439,9 +335,7 @@ class LocalBuffer(object):
 
   def delete(self):
     if self.c_buffer is not None:
-      # Python may have freed c_api first.
-      if c_api:
-        self._backend.delete_buffer(self.c_buffer)
+      self._backend.delete_buffer(self.c_buffer)
       self.c_buffer = None
 
   def destructure(self):
@@ -501,12 +395,14 @@ class Shape(object):
 
   @staticmethod
   def from_pyval(pyval):
+    """Returns a Shape that describes a tuple-tree of Numpy arrays."""
     def convert(pyval):
       if isinstance(pyval, tuple):
         return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
       else:
         pyval = require_numpy_array_layout(pyval)
         return Shape.array_shape(pyval.dtype, np.shape(pyval))
+
     return convert(pyval)
 
   def __init__(self, dimensions, dtype, minor_to_major=None):
@@ -620,36 +516,42 @@ class Shape(object):
   def serialize(self, proto):
     """Serializes 'shape' into proto."""
     if self.is_tuple():
-      proto.element_type = PrimitiveType.TUPLE
+      proto.element_type = int(PrimitiveType.TUPLE)
       for shape in self.tuple_shapes():
         shape.serialize(proto.tuple_shapes.add())
     else:
-      proto.element_type = dtype_to_etype(self.element_type())
+      proto.element_type = int(self.xla_element_type())
       proto.dimensions.extend(self.dimensions())
       proto.is_dynamic_dimension.extend([False for _ in self.dimensions()])
       if self.minor_to_major():
         proto.layout.format = Format.DENSE
         proto.layout.minor_to_major.extend(self.minor_to_major())
 
+  def as_xla_shape(self):
+    if self.is_tuple():
+      return _xla.Shape.Tuple([x.as_xla_shape() for x in self.tuple_shapes()])
+
+    return _xla.Shape.Array(self.xla_element_type(), self.dimensions(),
+                            self.minor_to_major())
+
 
 ProgramShape = collections.namedtuple('ProgramShape',
                                       ('parameter_shapes', 'result_shape'))
 
 
-def _wrap_shape(shape_info):
-  dtype, dims = shape_info
-  element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(dtype)]
+def _wrap_shape(xla_shape):
+  element_type = xla_shape.element_type()
   if element_type == PrimitiveType.TUPLE:
-    shapes = tuple(_wrap_shape(subshape_info) for subshape_info in dims)
+    shapes = tuple(_wrap_shape(sub) for sub in xla_shape.tuple_shapes())
     return Shape.tuple_shape(shapes)
   else:
-    return Shape.array_shape(dtype, dims)
+    dtype = XLA_ELEMENT_TYPE_TO_DTYPE[element_type]
+    return Shape.array_shape(dtype, xla_shape.dimensions())
 
 
-def _wrap_program_shape(shape_info):
-  arg_shapes, result_shape = shape_info
-  return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
-                      _wrap_shape(result_shape))
+def _wrap_program_shape(program_shape):
+  return ProgramShape([_wrap_shape(arg) for arg in program_shape.Parameters()],
+                      _wrap_shape(program_shape.Result()))
 
 
 def require_numpy_array_layout(value):
@@ -674,6 +576,7 @@ class CompileOptions(object):
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
     self.num_replicas = 1
+    self.result_layout = None
 
 
 def transfer_to_infeed(value, device_ordinal=0):
@@ -708,7 +611,8 @@ def transfer_from_outfeed(shape, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  return backend.client.TransferFromOutfeed(shape, device_ordinal)
+  return backend.client.TransferFromOutfeed(shape.as_xla_shape(),
+                                            device_ordinal)
 
 
 class Computation(object):
@@ -722,7 +626,6 @@ class Computation(object):
     self._c_computation = c_computation
     # The backend argument is deprecated. Pass a backend to Compile() instead.
     self._backend = backend
-    self._delete_computation = c_api.DeleteComputation
 
   @property
   def computation(self):
@@ -753,7 +656,10 @@ class Computation(object):
     """
     return self.computation.GetHloDotGraph()
 
-  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None,
+  def Compile(self,
+              argument_shapes=(),
+              compile_options=None,
+              layout_fn=None,
               backend=None):
     """Compiles a computation.
 
@@ -772,7 +678,7 @@ class Computation(object):
       A Executable instance.
     """
     backend = backend or self._backend or get_local_backend()
-    result_shape = _wrap_shape(self.computation.GetReturnValueShape())
+    result_shape = _wrap_shape(self.computation.GetProgramShape().Result())
 
     if layout_fn:
       argument_shapes = [
@@ -783,7 +689,7 @@ class Computation(object):
     argument_shapes = list(argument_shapes)
 
     compile_options = compile_options or CompileOptions()
-    compile_options.result_shape = result_shape
+    compile_options.result_layout = result_shape
     c = backend.compile(self.computation, argument_shapes, result_shape,
                         compile_options)
     return Executable(c, backend=backend)
@@ -803,11 +709,7 @@ class Computation(object):
     return _wrap_program_shape(self._c_computation.GetProgramShape())
 
   def GetReturnValueShape(self):
-    return _wrap_shape(self._c_computation.GetReturnValueShape())
-
-  def __del__(self):
-    if self._c_computation:
-      self._delete_computation(self._c_computation)
+    return _wrap_shape(self._c_computation.GetProgramShape().Result())
 
 
 class Executable(object):
@@ -899,9 +801,7 @@ class Executable(object):
     return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
-    # Python may have freed c_api first.
-    if c_api and self._c_executable:
-      self._backend.delete_executable(self._c_executable)
+    self._backend.delete_executable(self._c_executable)
 
 
 class ComputationBuilder(object):
@@ -920,7 +820,7 @@ class ComputationBuilder(object):
   # pylint: disable=g-doc-args
 
   def __init__(self, name):
-    self._client = c_api.ComputationBuilder(name.encode('utf8'))
+    self._builder = _xla.XlaBuilder(name)
     self._parameter_numbering = itertools.count()
 
   def Build(self, root=None, backend=None):
@@ -929,23 +829,25 @@ class ComputationBuilder(object):
     Args:
       root: if not None, the operator containing the return value of the
         computation.
-      backend: deprecated. Pass a `backend` to `Computation.Compile` instead.
 
     Returns:
       A `Computation`.
     """
     if root is not None:
-      return Computation(self._client.BuildWithRoot(root), backend=backend)
+      return Computation(self._builder.Build(root), backend=backend)
     else:
-      return Computation(self._client.Build(), backend=backend)
+      return Computation(self._builder.Build(), backend=backend)
+
+  def GetShape(self, operand):
+    return _wrap_shape(self._builder.GetShape(operand))
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
-    self._client.SetOpMetadata(op_metadata)
+    self._builder.SetOpMetadata(op_metadata)
 
   def ClearOpMetadata(self):
     """Clear metadata for operations that are about to be enqueued."""
-    self._client.ClearOpMetadata()
+    self._builder.ClearOpMetadata()
 
   def Infeed(self, shape):
     """Enqueues an infeed op onto the computation.
@@ -954,9 +856,9 @@ class ComputationBuilder(object):
     queue for subsequent use in the computation.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
-    return self._client.Infeed(shape)
+    return ops.Infeed(self._builder, shape.as_xla_shape())
 
   def Outfeed(self, operand):
     """Enqueues an outfeed op onto the computation.
@@ -964,7 +866,7 @@ class ComputationBuilder(object):
     Outfeed operations enqueue data, using the given operand, onto the XLA
     outfeed queue for subsequent dequeue via the client API.
     """
-    self._client.Outfeed(operand, self.GetShape(operand), ''.encode('utf-8'))
+    return ops.Outfeed(operand, self._builder.GetShape(operand), '')
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.
@@ -974,10 +876,10 @@ class ComputationBuilder(object):
         one of the supported types.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     value = require_numpy_array_layout(value)
-    return self._client.ConstantLiteral(value)
+    return ops.ConstantLiteral(self._builder, value)
 
   def ConstantF32Scalar(self, value):
     """Convenience method to enqueue a scalar F32 constant op.
@@ -986,7 +888,7 @@ class ComputationBuilder(object):
       value: a floating-point number.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     return self.Constant(np.array(value, dtype=np.float32))
 
@@ -997,7 +899,7 @@ class ComputationBuilder(object):
       value: a floating-point number.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     return self.Constant(np.array(value, dtype=np.float64))
 
@@ -1008,7 +910,7 @@ class ComputationBuilder(object):
       value: a floating-point number.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     return self.Constant(np.array(value, dtype=np.int32))
 
@@ -1019,7 +921,7 @@ class ComputationBuilder(object):
       value: a floating-point number.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     return self.Constant(np.array(value, dtype=np.int64))
 
@@ -1030,7 +932,7 @@ class ComputationBuilder(object):
       value: a boolean value.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     return self.Constant(np.array(value, dtype=np.bool))
 
@@ -1046,14 +948,15 @@ class ComputationBuilder(object):
         parameters, use it for *all* parameters to avoid clashes.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     if name is None:
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
 
-    return self._client.Parameter(parameter_num, shape, name.encode('utf8'))
+    return ops.Parameter(self._builder, parameter_num, shape.as_xla_shape(),
+                         name.encode('utf8'))
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.
@@ -1065,7 +968,7 @@ class ComputationBuilder(object):
       parameter_num: as in ParameterWithShape.
 
     Returns:
-      A LocalOp.
+      An XlaOp.
     """
     return self.ParameterWithShape(
         Shape.from_pyval(value), name=name, parameter_num=parameter_num)
@@ -1078,10 +981,10 @@ class ComputationBuilder(object):
       size: integer, the number of elements in the array.
 
     Returns:
-      A LocalOp representing the added iota constant.
+      An XlaOp representing the added iota constant.
     """
     element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
-    return self._client.Iota(element_type, size)
+    return ops.Iota(self._builder, element_type, size)
 
   def BroadcastedIota(self, dtype, shape, dimension):
     """Enqueues a broadcasted iota constant onto the computation.
@@ -1092,36 +995,11 @@ class ComputationBuilder(object):
       dimension: positive integer, dimension along which to increment values.
 
     Returns:
-      A LocalOp representing the added broadcasted iota constant.
+      An XlaOp representing the added broadcasted iota constant.
     """
-    xla_shape = Shape.array_shape(dtype, shape)
-    return self._client.BroadcastedIota(xla_shape, dimension)
-
-  def Broadcast(self, operand, sizes):
-    """Enqueues a broadcast operation onto the computation.
-
-    Args:
-      operand: the operand LocalOp to broadcast.
-      sizes: an iterable of broadcast sizes.
-
-    Returns:
-      A LocalOp representing the added broadcast op.
-    """
-    return self._client.Broadcast(operand, sizes)
-
-  def BroadcastInDim(self, operand, shape, broadcast_dimensions):
-    """Enqueues a broadcast-in-dimensions operation onto the computation.
-
-    Args:
-      operand: the operand LocalOp to broadcast.
-      shape: tuple of integers, the expected output shape.
-      broadcast_dimensions: tuple of integers identifying which dimensions of
-        the output are to be broadcast into.
-
-    Returns:
-      A LocalOp representing the added broadcast-in-dimensions op.
-    """
-    return self._client.BroadcastInDim(operand, shape, broadcast_dimensions)
+    element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
+    xla_shape = _xla.Shape.Array(element_type, shape, None)
+    return ops.Iota(self._builder, xla_shape, dimension)
 
   def Concatenate(self, operands, dimension):
     """Enqueues a concatenate operation onto the computation.
@@ -1131,42 +1009,9 @@ class ComputationBuilder(object):
       dimension: the dimension in which to perform the concatenation.
 
     Returns:
-      A LocalOp representing the added concatenate op.
+      An XlaOp representing the added concatenate op.
     """
-    return self._client.ConcatInDim(operands, dimension)
-
-  def ConvertElementType(self, operand, new_element_type):
-    """Enqueues an element type conversion operation onto the computation.
-
-    Args:
-      operand: the operand to convert.
-      new_element_type: the target primitive type.
-
-    Returns:
-      A LocalOp representing the added conversion op.
-    """
-    return self._client.ConvertElementType(operand, new_element_type)
-
-  def BitcastConvertType(self, operand, new_element_type):
-    """Enqueues a bitcast type conversion operation onto the computation.
-
-    Args:
-      operand: the operand to convert.
-      new_element_type: the target primitive type.
-
-    Returns:
-      A LocalOp representing the added conversion op.
-    """
-    return self._client.BitcastConvertType(operand, new_element_type)
-
-  def GetShape(self, operand):
-    return _wrap_shape(self._client.GetShape(operand))
-
-  def GetReturnValueShape(self):
-    return _wrap_shape(self._client.GetReturnValueShape())
-
-  def GetComputationStats(self):
-    raise NotImplementedError()
+    return ops.ConcatInDim(self._builder, list(operands), dimension)
 
   def ReplicaId(self):
     """Enqueues a ReplicaId operation onto the computation.
@@ -1174,41 +1019,41 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the replica id.
     """
-    return self._client.ReplicaId()
+    return _xla.ops.ReplicaId(self._builder)
 
   def Pad(self, operand, padding_value, padding_config):
     """Enqueues a Pad operation onto the computation.
 
     Args:
-      operand: LocalOp representing the array to pad.
-      padding_value: LocalOp representing the scalar pad value.
+      operand: XlaOp representing the array to pad.
+      padding_value: XlaOp representing the scalar pad value.
       padding_config: either a PaddingConfig or a list of integer triples
         (edge_padding_low, edge_padding_high, interior_padding) representing the
         configuration of the padding operation.
 
     Returns:
-      A LocalOp representing the added Pad op.
+      An XlaOp representing the added Pad op.
     """
     if isinstance(padding_config, tuple) or isinstance(padding_config, list):
       padding_config = GetPaddingConfigFromTriples(padding_config)
-    return self._client.Pad(operand, padding_value, padding_config)
+    return ops.Pad(operand, padding_value, padding_config)
 
   def Reshape(self, operand, dimensions, new_sizes):
     """Enqueues a reshape op onto the computation.
 
     Args:
-      operand: LocalOp representing the array to be reshaped.
+      operand: XlaOp representing the array to be reshaped.
       dimensions: sequence of integers encoding the order in which dimensions
         are collapsed or None, in which case dimensions are flattened in order.
       new_sizes: sequence of integers encoding the new dimension sizes (shape).
 
     Returns:
-      A LocalOp representing the added Reshape op.
+      An XlaOp representing the added Reshape op.
     """
     if dimensions is None:
       ndim = len(self.GetShape(operand).dimensions())
       dimensions = tuple(range(ndim))
-    return self._client.Reshape(operand, dimensions, new_sizes)
+    return ops.Reshape(operand, dimensions, new_sizes)
 
   def AllToAll(self,
                operand,
@@ -1218,7 +1063,7 @@ class ComputationBuilder(object):
     """AllToAll op.
 
     Args:
-      operand: LocalOp representing the input array
+      operand: XlaOp representing the input array
       split_dimension: the dimension along which the operand is split
       concat_dimension: the dimension along which the split blocks are
         concatenated
@@ -1228,7 +1073,7 @@ class ComputationBuilder(object):
         default), all replicas belong to the same group.
 
     Returns:
-      A LocalOp that represents the all-to-all concatenation.
+      An XlaOp that represents the all-to-all concatenation.
     """
     if replica_groups is None:
       replica_groups_protos = []  # special value for XLA API
@@ -1243,8 +1088,8 @@ class ComputationBuilder(object):
       split_count = len(replica_groups[0])
       if not all(split_count == len(g) for g in replica_groups):
         raise ValueError('Replica groups must be equally sized')
-    return self._client.AllToAll(operand, split_dimension, concat_dimension,
-                                 split_count, replica_groups_protos)
+    return ops.AllToAll(operand, split_dimension, concat_dimension, split_count,
+                        replica_groups_protos)
 
   def CrossReplicaSum(self, operand, replica_groups=None):
     """CrossReplicaSum op.
@@ -1257,7 +1102,7 @@ class ComputationBuilder(object):
         (the default), all replicas belong to the same group.
 
     Returns:
-      A LocalOp that represents on each replica the sum of its group's values.
+      An XlaOp that represents on each replica the sum of its group's values.
     """
     if replica_groups is None:
       replica_groups = []  # special value for XLA API
@@ -1265,68 +1110,48 @@ class ComputationBuilder(object):
       replica_groups = [
           _make_replica_group_proto(group) for group in replica_groups
       ]
-    return self._client.CrossReplicaSum(operand, replica_groups)
-
-  def Collapse(self, operand, dimensions):
-    """Collapse op."""
-    return self._client.Collapse(operand, dimensions)
+    return ops.CrossReplicaSum(operand, replica_groups)
 
   def Trans(self, operand):
     """Specialized matrix transpose op."""
-    return self._client.Transpose(operand, [1, 0])
+    return ops.Transpose(operand, [1, 0])
 
   def Transpose(self, operand, permutation):
     """Transpose op."""
-    return self._client.Transpose(operand, permutation)
-
-  def Rev(self, operand, dimensions):
-    """Rev op."""
-    return self._client.Rev(operand, dimensions)
-
-  def Clamp(self, min, operand, max):  # pylint: disable=redefined-builtin
-    """Clamp op."""
-    return self._client.Clamp(min, operand, max)
+    return ops.Transpose(operand, permutation)
 
   def SelectAndScatter(self, operand, select, window_dimensions, window_strides,
                        padding, source, init_value, scatter):
     """Select and scatter op, used by the gradient of ReduceWindow.
 
     Args:
-      operand: LocalOp for array of dimension N and type T over which the
-        windows slide.
+      operand: XlaOp for array of dimension N and type T over which the windows
+        slide.
       select: Computation of type (T, T) -> Pred to apply to the elements of
         each window to indicate which element is selected.
       window_dimensions: sequence of N integers for dimensions of the window.
       window_strides: sequence of N integers for the strides of the window.
       padding: PaddingType representing either 'SAME' or 'VALID ' padding.
-      source: LocalOp for array of type T with values to scatter.
-      init_value: LocalOp of scalar type T for initial out value.
+      source: XlaOp for array of type T with values to scatter.
+      init_value: XlaOp of scalar type T for initial out value.
       scatter: Computation of type (T, T) -> T to apply to each scatter source
         element with its destination element.
 
     Returns:
-      A LocalOp representing the added SelectAndScatter op.
+      An XlaOp representing the added SelectAndScatter op.
     """
     pads = _convert_padding_type_to_pad_values(
-        padding, self.GetShape(operand).dimensions(), window_dimensions,
-        window_strides)
-    return self._client.SelectAndScatterWithGeneralPadding(
+        padding,
+        self.GetShape(operand).dimensions(), window_dimensions, window_strides)
+    return ops.SelectAndScatterWithGeneralPadding(
         operand, select.computation, window_dimensions, window_strides, pads,
         source, init_value, scatter.computation)
-
-  def Select(self, pred, on_true, on_false):
-    """Element-wise selection op.
-
-    Constructs an output array from elements of two input arrays, based on the
-    values of a predicate array.
-    """
-    return self._client.Select(pred, on_true, on_false)
 
   def Slice(self, operand, start_indices, limit_indices, strides=None):
     """Enqueues a slice operation onto the computation.
 
     Args:
-      operand: LocalOp for the N dimensional array to be sliced.
+      operand: XlaOp for the N dimensional array to be sliced.
       start_indices: iterable of N integers containing the starting indices of
         the slice for each dimension.
       limit_indices: iterable of N integers containing the ending indices
@@ -1335,93 +1160,78 @@ class ComputationBuilder(object):
         each dimension.
 
     Returns:
-      A LocalOp representing the added Slice op.
+      An XlaOp representing the added Slice op.
     """
     if strides is None:
       start_indices = list(start_indices)
       strides = [1] * len(start_indices)
-    return self._client.Slice(operand, start_indices, limit_indices, strides)
-
-  def SliceInDim(self, operand, start_index, limit_index, stride, dimno):
-    """Enqueues a slice-in-dimension operation onto the computation.
-
-    Args:
-      operand: LocalOp for the N dimensional array to be sliced.
-      start_index: an integer containing the start index of the slice.
-      limit_index: an integer containing the end index of the slice.
-      stride: an integer containing the stride size for the slice.
-      dimno: an integer indicating the dimension along which to slice.
-
-    Returns:
-      A LocalOp representing the added Slice op.
-    """
-    return self._client.SliceInDim(operand, start_index, limit_index, stride,
-                                   dimno)
+    return ops.Slice(operand, start_indices, limit_indices, strides)
 
   def DynamicSlice(self, operand, start_indices, slice_sizes):
     """Enqueues a slice op with dynamic start indices onto the computation.
 
     Args:
-      operand: LocalOp for the N dimensional array to be sliced.
-      start_indices: LocalOp for the 1D array of N integers containing the
+      operand: XlaOp for the N dimensional array to be sliced.
+      start_indices: XlaOp for the 1D array of N integers containing the
         starting indices of the slice.
       slice_sizes: iterable of N integers containing the slice sizes in each
         dimension.
 
     Returns:
-      A LocalOp representing the added DynamicSlice op.
+      An XlaOp representing the added DynamicSlice op.
     """
-    return self._client.DynamicSlice(operand, start_indices, slice_sizes)
+    slice_sizes = list(slice_sizes)
+    if isinstance(start_indices, _xla.XlaOp):
+      start_indices = [
+          ops.Reshape(ops.Slice(start_indices, [i], [i + 1], [1]), [])
+          for i in range(len(slice_sizes))
+      ]
+    return ops.DynamicSlice(operand, list(start_indices), slice_sizes)
 
   def DynamicUpdateSlice(self, operand, update, start_indices):
     """Enqueues a dynamic update slice operation onto the computation.
 
     Args:
-      operand: LocalOp for the N dimensional array to be updated.
+      operand: XlaOp for the N dimensional array to be updated.
       update: N dimensional array comprising the slice update.
       start_indices: Rank-1 array of N integers comprising the starting indices
         of the slice along each dimension.
 
     Returns:
-      A LocalOp representing the added DynamicUpdateSlice op.
+      An XlaOp representing the added DynamicUpdateSlice op.
     """
-    return self._client.DynamicUpdateSlice(operand, update, start_indices)
+    if isinstance(start_indices, _xla.XlaOp):
+      ndims = self._builder.GetShape(start_indices).dimensions()[0]
+      start_indices = [
+          ops.Reshape(ops.Slice(start_indices, [i], [i + 1], [1]), [])
+          for i in range(ndims)
+      ]
+    return ops.DynamicUpdateSlice(operand, update, list(start_indices))
 
-  def Tuple(self, *ops):
+  def Tuple(self, *elems):
     """Enqueues a tuple operation onto the computation.
 
     Args:
-      ops: a sequence of tuple operands (each a LocalOp).
+      elems: a sequence of tuple operands (each a XlaOp).
 
     Returns:
-      A LocalOp representing the added Tuple op.
+      An XlaOp representing the added Tuple op.
     """
-    return self._client.Tuple(ops)
-
-  def GetTupleElement(self, tup, index):
-    """Enqueues a 'get tuple element' operation onto the computation.
-
-    Args:
-      tup: the tuple operand (a LocalOp).
-      index: numeric index to select from the tuple.
-
-    Returns:
-      A LocalOp representing the added GetTupleElement op.
-    """
-    return self._client.GetTupleElement(tup, index)
+    return ops.Tuple(self._builder, list(elems))
 
   def Call(self, computation_to_apply, operands):
     """Enqueues a call operation onto the computation.
 
     Args:
       computation_to_apply: a Computation object.
-      operands: an iterable of LocalOp. The number and types of operands must
+      operands: an iterable of XlaOp. The number and types of operands must
         match the arity of computation_to_apply.
 
     Returns:
-      A LocalOp representing the added call op.
+      An XlaOp representing the added call op.
     """
-    return self._client.Call(computation_to_apply.computation, operands)
+    return ops.Call(self._builder, computation_to_apply.computation,
+                    list(operands))
 
   def CustomCall(self,
                  call_target_name,
@@ -1433,7 +1243,7 @@ class ComputationBuilder(object):
 
     Args:
       call_target_name: the name of the function to call.
-      operands: an iterable of LocalOp. The number and types of operands must
+      operands: an iterable of XlaOp. The number and types of operands must
         match the arity of `operand_shapes_with_layout`.
       shape_with_layout: the shape of the operator's output, with layout.
       operand_shapes_with_layout: the shapes of `operands`, including the
@@ -1441,61 +1251,62 @@ class ComputationBuilder(object):
       opaque: an opaque string passed to the backend.
 
     Returns:
-      A LocalOp representing the added custom call op.
+      An XlaOp representing the added custom call op.
     """
     opaque = opaque or b''
-    return self._client.CustomCall(call_target_name, operands,
-                                   shape_with_layout,
-                                   operand_shapes_with_layout, opaque)
+    return ops.CustomCall(
+        self._builder, call_target_name, list(operands),
+        shape_with_layout.as_xla_shape(),
+        [s.as_xla_shape() for s in operand_shapes_with_layout], opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
 
     Args:
-      operands: an iterable of LocalOp.
+      operands: an iterable of XlaOp.
       computation_to_apply: a Computation object.
       dimensions: dimensions over which to apply map the function.
 
     Returns:
-      A LocalOp representing the added Map op.
+      An XlaOp representing the added Map op.
     """
-    return self._client.Map(operands, computation_to_apply.computation,
-                            dimensions)
+    return ops.Map(self._builder, list(operands),
+                   computation_to_apply.computation, dimensions, [])
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
     """Enqueues a reduction operation onto the computation.
 
     Args:
-      operand: reduction operand (LocalOp).
-      init_value: reduction initial value (LocalOp).
+      operand: reduction operand (XlaOp).
+      init_value: reduction initial value (XlaOp).
       computation_to_apply: a Computation object - binary reduction function.
       dimensions: sequence of dimensions (integers) to reduce on.
 
     Returns:
-      A LocalOp representing the added Reduce op.
+      An XlaOp representing the added Reduce op.
     """
-    return self._client.Reduce(operand, init_value,
-                               computation_to_apply.computation, dimensions)
+    return ops.Reduce(self._builder, [operand], [init_value],
+                      computation_to_apply.computation, dimensions)
 
   def ReduceWindow(self, operand, init_value, computation_to_apply,
                    window_dimensions, window_strides, padding):
     """Enqueues a windowed reduction operation onto the computation.
 
     Args:
-      operand: reduction operand (LocalOp).
-      init_value: reduction initial value (LocalOp).
+      operand: reduction operand (XlaOp).
+      init_value: reduction initial value (XlaOp).
       computation_to_apply: a binary reduction function (Computation).
       window_dimensions: dimensions of window (sequence of integers).
       window_strides: strides for window (sequence of integers).
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
 
     Returns:
-      A LocalOp representing the added ReduceWindow op.
+      An XlaOp representing the added ReduceWindow op.
     """
     pads = _convert_padding_type_to_pad_values(
         padding,
         self.GetShape(operand).dimensions(), window_dimensions, window_strides)
-    return self._client.ReduceWindowWithGeneralPadding(
+    return ops.ReduceWindowWithGeneralPadding(
         operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, (), (), pads)
 
@@ -1505,8 +1316,8 @@ class ComputationBuilder(object):
     """Enqueues a windowed reduction operation onto the computation.
 
     Args:
-      operand: reduction operand (LocalOp).
-      init_value: reduction initial value (LocalOp).
+      operand: reduction operand (XlaOp).
+      init_value: reduction initial value (XlaOp).
       computation_to_apply: a binary reduction function (Computation).
       window_dimensions: dimensions of window (sequence of integers).
       window_strides: strides for window (sequence of integers).
@@ -1515,9 +1326,9 @@ class ComputationBuilder(object):
       padding: length-N array-like of pairs of integers of (low, high) padding.
 
     Returns:
-      A LocalOp representing the added ReduceWindow op.
+      An XlaOp representing the added ReduceWindow op.
     """
-    return self._client.ReduceWindowWithGeneralPadding(
+    return ops.ReduceWindowWithGeneralPadding(
         operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, base_dilations, window_dilations,
         padding)
@@ -1526,30 +1337,30 @@ class ComputationBuilder(object):
     """Enqueues an RngNormal operation onto the computation.
 
     Args:
-      mu: A LocalOp to an F32 scalar specifying the mean.
-      sigma: A LocalOp to an F32 scalar specifying the standard deviation.
+      mu: An XlaOp to an F32 scalar specifying the mean.
+      sigma: An XlaOp to an F32 scalar specifying the standard deviation.
       dims: A 1D array-like of nonnegative integers specifying the dimensions.
-    Returns: a LocalOp to the generated array of F32 values.
+    Returns: a XlaOp to the generated array of F32 values.
     """
-    shape = Shape.array_shape(self.GetShape(mu).element_type(), dims)
-    return self._client.RngNormal(mu, sigma, shape)
+    shape = _xla.Shape.Array(self.GetShape(mu).xla_element_type(), dims)
+    return ops.RngNormal(mu, sigma, shape)
 
   def RngUniform(self, a, b, dims):
     """Enqueues an RngUniform operation onto the computation.
 
     Args:
-      a: a LocalOp to an F32, S32, or U32 scalar (consistent with the type of b)
+      a: a XlaOp to an F32, S32, or U32 scalar (consistent with the type of b)
         specifying the low end of the interval [a, b) over which values are
         generated.
-      b: a LocalOp to an F32, S32, or U32 scalar (consistent with the type of a)
+      b: a XlaOp to an F32, S32, or U32 scalar (consistent with the type of a)
         specifying the high end of the interval [a, b) over which values are
         generated.
       dims: A 1D array-like of nonnegative integers specifying the dimensions.
-    Returns: a LocalOp to the generated array of values with the same numeric
-      type (F32, S32, or U32) as the arguments a and b.
+    Returns: a XlaOp to the generated array of values with the same numeric type
+      (F32, S32, or U32) as the arguments a and b.
     """
-    shape = Shape.array_shape(self.GetShape(a).element_type(), dims)
-    return self._client.RngUniform(a, b, shape)
+    shape = _xla.Shape.Array(self.GetShape(a).xla_element_type(), dims)
+    return ops.RngUniform(a, b, shape)
 
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
@@ -1557,26 +1368,25 @@ class ComputationBuilder(object):
     Args:
       cond: a Computation for the loop condition, which has type T -> PRED
       body: a Computation for the loop body, which has type T -> T
-      init: a LocalOp for the initial parameter, which has type T
-    Returns: a LocalOp representing the While operation.
+      init: a XlaOp for the initial parameter, which has type T
+    Returns: a XlaOp representing the While operation.
     """
-    return self._client.While(cond.computation, body.computation, init)
+    return ops.While(cond.computation, body.computation, init)
 
   def Conditional(self, pred, true_operand, true_computation, false_operand,
                   false_computation):
     """Enqueues a Conditional operation onto the computation.
 
     Args:
-      predicate: a LocalOp to test, which has scalar type PRED
-      true_operand: a LocalOp of type T_0
+      predicate: a XlaOp to test, which has scalar type PRED
+      true_operand: a XlaOp of type T_0
       true_computation: a Computation to apply to true_operand, type T_0 -> S
       false_operand: a ComputationDatahandle of type T_1
       false_computation: a Computation to apply to false_operand, type T_1 -> S
-    Returns: a LocalOp representing the Conditional operation.
+    Returns: a XlaOp representing the Conditional operation.
     """
-    return self._client.Conditional(pred, true_operand,
-                                    true_computation.computation, false_operand,
-                                    false_computation.computation)
+    return ops.Conditional(pred, true_operand, true_computation.computation,
+                           false_operand, false_computation.computation)
 
   def IsConstant(self, operand):
     """Checks whether the given operand is a compile-time constant.
@@ -1587,70 +1397,70 @@ class ComputationBuilder(object):
       meaning its value does not depend on any parametersor, or on stateful
       operators such as `RngNormal` or `Infeed`.
     """
-    return self._client.IsConstant(operand)
+    return self._builder.IsConstant(operand)
 
   def BuildConstantSubGraph(self, operand):
     """Builds a constant sub graph.
 
     Args:
-      operand: a LocalOp to test.
+      operand: a XlaOp to test.
     Returns: a Computation that is rooted on the given `operand` which is a
       compile-time constant.
     """
-    return self._client.BuildConstantSubGraph(operand)
-
-  def Dot(self, lhs, rhs):
-    """Enqueues a dot operation onto the computation.
-
-    Args:
-      lhs: LocalOp for the rank 1 or rank 2 left-hand-side array.
-      rhs: LocalOp for the rank 1 or rank 2 right-hand-side array.
-    Returns: a LocalOp representing the Dot operation.
-    """
-    return self._client.Dot(lhs, rhs)
+    return ops.BuildConstantSubGraph(operand)
 
   def DotGeneral(self, lhs, rhs, dimension_numbers):
     """Enqueues a general dot operation onto the computation.
 
     Args:
-      lhs: LocalOp for the left-hand-side array.
-      rhs: LocalOp for the right-hand-side array.
+      lhs: XlaOp for the left-hand-side array.
+      rhs: XlaOp for the right-hand-side array.
       dimension_numbers: either a DotDimensionNumbers or a nested tuple
         ((lhs_contract, rhs_contract), (lhs_batch, rhs_batch)) of lists of
         integers representing the dimensions to treat as contracting dimensions
         and batch dimensions on each input operand.
-    Returns: a LocalOp representing the DotGeneral operation.
+    Returns: a XlaOp representing the DotGeneral operation.
     """
     if isinstance(dimension_numbers, tuple):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
-    return self._client.DotGeneral(lhs, rhs, dimension_numbers)
+    return ops.DotGeneral(lhs, rhs, dimension_numbers)
 
   def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
     """Enqueues a Conv operation onto the computation.
 
     Args:
-      lhs: LocalOp for the rank N+2 array of inputs.
-      rhs: LocalOp for the rank N+2 array of kernel weights.
+      lhs: XlaOp for the rank N+2 array of inputs.
+      rhs: XlaOp for the rank N+2 array of kernel weights.
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
       feature_group_count: number of feature groups for grouped convolution.
-    Returns: a LocalOp representing the Conv operation.
+    Returns: a XlaOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
         padding,
         self.GetShape(lhs).dimensions()[2:],
         self.GetShape(rhs).dimensions()[2:], window_strides)
     return self.ConvGeneralDilated(
-        lhs, rhs, window_strides, pads, (), (), dimension_numbers=None,
+        lhs,
+        rhs,
+        window_strides,
+        pads, [], [],
+        dimension_numbers=None,
         feature_group_count=feature_group_count)
 
-  def ConvWithGeneralPadding(self, lhs, rhs, window_strides, padding,
-                             lhs_dilation, rhs_dilation, feature_group_count=1):
+  def ConvWithGeneralPadding(self,
+                             lhs,
+                             rhs,
+                             window_strides,
+                             padding,
+                             lhs_dilation,
+                             rhs_dilation,
+                             feature_group_count=1):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
-      lhs: LocalOp for the rank N+2 array of inputs.
-      rhs: LocalOp for the rank N+2 array of kernel weights.
+      lhs: XlaOp for the rank N+2 array of inputs.
+      rhs: XlaOp for the rank N+2 array of kernel weights.
       window_strides: length-N array-like of kernel strides.
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of dilation factors.
@@ -1661,8 +1471,14 @@ class ComputationBuilder(object):
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
     """
     return self.ConvGeneralDilated(
-        lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
-        dimension_numbers=None, feature_group_count=feature_group_count)
+        lhs,
+        rhs,
+        list(window_strides),
+        list(padding),
+        list(lhs_dilation),
+        list(rhs_dilation),
+        dimension_numbers=None,
+        feature_group_count=feature_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1679,14 +1495,20 @@ class ComputationBuilder(object):
     dimension_numbers.output_spatial_dimensions.extend(range(2, 2 + nd))
     return dimension_numbers
 
-  def ConvGeneralDilated(self, lhs, rhs, window_strides, padding, lhs_dilation,
-                         rhs_dilation, dimension_numbers=None,
+  def ConvGeneralDilated(self,
+                         lhs,
+                         rhs,
+                         window_strides,
+                         padding,
+                         lhs_dilation,
+                         rhs_dilation,
+                         dimension_numbers=None,
                          feature_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
-      lhs: LocalOp for the rank N+2 array of inputs.
-      rhs: LocalOp for the rank N+2 array of kernel weights.
+      lhs: XlaOp for the rank N+2 array of inputs.
+      rhs: XlaOp for the rank N+2 array of kernel weights.
       window_strides: length-N array-like of integer kernel strides.
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of integer dilation factors.
@@ -1711,7 +1533,7 @@ class ComputationBuilder(object):
           default, use the same dimension numbering as Conv and
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
-    Returns: a LocalOp representing the ConvGenralDilated operation.
+    Returns: a XlaOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
@@ -1734,25 +1556,21 @@ class ComputationBuilder(object):
       dimension_numbers.output_spatial_dimensions.extend(
           sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
                  key=lambda i: rhs_spec.index(out_spec[i])))
-    return self._client.ConvGeneralDilated(
-        lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
-        dimension_numbers, feature_group_count)
+    return ops.ConvGeneralDilated(lhs, rhs, window_strides, padding,
+                                  lhs_dilation, rhs_dilation, dimension_numbers,
+                                  feature_group_count)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
-    return self._client.Sort(operand, dimension)
+    return ops.Sort(operand, [], dimension)
 
   def SortKeyVal(self, keys, values, dimension=-1):
     """Enqueues a key-value sort operation onto the computation."""
-    return self._client.SortKeyVal(keys, values, dimension)
-
-  def Cholesky(self, a, lower=True):
-    """Enqueues a Cholesky decomposition onto the computation."""
-    return self._client.Cholesky(a, lower)
+    return ops.Sort(keys, [values], dimension)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""
-    return self._client.QR(a, full_matrices)
+    return self.Tuple(*ops.QR(a, full_matrices))
 
   def TriangularSolve(self,
                       a,
@@ -1764,69 +1582,132 @@ class ComputationBuilder(object):
                       unit_diagonal=False):
     """Enqueues a triangular-solve operation onto the computation."""
     if not transpose_a:
-      transpose = 1
+      transpose = _xla.TriangularSolveOptions_Transpose.NO_TRANSPOSE
       if conjugate_a:
         a = self.Conj(a)
     else:
-      transpose = 3 if conjugate_a else 2
-    return self._client.TriangularSolve(a, b, left_side, lower, unit_diagonal,
-                                        transpose)
+      transpose = (
+          _xla.TriangularSolveOptions_Transpose.ADJOINT
+          if conjugate_a else _xla.TriangularSolveOptions_Transpose.TRANSPOSE)
+    return ops.TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose)
 
   def Eigh(self, a, full_matrices=True):
     """Enqueues a symmetric/Hermitian eigendecomposition."""
-    return self._client.Eigh(a, full_matrices)
+    return self.Tuple(*ops.Eigh(a, full_matrices))
 
   def SVD(self, a):
     """Enqueues a singular value decomposition."""
-    return self._client.SVD(a)
-
-  def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
-    """Enqueues a Gather operation onto the computation."""
-    return self._client.Gather(a, start_indices, dimension_numbers, slice_sizes)
+    return self.Tuple(*ops.SVD(a))
 
   def Scatter(self, a, scatter_indices, updates, update_computation,
               dimension_numbers):
     """Enqueues a Scatter operation onto the computation."""
-    return self._client.Scatter(
-        a, scatter_indices, updates, update_computation.computation,
-        dimension_numbers)
+    return ops.Scatter(a, scatter_indices, updates,
+                       update_computation.computation, dimension_numbers)
+
+
+_UNARY_OPS = [
+    'Not',
+    'Clz',
+    'Abs',
+    'Exp',
+    'Expm1',
+    'Floor',
+    'Round',
+    'Ceil',
+    'Log',
+    'Log1p',
+    'Sign',
+    'Cos',
+    'Sin',
+    'Tanh',
+    'IsFinite',
+    'Sqrt',
+    'Rsqrt',
+    'Square',
+    'Reciprocal',
+    'Neg',
+    'Erf',
+    'Erfc',
+    'ErfInv',
+    'Lgamma',
+    'Digamma',
+    'Acos',
+    'Asin',
+    'Atan',
+    'Tan',
+    'Acosh',
+    'Asinh',
+    'Atanh',
+    'Cosh',
+    'Sinh',
+    'Real',
+    'Imag',
+    'Conj',
+]
+
+_BINARY_OPS = [
+    'Eq',
+    'Ne',
+    'Ge',
+    'Gt',
+    'Lt',
+    'Le',
+    'Add',
+    'Sub',
+    'Mul',
+    'Div',
+    'Rem',
+    'Max',
+    'Min',
+    'And',
+    'Or',
+    'Xor',
+    'Pow',
+    'ShiftLeft',
+    'ShiftRightArithmetic',
+    'ShiftRightLogical',
+    'Atan2',
+    'Complex',
+]
+
+_OTHER_OPS = [
+    'BitcastConvertType',
+    'Broadcast',
+    'BroadcastInDim',
+    'Cholesky',
+    'Clamp',
+    'Collapse',
+    'ConvertElementType',
+    'Dot',
+    'Gather',
+    'GetTupleElement',
+    'Rev',
+    'Select',
+    'SliceInDim',
+]
 
 
 def _forward_methods_to_local_builder():
   """Forward remaining ComputationBuilder methods to the C API.
 
-  Set up methods, corresponding to unary and binary XLA operations,
+  Set up methods, corresponding to XLA operations,
   whose calls are forwarded in a boilerplate manner to the underlying
-  ComputationBuilder C-extension API.
+  _xla.ops API.
   """
 
-  def forward_to_local_builder_with_handles(target_method, is_binop=False):
-    """Generate a forwarding method that wraps/unwraps data handles."""
+  def forward_op(target_method):
 
-    def forward(self, *args, **kwargs):
-      arg_list = list(args)
-
-      if is_binop and len(arg_list) < 3:
-        arg_list.append(kwargs.get('broadcast_dimensions', ()))
-
-      return target_method(
-          self._client,  # pylint: disable=protected-access
-          *arg_list)
+    def forward(builder, *args, **kwargs):
+      del builder
+      return target_method(*args, **kwargs)
 
     return forward
 
-  for method_name in _UNARY_OPS:
-    forward = forward_to_local_builder_with_handles(
-        getattr(c_api.ComputationBuilder, method_name))
+  for method_name in itertools.chain(_UNARY_OPS, _BINARY_OPS, _OTHER_OPS):
+    forward = forward_op(getattr(ops, method_name))
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
-
-  for method_name in _BINARY_OPS:
-    forward = forward_to_local_builder_with_handles(
-        getattr(c_api.ComputationBuilder, method_name), is_binop=True)
-    forward.__name__ = method_name
-    setattr(ComputationBuilder, method_name, forward)
-
 
 _forward_methods_to_local_builder()
 
@@ -1838,7 +1719,7 @@ def register_cpu_custom_call_target(name, fn):
     name: bytes containing the name of the function.
     fn: a PyCapsule object containing the function pointer.
   """
-  c_api.RegisterCpuCustomCallTarget(name, fn)
+  _xla.RegisterCpuCustomCallTarget(name, fn)
 
 
 class PaddingConfigDimension(object):
@@ -1846,9 +1727,9 @@ class PaddingConfigDimension(object):
   __slots__ = ('edge_padding_low', 'edge_padding_high', 'interior_padding')
 
   def __init__(self):
-    self.edge_padding_low = []
-    self.edge_padding_high = []
-    self.interior_padding = []
+    self.edge_padding_low = 0
+    self.edge_padding_high = 0
+    self.interior_padding = 0
 
 
 class PaddingConfig(object):
