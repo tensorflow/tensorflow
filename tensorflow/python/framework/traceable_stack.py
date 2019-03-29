@@ -110,13 +110,17 @@ class TraceableStack(object):
     """Remove last-inserted object and return it, without filename/line info."""
     return self._stack.pop().obj
 
+  def peek_top_obj(self):
+    """Return the most recent stored object."""
+    return self._stack[-1].obj
+
   def peek_objs(self):
-    """Return list of stored objects ordered newest to oldest."""
-    return [t_obj.obj for t_obj in reversed(self._stack)]
+    """Return iterator over stored objects ordered newest to oldest."""
+    return (t_obj.obj for t_obj in reversed(self._stack))
 
   def peek_traceable_objs(self):
-    """Return list of stored TraceableObjects ordered newest to oldest."""
-    return list(reversed(self._stack))
+    """Return iterator over stored TraceableObjects ordered newest to oldest."""
+    return reversed(self._stack)
 
   def __len__(self):
     """Return number of items on the stack, and used for truth-value testing."""

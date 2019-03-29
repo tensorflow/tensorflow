@@ -4468,11 +4468,11 @@ class Graph(object):
       RuntimeError: If device scopes are not properly nested.
     """
     self._add_device_to_stack(device_name_or_function, offset=2)
-    old_top_of_stack = self._device_function_stack.peek_objs()[0]
+    old_top_of_stack = self._device_function_stack.peek_top_obj()
     try:
       yield
     finally:
-      new_top_of_stack = self._device_function_stack.peek_objs()[0]
+      new_top_of_stack = self._device_function_stack.peek_top_obj()
       if old_top_of_stack is not new_top_of_stack:
         raise RuntimeError("Exiting device scope without proper scope nesting.")
       self._device_function_stack.pop_obj()
@@ -5042,9 +5042,8 @@ class Graph(object):
       the filename and lineno members point to the code location where
       Graph.device was called directly or indirectly by the user.
     """
-    traceable_objects = self._device_function_stack.peek_traceable_objs()
     snapshot = []
-    for obj in traceable_objects:
+    for obj in self._device_function_stack.peek_traceable_objs():
       obj_copy = obj.copy_metadata()
       obj_copy.obj = obj.obj.display_name
       snapshot.append(obj_copy)
@@ -5076,8 +5075,10 @@ class Graph(object):
 
   def _snapshot_colocation_stack_metadata(self):
     """Return colocation stack metadata as a dictionary."""
-    traceable_objects = self._colocation_stack.peek_traceable_objs()
-    return {obj.obj.name: obj.copy_metadata() for obj in traceable_objects}
+    return {
+        traceable_obj.obj.name: traceable_obj.copy_metadata()
+        for traceable_obj in self._colocation_stack.peek_traceable_objs()
+    }
 
   @_colocation_stack.setter
   def _colocation_stack(self, colocation_stack):
