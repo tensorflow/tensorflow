@@ -652,6 +652,30 @@ string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
   return op_name_a.substr(0, last_scope_separator);
 }
 
+// Verifies that shapes of the given inputs match after masking the specified
+// dimension.
+Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
+                         int masked_dim, absl::string_view node_name) {
+  size_t num_inputs = inputs.size();
+  if (num_inputs <= 1) return Status::OK();
+
+  const nvinfer1::Dims dims_0 = inputs.at(0).GetTrtDims();
+  for (size_t i = 1; i < num_inputs; ++i) {
+    const nvinfer1::Dims dim_i = inputs.at(i).GetTrtDims();
+    if (dim_i.nbDims != dims_0.nbDims) {
+      return errors::InvalidArgument(
+          "Received inputs with inconsistent rank, at ", node_name);
+    }
+    for (size_t j = 0; j < dims_0.nbDims; ++j) {
+      if (dim_i.d[j] != dims_0.d[j] && j != masked_dim) {
+        return errors::InvalidArgument(
+            "Received inputs with inconsistent shape, at ", node_name);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 TRT_ShapedWeights::TRT_ShapedWeights(DataType type) : type_(type) {
   shape_.nbDims = 0;
 }
@@ -3388,6 +3412,80 @@ Status ConvertReduce(OpConverterParams* params) {
   return Status::OK();
 }
 
+// TensorRT does not support the Pack op natively. Therefore, Pack op is
+// converted by first expanding input tensors by adding a new dimension of size
+// one at the specified axis and then concatenating the tensors at the same
+// axis.
+Status ConvertPack(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  TFAttrs attrs(node_def);
+  const int num_inputs = attrs.get<int64>("N");
+  if (num_inputs != inputs.size()) {
+    return errors::InvalidArgument(
+        "Number of inputs for Pack is inconsistent with N attribute, at ",
+        node_def.name());
+  }
+
+  // Validate inputs. Values must be tensors for now.
+  std::vector<std::pair<string, bool>> inputs_is_weight;
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs_is_weight.push_back({StrCat("values_", i), false});
+  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
+
+  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  if (num_inputs > 1) {
+    // Verify that inputs are compatible for concatenation after the expansion.
+    TF_RETURN_IF_ERROR(
+        VerifyShapesMatch(inputs, /*masked_dim=*/-1, node_def.name()));
+  }
+
+  // Convert axis from the TensorFlow format to TensorRT format.
+  const nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  const int64 tf_axis = attrs.get<int64>("axis");
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(), &trt_axis));
+
+  // Compute expanded dimensions and then reshape input tensors.
+  std::vector<int> tensor_dims(dims.d, dims.d + dims.nbDims);
+  tensor_dims.insert(tensor_dims.begin() + trt_axis, 1);
+  nvinfer1::Dims expanded_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(tensor_dims, &expanded_dims));
+  std::vector<nvinfer1::ITensor*> expanded_tensors;
+  for (const TRT_TensorOrWeights& tensor : inputs) {
+    nvinfer1::ITensor* expanded_tensor = nullptr;
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        tensor, expanded_dims, params->validation_only, &expanded_tensor));
+    if (!params->validation_only) {
+      expanded_tensors.push_back(expanded_tensor);
+    }
+  }
+  if (params->validation_only) return Status::OK();
+
+  // If there is only one tensor in the input, return the expanded tensor.
+  if (num_inputs == 1) {
+    params->outputs->push_back(TRT_TensorOrWeights(expanded_tensors[0]));
+    return Status::OK();
+  }
+
+  // Otherwise, concatenate expanded tensors.
+  nvinfer1::IConcatenationLayer* layer =
+      params->converter->network()->addConcatenation(
+          const_cast<nvinfer1::ITensor**>(expanded_tensors.data()),
+          expanded_tensors.size());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  // Note that trt_axis stays the same even after expanding tensors at the axis.
+  layer->setAxis(trt_axis);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+}
+
 Status ConvertPad(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3631,21 +3729,9 @@ Status ConvertConcat(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       ConvertAxis(axis[0], dim.nbDims, node_def.name(), &trt_axis));
   // Check that dimensions match on non-concatenate axis.
-  for (int i = 0; i < num_inputs; i++) {
-    auto dim_i = inputs.at(i).GetTrtDims();
-    if (dim_i.nbDims != dim.nbDims) {
-      return errors::InvalidArgument(
-          "ConcatV2 received inputs with inconsistent rank, at ",
-          node_def.name());
-    }
-    for (int j = 0; j < dim.nbDims; j++) {
-      if (j != trt_axis && dim_i.d[j] != dim.d[j]) {
-        return errors::InvalidArgument(
-            "ConcatV2 received inputs with inconsistent shape, at ",
-            node_def.name());
-      }
-    }
-  }
+  TF_RETURN_IF_ERROR(VerifyShapesMatch(
+      absl::Span<const TRT_TensorOrWeights>(inputs).first(num_inputs), trt_axis,
+      node_def.name()));
   if (params->validation_only) return Status::OK();
 
   // Gather inputs as tensors
@@ -4250,6 +4336,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
+  (*registration)["Pack"] = ConvertPack;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
