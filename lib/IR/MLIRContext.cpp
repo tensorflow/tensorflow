@@ -704,6 +704,11 @@ void Dialect::registerDialect(MLIRContext *context) {
 
   // Lock access to the context registry.
   llvm::sys::SmartScopedWriter<true> registryLock(impl.contextMutex);
+  assert(llvm::none_of(impl.dialects,
+                       [this](std::unique_ptr<Dialect> &dialect) {
+                         return dialect->getNamespace() == getNamespace();
+                       }) &&
+         "a dialect with the given namespace has already been registered");
   impl.dialects.push_back(std::unique_ptr<Dialect>(this));
 }
 
@@ -737,7 +742,7 @@ std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() {
 }
 
 void Dialect::addOperation(AbstractOperation opInfo) {
-  assert((namePrefix.empty() || (opInfo.name.split('.').first == namePrefix)) &&
+  assert(opInfo.name.split('.').first == namePrefix &&
          "op name doesn't start with dialect prefix");
   assert(&opInfo.dialect == this && "Dialect object mismatch");
   auto &impl = context->getImpl();

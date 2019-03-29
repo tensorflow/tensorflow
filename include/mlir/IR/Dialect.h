@@ -127,11 +127,10 @@ public:
   static bool isValidNamespace(StringRef str);
 
 protected:
-  /// Note: The namePrefix can be empty, but it must not contain '.' characters.
-  /// Note: If the name is non empty, then all operations belonging to this
-  /// dialect will need to start with the namePrefix followed by a '.'.
+  /// Note: The namePrefix must not contain '.' characters.
+  /// Note: All operations belonging to this dialect will need to have names
+  ///       starting with the namePrefix followed by '.'.
   /// Example:
-  ///       - "" for the standard operation set.
   ///       - "tf" for the TensorFlow ops like "tf.add".
   Dialect(StringRef namePrefix, MLIRContext *context);
 
