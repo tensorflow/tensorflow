@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#endif
 
 #define EIGEN_USE_GPU
 
@@ -75,10 +79,14 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
                                              FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
+#if GOOGLE_CUDA  
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
+#else // TENSORFLOW_USE_ROCM#
+  hipMemcpyToSymbol(HIP_SYMBOL(thread_counter), &zero, sizeof(int));
+#endif
   GPU_LAUNCH_KERNEL(FillKernel<Distribution>, cfg.block_count,
                                cfg.thread_per_block, 0, d.stream(),
-                               Distribution(), state_size, output_size,
+                               dist, state_size, output_size,
                                state_data, output_data);
 }
 
@@ -130,4 +138,4 @@ template struct UpdateVariableAndFill_Philox<
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOR_USE_ROCM
