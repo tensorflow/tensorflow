@@ -168,6 +168,7 @@ py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_rocm"],
 )
 
 py_library(
