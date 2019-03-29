@@ -265,7 +265,7 @@ VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
       cluster_(cluster),
       use_static_shapes_(use_static_shapes),
       use_aggressive_shape_inference_(use_aggressive_shape_inference),
-      placer_(cluster) {
+      placer_(cluster->GetDevices()) {
   graph_costs_.num_ops_total = 0;
   initialized_ = false;
   track_mem_usage_snapshot_ = VLOG_IS_ON(1);
