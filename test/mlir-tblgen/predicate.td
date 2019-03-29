@@ -16,7 +16,11 @@ def TautologyElementTest: PredOpTrait<
   "first operand is a vector or tensor with the same elemental type as itself",
   TCopVTEtIsSameAs<0, 0>>;
 
-def Identity : Op<"identity", [TautologyElementTest]> {
+def OperandAndResultElementTypeTest : PredOpTrait<
+   "first operand is a vector or tensor with the same elemental type as first result",
+   TCresVTEtIsSameAsOp<0, 0>>;
+
+def Identity : Op<"identity", [TautologyElementTest, OperandAndResultElementTypeTest]> {
   let arguments = (ins
       I32OrF32Tensor:$x);
   let results = (outs
@@ -39,6 +43,9 @@ def IdentityI32 : Op<"identity_i32", [PredOpTrait<
 // Verify tautology constraint.
 // CHECK: if (!((((*this->getOperation()).getNumOperands() > std::max(0,0))) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType()))))
 // CHECK-NEXT: return emitOpError("failed to verify that first operand is a vector or tensor with the same elemental type as itself");
+// Verify OperandAndResultElementTypeTest constraint
+// CHECK: if (!((((*this->getOperation()).getNumResults() > 0)) && (((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getResult(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getResult(0)->getType().cast<VectorOrTensorType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType()))))
+// CHECK-NEXT: return emitOpError("failed to verify that first operand is a vector or tensor with the same elemental type as first result");
 
 // CHECK-LABEL: IdentityI32::verify
 // CHECK: if (!((((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType().isInteger(32)))))

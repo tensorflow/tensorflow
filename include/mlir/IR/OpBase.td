@@ -698,6 +698,20 @@ class TCopVTEtIsSameAs<int i, int j> : AllOf<[
     // TODO: This could be made into C++ function instead.
     CPred<"{0}.getOperand(" # i # ")->getType().cast<VectorOrTensorType>().getElementType() == {0}.getOperand(" # j # ")->getType().cast<VectorOrTensorType>().getElementType()">]>;
 
+// Predicate to verify that the i'th result and the j'th operand have the same
+// elemental type.
+// Type Constraint result`i`'s Vector or Tensor Element type is Same As
+// Type Constraint Operand `j`'s Vector or Tensor Element type.
+class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
+    CPred<"{0}.getNumResults() > " # i>,
+    CPred<"{0}.getNumOperands() > " # j>,
+    SubstLeaves<"{0}",  "{0}.getResult(" # i # ")->getType()",
+      IsVectorOrTensorTypePred>,
+    SubstLeaves<"{0}",  "{0}.getOperand(" # j # ")->getType()",
+      IsVectorOrTensorTypePred>,
+    // TODO: This could be made into C++ function instead.
+    CPred<"{0}.getResult(" # i # ")->getType().cast<VectorOrTensorType>().getElementType() == {0}.getOperand(" # j # ")->getType().cast<VectorOrTensorType>().getElementType()">]>;
+
 //===----------------------------------------------------------------------===//
 // Pattern definitions
 //===----------------------------------------------------------------------===//
