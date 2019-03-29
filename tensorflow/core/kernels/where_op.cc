@@ -217,6 +217,7 @@ namespace functor {
   DECLARE_GPU_NUMTRUE(T, int64);
 
 TF_CALL_NUMBER_TYPES(DECLARE_GPU_NUMTRUE_TYPE);
+TF_CALL_int32(DECLARE_GPU_NUMTRUE_TYPE);
 TF_CALL_bool(DECLARE_GPU_NUMTRUE_TYPE);
 
 #undef DECLARE_GPU_NUMTRUE_TYPE
@@ -241,6 +242,7 @@ TF_CALL_bool(DECLARE_GPU_NUMTRUE_TYPE);
   DECLARE_GPU_WHERE(5, T);
 
 TF_CALL_WHERE_GPU_TYPES(DECLARE_GPU_WHERE_TYPES);
+TF_CALL_int32(DECLARE_GPU_WHERE_TYPES);
 
 #undef DECLARE_GPU_WHERE_TYPES
 #undef DECLARE_GPU_WHERE
@@ -370,12 +372,13 @@ class WhereGPUOp : public AsyncOpKernel {
       Name("Where").Device(DEVICE_GPU).TypeConstraint<T>("T"), WhereGPUOp<T>);
 
 TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
-REGISTER_KERNEL_BUILDER(Name("Where")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_WHERE_OP));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Where")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
-                        WhereCPUOp<int32>);
+                        WhereCPUOp<int32>));
 
 #undef REGISTER_GPU_WHERE_OP
 

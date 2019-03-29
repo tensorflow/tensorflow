@@ -77,6 +77,8 @@ REGISTER_KERNEL_BUILDER(Name("StackPushV2").Device(DEVICE_CPU),
                           TemplatedStackPushOp</*allow_swapping=*/true>);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_bool(REGISTER_GPU_KERNEL));
 #undef REGISTER_GPU_KERNEL
 
 // Special GPU kernels for int32 and bool.
@@ -98,8 +100,8 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
                               .TypeConstraint<type>("T"),                 \
                           TemplatedStackPushOp</*allow_swapping=*/true>);
 
-REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_KERNEL(bool);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(int32));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(bool));
 
 #undef REGISTER_GPU_HOST_KERNEL
 
@@ -144,6 +146,8 @@ REGISTER_KERNEL_BUILDER(Name("StackPopV2").Device(DEVICE_CPU), StackPopOp);
                           StackPopOp);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_bool(REGISTER_GPU_KERNEL));
 #undef REGISTER_GPU_KERNEL
 
 // Special GPU kernels for int32 and bool.
@@ -163,8 +167,8 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
                               .TypeConstraint<type>("elem_type"), \
                           StackPopOp);
 
-REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_KERNEL(bool);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(int32));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(bool));
 
 #undef REGISTER_GPU_HOST_KERNEL
 

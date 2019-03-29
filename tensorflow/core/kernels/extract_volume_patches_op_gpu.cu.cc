@@ -29,7 +29,7 @@ namespace functor {
 #define REGISTER(T) template struct ExtractVolumePatchesForward<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-
+TF_CALL_INTEGRAL_TYPES(REGISTER);
 #undef REGISTER
 
 }  // end namespace functor

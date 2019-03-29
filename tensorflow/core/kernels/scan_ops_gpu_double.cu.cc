@@ -26,6 +26,14 @@ template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<double>,
                               double>;
 template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<double>,
                               double>;
+template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int64>,
+                              int64>;
+template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<int64>,
+                              int64>;
+template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<uint64>,
+                              uint64>;
+template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<uint64>,
+                              uint64>;
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

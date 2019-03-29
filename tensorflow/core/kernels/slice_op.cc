@@ -316,18 +316,18 @@ TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_bool(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Slice")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("size")
                             .HostMemory("output"),
-                        SliceOp<CPUDevice, int32>);
+                        SliceOp<CPUDevice, int32>));
 
 #undef REGISTER_GPU
 

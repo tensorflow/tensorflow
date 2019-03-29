@@ -44,6 +44,7 @@ typedef Eigen::GpuDevice GPUDevice;
 DEFINE_GPU_SPECS(Eigen::half);
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
+DEFINE_GPU_SPECS(int32);
 // TODO: The following fails to compile.
 // TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 

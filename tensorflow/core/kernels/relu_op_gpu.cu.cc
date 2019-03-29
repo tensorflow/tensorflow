@@ -158,7 +158,7 @@ struct Relu<Device, qint8> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-
+TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_KERNELS);
 template struct functor::Relu<GPUDevice, qint8>;
 
 }  // end namespace tensorflow

@@ -325,7 +325,7 @@ struct ResizeNearestNeighborGrad<CPUDevice, T, half_pixel_centers,
                           ResizeNearestNeighborOpGrad<CPUDevice, T>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
-
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_KERNEL));
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -343,7 +343,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
                           ResizeNearestNeighborOpGrad<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
-
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_KERNEL));
 #undef REGISTER_KERNEL
 
 #endif  // GOOGLE_CUDA

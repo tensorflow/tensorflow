@@ -150,6 +150,7 @@ void Relu<GPUDevice, qint8>::operator()(
 extern template struct Relu<GPUDevice, qint8>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -186,6 +187,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       SeluGradOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 #undef REGISTER_GPU_KERNELS
 
 template <typename Device>

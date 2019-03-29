@@ -51,6 +51,8 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
                           ReductionOp<GPUDevice, type, int64,                \
                                       functor::EuclideanNormReducer<type>>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNELS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int64(REGISTER_GPU_KERNELS));
 TF_CALL_complex64(REGISTER_GPU_KERNELS);
 TF_CALL_complex128(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS

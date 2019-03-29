@@ -68,6 +68,8 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
+    CASE(int32)
+    CASE(int64)
 // Using TF_CALL_GPU_NUMBER_TYPES(CASE) results in the compiler complaining
 // that CASE is not defined...hence the above construction
 #undef CASE
@@ -78,6 +80,46 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
   return Status::OK();
 }
 
+// template<typename T,InplaceOpType op>
+// struct InplaceOperation{
+// __device__ void operator()(T* p, T *q){};
+// };
+
+// template<typename T>
+// struct InplaceOperation<T,I_UPDATE>{
+// __device__ EIGEN_STRONG_INLINE void operator()(T* p,T* q){
+//   *p=ldq(q)
+// }
+// };
+
+// template<typename T>
+// struct InplaceOperation<T,I_ADD>{
+// __device__ EIGEN_STRONG_INLINE void operator()(T* p,T* q){
+//   *p+=ldq(q)
+// }
+// };
+
+// template<typename T>
+// struct InplaceOperation<T,I_SUB>{
+// __device__ EIGEN_STRONG_INLINE void operator()(T* p,T* q){
+//   *p-=ldq(q)
+// }
+// };
+
+// template <typename T, template <T,typename InPlaceOpType> class U>
+// __global__ void DoInplaceOpKernel(int nthreads, const int64 rows,
+//                                   const int64 cols, const int64 n, const T* src,
+//                                   const int32* rowids, T* dst) {
+//   CUDA_1D_KERNEL_LOOP(idx, nthreads) {
+//     int64 r = idx / cols;
+//     int64 c = idx % cols;
+//     r = (rowids[r] % rows + rows) % rows;  // Guard index range.
+//     T* p = dst + r * cols + c;
+//     const T* q = src + idx;
+//     U()(p,q)
+//     }
+//   }
+// }
 template <typename T, InplaceOpType op>
 __global__ void DoInplaceOpKernel(int nthreads, const int64 rows,
                                   const int64 cols, const int64 n, const T* src,
@@ -172,6 +214,7 @@ Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
+    CASE(int32)
     CASE(int64)
 #undef CASE
     default:
@@ -194,6 +237,7 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
+    CASE(int32)
     CASE(int64)
 #undef CASE
     default:

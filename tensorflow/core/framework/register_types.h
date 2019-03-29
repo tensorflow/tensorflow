@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 // Two sets of macros:
 // - TF_CALL_float, TF_CALL_double, etc. which call the given macro with
@@ -216,13 +217,31 @@ limitations under the License.
       TF_CALL_complex128(m) TF_CALL_bool(m) TF_CALL_string(m)             \
           TF_CALL_QUANTIZED_TYPES(m)
 #if TF_WITH_GPU_ENABLED_INT_OPS
-#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(k) \
-  k
+// Need 3 levels to expand couter macro properly
+#define TF_GPU_INT_OPS_UNIQ_HELPER(ctr,include_exclude,...) \
+  TF_GPU_INT_OPS_HELPER(ctr,include_exclude,__VA_ARGS__)
+#define TF_GPU_INT_OPS_HELPER(ctr,include_exclude,...)                      \
+  static bool int_ops_helper_class__##ctr##__object = []() -> bool {      \
+    bool use_int_types_on_gpu = false;                                    \
+    if (!tensorflow::ReadBoolFromEnvVar("TF_USE_INT_TYPES_ON_GPU", false, \
+                                        &use_int_types_on_gpu)            \
+             .ok()) {                                                     \
+      LOG(FATAL) << "Error from ReadBoolFromEnvVar";                      \
+    };                                                                    \
+    if (use_int_types_on_gpu == bool(include_exclude)) {                                           \
+      __VA_ARGS__                                                    \
+    }                                                                     \
+    return use_int_types_on_gpu;                                          \
+  }();
+#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(include_exclude,...) \
+  TF_GPU_INT_OPS_UNIQ_HELPER(__COUNTER__, include_exclude,__VA_ARGS__)
+
 #else
-#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(k) // Disable if compile flag was not set
+#define TF_INCLUDE_IF_WITH_EXTRA_TYPES( \
+    k)  // Disable if compile flag was not set
 #endif
 #define TF_IF_WITH_EXTRA_TYPES(x, y) \
-  TF_INCLUDE_IF_WITH_EXTRA_TYPES(y) \
+  TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,y)  \
   x
 
 #ifdef TENSORFLOW_SYCL_NO_DOUBLE

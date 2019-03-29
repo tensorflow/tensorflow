@@ -42,6 +42,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
+DEFINE_GPU_SPECS(Eigen::half);
+DEFINE_GPU_SPECS(int32);
 DEFINE_GPU_SPECS_OP(bool, int32, scatter_op::UpdateOp::ASSIGN);
 DEFINE_GPU_SPECS_OP(bool, int64, scatter_op::UpdateOp::ASSIGN);
 // TODO(b/27222123): The following fails to compile due to lack of support for

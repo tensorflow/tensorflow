@@ -99,57 +99,68 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_QUANTIZED_TYPES(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
+TF_CALL_QUANTIZED_TYPES(REGISTER);
+TF_CALL_bool(REGISTER);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
-                                               ArgOp);
+                                               ArgOp));
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceArgOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), ArgOp);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,REGISTER_KERNEL_BUILDER(
+    Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), ArgOp));
 #undef REGISTER
 
-REGISTER_KERNEL_BUILDER(Name(kArgOp)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
                             .TypeConstraint<ResourceHandle>("T"),
-                        ArgOp);
+                        ArgOp));
 
-REGISTER_KERNEL_BUILDER(Name(kArgOp)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
                             .TypeConstraint<string>("T"),
-                        ArgOp);
+                        ArgOp));
 
 REGISTER_KERNEL_BUILDER(
     Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<Variant>("T"), ArgOp);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,REGISTER_KERNEL_BUILDER(
+    Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<ResourceHandle>("T"), ArgOp));;
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,REGISTER_KERNEL_BUILDER(
+    Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<string>("T"), ArgOp));
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_QUANTIZED_TYPES(REGISTER)
-REGISTER(Variant)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
-                                                   .Device(DEVICE_GPU)
-                                                   .HostMemory("input")
-                                                   .TypeConstraint<int32>("T"),
-                                               RetvalOp);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
+TF_CALL_QUANTIZED_TYPES(REGISTER);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER));
+REGISTER(Variant);
+TF_CALL_bool(REGISTER);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_resource(REGISTER));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_string(REGISTER));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input")
+                            .TypeConstraint<int32>("T"),
+                        RetvalOp));
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceRetOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), RetvalOp);
 
-REGISTER_KERNEL_BUILDER(Name(kRetOp)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<ResourceHandle>("T")
                             .HostMemory("input"),
-                        RetvalOp);
+                        RetvalOp));
 
-REGISTER_KERNEL_BUILDER(Name(kRetOp)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<string>("T")
                             .HostMemory("input"),
-                        RetvalOp);
+                        RetvalOp));
 #undef REGISTER
 
 class PassOn : public OpKernel {
@@ -188,21 +199,21 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
-
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNELS));
 #undef REGISTER_GPU_KERNELS
 
-REGISTER_KERNEL_BUILDER(Name("_ListToArray")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("_ListToArray")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
-                        PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
+                        PassOn));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
-                        PassOn);
+                        PassOn));
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(type)                                       \

@@ -118,6 +118,7 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
   template struct functor::HistogramFixedWidthFunctor<GPUDevice, type, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPEC);
+TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_SPEC);
 #undef REGISTER_GPU_SPEC
 
 }  // namespace tensorflow

@@ -223,12 +223,12 @@ TF_CALL_variant(REGISTER_ADDN_GPU);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("AddN")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("AddN")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("inputs")
                             .HostMemory("sum"),
-                        AddNOp<CPUDevice, int32>);
+                        AddNOp<CPUDevice, int32>));
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

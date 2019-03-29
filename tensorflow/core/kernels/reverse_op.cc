@@ -342,6 +342,12 @@ namespace functor {
 
 TF_CALL_uint8(DECLARE_GPU_SPEC);
 TF_CALL_int8(DECLARE_GPU_SPEC);
+TF_CALL_uint16(DECLARE_GPU_SPEC);
+TF_CALL_int16(DECLARE_GPU_SPEC);
+TF_CALL_uint32(DECLARE_GPU_SPEC);
+TF_CALL_int32(DECLARE_GPU_SPEC);
+TF_CALL_uint64(DECLARE_GPU_SPEC);
+TF_CALL_int64(DECLARE_GPU_SPEC);
 TF_CALL_bool(DECLARE_GPU_SPEC);
 TF_CALL_half(DECLARE_GPU_SPEC);
 TF_CALL_float(DECLARE_GPU_SPEC);
@@ -371,8 +377,9 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                               .TypeConstraint<int64>("Tidx") \
                               .HostMemory("axis"),           \
                           ReverseV2Op<GPUDevice, T, int64>)
-TF_CALL_uint8(REGISTER_GPU_KERNELS);
-TF_CALL_int8(REGISTER_GPU_KERNELS);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,TF_CALL_uint8(REGISTER_GPU_KERNELS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,TF_CALL_int8(REGISTER_GPU_KERNELS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 TF_CALL_bool(REGISTER_GPU_KERNELS);
 TF_CALL_half(REGISTER_GPU_KERNELS);
 TF_CALL_float(REGISTER_GPU_KERNELS);
@@ -384,29 +391,29 @@ TF_CALL_complex128(REGISTER_GPU_KERNELS);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Reverse")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Reverse")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("tensor")
                             .HostMemory("dims")
                             .HostMemory("output"),
-                        ReverseOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                        ReverseOp<CPUDevice, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("Tidx")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32, int32>);
-REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                        ReverseV2Op<CPUDevice, int32, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("Tidx")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32, int64>);
+                        ReverseV2Op<CPUDevice, int32, int64>));
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL

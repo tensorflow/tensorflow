@@ -106,7 +106,7 @@ namespace functor {
   DECLARE(Eigen::internal::ProdReducer<T>, T);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
-
+TF_CALL_INTEGRAL_TYPES(DECLARE_FOR_ALL_REDUCERS);
 #undef DECLARE_FOR_ALL_REDUCERS
 #undef DECLARE
 
@@ -147,6 +147,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("axis"),                                           \
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -184,6 +185,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("axis"),                                            \
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 

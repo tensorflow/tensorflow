@@ -24,7 +24,7 @@
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
-
+#include "tensorflow/core/util/cuda_device_functions.h"
 namespace tensorflow {
 
 using GPUDevice = Eigen::GpuDevice;
@@ -128,6 +128,7 @@ struct Resampler2DFunctor<GPUDevice, T> {
 
 // TODO(fviola): gcudacc fails at compile time with Eigen::half.
 // template struct Resampler2DFunctor<GPUDevice, Eigen::half>;
+template struct Resampler2DFunctor<GPUDevice, Eigen::half>;
 template struct Resampler2DFunctor<GPUDevice, float>;
 template struct Resampler2DFunctor<GPUDevice, double>;
 
@@ -136,7 +137,7 @@ template struct Resampler2DFunctor<GPUDevice, double>;
 namespace {
 
 #define UPDATE_GRAD_DATA_POINT(x, y, v)                                \
-  atomicAdd(grad_data + (batch_id * data_batch_stride +                \
+  CudaAtomicAdd(grad_data + (batch_id * data_batch_stride +                \
                          data_channels * (y * data_width + x) + chan), \
             v)
 
@@ -206,10 +207,10 @@ __global__ void ResamplerGrad2DKernel(
           (cx <= data_width - 1 && fy >= 0) ? GET_DATA_POINT(cx, fy) : zero;
 
       // Update partial gradients wrt relevant warp field entries
-      atomicAdd(grad_warp + warp_id_x,
+      CudaAtomicAdd(grad_warp + warp_id_x,
                 grad_output_value * ((one - dy) * (img_cxcy - img_fxcy) +
                                      dy * (img_cxfy - img_fxfy)));
-      atomicAdd(grad_warp + warp_id_y,
+      CudaAtomicAdd(grad_warp + warp_id_y,
                 grad_output_value * ((one - dx) * (img_cxcy - img_cxfy) +
                                      dx * (img_fxcy - img_fxfy)));
 
@@ -275,6 +276,8 @@ struct ResamplerGrad2DFunctor<GPUDevice, T> {
 };
 
 template struct ResamplerGrad2DFunctor<GPUDevice, float>;
+template struct ResamplerGrad2DFunctor<GPUDevice, double>;
+template struct ResamplerGrad2DFunctor<GPUDevice, Eigen::half>;
 
 }  // namespace functor
 

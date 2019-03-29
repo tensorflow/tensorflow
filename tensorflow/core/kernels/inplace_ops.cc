@@ -236,18 +236,19 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
                               .TypeConstraint<type>("T"), \
                           ParallelConcatUpdate<GPUDevice>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER)
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER));
 #undef REGISTER
 
 // Register versions that operate on int32 data on the CPU even though the op
 // has been placed on the GPU
 
-REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                             .Device(DEVICE_GPU)
                             .HostMemory("value")
                             .HostMemory("update")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
-                        ParallelConcatUpdate<CPUDevice>);
+                        ParallelConcatUpdate<CPUDevice>));
 #endif
 
 class InplaceOpBase : public OpKernel {
@@ -507,38 +508,39 @@ REGISTER(float);
 REGISTER(double);
 REGISTER(Eigen::half);
 REGISTER(int64);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER));
 
-REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("i")
                             .HostMemory("v")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_UPDATE>);
-REGISTER_KERNEL_BUILDER(Name("InplaceAdd")
+                        InplaceOp<CPUDevice, functor::I_UPDATE>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("InplaceAdd")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("i")
                             .HostMemory("v")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_ADD>);
-REGISTER_KERNEL_BUILDER(Name("InplaceSub")
+                        InplaceOp<CPUDevice, functor::I_ADD>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("InplaceSub")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("i")
                             .HostMemory("v")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_SUB>);
+                        InplaceOp<CPUDevice, functor::I_SUB>));
 
-REGISTER_KERNEL_BUILDER(Name("DeepCopy")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("DeepCopy")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
-                        CopyOp<CPUDevice>);
+                        CopyOp<CPUDevice>));
 REGISTER_EMPTY(float, GPU);
 REGISTER_EMPTY(double, GPU);
 REGISTER_EMPTY(Eigen::half, GPU);

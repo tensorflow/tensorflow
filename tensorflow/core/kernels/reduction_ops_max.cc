@@ -54,12 +54,12 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
-REGISTER_GPU_KERNELS(int64);
-
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_KERNELS(int64));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
     Name("Max")
         .Device(DEVICE_GPU)
         .HostMemory("reduction_indices")
@@ -67,8 +67,8 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("output")
         .TypeConstraint<int32>("T")
         .TypeConstraint<int32>("Tidx"),
-    ReductionOp<CPUDevice, int32, int32, Eigen::internal::MaxReducer<int32>>);
-REGISTER_KERNEL_BUILDER(
+    ReductionOp<CPUDevice, int32, int32, Eigen::internal::MaxReducer<int32>>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
     Name("Max")
         .Device(DEVICE_GPU)
         .HostMemory("reduction_indices")
@@ -76,7 +76,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("output")
         .TypeConstraint<int32>("T")
         .TypeConstraint<int64>("Tidx"),
-    ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>);
+    ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>));
 
 #undef REGISTER_GPU_KERNELS
 

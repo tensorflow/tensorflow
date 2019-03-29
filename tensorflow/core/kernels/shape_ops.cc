@@ -84,6 +84,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                           ShapeOp<int64>);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -91,20 +92,20 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Shape")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("out_type"),
-                        ShapeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("Shape")
+                        ShapeOp<int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("out_type"),
-                        ShapeOp<int64>);
+                        ShapeOp<int64>));
 
 #endif  // GOOGLE_CUDA
 
@@ -136,26 +137,27 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                           ShapeNOp<int64>)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("ShapeN")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("out_type"),
-                        ShapeNOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("ShapeN")
+                        ShapeNOp<int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("out_type"),
-                        ShapeNOp<int64>);
+                        ShapeNOp<int64>));
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -279,6 +281,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                               .HostMemory("output"),             \
                           SizeOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -286,20 +289,20 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Size")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SizeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("Size")
+                        SizeOp<int32>));;
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SizeOp<int64>);
+                        SizeOp<int64>));
 
 #endif  // GOOGLE_CUDA
 
@@ -364,25 +367,26 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .HostMemory("dim"),            \
                           ExpandDimsOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-REGISTER_KERNEL_BUILDER(Name("ExpandDims")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("ExpandDims")
+                        ExpandDimsOp<int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp<int64>);
+                        ExpandDimsOp<int64>));
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -430,18 +434,19 @@ REGISTER_KERNEL_BUILDER(Name("Squeeze").Device(DEVICE_CPU), SqueezeOp);
       Name("Squeeze").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SqueezeOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Squeeze")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Squeeze")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SqueezeOp);
+                        SqueezeOp));
 #endif  // GOOGLE_CUDA
 
 #if TENSORFLOW_USE_SYCL
@@ -528,6 +533,10 @@ REGISTER_SYCL_HOST_KERNEL(bool);
       EnsureShapeOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_bool(REGISTER_GPU_KERNEL));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_string(REGISTER_GPU_KERNEL));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_resource(REGISTER_GPU_KERNEL));
 REGISTER_GPU_KERNEL(Variant);
 
 #undef REGISTER_GPU_KERNEL
@@ -544,10 +553,10 @@ REGISTER_GPU_KERNEL(Variant);
                               .TypeConstraint<type>("T"), \
                           EnsureShapeOp)
 
-REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_KERNEL(bool);
-REGISTER_GPU_HOST_KERNEL(string);
-REGISTER_GPU_HOST_KERNEL(ResourceHandle);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(int32));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(bool));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(string));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_GPU_HOST_KERNEL(ResourceHandle));
 
 #undef REGISTER_GPU_HOST_KERNEL
 
