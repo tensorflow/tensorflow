@@ -50,7 +50,7 @@ requirements in a unified infrastructure. For example, this includes:
     architectures.
 *   Ability to represent target-specific operations, e.g. the MXU on TPUs.
 
-As MLIR is a common IR which also supports hardware specific operations. Thus,
+MLIR is a common IR which also supports hardware specific operations. Thus,
 any investment into the infrastructure surrounding MLIR (e.g. the compiler
 passes that work on it) should yield good returns; many targets can use that
 infrastructure and will benefit from it.
@@ -67,11 +67,11 @@ project that compiles down to MLIR.
 
 We benefitted from the experience gained building HLO, LLVM and SIL when
 building MLIR. We will directly adopt existing best practices, e.g. writing and
-maintaining an IR spec, building an IR verifier, provide the ability to dump and
-parse MLIR files to text, write extensive unit tests with the
-[FileCheck](https://llvm.org/docs/CommandGuide/FileCheck.html) tool, and build
-the infrastructure as a set of modular libraries that can be combined in new
-ways. We plan to use the infrastructure developed by the XLA team for
+maintaining an IR spec, building an IR verifier, providing the ability to dump
+and parse MLIR files to text, writing extensive unit tests with the
+[FileCheck](https://llvm.org/docs/CommandGuide/FileCheck.html) tool, and
+building the infrastructure as a set of modular libraries that can be combined
+in new ways. We plan to use the infrastructure developed by the XLA team for
 performance analysis and benchmarking.
 
 Other lessons have been incorporated and integrated into the design in subtle
