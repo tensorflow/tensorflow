@@ -92,6 +92,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {
     case kTfLiteFloat32: {
+      // Float to int8, uint8.
       tflite::QuantizationParams op_params;
       op_params.zero_point = output->params.zero_point;
       op_params.scale = output->params.scale;
@@ -112,6 +113,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     case kTfLiteInt8: {
+      // int8 to int8, uint8.
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
@@ -133,6 +135,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     case kTfLiteUInt8: {
+      // uint8 to int8, uint8.
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
@@ -166,6 +169,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace quantize
 
+// This Op (QUANTIZE) quantizes the input and produces quantized output.
+// The input can be either float or quantized. If the input is float,
+// AffineQuantize takes scale and zero point and quantize the float value to
+// quantized output, in int8 or uint8 format. If the input is quantized value,
+// the op requantize the input (of a certain type, with a given scale and zero
+// point) to the output of the same or different type with a same or different
+// scale and zero point.
 TfLiteRegistration* Register_QUANTIZE_OPT() {
   static TfLiteRegistration r = {quantize::Init, quantize::Free,
                                  quantize::Prepare, quantize::Eval};
