@@ -266,6 +266,14 @@ public:
     return &it->second;
   }
 
+  // Returns the graph node for 'forOp'.
+  Node *getForOpNode(AffineForOp forOp) {
+    for (auto &idAndNode : nodes)
+      if (idAndNode.second.op == forOp.getOperation())
+        return &idAndNode.second;
+    return nullptr;
+  }
+
   // Adds a node with 'op' to the graph and returns its unique identifier.
   unsigned addNode(Operation *op) {
     Node node(nextNodeId++, op);
@@ -2096,17 +2104,79 @@ public:
     }
   }
 
-  // Searches the graph from 'dstNode' looking for a fusion candidate sibling
-  // node which shares no dependences with 'dstNode' but which loads from the
-  // same memref. Returns true and sets 'idAndMemrefToFuse' on success. Returns
-  // false otherwise.
+  // Searches function argument uses and the graph from 'dstNode' looking for a
+  // fusion candidate sibling node which shares no dependences with 'dstNode'
+  // but which loads from the same memref. Returns true and sets
+  // 'idAndMemrefToFuse' on success. Returns false otherwise.
   bool findSiblingNodeToFuse(Node *dstNode,
                              DenseSet<unsigned> *visitedSibNodeIds,
                              std::pair<unsigned, Value *> *idAndMemrefToFuse) {
-    // TODO(andydavis) Currently we discover siblings by following edges
-    // through an intermediate src node. We should also consider siblings
-    // which load from the same memref, but which do not necessarily share
-    // a src node parent (e.g. loading from a memref which is a function arg).
+    // Returns true if 'sibNode' can be fused with 'dstNode' for input reuse
+    // on 'memref'.
+    auto canFuseWithSibNode = [&](Node *sibNode, Value *memref) {
+      // Skip if 'outEdge' is not a read-after-write dependence.
+      // TODO(andydavis) Remove restrict to single load op restriction.
+      if (sibNode->getLoadOpCount(memref) != 1)
+        return false;
+      // Skip if there exists a path of dependent edges between
+      // 'sibNode' and 'dstNode'.
+      if (mdg->hasDependencePath(sibNode->id, dstNode->id) ||
+          mdg->hasDependencePath(dstNode->id, sibNode->id))
+        return false;
+      // Skip sib node if it loads to (and stores from) the same memref on
+      // which it also has an input dependence edge.
+      DenseSet<Value *> loadAndStoreMemrefSet;
+      sibNode->getLoadAndStoreMemrefSet(&loadAndStoreMemrefSet);
+      if (llvm::any_of(loadAndStoreMemrefSet, [=](Value *memref) {
+            return mdg->getIncomingMemRefAccesses(sibNode->id, memref) > 0;
+          }))
+        return false;
+
+      // Check that all stores are to the same memref.
+      DenseSet<Value *> storeMemrefs;
+      for (auto *storeOpInst : sibNode->stores) {
+        storeMemrefs.insert(storeOpInst->cast<StoreOp>().getMemRef());
+      }
+      if (storeMemrefs.size() != 1)
+        return false;
+      return true;
+    };
+
+    // Search for siblings which load the same memref function argument.
+    auto *fn = dstNode->op->getFunction();
+    for (unsigned i = 0, e = fn->getNumArguments(); i != e; ++i) {
+      for (auto &use : fn->getArgument(i)->getUses()) {
+        if (auto loadOp = use.getOwner()->dyn_cast<LoadOp>()) {
+          // Gather loops surrounding 'use'.
+          SmallVector<AffineForOp, 4> loops;
+          getLoopIVs(*use.getOwner(), &loops);
+          // Skip 'use' if it is not within a loop nest.
+          if (loops.empty())
+            continue;
+          Node *sibNode = mdg->getForOpNode(loops[0]);
+          assert(sibNode != nullptr);
+          // Skip 'use' if it not a sibling to 'dstNode'.
+          if (sibNode->id == dstNode->id)
+            continue;
+          // Skip 'use' if it has been visited.
+          if (visitedSibNodeIds->count(sibNode->id) > 0)
+            continue;
+          // Skip 'use' if it does not load from the same memref as 'dstNode'.
+          auto *memref = loadOp.getMemRef();
+          if (dstNode->getLoadOpCount(memref) == 0)
+            continue;
+          // Check if 'sibNode/dstNode' can be input-reuse fused on 'memref'.
+          if (canFuseWithSibNode(sibNode, memref)) {
+            visitedSibNodeIds->insert(sibNode->id);
+            idAndMemrefToFuse->first = sibNode->id;
+            idAndMemrefToFuse->second = memref;
+            return true;
+          }
+        }
+      }
+    }
+
+    // Search for siblings by following edges through an intermediate src node.
     // Collect candidate 'dstNode' input edges in 'inEdges'.
     SmallVector<MemRefDependenceGraph::Edge, 2> inEdges;
     mdg->forEachMemRefInputEdge(
@@ -2133,33 +2203,11 @@ public:
             auto *sibNode = mdg->getNode(sibNodeId);
             if (!sibNode->op->isa<AffineForOp>())
               return;
-            // Skip if 'outEdge' is not a read-after-write dependence.
-            // TODO(andydavis) Remove restrict to single load op restriction.
-            if (sibNode->getLoadOpCount(inEdge.value) != 1)
-              return;
-            // Skip if there exists a path of dependent edges between
-            // 'sibNode' and 'dstNode'.
-            if (mdg->hasDependencePath(sibNodeId, dstNode->id) ||
-                mdg->hasDependencePath(dstNode->id, sibNodeId))
-              return;
-            // Skip sib node if it loads to (and stores from) the same memref on
-            // which it also has an input dependence edge.
-            DenseSet<Value *> loadAndStoreMemrefSet;
-            sibNode->getLoadAndStoreMemrefSet(&loadAndStoreMemrefSet);
-            if (llvm::any_of(loadAndStoreMemrefSet, [=](Value *memref) {
-                  return mdg->getIncomingMemRefAccesses(sibNode->id, memref) >
-                         0;
-                }))
-              return;
-            // Check that all stores are to the same memref.
-            DenseSet<Value *> storeMemrefs;
-            for (auto *storeOpInst : sibNode->stores) {
-              storeMemrefs.insert(storeOpInst->cast<StoreOp>().getMemRef());
+            // Check if 'sibNode/dstNode' can be input-reuse fused on 'memref'.
+            if (canFuseWithSibNode(sibNode, outEdge.value)) {
+              // Add candidate 'outEdge' to sibling node.
+              outEdges.push_back(outEdge);
             }
-            if (storeMemrefs.size() != 1)
-              return;
-            // Add candidate 'outEdge' to sibling node.
-            outEdges.push_back(outEdge);
           });
 
       // Add first candidate if any were returned.

@@ -2340,3 +2340,73 @@ func @affine_add_mm_fused(%arg0: memref<1024x1024xf32>, %arg1: memref<1024x1024x
   // CHECK-NEXT:  }
   return
 }
+
+// -----
+
+func @affine_2mm_fused(%arg0: memref<1024x1024xf32>, %arg1: memref<1024x1024xf32>, %arg2: memref<1024x1024xf32>, %arg3: memref<1024x1024xf32>, %arg4: memref<1024x1024xf32>) {
+  %cst = constant 0.000000e+00 : f32
+  affine.for %i0 = 0 to 1024 {
+    affine.for %i1 = 0 to 1024 {
+      store %cst, %arg2[%i0, %i1] : memref<1024x1024xf32>
+    }
+  }
+  affine.for %i2 = 0 to 1024 {
+    affine.for %i3 = 0 to 1024 {
+      store %cst, %arg4[%i2, %i3] : memref<1024x1024xf32>
+    }
+  }
+  affine.for %i4 = 0 to 1024 {
+    affine.for %i5 = 0 to 1024 {
+      affine.for %i6 = 0 to 1024 {
+        %0 = load %arg1[%i6, %i5] : memref<1024x1024xf32>
+        %1 = load %arg0[%i4, %i6] : memref<1024x1024xf32>
+        %2 = mulf %1, %0 : f32
+        %3 = load %arg2[%i4, %i5] : memref<1024x1024xf32>
+        %4 = addf %3, %2 : f32
+        store %4, %arg2[%i4, %i5] : memref<1024x1024xf32>
+      }
+    }
+  }
+  affine.for %i7 = 0 to 1024 {
+    affine.for %i8 = 0 to 1024 {
+      affine.for %i9 = 0 to 1024 {
+        %5 = load %arg1[%i9, %i8] : memref<1024x1024xf32>
+        %6 = load %arg0[%i7, %i9] : memref<1024x1024xf32>
+        %7 = mulf %6, %5 : f32
+        %8 = load %arg4[%i7, %i8] : memref<1024x1024xf32>
+        %9 = addf %8, %7 : f32
+        store %9, %arg4[%i7, %i8] : memref<1024x1024xf32>
+      }
+    }
+  }
+
+  // Should fuse MM intialization loops into their consumers, then fuse the
+  // two matmul loops together for input reuse on '%arg0/%arg1'.
+
+  // CHECK:        affine.for %i0 = 0 to 1024 {
+  // CHECK-NEXT:     affine.for %i1 = 0 to 1024 {
+  // CHECK-NEXT:       store %cst, %arg4[%i0, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:       affine.for %i2 = 0 to 1024 {
+  // CHECK-NEXT:         %0 = load %arg1[%i2, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %1 = load %arg0[%i0, %i2] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %2 = mulf %1, %0 : f32
+  // CHECK-NEXT:         %3 = load %arg4[%i0, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %4 = addf %3, %2 : f32
+  // CHECK-NEXT:         store %4, %arg4[%i0, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:       }
+  // CHECK-NEXT:     }
+  // CHECK-NEXT:     affine.for %i3 = 0 to 1024 {
+  // CHECK-NEXT:       store %cst, %arg2[%i0, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:       affine.for %i4 = 0 to 1024 {
+  // CHECK-NEXT:         %5 = load %arg1[%i4, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %6 = load %arg0[%i0, %i4] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %7 = mulf %6, %5 : f32
+  // CHECK-NEXT:         %8 = load %arg2[%i0, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %9 = addf %8, %7 : f32
+  // CHECK-NEXT:         store %9, %arg2[%i0, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:       }
+  // CHECK-NEXT:     }
+  // CHECK-NEXT:   }
+
+  return
+}
