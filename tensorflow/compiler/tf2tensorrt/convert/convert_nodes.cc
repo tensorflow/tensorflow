@@ -3563,8 +3563,12 @@ Status ConvertSplit(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"axis", true}, {"value", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {
+    DataType::DT_FLOAT, DataType::DT_HALF,
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+        DataType::DT_INT32,
+#endif
+  }));
   int tf_axis = inputs.at(0).weights().GetSpan<int>()[0];
   TFAttrs attrs(node_def);
   const int num_split = attrs.get<int64>("num_split");
@@ -3576,8 +3580,12 @@ Status ConvertUnpack(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"value", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {
+    DataType::DT_FLOAT, DataType::DT_HALF,
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+        DataType::DT_INT32,
+#endif
+  }));
   // Input must be rank 1 or higher, since we can't unpack on axis 0.
   if (inputs.at(0).GetTrtDims().nbDims == 0) {
     return errors::Unimplemented(
