@@ -234,8 +234,8 @@ TEST(PartitionTest, Nodes2PartitionNodes2) {
   CheckPartitionSubgraphs(generated_subgraphs, {expected_subgraph0});
 }
 
-// Test a three node model where we want to partition nodes 0 and nodes
-// 2, but nodes 0 and nodes 2 cannot be in the same subgraph since node 2
+// Test a three node model where we want to partition node 0 and node
+// 2, but node 0 and node 2 cannot be in the same subgraph since node 2
 // depends on node 1 which depends on node 0. Thus, we need to produce three
 // subgraphs.
 //
