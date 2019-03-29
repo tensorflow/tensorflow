@@ -466,7 +466,7 @@ cc_library(
         ":gpu_autotuning_proto",
         ":gpu_executable",
         ":ir_emission_utils",
-        ":scratch_allocator",
+        ":redzone_allocator",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
@@ -494,6 +494,39 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "redzone_allocator",
+    srcs = ["redzone_allocator.cc"],
+    hdrs = ["redzone_allocator.h"],
+    deps = [
+        ":gpu_constants",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+tf_cc_test(
+    name = "redzone_allocator_test",
+    srcs = ["redzone_allocator_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":redzone_allocator",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:kernel",
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
     ],
 )
 
