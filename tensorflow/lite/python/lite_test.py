@@ -43,6 +43,7 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.training_util import write_graph
+from tensorflow.python.keras import regularizers
 
 
 class FromConstructor(test_util.TensorFlowTestCase):
@@ -1150,6 +1151,49 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     tflite_model = converter.convert()
     os.remove(keras_file)
     self.assertTrue(tflite_model)
+
+  def testFunctionalModelWithCustomObject(self):
+    """Test a Functional tf.keras model with multiple inputs and outputs."""
+    with session.Session().as_default():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
+      dense = keras.layers.Dense(
+          4,
+          name='dense',
+          activity_regularizer=regularizers.l1(0.01))
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+      model = keras.models.Model([a, b], [d, e])
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(),
+          metrics=[keras.metrics.mae],
+          loss_weights=[1., 0.5])
+
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 3))
+      output_d_np = np.random.random((10, 4))
+      output_e_np = np.random.random((10, 4))
+      model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
+
+      model.predict([input_a_np, input_b_np], batch_size=5)
+      fd, keras_file = tempfile.mkstemp('.h5')
+      try:
+        keras.models.save_model(model, keras_file)
+      finally:
+        os.close(fd)
+
+    # Convert to TFLite model.
+    converter = lite.TFLiteConverter.from_keras_model_file(
+        keras_file,
+        custom_objects=
+        {'CustomRegularizer': regularizers.l1(0.01)})
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    os.remove(keras_file)
 
   def testSequentialModelInputShape(self):
     """Test a Sequential tf.keras model testing input shapes argument."""
