@@ -138,10 +138,10 @@ private:
                -> Expected<llvm::orc::ThreadSafeModule> {
       (void)resp;
       if (!irTransformer)
-        return module;
+        return std::move(module);
       if (Error err = irTransformer(module.getModule()))
         return std::move(err);
-      return module;
+      return std::move(module);
     };
   }
 
@@ -301,7 +301,7 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     return std::move(err);
   engine->jit = std::move(*expectedJIT);
 
-  return engine;
+  return std::move(engine);
 }
 
 Expected<void (*)(void **)> ExecutionEngine::lookup(StringRef name) const {
