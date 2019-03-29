@@ -1294,6 +1294,15 @@ Status MasterSession::CreateWorkerSessions(
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
+    if (session_opts_.config.experimental()
+            .share_session_state_in_clusterspec_propagation()) {
+      // In a dynamic cluster, the ClusterSpec info is usually propagated by
+      // master sessions. However, in data parallel training with multiple
+      // masters
+      // ("between-graph replication"), we need to disable isolation for
+      // different worker sessions to update the same variables in PS tasks.
+      workers[i].request.set_isolate_session_state(false);
+    }
   }
 
   for (size_t i = 0; i < worker_names.size(); ++i) {

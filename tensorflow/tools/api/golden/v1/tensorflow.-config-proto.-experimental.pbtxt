@@ -38,6 +38,12 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "share_session_state_in_clusterspec_propagation"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
     reserved_range {
       start: 2
       end: 3

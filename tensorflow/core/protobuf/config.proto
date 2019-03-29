@@ -1,16 +1,18 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
 // add go_package externally with copybara
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
-import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/cluster.proto";
+import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
@@ -172,7 +174,7 @@ message GPUOptions {
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
   Experimental experimental = 9;
-};
+}
 
 // Options passed to the graph optimizer
 message OptimizerOptions {
@@ -267,7 +269,7 @@ message GraphOptions {
   // Not currently configurable via the public Python API (i.e. there is no API
   // stability guarantee if you import RewriterConfig explicitly).
   RewriterConfig rewrite_options = 10;
-};
+}
 
 message ThreadPoolOptionProto {
   // The number of threads in the pool.
@@ -292,7 +294,7 @@ message ThreadPoolOptionProto {
   //   value as is specified on this call.
   // - threadpools created this way are never garbage collected.
   string global_name = 2;
-};
+}
 
 message RPCOptions {
   // If true, always use RPC to contact the session target.
@@ -308,7 +310,7 @@ message RPCOptions {
   // If compression_algorithm is set, the compression level to be used.
   // From 0 (no compression), up to 3.
   int32 compression_level = 3;
-};
+}
 
 // Session configuration parameters.
 // The system picks appropriate values for fields that are not set.
@@ -406,7 +408,8 @@ message ConfigProto {
   ClusterDef cluster_def = 14;
 
   // If true, any resources such as Variables used in the session will not be
-  // shared with other sessions.
+  // shared with other sessions. However, when clusterspec propagation is
+  // enabled, this field is ignored and sessions are always isolated.
   bool isolate_session_state = 15;
 
   // Everything inside Experimental is subject to change and is not subject
@@ -443,12 +446,34 @@ message ConfigProto {
     // If true, use NCCL for CollectiveOps.  This feature is highly
     // experimental.
     bool collective_nccl = 7;
+
+    // In the following, session state means the value of a variable, elements
+    // in a hash table, or any other resource, accessible by worker sessions
+    // held by a TF server.
+    //
+    // When ClusterSpec propagation is enabled, the value of
+    // isolate_session_state is ignored when deciding whether to share session
+    // states in a TF server (for backwards compatibility reasons).
+    // - If share_session_state_in_clusterspec_propagation is true, the session
+    // states are shared.
+    // - If share_session_state_in_clusterspec_propagation is false, session
+    // states are isolated.
+    //
+    // When clusterspec propagation is not used, the value of
+    // share_session_state_in_clusterspec_propagation is ignored when deciding
+    // whether to share session states in a TF server.
+    // - If isolate_session_state is true, session states are isolated.
+    // - If isolate_session_state is false, session states are shared.
+    //
+    // TODO(b/129330037): Add a single API that consistently treats
+    // isolate_session_state and ClusterSpec propagation.
+    bool share_session_state_in_clusterspec_propagation = 8;
   };
 
   Experimental experimental = 16;
 
   // Next: 17
-};
+}
 
 // Options for a single Run() call.
 message RunOptions {
