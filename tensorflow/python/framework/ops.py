@@ -1121,7 +1121,8 @@ def internal_convert_to_tensor(value,
                                as_ref=False,
                                preferred_dtype=None,
                                ctx=None,
-                               accept_symbolic_tensors=True):
+                               accept_symbolic_tensors=True,
+                               accept_composite_tensors=False):
   """Implementation of the public convert_to_tensor."""
   if ctx is None: ctx = context.context()
   if isinstance(value, EagerTensor):
@@ -1191,7 +1192,10 @@ def internal_convert_to_tensor(value,
     if ret is NotImplemented:
       continue
 
-    if not isinstance(ret, Tensor):
+    is_acceptable_type = (isinstance(ret, Tensor) or (
+        accept_composite_tensors and
+        isinstance(ret, composite_tensor.CompositeTensor)))
+    if not is_acceptable_type:
       raise RuntimeError(
           "%sConversion function %r for type %s returned non-Tensor: %r" %
           (_error_prefix(name), conversion_func, base_type, ret))
@@ -1475,7 +1479,8 @@ def internal_convert_to_tensor_or_composite(value,
     return value
   else:
     return internal_convert_to_tensor(
-        value, dtype=dtype, name=name, as_ref=as_ref)
+        value, dtype=dtype, name=name, as_ref=as_ref,
+        accept_composite_tensors=True)
 
 
 def internal_convert_n_to_tensor_or_composite(values,
