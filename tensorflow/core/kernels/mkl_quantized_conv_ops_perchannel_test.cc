@@ -214,7 +214,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
        357, 357, 178, 178, 187, 187, 234, 234, 261, 261, 121, 121});
 
   // Test whether the values are as expected.
-  test::ExpectTensorNear<float>(expected_float, output_float, 0.5);
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
 }  // namespace tensorflow
