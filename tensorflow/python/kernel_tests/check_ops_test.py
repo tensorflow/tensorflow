@@ -1564,7 +1564,7 @@ class AssertShapesTest(test.TestCase):
     regex = (
         r"Tensor .*.  "
         r"Specified shape must be an iterable.  "
-        r"An iterable has the attribute `__iter__`.  "
+        r"An iterable has the attribute `__iter__` or `__getitem__`.  "
         r"Received specified shape: 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 

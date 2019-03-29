@@ -1643,11 +1643,15 @@ def assert_shapes(shapes, data=None, summarize=None,
 
     for x in shapes:
       symbolic_shape = shapes[x]
-      if not hasattr(symbolic_shape, "__iter__"):
+      is_iterable = (
+        hasattr(symbolic_shape, "__iter__") or
+        hasattr(symbolic_shape, "__getitem__") # For Python 2 compat.
+      )
+      if not is_iterable:
         raise ValueError(
             '%s.  '
             'Tensor %s.  Specified shape must be an iterable.  '
-            'An iterable has the attribute `__iter__`.  '
+            'An iterable has the attribute `__iter__` or `__getitem__`.  '
             'Received specified shape: %s'
             % (message, tensor_name(x), symbolic_shape))
       shapes[x] = tuple(shapes[x])
