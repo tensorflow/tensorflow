@@ -2786,7 +2786,17 @@ def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
   Converts `IndexedSlices` objects into dense tensors prior to adding.
-
+  tf.math.add_n performs same operation as'tf.math.accumulate_n' but it waits
+  for all of its inputs to be ready before beginning to sum, that consumes more 
+  memory.
+  For example:
+  
+  ```python
+  a = tf.constant([[3, 5], [4, 8]])
+  b = tf.constant([[1, 6], [2, 9]])
+  tf.math.add_n([a, b, a])  # [[7, 16], [10, 25]]
+   
+  ``` 
   Args:
     inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
       and type.
