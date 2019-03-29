@@ -13,6 +13,12 @@
 # limitations under the License.
 # =============================================================================
 
+from tensorflow.contrib.ipu.python import autoshard_cnn
+from tensorflow.contrib.ipu.python import sharding
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import ops
+from tensorflow.python.util import tf_contextlib
+
 
 def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
@@ -27,5 +33,19 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
                         edge is a tuple with the name of the source op, and the
                         name of the destination op.
   """
-  from tensorflow.contrib.ipu.python import autoshard_cnn
   autoshard_cnn.automatic_sharding(num_shards, input_ts, loss_ts, edge_filter)
+
+
+@tf_contextlib.contextmanager
+def ipu_autoshard():
+
+  attrs = {"_IpuAutoshard": attr_value_pb2.AttrValue(s=b"ON")}
+
+  # pylint: disable=protected-access
+  with ops.get_default_graph()._attr_scope(attrs):
+    yield
+  # pylint: enable=protected-access
+
+  for op in ops.get_default_graph().get_operations():
+    if sharding.has_attr(op, "_IpuAutoshard"):
+      ops.get_default_graph().add_to_collection(sharding._IPU_AUTOSHARD, op)

@@ -349,55 +349,102 @@ class AutoshardTest(test_util.TensorFlowTestCase):
     #   self.assertTrue('SoftmaxCrossEntropyWithLogits' in op_types)
     #   self.assertTrue('ResourceApplyGradientDescent' in op_types)
 
-    def testSimpleXlaCompileTrainingInLoopV1WithEarlySharding(self):
+  def testSimpleXlaCompileTrainingInLoopV1WithEarlySharding(self):
 
-      dataset = tu.create_dual_increasing_dataset(3)
+    dataset = tu.create_dual_increasing_dataset(3)
 
-      infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-      def my_net():
-        def my_model(loss, x, y):
-          with ops.device("/device:IPU:0"):
-            inp = x
+    def my_net():
+      def my_model(loss, x, y):
+        with ops.device("/device:IPU:0"):
+          inp = x
 
-            x = layers.Conv2D(
-                8, 3, padding='same', name="conv1", use_bias=False)(x)
-            x = layers.Conv2D(
-                8, 3, padding='same', name="conv2", use_bias=False)(x)
-            x = layers.Conv2D(
-                8, 3, padding='same', name="conv3", use_bias=False)(x)
-            x = math_ops.reduce_max(x, axis=[1, 2])
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv1", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv2", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv3", use_bias=False)(x)
+          x = math_ops.reduce_max(x, axis=[1, 2])
 
-            cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
-                logits=x, labels=array_ops.stop_gradient(y))
-            loss = math_ops.reduce_mean(cross_entropy)
+          cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+              logits=x, labels=array_ops.stop_gradient(y))
+          loss = math_ops.reduce_mean(cross_entropy)
 
-            autoshard.automatic_sharding(2, inp, loss)
+          optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+          train = optim.minimize(cross_entropy)
 
-            optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
-            train = optim.minimize(cross_entropy)
+          autoshard.automatic_sharding(2, inp, loss)
 
-            return [loss, train]
+          return [loss, train]
 
-        loss = 0.0
-        return loops.repeat(
-            10, my_model, [loss], infeed_queue, use_while_v1=True)
+      loss = 0.0
+      return loops.repeat(
+          10, my_model, [loss], infeed_queue, use_while_v1=True)
 
-      ipu_compiler.compile(my_net, inputs=[])
+    ipu_compiler.compile(my_net, inputs=[])
 
-      op_set = ops.get_default_graph().get_operations()
-      op_types = set()
+    op_set = ops.get_default_graph().get_operations()
+    op_types = set()
 
-      for o in op_set:
-        if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
-          op_types.add(o.type)
-          self.assertTrue(o.get_attr('_XlaSharding') is not None)
+    for o in op_set:
+      if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
+        op_types.add(o.type)
+        self.assertTrue(o.get_attr('_XlaSharding') is not None)
 
-      self.assertTrue(len(op_types) > 10)
-      self.assertTrue('Conv2D' in op_types)
-      self.assertTrue('Conv2DBackpropInput' in op_types)
-      self.assertTrue('Conv2DBackpropFilter' in op_types)
-      self.assertTrue('ResourceApplyGradientDescent' in op_types)
+    self.assertTrue(len(op_types) > 10)
+    self.assertTrue('Conv2D' in op_types)
+    self.assertTrue('Conv2DBackpropInput' in op_types)
+    self.assertTrue('Conv2DBackpropFilter' in op_types)
+    self.assertTrue('ResourceApplyGradientDescent' in op_types)
+
+  def testMarkOpsWithAutoshardingContext(self):
+
+    with ops.device("/device:IPU:0"):
+
+      with autoshard.ipu_autoshard():
+        x = array_ops.placeholder(dtypes.float32, shape=[1, 32, 32, 4])
+        y = array_ops.placeholder(dtypes.float32, shape=[1, 8])
+
+        inp = x
+
+        with ops.name_scope('gradients'):
+
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv1", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv2", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv3", use_bias=False)(x)
+          x = math_ops.reduce_max(x, axis=[1, 2])
+
+        cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+            logits=x, labels=array_ops.stop_gradient(y))
+        loss = math_ops.reduce_mean(cross_entropy)
+
+      optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+      optim.minimize(loss)
+
+      autoshard.automatic_sharding(2, inp, loss)
+
+    to_autoshard = ops.get_default_graph().get_collection(
+        sharding._IPU_AUTOSHARD)
+
+    fwd_ops = []
+    bwd_ops = []
+
+    all_ops = ops.get_default_graph().get_operations()
+    for o in all_ops:
+      if o in to_autoshard:
+        fwd_ops.append(o)
+      else:
+        bwd_ops.append(o)
+
+    self.assertTrue(len(fwd_ops) > 10)
+    self.assertTrue(len(bwd_ops) > 10)
+
+    self.assertEqual(len([o for o in fwd_ops if 'Conv2D' == o.type]), 3)
 
 
 if __name__ == "__main__":
