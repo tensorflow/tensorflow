@@ -4007,3 +4007,32 @@ tf_cc_test(
         "@com_google_absl//absl/memory",
     ],
 )
+
+cc_library(
+    name = "slice_delaying",
+    srcs = ["slice_delaying.cc"],
+    hdrs = ["slice_delaying.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "slice_delaying_test",
+    srcs = ["slice_delaying_test.cc"],
+    deps = [
+        ":hlo",
+        ":slice_delaying",
+        ":hlo_dce",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
