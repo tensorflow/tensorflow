@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -vectorizer-test -compose-maps |  FileCheck %s
+// RUN: mlir-opt %s -vectorizer-test -compose-maps 2>&1 |  FileCheck %s
 
 // For all these cases, the test traverses the `test_affine_map` ops and
 // composes them in order one-by-one.

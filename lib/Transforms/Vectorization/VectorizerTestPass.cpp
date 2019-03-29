@@ -39,7 +39,6 @@
 
 using namespace mlir;
 
-using llvm::outs;
 using llvm::SetVector;
 
 using functional::map;
@@ -81,23 +80,22 @@ static llvm::cl::opt<bool> clTestNormalizeMaps(
     llvm::cl::cat(clOptionsCategory));
 
 namespace {
-
 struct VectorizerTestPass : public FunctionPass<VectorizerTestPass> {
   static constexpr auto kTestAffineMapOpName = "test_affine_map";
   static constexpr auto kTestAffineMapAttrName = "affine_map";
 
   void runOnFunction() override;
-  void testVectorShapeRatio();
-  void testForwardSlicing();
-  void testBackwardSlicing();
-  void testSlicing();
-  void testComposeMaps();
+  void testVectorShapeRatio(llvm::raw_ostream &outs);
+  void testForwardSlicing(llvm::raw_ostream &outs);
+  void testBackwardSlicing(llvm::raw_ostream &outs);
+  void testSlicing(llvm::raw_ostream &outs);
+  void testComposeMaps(llvm::raw_ostream &outs);
   void testNormalizeMaps();
 };
 
 } // end anonymous namespace
 
-void VectorizerTestPass::testVectorShapeRatio() {
+void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
   auto *f = &getFunction();
   using matcher::Op;
   SmallVector<int64_t, 8> shape(clTestVectorShapeRatio.begin(),
@@ -132,8 +130,8 @@ void VectorizerTestPass::testVectorShapeRatio() {
     if (!ratio.hasValue()) {
       opInst->emitNote("NOT MATCHED");
     } else {
-      outs() << "\nmatched: " << *opInst << " with shape ratio: ";
-      interleaveComma(MutableArrayRef<unsigned>(*ratio), outs());
+      outs << "\nmatched: " << *opInst << " with shape ratio: ";
+      interleaveComma(MutableArrayRef<unsigned>(*ratio), outs);
     }
   }
 }
@@ -157,7 +155,7 @@ static NestedPattern patternTestSlicingOps() {
   return Op(filter);
 }
 
-void VectorizerTestPass::testBackwardSlicing() {
+void VectorizerTestPass::testBackwardSlicing(llvm::raw_ostream &outs) {
   auto *f = &getFunction();
 
   SmallVector<NestedMatch, 8> matches;
@@ -166,15 +164,15 @@ void VectorizerTestPass::testBackwardSlicing() {
     SetVector<Operation *> backwardSlice;
     getBackwardSlice(m.getMatchedOperation(), &backwardSlice);
     auto strs = map(toString, backwardSlice);
-    outs() << "\nmatched: " << *m.getMatchedOperation()
-           << " backward static slice: ";
+    outs << "\nmatched: " << *m.getMatchedOperation()
+         << " backward static slice: ";
     for (const auto &s : strs) {
-      outs() << "\n" << s;
+      outs << "\n" << s;
     }
   }
 }
 
-void VectorizerTestPass::testForwardSlicing() {
+void VectorizerTestPass::testForwardSlicing(llvm::raw_ostream &outs) {
   auto *f = &getFunction();
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
@@ -182,15 +180,15 @@ void VectorizerTestPass::testForwardSlicing() {
     SetVector<Operation *> forwardSlice;
     getForwardSlice(m.getMatchedOperation(), &forwardSlice);
     auto strs = map(toString, forwardSlice);
-    outs() << "\nmatched: " << *m.getMatchedOperation()
-           << " forward static slice: ";
+    outs << "\nmatched: " << *m.getMatchedOperation()
+         << " forward static slice: ";
     for (const auto &s : strs) {
-      outs() << "\n" << s;
+      outs << "\n" << s;
     }
   }
 }
 
-void VectorizerTestPass::testSlicing() {
+void VectorizerTestPass::testSlicing(llvm::raw_ostream &outs) {
   auto *f = &getFunction();
 
   SmallVector<NestedMatch, 8> matches;
@@ -198,9 +196,9 @@ void VectorizerTestPass::testSlicing() {
   for (auto m : matches) {
     SetVector<Operation *> staticSlice = getSlice(m.getMatchedOperation());
     auto strs = map(toString, staticSlice);
-    outs() << "\nmatched: " << *m.getMatchedOperation() << " static slice: ";
+    outs << "\nmatched: " << *m.getMatchedOperation() << " static slice: ";
     for (const auto &s : strs) {
-      outs() << "\n" << s;
+      outs << "\n" << s;
     }
   }
 }
@@ -210,7 +208,7 @@ static bool customOpWithAffineMapAttribute(Operation &op) {
          VectorizerTestPass::kTestAffineMapOpName;
 }
 
-void VectorizerTestPass::testComposeMaps() {
+void VectorizerTestPass::testComposeMaps(llvm::raw_ostream &outs) {
   auto *f = &getFunction();
 
   using matcher::Op;
@@ -230,7 +228,7 @@ void VectorizerTestPass::testComposeMaps() {
   for (auto m : maps) {
     res = res ? res.compose(m) : m;
   }
-  simplifyAffineMap(res).print(outs() << "\nComposed map: ");
+  simplifyAffineMap(res).print(outs << "\nComposed map: ");
 }
 
 static bool affineApplyOp(Operation &op) { return op.isa<AffineApplyOp>(); }
@@ -276,23 +274,31 @@ void VectorizerTestPass::runOnFunction() {
   if (f.getBlocks().size() != 1)
     return;
 
+  std::string str;
+  llvm::raw_string_ostream outs(str);
+
   if (!clTestVectorShapeRatio.empty())
-    testVectorShapeRatio();
+    testVectorShapeRatio(outs);
 
   if (clTestForwardSlicingAnalysis)
-    testForwardSlicing();
+    testForwardSlicing(outs);
 
   if (clTestBackwardSlicingAnalysis)
-    testBackwardSlicing();
+    testBackwardSlicing(outs);
 
   if (clTestSlicingAnalysis)
-    testSlicing();
+    testSlicing(outs);
 
   if (clTestComposeMaps)
-    testComposeMaps();
+    testComposeMaps(outs);
 
   if (clTestNormalizeMaps)
     testNormalizeMaps();
+
+  if (!outs.str().empty()) {
+    getContext().emitDiagnostic(UnknownLoc::get(&getContext()), outs.str(),
+                                MLIRContext::DiagnosticKind::Note);
+  }
 }
 
 FunctionPassBase *mlir::createVectorizerTestPass() {
