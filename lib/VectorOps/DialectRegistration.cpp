@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
+#include "mlir/VectorOps/VectorOps.h"
 using namespace mlir;
 
-// Static initialization for SuperVectorOps dialect registration.
-static DialectRegistration<SuperVectorOpsDialect> SuperVectorOps;
+// Static initialization for VectorOps dialect registration.
+static DialectRegistration<VectorOpsDialect> VectorOps;

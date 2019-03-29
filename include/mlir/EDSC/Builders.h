@@ -26,7 +26,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 namespace mlir {
 

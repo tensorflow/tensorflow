@@ -22,9 +22,9 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -185,11 +185,11 @@ AffineMap mlir::makePermutationMap(
   return ::makePermutationMap(store.getIndices(), enclosingLoopToVectorDim);
 }
 
-bool mlir::matcher::operatesOnSuperVectors(Operation &op,
-                                           VectorType subVectorType) {
+bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
+                                             VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
-  //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,
-  //      vector_transfer_write); and
+  //   a. ops that *must* lower a super-vector (i.e. vector.transfer_read,
+  //      vector.transfer_write); and
   //   b. ops that *may* lower a super-vector (all other ops).
   // The ops that *may* lower a super-vector only do so if the super-vector to
   // sub-vector ratio exists. The ops that *must* lower a super-vector are
@@ -218,7 +218,7 @@ bool mlir::matcher::operatesOnSuperVectors(Operation &op,
       return false;
     }
   } else {
-    // Not a vector_transfer and has more than 1 result, fail hard for now to
+    // Not a vector.transfer and has more than 1 result, fail hard for now to
     // wake us up when something changes.
     op.emitError("NYI: operation has more than 1 result");
     return false;
@@ -229,7 +229,7 @@ bool mlir::matcher::operatesOnSuperVectors(Operation &op,
 
   // Sanity check.
   assert((ratio.hasValue() || !mustDivide) &&
-         "vector_transfer operation in which super-vector size is not an"
+         "vector.transfer operation in which super-vector size is not an"
          " integer multiple of sub-vector size");
 
   // This catches cases that are not strictly necessary to have multiplicity but

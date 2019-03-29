@@ -8,13 +8,13 @@ func @materialize_read_1d() {
   %A = alloc () : memref<7x42xf32>
   affine.for %i0 = 0 to 7 step 4 {
     affine.for %i1 = 0 to 42 step 4 {
-      %f1 = vector_transfer_read %A, %i0, %i1 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
+      %f1 = vector.transfer_read %A[%i0, %i1] {permutation_map: (d0, d1) -> (d0)} : memref<7x42xf32>, vector<4xf32>
       %ip1 = affine.apply (d0) -> (d0 + 1) (%i1)
-      %f2 = vector_transfer_read %A, %i0, %ip1 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
+      %f2 = vector.transfer_read %A[%i0, %ip1] {permutation_map: (d0, d1) -> (d0)} : memref<7x42xf32>, vector<4xf32>
       %ip2 = affine.apply (d0) -> (d0 + 2) (%i1)
-      %f3 = vector_transfer_read %A, %i0, %ip2 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
+      %f3 = vector.transfer_read %A[%i0, %ip2] {permutation_map: (d0, d1) -> (d0)} : memref<7x42xf32>, vector<4xf32>
       %ip3 = affine.apply (d0) -> (d0 + 3) (%i1)
-      %f4 = vector_transfer_read %A, %i0, %ip3 {permutation_map: (d0, d1) -> (d0)} : (memref<7x42xf32>, index, index) -> vector<4xf32>
+      %f4 = vector.transfer_read %A[%i0, %ip3] {permutation_map: (d0, d1) -> (d0)} : memref<7x42xf32>, vector<4xf32>
       // Both accesses in the load must be clipped otherwise %i1 + 2 and %i1 + 3 will go out of bounds.
       // CHECK: {{.*}} = select
       // CHECK: %[[FILTERED1:.*]] = select
@@ -34,9 +34,9 @@ func @materialize_read_1d_partially_specialized(%dyn1 : index, %dyn2 : index, %d
       affine.for %i2 = 0 to %dyn2 {
         affine.for %i3 = 0 to 42 step 2 {
           affine.for %i4 = 0 to %dyn4 {
-            %f1 = vector_transfer_read %A, %i0, %i1, %i2, %i3, %i4 {permutation_map: (d0, d1, d2, d3, d4) -> (d3)} : ( memref<7x?x?x42x?xf32>, index, index, index, index, index) -> vector<4xf32>
+            %f1 = vector.transfer_read %A[%i0, %i1, %i2, %i3, %i4] {permutation_map: (d0, d1, d2, d3, d4) -> (d3)} : memref<7x?x?x42x?xf32>, vector<4xf32>
             %i3p1 = affine.apply (d0) -> (d0 + 1) (%i3)
-            %f2 = vector_transfer_read %A, %i0, %i1, %i2, %i3p1, %i4 {permutation_map: (d0, d1, d2, d3, d4) -> (d3)} : ( memref<7x?x?x42x?xf32>, index, index, index, index, index) -> vector<4xf32>
+            %f2 = vector.transfer_read %A[%i0, %i1, %i2, %i3p1, %i4] {permutation_map: (d0, d1, d2, d3, d4) -> (d3)} : memref<7x?x?x42x?xf32>, vector<4xf32>
           }
         }
       }
@@ -63,7 +63,7 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:          %[[D2:.*]] = dim %0, 2 : memref<?x?x?x?xf32>
   // CHECK-NEXT:          %[[D3:.*]] = dim %0, 3 : memref<?x?x?x?xf32>
   //      CHECK:          %[[ALLOC:.*]] = alloc() : memref<5x4x3xf32>
-  // CHECK-NEXT:          %[[VECTOR_VIEW:.*]] = vector_type_cast %[[ALLOC]] : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
+  // CHECK-NEXT:          %[[VECTOR_VIEW:.*]] = vector.type_cast %[[ALLOC]] : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
   // CHECK-NEXT:          affine.for %[[I4:.*]] = 0 to 3 {
   // CHECK-NEXT:            affine.for %[[I5:.*]] = 0 to 4 {
   // CHECK-NEXT:              affine.for %[[I6:.*]] = 0 to 5 {
@@ -121,7 +121,7 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
     affine.for %i1 = 0 to %N {
       affine.for %i2 = 0 to %O {
         affine.for %i3 = 0 to %P step 5 {
-          %f = vector_transfer_read %A, %i0, %i1, %i2, %i3 {permutation_map: (d0, d1, d2, d3) -> (d3, 0, d0)} : (memref<?x?x?x?xf32, 0>, index, index, index, index) -> vector<5x4x3xf32>
+          %f = vector.transfer_read %A[%i0, %i1, %i2, %i3] {permutation_map: (d0, d1, d2, d3) -> (d3, 0, d0)} : memref<?x?x?x?xf32>, vector<5x4x3xf32>
         }
       }
     }
@@ -142,7 +142,7 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:          %[[D2:.*]] = dim %0, 2 : memref<?x?x?x?xf32>
   // CHECK-NEXT:          %[[D3:.*]] = dim %0, 3 : memref<?x?x?x?xf32>
   // CHECK:               %[[ALLOC:.*]] = alloc() : memref<5x4x3xf32>
-  // CHECK-NEXT:          %[[VECTOR_VIEW:.*]] = vector_type_cast {{.*}} : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
+  // CHECK-NEXT:          %[[VECTOR_VIEW:.*]] = vector.type_cast {{.*}} : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
   //      CHECK:          store %cst, {{.*}} : memref<1xvector<5x4x3xf32>>
   // CHECK-NEXT:          affine.for %[[I4:.*]] = 0 to 3 {
   // CHECK-NEXT:            affine.for %[[I5:.*]] = 0 to 4 {
@@ -205,7 +205,7 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
     affine.for %i1 = 0 to %N step 4 {
       affine.for %i2 = 0 to %O {
         affine.for %i3 = 0 to %P step 5 {
-          vector_transfer_write %f1, %A, %i0, %i1, %i2, %i3 {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} : vector<5x4x3xf32>, memref<?x?x?x?xf32, 0>, index, index, index, index
+          vector.transfer_write %f1, %A[%i0, %i1, %i2, %i3] {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} : vector<5x4x3xf32>, memref<?x?x?x?xf32>
         }
       }
     }

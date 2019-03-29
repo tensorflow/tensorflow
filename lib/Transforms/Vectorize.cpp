@@ -32,10 +32,10 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -69,7 +69,7 @@ using namespace mlir;
 /// Some may prefer the terminology a "tile of HW vectors". In this case, one
 /// should note that super-vectors implement an "always full tile" abstraction.
 /// They guarantee no partial-tile separation is necessary by relying on a
-/// high-level copy-reshape abstraction that we call vector_transfer. This
+/// high-level copy-reshape abstraction that we call vector.transfer. This
 /// copy-reshape operations is also responsible for performing layout
 /// transposition if necessary. In the general case this will require a scoped
 /// allocation in some notional local memory.
@@ -115,19 +115,17 @@ using namespace mlir;
 /// At a high level, a vectorized load in a loop will resemble:
 /// ```mlir
 ///   affine.for %i = ? to ? step ? {
-///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
-///                                              vector<128xf32>
+///     %v_a = vector.transfer_read A[%i] : memref<?xf32>, vector<128xf32>
 ///   }
 /// ```
-/// It is the reponsibility of the implementation of the vector_transfer_read
-/// to materialize vector registers from the original scalar memrefs.
-/// A later (more target-dependent) lowering pass will materialize to actual HW
-/// vector sizes. This lowering may be occur at different times:
+/// It is the responsibility of the implementation of vector.transfer_read to
+/// materialize vector registers from the original scalar memrefs. A later (more
+/// target-dependent) lowering pass will materialize to actual HW vector sizes.
+/// This lowering may be occur at different times:
 ///   1. at the MLIR level into a combination of loops, unrolling, DmaStartOp +
-///   DmaWaitOp + vectorized operations
-///      for data transformations and shuffle; thus opening opportunities for
-///      unrolling and pipelining. This is an instance of library call
-///      "whiteboxing"; or
+///      DmaWaitOp + vectorized operations for data transformations and shuffle;
+///      thus opening opportunities for unrolling and pipelining. This is an
+///      instance of library call "whiteboxing"; or
 ///   2. later in the a target-specific lowering pass or hand-written library
 ///      call; achieving full separation of concerns. This is an instance of
 ///      library call; or
@@ -225,7 +223,7 @@ using namespace mlir;
 /// 3. right after polyhedral-style scheduling: PLUTO-style algorithms are known
 ///    to improve locality, parallelism and be configurable (e.g. max-fuse,
 ///    smart-fuse etc). They can also have adverse effects on contiguity
-///    properties that are required for vectorization but the vector_transfer
+///    properties that are required for vectorization but the vector.transfer
 ///    copy-reshape-pad-transpose abstraction is expected to help recapture
 ///    these properties.
 /// 4. right after polyhedral-style scheduling+tiling;
@@ -265,7 +263,7 @@ using namespace mlir;
 ///  3. Then, for each pattern in order:
 ///    a. applying iterative rewriting of the loop and the load operations in
 ///       DFS postorder. Rewriting is implemented by coarsening the loops and
-///       turning load operations into opaque vector_transfer_read ops;
+///       turning load operations into opaque vector.transfer_read ops;
 ///    b. keeping track of the load operations encountered as "roots" and the
 ///       store operations as "terminals";
 ///    c. traversing the use-def chains starting from the roots and iteratively
@@ -304,7 +302,7 @@ using namespace mlir;
 ///      %s5 = addf %a5, %b5 : f32`
 ///
 /// Lastly, we show a minimal example for which use-def chains rooted in load /
-/// vector_transfer_read are not enough. This is what motivated splitting
+/// vector.transfer_read are not enough. This is what motivated splitting
 /// terminal processing out of the use-def chains starting from loads. In the
 /// following snippet, there is simply no load::
 /// ```mlir
@@ -343,8 +341,7 @@ using namespace mlir;
 /// scheduling, so we want to generate a pattern that resembles:
 /// ```mlir
 ///   affine.for %i = ? to ? step ? {
-///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
-///                                              vector<128xf32>
+///     %v_a = vector.transfer_read A[%i] : memref<?xf32>, vector<128xf32>
 ///   }
 /// ```
 ///
@@ -364,8 +361,7 @@ using namespace mlir;
 /// abstraction of size 128 returns code similar to:
 /// ```mlir
 ///   affine.for %i = %M to %N step 128 {
-///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
-///                                              vector<128xf32>
+///     %v_a = vector.transfer_read A[%i] : memref<?xf32>, vector<128xf32>
 ///   }
 /// ```
 ///
@@ -373,9 +369,9 @@ using namespace mlir;
 /// ========================================================================
 ///   1. lowering to concrete vector types for various HW;
 ///   2. reduction support;
-///   3. non-effecting padding during vector_transfer_read and filter during
-///      vector_transfer_write;
-///   4. misalignment support vector_transfer_read / vector_transfer_write
+///   3. non-effecting padding during vector.transfer_read and filter during
+///      vector.transfer_write;
+///   4. misalignment support vector.transfer_read / vector.transfer_write
 ///      (hopefully without read-modify-writes);
 ///   5. control-flow support;
 ///   6. cost-models, heuristics and search;
@@ -443,24 +439,24 @@ using namespace mlir;
 ///     affine.for %i1 = 0 to %arg1 step 256 {
 ///       %cst_1 = constant splat<vector<256xf32>, 1.0> :
 ///                vector<256xf32>
-///       "vector_transfer_write"(%cst_1, %0, %i0, %i1) :
-///                (vector<256xf32>, memref<?x?xf32>, index, index) -> ()
+///       vector.transfer_write %cst_1, %0[%i0, %i1] :
+///                vector<256xf32>, memref<?x?xf32>
 ///     }
 ///   }
 ///   affine.for %i2 = 0 to %arg0 {
 ///     affine.for %i3 = 0 to %arg1 step 256 {
 ///       %cst_2 = constant splat<vector<256xf32>, 2.0> :
 ///                vector<256xf32>
-///       "vector_transfer_write"(%cst_2, %1, %i2, %i3) :
-///                (vector<256xf32>, memref<?x?xf32>, index, index) -> ()
+///       vector.transfer_write %cst_2, %1[%i2, %i3] :
+///                vector<256xf32>, memref<?x?xf32>
 ///     }
 ///   }
 ///   affine.for %i4 = 0 to %arg0 {
 ///     affine.for %i5 = 0 to %arg1 step 256 {
-///       %3 = "vector_transfer_read"(%0, %i4, %i5) :
-///                      (memref<?x?xf32>, index, index) -> vector<256xf32>
-///       %4 = "vector_transfer_read"(%1, %i4, %i5) :
-///                      (memref<?x?xf32>, index, index) -> vector<256xf32>
+///       %3 = vector.transfer_read %0[%i4, %i5] :
+///            memref<?x?xf32>, vector<256xf32>
+///       %4 = vector.transfer_read %1[%i4, %i5] :
+///            memref<?x?xf32>, vector<256xf32>
 ///       %5 = addf %3, %4 : vector<256xf32>
 ///       %cst_3 = constant splat<vector<256xf32>, 1.0> :
 ///                vector<256xf32>
@@ -469,8 +465,8 @@ using namespace mlir;
 ///                vector<256xf32>
 ///       %7 = addf %5, %cst_4 : vector<256xf32>
 ///       %8 = addf %7, %6 : vector<256xf32>
-///       "vector_transfer_write"(%8, %2, %i4, %i5) :
-///                (vector<256xf32>, memref<?x?xf32>, index, index) -> ()
+///       vector.transfer_write %8, %2[%i4, %i5] :
+///                vector<256xf32>, memref<?x?xf32>
 ///     }
 ///   }
 ///   %c7 = constant 7 : index
@@ -499,24 +495,24 @@ using namespace mlir;
 ///     affine.for %i1 = 0 to %arg1 step 256 {
 ///       %cst_1 = constant splat<vector<32x256xf32>, 1.0> :
 ///                vector<32x256xf32>
-///       "vector_transfer_write"(%cst_1, %0, %i0, %i1) :
-///                (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
+///       vector.transfer_write %cst_1, %0[%i0, %i1] :
+///                vector<32x256xf32>, memref<?x?xf32>
 ///     }
 ///   }
 ///   affine.for %i2 = 0 to %arg0 step 32 {
 ///     affine.for %i3 = 0 to %arg1 step 256 {
 ///       %cst_2 = constant splat<vector<32x256xf32>, 2.0> :
 ///                vector<32x256xf32>
-///       "vector_transfer_write"(%cst_2, %1, %i2, %i3) :
-///                (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
+///       vector.transfer_write %cst_2, %1[%i2, %i3] :
+///                vector<32x256xf32>, memref<?x?xf32>
 ///     }
 ///   }
 ///   affine.for %i4 = 0 to %arg0 step 32 {
 ///     affine.for %i5 = 0 to %arg1 step 256 {
-///       %3 = "vector_transfer_read"(%0, %i4, %i5) :
-///                (memref<?x?xf32>, index, index) -> vector<32x256xf32>
-///       %4 = "vector_transfer_read"(%1, %i4, %i5) :
-///                (memref<?x?xf32>, index, index) -> vector<32x256xf32>
+///       %3 = vector.transfer_read %0[%i4, %i5] :
+///                memref<?x?xf32> vector<32x256xf32>
+///       %4 = vector.transfer_read %1[%i4, %i5] :
+///                memref<?x?xf32>, vector<32x256xf32>
 ///       %5 = addf %3, %4 : vector<32x256xf32>
 ///       %cst_3 = constant splat<vector<32x256xf32>, 1.0> :
 ///                vector<32x256xf32>
@@ -525,8 +521,8 @@ using namespace mlir;
 ///                vector<32x256xf32>
 ///       %7 = addf %5, %cst_4 : vector<32x256xf32>
 ///       %8 = addf %7, %6 : vector<32x256xf32>
-///       "vector_transfer_write"(%8, %2, %i4, %i5) :
-///                (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
+///       vector.transfer_write %8, %2[%i4, %i5] :
+///                vector<32x256xf32>, memref<?x?xf32>
 ///     }
 ///   }
 ///   %c7 = constant 7 : index
@@ -788,7 +784,7 @@ void VectorizationState::registerReplacement(Value *key, Value *value) {
 /// Handles the vectorization of load and store MLIR operations.
 ///
 /// LoadOp operations are the roots of the vectorizeNonTerminals call. They are
-/// vectorized immediately. The resulting vector_transfer_read is immediately
+/// vectorized immediately. The resulting vector.transfer_read is immediately
 /// registered to replace all uses of the LoadOp in this pattern's scope.
 ///
 /// StoreOp are the terminals of the vectorizeNonTerminals call. They need to be
@@ -811,9 +807,9 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
 
   // Materialize a MemRef with 1 vector.
   auto *opInst = memoryOp.getOperation();
-  // For now, vector_transfers must be aligned, operate only on indices with an
+  // For now, vector.transfers must be aligned, operate only on indices with an
   // identity subset of AffineMap and do not change layout.
-  // TODO(ntv): increase the expressiveness power of vector_transfer operations
+  // TODO(ntv): increase the expressiveness power of vector.transfer operations
   // as needed by various targets.
   if (opInst->template isa<LoadOp>()) {
     auto permutationMap =
@@ -835,7 +831,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
 /// end TODO(ntv): Hoist to a VectorizationMaterialize.cpp when appropriate. ///
 
 /// Coarsens the loops bounds and transforms all remaining load and store
-/// operations into the appropriate vector_transfer.
+/// operations into the appropriate vector.transfer.
 static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
                                           VectorizationState *state) {
   using namespace functional;
@@ -1023,9 +1019,9 @@ static Operation *vectorizeOneOperation(Operation *opInst,
   assert(!opInst->isa<LoadOp>() &&
          "all loads must have already been fully vectorized independently");
   assert(!opInst->isa<VectorTransferReadOp>() &&
-         "vector_transfer_read cannot be further vectorized");
+         "vector.transfer_read cannot be further vectorized");
   assert(!opInst->isa<VectorTransferWriteOp>() &&
-         "vector_transfer_write cannot be further vectorized");
+         "vector.transfer_write cannot be further vectorized");
 
   if (auto store = opInst->dyn_cast<StoreOp>()) {
     auto *memRef = store.getMemRef();

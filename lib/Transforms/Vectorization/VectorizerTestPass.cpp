@@ -108,7 +108,7 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
     assert(subVectorType.getElementType() ==
                FloatType::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
-    if (!matcher::operatesOnSuperVectors(op, subVectorType)) {
+    if (!matcher::operatesOnSuperVectorsOf(op, subVectorType)) {
       return false;
     }
     if (op.getNumResults() != 1) {

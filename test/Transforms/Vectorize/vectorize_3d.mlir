@@ -12,7 +12,7 @@ func @vec3d(%A : memref<?x?x?xf32>) {
    // CHECK:     affine.for %i2 = 0 to %0 step 32 {
    // CHECK:       affine.for %i3 = 0 to %1 step 64 {
    // CHECK:         affine.for %i4 = 0 to %2 step 256 {
-   // CHECK:           %3 = vector_transfer_read %arg0, %i2, %i3, %i4 {permutation_map: #[[map_proj_d0d1d2_d0d1d2]]} : (memref<?x?x?xf32>, index, index, index) -> vector<32x64x256xf32>
+   // CHECK:           %3 = vector.transfer_read %arg0[%i2, %i3, %i4] {permutation_map: #[[map_proj_d0d1d2_d0d1d2]]} : memref<?x?x?xf32>, vector<32x64x256xf32>
    affine.for %t0 = 0 to %0 {
      affine.for %t1 = 0 to %0 {
        affine.for %i0 = 0 to %0 {

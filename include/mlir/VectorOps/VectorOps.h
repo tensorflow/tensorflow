@@ -1,4 +1,4 @@
-//===- SuperVectorOps.h - MLIR Super Vectorizer Operations ------*- C++ -*-===//
+//===- VectorOps.h - MLIR Super Vectorizer Operations -----------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_INCLUDE_MLIR_SUPERVECTOROPS_SUPERVECTOROPS_H
-#define MLIR_INCLUDE_MLIR_SUPERVECTOROPS_SUPERVECTOROPS_H
+#ifndef MLIR_VECTOROPS_VECTOROPS_H
+#define MLIR_VECTOROPS_VECTOROPS_H
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
@@ -31,9 +31,9 @@
 namespace mlir {
 
 /// Dialect for super-vectorization Ops.
-class SuperVectorOpsDialect : public Dialect {
+class VectorOpsDialect : public Dialect {
 public:
-  SuperVectorOpsDialect(MLIRContext *context);
+  VectorOpsDialect(MLIRContext *context);
 };
 
 /// VectorTransferReadOp performs a blocking read from a scalar memref
@@ -70,14 +70,12 @@ public:
 ///   ...
 ///   %val = `ssa-value` : f32
 ///   // let %i, %j, %k, %l be ssa-values of type index
-///   %v0 = vector_transfer_read %src, %i, %j, %k, %l
+///   %v0 = vector.transfer_read %src[%i, %j, %k, %l]
 ///          {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :
-///        (memref<?x?x?x?xf32>, index, index, index, index) ->
-///          vector<16x32x64xf32>
-///   %v1 = vector_transfer_read %src, %i, %j, %k, %l, %val
+///         memref<?x?x?x?xf32>, vector<16x32x64xf32>
+///   %v1 = vector.transfer_read %src[%i, %j, %k, %l], (%val)
 ///          {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :
-///        (memref<?x?x?x?xf32>, index, index, index, index, f32) ->
-///           vector<16x32x64xf32>
+///         memref<?x?x?x?xf32>, vector<16x32x64xf32>
 /// ```
 ///
 /// Example with partial rank permutation_map:
@@ -86,10 +84,9 @@ public:
 ///   %A = alloc(%size1, %size2, %size3, %size4) : memref<?x?x?x?xf32>
 ///   ...
 ///   // let %i, %j be ssa-values of type index
-///   %v0 = vector_transfer_read %src, %i, %c0, %c0, %c0
+///   %v0 = vector.transfer_read %src[%i, %c0, %c0, %c0]
 ///          {permutation_map: (d0, d1, d2, d3) -> (0, d1, 0)} :
-///        (memref<?x?x?x?xf32>, index, index, index, index) ->
-///          vector<16x32x64xf32>
+///         memref<?x?x?x?xf32>, vector<16x32x64xf32>
 class VectorTransferReadOp
     : public Op<VectorTransferReadOp, OpTrait::VariadicOperands,
                 OpTrait::OneResult> {
@@ -98,7 +95,7 @@ class VectorTransferReadOp
 public:
   using Op::Op;
 
-  static StringRef getOperationName() { return "vector_transfer_read"; }
+  static StringRef getOperationName() { return "vector.transfer_read"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
   static void build(Builder *builder, OperationState *result,
                     VectorType vectorType, Value *srcMemRef,
@@ -133,7 +130,7 @@ public:
 ///
 /// A vector transfer write has semantics similar to a vector store, with
 /// additional support for handling out-of-bounds situations. It is the
-/// responsibility of vector_transfer_write's implementation to ensure the
+/// responsibility of vector.transfer_write's implementation to ensure the
 /// memory writes are valid. Different implementations may be pertinent
 /// depending on the hardware support including:
 /// 1. predication;
@@ -146,9 +143,9 @@ public:
 ///   %A = alloc(%size1, %size2, %size3, %size4) : memref<?x?x?x?xf32>.
 ///   %val = `ssa-value` : vector<16x32x64xf32>
 ///   // let %i, %j, %k, %l be ssa-values of type index
-///   vector_transfer_write %val, %src, %i, %j, %k, %l
+///   vector.transfer_write %val, %src[%i, %j, %k, %l]
 ///     {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :
-///   vector<16x32x64xf32>, memref<?x?x?x?xf32>, index, index, index, index
+///   vector<16x32x64xf32>, memref<?x?x?x?xf32>
 /// ```
 class VectorTransferWriteOp
     : public Op<VectorTransferWriteOp, OpTrait::VariadicOperands,
@@ -162,7 +159,7 @@ class VectorTransferWriteOp
 public:
   using Op::Op;
 
-  static StringRef getOperationName() { return "vector_transfer_write"; }
+  static StringRef getOperationName() { return "vector.transfer_write"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
   static void build(Builder *builder, OperationState *result, Value *srcVector,
                     Value *dstMemRef, ArrayRef<Value *> dstIndices,
@@ -190,14 +187,14 @@ public:
 ///
 /// ```mlir
 ///  %A  = alloc() : memref<5x4x3xf32>
-///  %VA = vector_type_cast %A : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
+///  %VA = vector.type_cast %A : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
 /// ```
 class VectorTypeCastOp
     : public Op<VectorTypeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
   using Op::Op;
 
-  static StringRef getOperationName() { return "vector_type_cast"; }
+  static StringRef getOperationName() { return "vector.type_cast"; }
   static void build(Builder *builder, OperationState *result, Value *srcVector,
                     Type dstType);
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -207,4 +204,4 @@ public:
 
 } // end namespace mlir
 
-#endif // MLIR_INCLUDE_MLIR_SUPERVECTOROPS_SUPERVECTOROPS_H
+#endif // MLIR_VECTOROPS_VECTOROPS_H

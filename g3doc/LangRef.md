@@ -2211,7 +2211,7 @@ a conversion pass.
 Currently, MLIR supports the following dialects:
 
 *   [Standard dialect](#standard-operations)
-*   [SuperVector dialect](Dialects/SuperVector.md)
+*   [Vector dialect](Dialects/Vector.md)
 *   [TensorFlow dialect](#tensorflow-operations)
 
 ### TensorFlow operations {#tensorflow-operations}

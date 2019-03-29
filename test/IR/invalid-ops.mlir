@@ -296,180 +296,181 @@ func @func_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
-  // expected-error@+1 {{expected 4 operand types but had 3}}
-  %0 = "vector_transfer_read"(%arg0, %c3, %c3, %c3) : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  // expected-error@+1 {{expected 2 types}}
+  %0 = vector.transfer_read %arg0[%c3, %c3] : memref<?x?xf32>
 }
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
-  // expected-error@+1 {{requires 3 operands}}
-  %0 = vector_transfer_read %arg0, %c3, %c3, %c3 : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  // expected-error@+1 {{expected 2 indices to the memref}}
+  %0 = vector.transfer_read %arg0[%c3, %c3, %c3] : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0: memref<?x?xf32>):
-  %c3 = constant 3 : index
-  %cst = constant 3.0 : f32
-  // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
-  %0 = vector_transfer_read %arg0, %c3, %c3 : (memref<?x?xf32>, index, index) -> vector<128xf32>
-}
-
-// -----
-
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
-  %0 = vector_transfer_read %arg0, %c3, %c3 {perm: (d0)->(d0)} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
+^bb0(%arg0: memref<?x?xf32>):
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
+  %0 = vector.transfer_read %arg0[%c3, %c3] {perm: (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
-  %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: (d0)->(d0)} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
-  %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0, d1)} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0, d1)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0 + d1)} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + d1)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
 
-func @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0 + 1)} : (memref<?x?xf32>, index, index) -> vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + 1)} : memref<?x?xf32>, vector<128xf32>
 }
+
 // -----
 
-func @test_vector_transfer_read(memref<?x?x?xf32>) {
+func @test_vector.transfer_read(memref<?x?x?xf32>) {
 ^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
-  %0 = vector_transfer_read %arg0, %c3, %c3, %c3 {permutation_map: (d0, d1, d2)->(d0, d0)} : (memref<?x?x?xf32>, index, index, index) -> vector<3x7xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3, %c3] {permutation_map: (d0, d1, d2)->(d0, d0)} : memref<?x?x?xf32>, vector<3x7xf32>
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{expected 5 operand types but had 4}}
-  %0 = "vector_transfer_write"(%cst, %arg0, %c3, %c3, %c3) : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
+  %0 = "vector.transfer_write"(%cst, %arg0, %c3, %c3, %c3) : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
-  // expected-error@+1 {{requires number of operands and input types to match}}
-  vector_transfer_write %cst, %arg0, %c3, %c3, %c3 : vector<128xf32>, memref<?x?xf32>, index, index
+  // expected-error@+1 {{expects 4 operands (of which 2 indices)}}
+  vector.transfer_write %cst, %arg0[%c3, %c3, %c3] : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0: memref<?x?xf32>):
-  %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
-  // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
-  vector_transfer_write %cst, %arg0, %c3, %c3 : vector<128xf32>, memref<?x?xf32>, index, index
-}
-
-// -----
-
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
-  vector_transfer_write %cst, %arg0, %c3, %c3 {perm: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>, index, index
+  vector.transfer_write %cst, %arg0[%c3, %c3] : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
+^bb0(%arg0: memref<?x?xf32>):
+  %c3 = constant 3 : index
+  %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
+  // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
+  vector.transfer_write %cst, %arg0[%c3, %c3] {perm: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
-  vector_transfer_write %cst, %arg0, %c3, %c3 {permutation_map: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>, index, index
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
-  vector_transfer_write %cst, %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0, d1)} : vector<128xf32>, memref<?x?xf32>, index, index
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0, d1)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  vector_transfer_write %cst, %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0 + d1)} : vector<128xf32>, memref<?x?xf32>, index, index
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + d1)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
 
-func @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  vector_transfer_write %cst, %arg0, %c3, %c3 {permutation_map: (d0, d1)->(d0 + 1)} : vector<128xf32>, memref<?x?xf32>, index, index
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + 1)} : vector<128xf32>, memref<?x?xf32>
 }
 // -----
 
-func @test_vector_transfer_write(memref<?x?x?xf32>) {
+func @test_vector.transfer_write(memref<?x?x?xf32>) {
 ^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<3 x 7 x f32>, 3.0>  : vector<3 x 7 x f32>
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
-  vector_transfer_write %cst, %arg0, %c3, %c3, %c3 {permutation_map: (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>, index, index, index
+  vector.transfer_write %cst, %arg0[%c3, %c3, %c3] {permutation_map: (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>
 }
 
 // -----

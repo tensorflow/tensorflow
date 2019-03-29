@@ -37,10 +37,10 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -54,7 +54,7 @@
 /// a target-independent way: the target vector size is specified as a parameter
 /// to the pass. This pass is thus a partial lowering that opens the "greybox"
 /// that is the super-vector abstraction. In particular, this pass can turn the
-/// vector_transfer_read and vector_transfer_write ops in either:
+/// vector.transfer_read and vector.transfer_write ops in either:
 ///   1. a loop nest with either scalar and vector load/store operations; or
 ///   2. a loop-nest with DmaStartOp / DmaWaitOp; or
 ///   3. a pre-existing blackbox library call that can be written manually or
@@ -79,14 +79,14 @@
 /// do not vectorize in the presence of conditionals for now, sliced chains are
 /// guaranteed not to escape the innermost scope, which has to be either the top
 /// Function scope or the innermost loop scope, by construction. As a
-/// consequence, the implementation just starts from vector_transfer_write
+/// consequence, the implementation just starts from vector.transfer_write
 /// operations and builds the slice scoped the innermost loop enclosing the
-/// current vector_transfer_write. These assumptions and the implementation
+/// current vector.transfer_write. These assumptions and the implementation
 /// details are subject to revision in the future.
 ///
 /// Example
 /// ========
-/// In the following, the single vector_transfer_write op operates on a
+/// In the following, the single vector.transfer_write op operates on a
 /// vector<4x4x4xf32>. Let's assume the HW supports vector<4x4xf32>.
 /// Materialization is achieved by instantiating each occurrence of the leading
 /// dimension of vector<4x4x4xf32> into a vector<4x4xf32>.
@@ -98,16 +98,15 @@
 ///
 /// ```mlir
 ///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
-///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
+///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32>
 ///      %f1 = constant splat<vector<4x4x4xf32>, 1.000000e+00> :
 ///      vector<4x4x4xf32> affine.for %i0 = 0 to %M step 4 {
 ///        affine.for %i1 = 0 to %N step 4 {
 ///          affine.for %i2 = 0 to %O {
 ///            affine.for %i3 = 0 to %P step 4 {
-///              vector_transfer_write %f1, %A, %i0, %i1, %i2, %i3
+///              vector.transfer_write %f1, %A[%i0, %i1, %i2, %i3]
 ///                {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} :
-///                 vector<4x4x4xf32>, memref<?x?x?x?xf32, 0>,
-///                 index, index, index, index
+///                 vector<4x4x4xf32>, memref<?x?x?x?xf32>
 ///      }}}}
 ///      return
 ///    }
@@ -123,30 +122,21 @@
 ///         affine.for %i1 = 0 to %arg1 step 4 {
 ///           affine.for %i2 = 0 to %arg2 {
 ///             affine.for %i3 = 0 to %arg3 step 4 {
-///               %1 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3)
-///                    (%i0, %i1, %i2, %i3)
-///               vector_transfer_write f1, %0, %1#0, %1#1, %1#2, %1#3
+///               vector.transfer_write f1, %0[%i0, %i1, %i2, %i3]
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
-///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
-///                 index, index, index, index
-///               %2 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 1)
-///                    (%i0, %i1, %i2, %i3)
-///               vector_transfer_write {{.*}}, %0, %2#0, %2#1, %2#2, %2#3
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>
+///               %i3p1 = affine.apply (d0) -> (d0 + 1)(%i3)
+///               vector.transfer_write {{.*}}, %0[%i0, %i1, %i2, %i3p1]
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
-///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
-///                 index, index, index, index
-///               %3 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 2)
-///                    (%i0, %i1, %i2, %i3)
-///               vector_transfer_write {{.*}}, %0, %3#0, %3#1, %3#2, %3#3
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>
+///               %i3p2 = affine.apply (d0) -> (d0 + 2)(%i3)
+///               vector.transfer_write {{.*}}, %0[%i0, %i1, %i2, %i3p2]
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
-///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
-///                 index, index, index, index
-///               %4 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 3)
-///                    (%i0, %i1, %i2, %i3)
-///               vector_transfer_write {{.*}}, %0, %4#0, %4#1, %4#2, %4#3
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>
+///               %i3p3 = affine.apply (d0) -> (d0 + 3)(%i3)
+///               vector.transfer_write {{.*}}, %0[%i0, %i1, %i2, %i3p3]
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
-///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
-///                 index, index, index, index
+///                 vector<4x4xf32>, memref<?x?x?x?xf32>
 ///      }}}}
 ///      return
 ///    }
@@ -282,11 +272,11 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 
 /// Returns a list of single result AffineApplyOps that reindex the
 /// `memRefIndices` by the multi-dimensional `hwVectorInstance`. This is used by
-/// the function that materializes a vector_transfer operation to use hardware
+/// the function that materializes a vector.transfer operation to use hardware
 /// vector types instead of super-vector types.
 ///
 /// The general problem this function solves is as follows:
-/// Assume a vector_transfer operation at the super-vector granularity that has
+/// Assume a vector.transfer operation at the super-vector granularity that has
 /// `l` enclosing loops (AffineForOp). Assume the vector transfer operation
 /// operates on a MemRef of rank `r`, a super-vector of rank `s` and a hardware
 /// vector of rank `h`. For the purpose of illustration assume l==4, r==3, s==2,
@@ -299,8 +289,8 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 ///   affine.for %i1 = 0 to %N step 3 {
 ///     affine.for %i2 = 0 to %O {
 ///       affine.for %i3 = 0 to %P step 32 {
-///         %r = vector_transfer_read(%A, map(%i..)#0, map(%i..)#1, map(%i..)#2)
-///                                   -> vector<3x32xf32>
+///         %r = vector.transfer_read(%A, map0(%i..), map1(%i..), map2(%i..)) :
+///              vector<3x32xf32>, memref<?x?x?xf32>
 ///         ...
 /// }}}}
 /// ```
@@ -308,28 +298,31 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// where map denotes an AffineMap operating on enclosing loops with properties
 /// compatible for vectorization (i.e. some contiguity left unspecified here).
 /// Note that the vectorized loops are %i1 and %i3.
-/// This function translates the vector_transfer_read operation to multiple
-/// instances of vector_transfer_read that operate on vector<8x32>.
+/// This function translates the vector.transfer_read operation to multiple
+/// instances of vector.transfer_read that operate on vector<8x32>.
 ///
 /// Without loss of generality, we assume hwVectorInstance is: {2, 1}.
 /// The only constraints on hwVectorInstance is they belong to:
 ///   [0, 2] x [0, 3], which is the span of ratio of super-vector shape to
 /// hardware vector shape in our example.
 ///
-/// This function instantiates the iteration <2, 1> of vector_transfer_read
+/// This function instantiates the iteration <2, 1> of vector.transfer_read
 /// into the set of operations in pseudo-MLIR:
 ///
 /// ```mlir
-///   map2 = (d0, d1, d2, d3) -> (d0, d1 + 2, d2, d3 + 1 * 8)
-///   map3 = map o map2 // where o denotes composition
-///   %r = vector_transfer_read(%A, map3(%i..)#0, map3(%i..)#1, map3(%i..)#2)
-///                             -> vector<3x32xf32>
+///   #map2 = (d0, d1, d2, d3) -> (d0, d1 + 2, d2, d3 + 1 * 8)
+///   #map3 = #map o #map2 // where o denotes composition
+///   aff0 = affine.apply #map3.0(%i..)
+///   aff1 = affine.apply #map3.1(%i..)
+///   aff2 = affine.apply #map3.2(%i..)
+///   %r = vector.transfer_read(%A, %aff0, %aff1, %aff2):
+//         vector<3x32xf32>, memref<?x?x?xf32>
 /// ```
 ///
 /// Practical considerations
 /// ========================
 /// For now, `map` is assumed to be the identity map and the indices are
-/// specified just as vector_transfer_read(%A, %i0, %i1, %i2, %i3). This will be
+/// specified just as vector.transfer_read%A[%i0, %i1, %i2, %i3]. This will be
 /// extended in the future once we have a proper Op for vector transfers.
 /// Additionally, the example above is specified in pseudo-MLIR form; once we
 /// have proper support for generic maps we can generate the code and show
@@ -347,7 +340,7 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
 
   unsigned numIndices = memrefIndices.size();
   auto numMemRefIndices = numIndices - hwVectorInstance.size();
-  auto numSuperVectorIndices = hwVectorInstance.size() - vectorShape.size();
+  auto numVectorIndices = hwVectorInstance.size() - vectorShape.size();
 
   SmallVector<AffineExpr, 8> affineExprs;
   // TODO(ntv): support a concrete map and composition.
@@ -358,11 +351,10 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
     auto d_i = b->getAffineDimExpr(i);
     affineExprs.push_back(d_i);
   }
-  // The next numSuperVectorIndices correspond to super-vector dimensions that
+  // The next numVectorIndices correspond to super-vector dimensions that
   // do not have a hardware vector dimension counterpart. For those we only
   // need to increment the index by the corresponding hwVectorInstance.
-  for (i = numMemRefIndices; i < numMemRefIndices + numSuperVectorIndices;
-       ++i) {
+  for (i = numMemRefIndices; i < numMemRefIndices + numVectorIndices; ++i) {
     auto d_i = b->getAffineDimExpr(i);
     auto offset = hwVectorInstance[i - numMemRefIndices];
     affineExprs.push_back(d_i + offset);
@@ -374,7 +366,7 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
   for (; i < numIndices; ++i) {
     auto d_i = b->getAffineDimExpr(i);
     auto offset = hwVectorInstance[i - numMemRefIndices];
-    auto stride = vectorShape[i - numMemRefIndices - numSuperVectorIndices];
+    auto stride = vectorShape[i - numMemRefIndices - numVectorIndices];
     affineExprs.push_back(d_i + offset * stride);
   }
 
@@ -535,14 +527,14 @@ static Operation *instantiate(FuncBuilder *b, VectorTransferWriteOp write,
 /// The multi-dimensional `hwVectorInstance` belongs to the shapeRatio of
 /// super-vector type to hw vector type.
 /// A cloned instance of `op` is formed as follows:
-///   1. vector_transfer_read: the return `superVectorType` is replaced by
+///   1. vector.transfer_read: the return `superVectorType` is replaced by
 ///      `hwVectorType`. Additionally, affine indices are reindexed with
 ///      `reindexAffineIndices` using `hwVectorInstance` and vector type
 ///      information;
-///   2. vector_transfer_write: the `valueToStore` type is simply substituted.
+///   2. vector.transfer_write: the `valueToStore` type is simply substituted.
 ///      Since we operate on a topologically sorted slice, a substitution must
 ///      have been registered for non-constant ops. Additionally, affine indices
-///      are reindexed in the same way as for vector_transfer_read;
+///      are reindexed in the same way as for vector.transfer_read;
 ///   3. constant ops are splats of the super-vector type by construction.
 ///      They are cloned to a splat on the hw vector type with the same value;
 ///   4. remaining ops are cloned to version of the op that returns a hw vector
@@ -660,7 +652,7 @@ static bool emitSlice(MaterializationState *state,
 }
 
 /// Materializes super-vector types into concrete hw vector types as follows:
-///   1. start from super-vector terminators (current vector_transfer_write
+///   1. start from super-vector terminators (current vector.transfer_write
 ///      ops);
 ///   2. collect all the operations that can be reached by transitive use-defs
 ///      chains;
@@ -755,13 +747,13 @@ void MaterializeVectorsPass::runOnFunction() {
   auto subVectorType =
       VectorType::get(hwVectorSize, FloatType::getF32(&getContext()));
 
-  // Capture terminators; i.e. vector_transfer_write ops involving a strict
+  // Capture terminators; i.e. vector.transfer_write ops involving a strict
   // super-vector of subVectorType.
   auto filter = [subVectorType](Operation &op) {
     if (!op.isa<VectorTransferWriteOp>()) {
       return false;
     }
-    return matcher::operatesOnSuperVectors(op, subVectorType);
+    return matcher::operatesOnSuperVectorsOf(op, subVectorType);
   };
   auto pat = Op(filter);
   SmallVector<NestedMatch, 8> matches;

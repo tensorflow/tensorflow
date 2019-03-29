@@ -32,9 +32,9 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 using llvm::dbgs;
 using llvm::errs;

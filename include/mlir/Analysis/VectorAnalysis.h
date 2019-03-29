@@ -89,13 +89,13 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 ///    affine.for %i3 = 0 to %0 step 32 {
 ///      affine.for %i4 = 0 to %1 {
 ///        affine.for %i5 = 0 to %2 step 256 {
-///          %4 = vector_transfer_read %arg0, %i4, %i5, %i3
+///          %4 = vector.transfer_read %arg0, %i4, %i5, %i3
 ///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
 ///               (memref<?x?x?xf32>, index, index) -> vector<32x256xf32>
 ///    }}}
 /// ```
 ///
-/// Meaning that vector_transfer_read will be responsible for reading the slice:
+/// Meaning that vector.transfer_read will be responsible for reading the slice:
 /// `%arg0[%i4, %i5:%15+256, %i3:%i3+32]` into vector<32x256xf32>.
 ///
 /// Example 2:
@@ -112,13 +112,13 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 ///
 /// ```mlir
 ///    affine.for %i0 = 0 to %0 step 128 {
-///      %3 = vector_transfer_read %arg0, %c0_0, %c0_0
+///      %3 = vector.transfer_read %arg0, %c0_0, %c0_0
 ///           {permutation_map: (d0, d1) -> (0)} :
 ///           (memref<?x?xf32>, index, index) -> vector<128xf32>
 ///    }
 /// ````
 ///
-/// Meaning that vector_transfer_read will be responsible of reading the slice
+/// Meaning that vector.transfer_read will be responsible of reading the slice
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
 AffineMap makePermutationMap(
@@ -127,7 +127,7 @@ AffineMap makePermutationMap(
 
 namespace matcher {
 
-/// Matches vector_transfer_read, vector_transfer_write and ops that return a
+/// Matches vector.transfer_read, vector.transfer_write and ops that return a
 /// vector type that is a multiple of the sub-vector type. This allows passing
 /// over other smaller vector types in the function and avoids interfering with
 /// operations on those.
@@ -135,7 +135,7 @@ namespace matcher {
 /// TODO(ntv): this could all be much simpler if we added a bit that a vector
 /// type to mark that a vector is a strict super-vector but it still does not
 /// warrant adding even 1 extra bit in the IR for now.
-bool operatesOnSuperVectors(Operation &op, VectorType subVectorType);
+bool operatesOnSuperVectorsOf(Operation &op, VectorType subVectorType);
 
 } // end namespace matcher
 } // end namespace mlir

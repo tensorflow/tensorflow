@@ -11,7 +11,7 @@ identifiers to enable powerful analysis and transformation. A symbolic
 identifier can be bound to an SSA value that is either an argument to the
 function, a value defined at the top level of that function (outside of all
 loops and if instructions), the result of a
-[`constant` operation](LangRef.md#'constant'-operation), or the result of an
+[`constant` operation](../LangRef.md#'constant'-operation), or the result of an
 [`affine.apply` operation](#'affine.apply'-operation) that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
@@ -30,7 +30,7 @@ operation ::= ssa-id `=` `affine.apply` affine-map dim-and-symbol-use-list
 ```
 
 The `affine.apply` instruction applies an
-[affine mapping](LangRef.md#affine-expressions) to a list of SSA values,
+[affine mapping](../LangRef.md#affine-expressions) to a list of SSA values,
 yielding a single SSA value. The number of dimension and symbol arguments to
 affine.apply must be equal to the respective number of dimensional and symbolic
 inputs to the affine mapping; the `affine.apply` instruction always returns one
@@ -64,7 +64,7 @@ The `affine.for` operation represents an affine loop nest. It has one region
 containing its body. This region must contain one block that terminates with
 [`affine.terminator`](#'affine.terminator"-operation). *Note:* when `affine.for`
 is printed in custom format, the terminator is omitted. The block has one
-argument of [`index`](LangRef.md#index-type) type that represents the induction
+argument of [`index`](../LangRef.md#index-type) type that represents the induction
 variable of the loop.
 
 The `affine.for` operation executes its body a number of times iterating from a
@@ -122,7 +122,7 @@ space defined by an integer set (a conjunction of affine constraints). A single
 `affine.if` may end with an optional `else` clause.
 
 The condition of the `affine.if` is represented by an
-[integer set](LangRef.md#integer-sets) (a conjunction of affine constraints),
+[integer set](../LangRef.md#integer-sets) (a conjunction of affine constraints),
 and the SSA values bound to the dimensions and symbols in the integer set. The
 [same restrictions](#restrictions-on-dimensions-and-symbols) hold for these SSA
 values as for all bindings of SSA values to dimensions and symbols.
@@ -167,7 +167,7 @@ loops ([`for`](#'for'-operation)) and branches ([`if`](#'if'-operation)). It
 unconditionally transmits the control flow to the successor of the operation
 enclosing the region.
 
-*Rationale*: bodies of affine operations are [blocks](LangRef.md#block) that
+*Rationale*: bodies of affine operations are [blocks](../LangRef.md#block) that
 must have terminators. Loops and branches represent structured control flow and
 should not accept arbitrary branches as terminators.
 

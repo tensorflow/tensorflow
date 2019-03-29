@@ -18,7 +18,7 @@
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 using namespace mlir;
 using namespace mlir::edsc;

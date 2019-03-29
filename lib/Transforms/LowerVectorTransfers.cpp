@@ -38,10 +38,10 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/MLPatternLoweringPass.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/VectorOps/VectorOps.h"
 
 /// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
 /// proper abstraction for the hardware.
@@ -58,9 +58,9 @@
 ///    affine.for %i0 = 0 to %0 {
 ///      affine.for %i1 = 0 to %1 step 256 {
 ///        affine.for %i2 = 0 to %2 step 32 {
-///          %v = vector_transfer_read %A, %i0, %i1, %i2, %f0
+///          %v = vector.transfer_read %A[%i0, %i1, %i2], (%f0)
 ///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
-///               (memref<?x?x?xf32>, index, index, f32) -> vector<32x256xf32>
+///               memref<?x?x?xf32>, vector<32x256xf32>
 ///    }}}
 /// ```
 ///

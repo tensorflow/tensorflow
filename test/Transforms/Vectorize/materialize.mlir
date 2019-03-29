@@ -18,18 +18,18 @@ func @materialize(%M : index, %N : index, %O : index, %P : index) {
   // CHECK-NEXT:          %[[b:[0-9]+]] = {{.*}}[[ID1]](%i1)
   // CHECK-NEXT:          %[[c:[0-9]+]] = {{.*}}[[ID1]](%i2)
   // CHECK-NEXT:          %[[d:[0-9]+]] = {{.*}}[[ID1]](%i3)
-  // CHECK-NEXT:          vector_transfer_write {{.*}}, %0, %[[a]], %[[b]], %[[c]], %[[d]] {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>, index, index, index, index
+  // CHECK-NEXT:          vector.transfer_write {{.*}}, %0[%[[a]], %[[b]], %[[c]], %[[d]]] {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>
   // CHECK:          %[[b1:[0-9]+]] = {{.*}}[[D0P1]](%i1)
-  // CHECK:          vector_transfer_write {{.*}}, %0, {{.*}}, %[[b1]], {{.*}} {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>, index, index, index, index
+  // CHECK:          vector.transfer_write {{.*}}, %0[{{.*}}, %[[b1]], {{.*}}] {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>
   // CHECK:          %[[b2:[0-9]+]] = {{.*}}[[D0P2]](%i1)
-  // CHECK:          vector_transfer_write {{.*}}, %0, {{.*}}, %[[b2]], {{.*}} {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>, index, index, index, index
+  // CHECK:          vector.transfer_write {{.*}}, %0[{{.*}}, %[[b2]], {{.*}}] {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>
   // CHECK:          %[[b3:[0-9]+]] = {{.*}}[[D0P3]](%i1)
-  // CHECK:          vector_transfer_write {{.*}}, %0, {{.*}}, %[[b3]], {{.*}} {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>, index, index, index, index
+  // CHECK:          vector.transfer_write {{.*}}, %0[{{.*}}, %[[b3]], {{.*}}] {permutation_map: #[[D0D1D2D3TOD1D0]]} : vector<4x4xf32>, memref<?x?x?x?xf32>
   affine.for %i0 = 0 to %M step 4 {
     affine.for %i1 = 0 to %N step 4 {
       affine.for %i2 = 0 to %O {
         affine.for %i3 = 0 to %P step 4 {
-          "vector_transfer_write"(%f1, %A, %i0, %i1, %i2, %i3) {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} : (vector<4x4x4xf32>, memref<?x?x?x?xf32, 0>, index, index, index, index) -> ()
+          vector.transfer_write %f1, %A[%i0, %i1, %i2, %i3] {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} : vector<4x4x4xf32>, memref<?x?x?x?xf32, 0>
         }
       }
     }

@@ -325,7 +325,7 @@ protected:
 /// ```mlir
 ///    Stmt scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
 ///    tmpAlloc = alloc(tmpMemRefType);
-///    vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
+///    vectorView = vector.type_cast(tmpAlloc, vectorMemRefType),
 ///    vectorValue = load(vectorView, zero),
 ///    tmpDealloc = dealloc(tmpAlloc)});
 ///    emitter.emitStmts({tmpAlloc, vectorView, vectorValue, tmpDealloc});
@@ -391,7 +391,7 @@ protected:
 ///    Stmt scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
 ///    Stmt block = Block({
 ///      tmpAlloc = alloc(tmpMemRefType),
-///      vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
+///      vectorView = vector.type_cast(tmpAlloc, vectorMemRefType),
 ///      For(ivs, lbs, ubs, steps, {
 ///        scalarValue = load(scalarMemRef,
 ///        accessInfo.clippedScalarAccessExprs), store(scalarValue, tmpAlloc,

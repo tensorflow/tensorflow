@@ -1,4 +1,4 @@
-//===- SuperVectorOps.cpp - MLIR Super Vectorizer Operations---------------===//
+//===- VectorOps.cpp - MLIR Super Vectorizer Operations -------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,7 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
+#include "mlir/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -29,11 +29,11 @@
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
-// SuperVectorOpsDialect
+// VectorOpsDialect
 //===----------------------------------------------------------------------===//
 
-SuperVectorOpsDialect::SuperVectorOpsDialect(MLIRContext *context)
-    : Dialect(/*namePrefix=*/"", context) {
+VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
+    : Dialect("vector", context) {
   addOperations<VectorTransferReadOp, VectorTransferWriteOp,
                 VectorTypeCastOp>();
 }
@@ -107,88 +107,65 @@ AffineMap VectorTransferReadOp::getPermutationMap() {
 void VectorTransferReadOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " ";
   p->printOperand(getMemRef());
-  *p << ", ";
+  *p << "[";
   p->printOperands(getIndices());
+  *p << "]";
   auto optionalPaddingValue = getPaddingValue();
   if (optionalPaddingValue) {
-    *p << ", ";
+    *p << ", (";
     p->printOperand(*optionalPaddingValue);
+    *p << ")";
   }
   p->printOptionalAttrDict(getAttrs());
-  // Construct the FunctionType and print it.
-  llvm::SmallVector<Type, 8> inputs{getMemRefType()};
-  // Must have at least one actual index, see verify.
-  Value *firstIndex = *getIndices().begin();
-  Type indexType = firstIndex->getType();
-  inputs.append(getMemRefType().getRank(), indexType);
-  if (optionalPaddingValue) {
-    inputs.push_back((*optionalPaddingValue)->getType());
-  }
-  *p << " : "
-     << FunctionType::get(inputs, {getResultType()}, indexType.getContext());
+  *p << " : " << getMemRefType();
+  *p << ", " << getResultType();
 }
 
 bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 8> parsedOperands;
-  Type type;
+  OpAsmParser::OperandType memrefInfo;
+  SmallVector<OpAsmParser::OperandType, 8> indexInfo;
+  SmallVector<OpAsmParser::OperandType, 8> paddingInfo;
+  SmallVector<Type, 2> types;
 
   // Parsing with support for optional paddingValue.
-  auto fail = parser->parseOperandList(parsedOperands) ||
-              parser->parseOptionalAttributeDict(result->attributes) ||
-              parser->parseColonType(type);
-  if (fail) {
+  if (parser->parseOperand(memrefInfo) ||
+      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseTrailingOperandList(paddingInfo, -1,
+                                       OpAsmParser::Delimiter::Paren) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types))
     return true;
-  }
 
   // Resolution.
-  auto funType = type.dyn_cast<FunctionType>();
-  if (!funType)
-    return parser->emitError(parser->getNameLoc(), "Function type expected");
-  if (funType.getNumInputs() < 1)
-    return parser->emitError(parser->getNameLoc(),
-                             "Function type expects at least one input");
-  MemRefType memrefType =
-      funType.getInput(Offsets::MemRefOffset).dyn_cast<MemRefType>();
+  if (types.size() != 2)
+    return parser->emitError(parser->getNameLoc(), "expected 2 types");
+  MemRefType memrefType = types[0].dyn_cast<MemRefType>();
   if (!memrefType)
-    return parser->emitError(parser->getNameLoc(),
-                             "MemRef type expected for first input");
-  if (funType.getNumResults() < 1)
-    return parser->emitError(parser->getNameLoc(),
-                             "Function type expects exactly one vector result");
-  VectorType vectorType = funType.getResult(0).dyn_cast<VectorType>();
+    return parser->emitError(parser->getNameLoc(), "memRef type expected");
+  VectorType vectorType = types[1].dyn_cast<VectorType>();
   if (!vectorType)
-    return parser->emitError(parser->getNameLoc(),
-                             "Vector type expected for first result");
-  if (parsedOperands.size() != funType.getNumInputs())
-    return parser->emitError(parser->getNameLoc(),
-                             "requires " + Twine(funType.getNumInputs()) +
-                                 " operands");
+    return parser->emitError(parser->getNameLoc(), "vector type expected");
 
   // Extract optional paddingValue.
-  OpAsmParser::OperandType memrefInfo = parsedOperands[0];
   // At this point, indexInfo may contain the optional paddingValue, pop it out.
-  SmallVector<OpAsmParser::OperandType, 8> indexInfo{
-      parsedOperands.begin() + Offsets::FirstIndexOffset, parsedOperands.end()};
+  if (indexInfo.size() != memrefType.getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected " + Twine(memrefType.getRank()) +
+                                 " indices to the memref");
+  if (paddingInfo.size() > 1)
+    return parser->emitError(parser->getNameLoc(),
+                             "expected at most one padding value");
   Type paddingType;
-  OpAsmParser::OperandType paddingValue;
-  bool hasPaddingValue = indexInfo.size() > memrefType.getRank();
-  unsigned expectedNumOperands = Offsets::FirstIndexOffset +
-                                 memrefType.getRank() +
-                                 (hasPaddingValue ? 1 : 0);
-  if (hasPaddingValue) {
-    paddingType = funType.getInputs().back();
-    paddingValue = indexInfo.pop_back_val();
+  bool hasOptionalPaddingValue = !paddingInfo.empty();
+  if (hasOptionalPaddingValue) {
+    paddingType = vectorType.getElementType();
   }
-  if (funType.getNumInputs() != expectedNumOperands)
-    return parser->emitError(
-        parser->getNameLoc(),
-        "requires actual number of operands to match function type");
-
   auto indexType = parser->getBuilder().getIndexType();
   return parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
          parser->resolveOperands(indexInfo, indexType, result->operands) ||
-         (hasPaddingValue && parser->resolveOperand(paddingValue, paddingType,
-                                                    result->operands)) ||
+         (hasOptionalPaddingValue &&
+          parser->resolveOperand(paddingInfo[0], paddingType,
+                                 result->operands)) ||
          parser->addTypeToList(vectorType, result->types);
 }
 
@@ -204,7 +181,7 @@ bool VectorTransferReadOp::verify() {
   // Consistency of vector type in function type.
   if (!getResult()->getType().isa<VectorType>()) {
     return emitOpError("should have a vector result type in function type: "
-                       "(memref_type [, elemental_type]) -> vector_type");
+                       "memref_type<...xelemental_type>, vector_type");
   }
   // Consistency of elemental types in memref and vector.
   MemRefType memrefType = getMemRefType();
@@ -219,8 +196,9 @@ bool VectorTransferReadOp::verify() {
                                  (optionalPaddingValue ? 1 : 0);
   // Checks on the actual operands and their types.
   if (getNumOperands() != expectedNumOperands) {
-    return emitOpError("expects " + Twine(expectedNumOperands) +
-                       " operands to match the types");
+    return emitOpError("expects " + Twine(expectedNumOperands) + " operands " +
+                       "(of which " + Twine(memrefType.getRank()) +
+                       " indices)");
   }
   // Consistency of padding value with vector type.
   if (optionalPaddingValue) {
@@ -239,7 +217,7 @@ bool VectorTransferReadOp::verify() {
   for (auto *idx : getIndices()) {
     if (!idx->getType().isIndex()) {
       return emitOpError(
-          "index to vector_transfer_read must have 'index' type");
+          "index to vector.transfer_read must have 'index' type");
     }
     ++numIndices;
   }
@@ -301,63 +279,41 @@ void VectorTransferWriteOp::print(OpAsmPrinter *p) {
   *p << getOperationName();
   *p << " " << *getVector();
   *p << ", " << *getMemRef();
-  *p << ", ";
+  *p << "[";
   p->printOperands(getIndices());
+  *p << "]";
   p->printOptionalAttrDict(getAttrs());
-  Type indexType = (*getIndices().begin())->getType();
   *p << " : ";
   p->printType(getVectorType());
   *p << ", ";
   p->printType(getMemRefType());
-  for (unsigned r = 0, n = getMemRefType().getRank(); r < n; ++r) {
-    *p << ", ";
-    p->printType(indexType);
-  }
 }
 
 bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 8> parsedOperands;
-  SmallVector<Type, 8> types;
-
-  // Parsing with support for optional paddingValue.
-  auto fail = parser->parseOperandList(parsedOperands) ||
-              parser->parseOptionalAttributeDict(result->attributes) ||
-              parser->parseColonTypeList(types);
-  if (fail) {
+  OpAsmParser::OperandType storeValueInfo;
+  OpAsmParser::OperandType memrefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  SmallVector<Type, 2> types;
+  auto indexType = parser->getBuilder().getIndexType();
+  if (parser->parseOperand(storeValueInfo) || parser->parseComma() ||
+      parser->parseOperand(memrefInfo) ||
+      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types))
     return true;
-  }
 
-  // Resolution.
-  if (parsedOperands.size() != types.size())
-    return parser->emitError(
-        parser->getNameLoc(),
-        "requires number of operands and input types to match");
-  if (parsedOperands.size() < Offsets::FirstIndexOffset)
-    return parser->emitError(parser->getNameLoc(),
-                             "requires at least vector and memref operands");
+  if (types.size() != 2)
+    return parser->emitError(parser->getNameLoc(), "expected 2 types");
   VectorType vectorType = types[Offsets::VectorOffset].dyn_cast<VectorType>();
   if (!vectorType)
-    return parser->emitError(parser->getNameLoc(),
-                             "Vector type expected for first input type");
+    return parser->emitError(parser->getNameLoc(), "vector type expected");
   MemRefType memrefType = types[Offsets::MemRefOffset].dyn_cast<MemRefType>();
   if (!memrefType)
-    return parser->emitError(parser->getNameLoc(),
-                             "MemRef type expected for second input type");
+    return parser->emitError(parser->getNameLoc(), "memRef type expected");
 
-  unsigned expectedNumOperands =
-      Offsets::FirstIndexOffset + memrefType.getRank();
-  if (parsedOperands.size() != expectedNumOperands)
-    return parser->emitError(parser->getNameLoc(),
-                             "requires " + Twine(expectedNumOperands) +
-                                 " operands");
-
-  OpAsmParser::OperandType vectorInfo = parsedOperands[Offsets::VectorOffset];
-  OpAsmParser::OperandType memrefInfo = parsedOperands[Offsets::MemRefOffset];
-  SmallVector<OpAsmParser::OperandType, 8> indexInfo{
-      parsedOperands.begin() + Offsets::FirstIndexOffset, parsedOperands.end()};
-  auto indexType = parser->getBuilder().getIndexType();
-  return parser->resolveOperand(vectorInfo, vectorType, result->operands) ||
-         parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
+  return parser->resolveOperands(storeValueInfo, vectorType,
+                                 result->operands) ||
+         parser->resolveOperands(memrefInfo, memrefType, result->operands) ||
          parser->resolveOperands(indexInfo, indexType, result->operands);
 }
 
@@ -386,15 +342,16 @@ bool VectorTransferWriteOp::verify() {
       Offsets::FirstIndexOffset + memrefType.getRank();
   // Checks on the actual operands and their types.
   if (getNumOperands() != expectedNumOperands) {
-    return emitOpError("expects " + Twine(expectedNumOperands) +
-                       " operands to match the types");
+    return emitOpError("expects " + Twine(expectedNumOperands) + " operands " +
+                       "(of which " + Twine(memrefType.getRank()) +
+                       " indices)");
   }
   // Consistency of indices types.
   unsigned numIndices = 0;
   for (auto *idx : getIndices()) {
     if (!idx->getType().isIndex()) {
       return emitOpError(
-          "index to vector_transfer_write must have 'index' type");
+          "index to vector.transfer_write must have 'index' type");
     }
     numIndices++;
   }
