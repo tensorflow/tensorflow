@@ -1792,24 +1792,21 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (TF_PREDICT_FALSE(
                 MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
+          const string kernel_label = strings::StrCat(
+              op_name, ":", op_kernel->type_string(), "#id=", step_id_, "#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
-            // The OpKernel may create child activities (such as GPU kernel
-            // launches), so use a `ScopedAnnotation` to relate these activities
-            // in the trace.
-            tracing::ScopedAnnotation activity(
-                op_name, strings::StrCat(op_kernel->type_string(),
-                                         "#id=", step_id_, "#"));
+            // 'ScopedActivity' will trace the OpKernel scheduling time.
+            tracing::ScopedActivity activity(kernel_label);
+            // 'ScopedAnnotation' will trace the OpKernel execution time.
+            tracing::ScopedAnnotation annotation(kernel_label);
             device->Compute(op_kernel, &ctx);
           } else {
             // Use the cheaper `ScopedActivity` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(
-                op_name,
-                strings::StrCat(op_kernel->type_string(), "#id=", step_id_,
-                                "#"),
-                item.kernel_is_expensive);
+            tracing::ScopedActivity activity(kernel_label,
+                                             item.kernel_is_expensive);
             device->Compute(op_kernel, &ctx);
           }
         } else {
