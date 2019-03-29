@@ -926,10 +926,6 @@ class GradientTape(object):
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
                          "non-persistent tapes.")
-    for v in nest.flatten(target):
-      if not is_floating(v):
-        raise ValueError("GradientTape.gradient can only be called when "
-                         "data type is float.")
     
     if self._recording:
       if not self._persistent:
@@ -959,6 +955,11 @@ class GradientTape(object):
     if output_gradients is not None:
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
                           for x in nest.flatten(output_gradients)]
+    
+    for v in nest.flatten(target):
+      if not is_floating(v):
+        raise ValueError("GradientTape.gradient can only be called when "
+                         "data type is float.")
 
     flat_grad = imperative_grad.imperative_grad(
         self._tape,
