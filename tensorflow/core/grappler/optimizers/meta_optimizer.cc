@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -615,6 +616,25 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // function_optimizer.cc).
       func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
           false;
+
+      // TODO(b/129545186): Shape inference in GraphProperties doesn't work well
+      // with _Arg nodes. Replace them with Placeholders with unknown shape.
+      absl::flat_hash_set<absl::string_view> input_nodes;
+      for (auto& input_arg : func_item.inputs()) {
+        input_nodes.insert(input_arg.node_name);
+      }
+      for (NodeDef& func_node : *func_item.graph.mutable_node()) {
+        if (input_nodes.contains(func_node.name())) {
+          func_node.set_op("Placeholder");
+          auto& attrs = *func_node.mutable_attr();
+          attrs["dtype"] = attrs["T"];
+          attrs.erase("index");
+          attrs.erase("T");
+          TensorShapeProto unknown_shape;
+          unknown_shape.set_unknown_rank(true);
+          *(attrs["shape"].mutable_shape()) = unknown_shape;
+        }
+      }
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;

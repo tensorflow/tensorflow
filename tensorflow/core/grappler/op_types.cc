@@ -67,6 +67,10 @@ bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
 
+bool IsArg(const NodeDef& node) {
+  return node.op() == "_Arg" || node.op() == "_DeviceArg";
+}
+
 bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
 
 bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
@@ -417,6 +421,10 @@ bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 bool IsRestore(const NodeDef& node) {
   return (node.op() == "Restore" || node.op() == "RestoreV2" ||
           node.op() == "RestoreSlice");
+}
+
+bool IsRetval(const NodeDef& node) {
+  return node.op() == "_Retval" || node.op() == "_DeviceRetval";
 }
 
 bool IsReverse(const NodeDef& node) {
