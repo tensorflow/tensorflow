@@ -185,9 +185,8 @@ struct MaterializationState {
   /// of the type and we assert everything is f32.
   /// TODO(ntv): relax the assumptions on admissible element type once a
   /// contract exists.
-  MaterializationState() : hwVectorSize(clVectorSize.size(), 0) {
-    std::copy(clVectorSize.begin(), clVectorSize.end(), hwVectorSize.begin());
-  }
+  MaterializationState(SmallVector<int64_t, 8> sizes) : hwVectorSize(sizes) {}
+
   SmallVector<int64_t, 8> hwVectorSize;
   VectorType superVectorType;
   VectorType hwVectorType;
@@ -195,7 +194,18 @@ struct MaterializationState {
   DenseMap<Value *, Value *> *substitutionsMap;
 };
 
+/// Base state for the vector materialization pass.
+/// Command line arguments are preempted by non-empty pass arguments.
 struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
+  MaterializeVectorsPass()
+      : hwVectorSize(clVectorSize.begin(), clVectorSize.end()) {}
+  MaterializeVectorsPass(ArrayRef<int64_t> hwVectorSize)
+      : MaterializeVectorsPass() {
+    if (!hwVectorSize.empty())
+      this->hwVectorSize.assign(hwVectorSize.begin(), hwVectorSize.end());
+  }
+
+  SmallVector<int64_t, 8> hwVectorSize;
   void runOnFunction() override;
 };
 
@@ -739,11 +749,11 @@ void MaterializeVectorsPass::runOnFunction() {
   LLVM_DEBUG(dbgs() << "\nMaterializeVectors on Function\n");
   LLVM_DEBUG(f->print(dbgs()));
 
-  MaterializationState state;
+  MaterializationState state(hwVectorSize);
   // Get the hardware vector type.
   // TODO(ntv): get elemental type from super-vector type rather than force f32.
   auto subVectorType =
-      VectorType::get(state.hwVectorSize, FloatType::getF32(&getContext()));
+      VectorType::get(hwVectorSize, FloatType::getF32(&getContext()));
 
   // Capture terminators; i.e. vector_transfer_write ops involving a strict
   // super-vector of subVectorType.
@@ -765,8 +775,9 @@ void MaterializeVectorsPass::runOnFunction() {
     signalPassFailure();
 }
 
-FunctionPassBase *mlir::createMaterializeVectorsPass() {
-  return new MaterializeVectorsPass();
+FunctionPassBase *
+mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
+  return new MaterializeVectorsPass(vectorSize);
 }
 
 static PassRegistration<MaterializeVectorsPass>

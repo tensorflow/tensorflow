@@ -620,12 +620,10 @@ struct Vectorize : public FunctionPass<Vectorize> {
 
 } // end anonymous namespace
 
-Vectorize::Vectorize() {
-  this->vectorSizes.assign(clVirtualVectorSize.begin(),
-                           clVirtualVectorSize.end());
-  this->fastestVaryingPattern.assign(clFastestVaryingPattern.begin(),
-                                     clFastestVaryingPattern.end());
-}
+Vectorize::Vectorize()
+    : vectorSizes(clVirtualVectorSize.begin(), clVirtualVectorSize.end()),
+      fastestVaryingPattern(clFastestVaryingPattern.begin(),
+                            clFastestVaryingPattern.end()) {}
 
 Vectorize::Vectorize(ArrayRef<int64_t> virtualVectorSize) : Vectorize() {
   if (!virtualVectorSize.empty()) {

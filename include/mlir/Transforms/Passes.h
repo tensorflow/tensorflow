@@ -52,7 +52,8 @@ createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize);
 FunctionPassBase *createVectorizerTestPass();
 
 /// Creates a pass to lower super-vectors to target-dependent HW vectors.
-FunctionPassBase *createMaterializeVectorsPass();
+FunctionPassBase *
+createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize);
 
 /// Creates a loop unrolling pass with the provided parameters.
 /// 'getUnrollFactor' is a function callback for clients to supply a function
