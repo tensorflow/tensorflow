@@ -151,14 +151,14 @@ bool ImagePreprocessingStage::Run(
                                   nullptr));
 
   // Central Crop.
-  const int left =
-      static_cast<int>(round(original_width * (1 - cropping_fraction_) / 2));
-  const int top =
-      static_cast<int>(round(original_height * (1 - cropping_fraction_) / 2));
+  const int left = static_cast<int>(
+      std::round(original_width * (1 - cropping_fraction_) / 2));
+  const int top = static_cast<int>(
+      std::round(original_height * (1 - cropping_fraction_) / 2));
   const int crop_width =
-      static_cast<int>(round(original_width * cropping_fraction_));
+      static_cast<int>(std::round(original_width * cropping_fraction_));
   const int crop_height =
-      static_cast<int>(round(original_height * cropping_fraction_));
+      static_cast<int>(std::round(original_height * cropping_fraction_));
   std::vector<float> cropped_image;
   Crop(original_height, original_width, top, left, crop_height, crop_width,
        original_image.get(), &cropped_image);
