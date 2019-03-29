@@ -8,6 +8,7 @@ tensorflow/contrib/boosted_trees/ops/training_ops.cc
 tensorflow/core/kernels/aggregate_ops.cc
 tensorflow/core/kernels/argmax_op.cc
 tensorflow/core/kernels/avgpooling_op.cc
+tensorflow/core/kernels/batch_matmul_op_common.cc
 tensorflow/core/kernels/batch_matmul_op_real.cc
 tensorflow/core/kernels/batch_norm_op.cc
 tensorflow/core/kernels/batchtospace_op.cc

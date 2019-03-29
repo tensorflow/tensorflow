@@ -2782,6 +2782,7 @@ py_library(
         ":state_ops_gen",
         ":tensor_shape",
         ":util",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],

@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -29,7 +30,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batch_matmul_op_common.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -74,8 +78,8 @@ struct ParallelMatMulKernel {
   }
 
   static void Run(const OpKernelContext* context, const Tensor& in_x,
-                  const Tensor in_y, bool adj_x, bool adj_y, Tensor* out,
-                  int start, int limit) {
+                  const Tensor in_y, bool adj_x, bool adj_y,
+                  const MatMulBCast& bcast, Tensor* out, int start, int limit) {
     static_assert(IsComplex, "Complex type expected.");
     auto Tx = in_x.tensor<Scalar, 3>();
     auto Ty = in_y.tensor<Scalar, 3>();
@@ -88,14 +92,21 @@ struct ParallelMatMulKernel {
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
     contract_pairs[0] = ContractionDims(adj_x, adj_y);
     const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
-    for (int i = start; i < limit; ++i) {
-      auto x = Tx.template chip<0>(i);
+
+    const bool should_bcast = bcast.IsBroadcastingRequired();
+    const auto& x_batch_indices = bcast.x_batch_indices();
+    const auto& y_batch_indices = bcast.y_batch_indices();
+    for (int64 i = start; i < limit; ++i) {
+      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+
+      auto x = Tx.template chip<0>(x_batch_index);
       auto z = Tz.template chip<0>(i);
       if (adj_x != adj_y) {
-        auto y = Ty.template chip<0>(i).conjugate();
+        auto y = Ty.template chip<0>(y_batch_index).conjugate();
         z.device(d) = x.contract(y, contract_pairs);
       } else {
-        auto y = Ty.template chip<0>(i);
+        auto y = Ty.template chip<0>(y_batch_index);
         z.device(d) = x.contract(y, contract_pairs);
       }
     }
@@ -110,18 +121,25 @@ struct ParallelMatMulKernel<Scalar, false> {
   static void Conjugate(const OpKernelContext* context, Tensor* out) {}
 
   static void Run(const OpKernelContext* context, const Tensor& in_x,
-                  const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out,
-                  int start, int limit) {
+                  const Tensor& in_y, bool adj_x, bool adj_y,
+                  const MatMulBCast& bcast, Tensor* out, int start, int limit) {
     auto Tx = in_x.tensor<Scalar, 3>();
     auto Ty = in_y.tensor<Scalar, 3>();
     auto Tz = out->tensor<Scalar, 3>();
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
     contract_pairs[0] = ContractionDims(adj_x, adj_y);
     const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
-    for (int i = start; i < limit; ++i) {
-      auto x = Tx.template chip<0>(i);
-      auto y = Ty.template chip<0>(i);
+
+    const bool should_bcast = bcast.IsBroadcastingRequired();
+    const auto& x_batch_indices = bcast.x_batch_indices();
+    const auto& y_batch_indices = bcast.y_batch_indices();
+    for (int64 i = start; i < limit; ++i) {
+      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+      auto x = Tx.template chip<0>(x_batch_index);
+      auto y = Ty.template chip<0>(y_batch_index);
       auto z = Tz.template chip<0>(i);
+
       z.device(d) = x.contract(y, contract_pairs);
     }
   }
@@ -151,10 +169,16 @@ struct SequentialMatMulKernel {
   }
 
   static void Run(const Tensor& in_x, const Tensor& in_y, bool adj_x,
-                  bool adj_y, Tensor* out, int start, int limit) {
-    for (int i = start; i < limit; ++i) {
-      auto x = ConstTensorSliceToEigenMatrix(in_x, i);
-      auto y = ConstTensorSliceToEigenMatrix(in_y, i);
+                  bool adj_y, const MatMulBCast& bcast, Tensor* out, int start,
+                  int limit) {
+    const bool should_bcast = bcast.IsBroadcastingRequired();
+    const auto& x_batch_indices = bcast.x_batch_indices();
+    const auto& y_batch_indices = bcast.y_batch_indices();
+    for (int64 i = start; i < limit; ++i) {
+      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+      auto x = ConstTensorSliceToEigenMatrix(in_x, x_batch_index);
+      auto y = ConstTensorSliceToEigenMatrix(in_y, y_batch_index);
       auto z = TensorSliceToEigenMatrix(out, i);
       if (!adj_x) {
         if (!adj_y) {
@@ -181,13 +205,14 @@ struct LaunchBatchMatMul;
 template <typename Scalar>
 struct LaunchBatchMatMul<CPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
-                     const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
+                     const Tensor& in_y, bool adj_x, bool adj_y,
+                     const MatMulBCast& bcast, Tensor* out) {
     typedef ParallelMatMulKernel<Scalar, Eigen::NumTraits<Scalar>::IsComplex>
         ParallelMatMulKernel;
     bool conjugate_result = false;
 
     // Number of matrix multiplies i.e. size of the batch.
-    const int64 batch_size = in_x.dim_size(0);
+    const int64 batch_size = bcast.output_batch_size();
     const int64 cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
     const int64 small_dim = std::min(
@@ -199,17 +224,17 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
       // Parallelize over inner dims.
       // For large matrix products it is counter-productive to parallelize
       // over the batch dimension.
-      ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out, 0,
-                                batch_size);
+      ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, bcast, out,
+                                0, batch_size);
       conjugate_result = adj_x;
     } else {
       // Parallelize over outer dims. For small matrices and large batches, it
       // is counter-productive to parallelize the inner matrix multiplies.
       Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
             cost_per_unit,
-            [&in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
-              SequentialMatMulKernel<Scalar>::Run(in_x, in_y, adj_x, adj_y, out,
-                                                  start, limit);
+            [&in_x, &in_y, adj_x, adj_y, &bcast, out](int start, int limit) {
+              SequentialMatMulKernel<Scalar>::Run(in_x, in_y, adj_x, adj_y,
+                                                  bcast, out, start, limit);
             });
     }
     if (conjugate_result) {
@@ -270,7 +295,8 @@ class CublasScratchAllocator : public se::ScratchAllocator {
 template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
-                     const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
+                     const Tensor& in_y, bool adj_x, bool adj_y,
+                     const MatMulBCast& bcast, Tensor* out) {
     constexpr se::blas::Transpose kTranspose =
         is_complex<Scalar>::value ? se::blas::Transpose::kConjugateTranspose
                                   : se::blas::Transpose::kTranspose;
@@ -279,7 +305,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     const uint64 m = in_x.dim_size(adj_x ? 2 : 1);
     const uint64 k = in_x.dim_size(adj_x ? 1 : 2);
     const uint64 n = in_y.dim_size(adj_y ? 1 : 2);
-    const uint64 batch_size = in_x.dim_size(0);
+    const int64 batch_size = bcast.output_batch_size();
     auto blas_transpose_a = trans[adj_x];
     auto blas_transpose_b = trans[adj_y];
 
@@ -293,8 +319,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     std::vector<DeviceMemoryType*> a_ptrs;
     std::vector<DeviceMemoryType*> b_ptrs;
     std::vector<DeviceMemoryType*> c_ptrs;
-    a_device_memory.reserve(batch_size);
-    b_device_memory.reserve(batch_size);
+    a_device_memory.reserve(bcast.x_batch_size());
+    b_device_memory.reserve(bcast.y_batch_size());
     c_device_memory.reserve(batch_size);
     a_ptrs.reserve(batch_size);
     b_ptrs.reserve(batch_size);
@@ -302,13 +328,31 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     auto* a_base_ptr = in_x.template flat<Scalar>().data();
     auto* b_base_ptr = in_y.template flat<Scalar>().data();
     auto* c_base_ptr = out->template flat<Scalar>().data();
-    for (int64 i = 0; i < batch_size; ++i) {
-      a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
-      b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
-      c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
-      a_ptrs.push_back(&a_device_memory.back());
-      b_ptrs.push_back(&b_device_memory.back());
-      c_ptrs.push_back(&c_device_memory.back());
+
+    if (!bcast.IsBroadcastingRequired()) {
+      for (int64 i = 0; i < batch_size; ++i) {
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+        a_ptrs.push_back(&a_device_memory.back());
+        b_ptrs.push_back(&b_device_memory.back());
+        c_ptrs.push_back(&c_device_memory.back());
+      }
+    } else {
+      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
+      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+      }
+      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+      }
+      for (int64 i = 0; i < batch_size; ++i) {
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+        a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
+        b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+        c_ptrs.push_back(&c_device_memory.back());
+      }
     }
 
     typedef Scalar Coefficient;
@@ -385,7 +429,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 template <>
 struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
-                     const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
+                     const Tensor& in_y, bool adj_x, bool adj_y,
+                     const MatMulBCast& bcast, Tensor* out) {
     typedef Eigen::half Scalar;
     constexpr perftools::gputools::blas::Transpose kTranspose =
         is_complex<Scalar>::value
@@ -396,7 +441,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     const uint64 m = in_x.dim_size(adj_x ? 2 : 1);
     const uint64 k = in_x.dim_size(adj_x ? 1 : 2);
     const uint64 n = in_y.dim_size(adj_y ? 1 : 2);
-    const uint64 batch_size = in_x.dim_size(0);
+    const uint64 batch_size = bcast.output_batch_size();
     auto blas_transpose_a = trans[adj_x];
     auto blas_transpose_b = trans[adj_y];
 
@@ -410,8 +455,8 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     std::vector<DeviceMemoryType*> a_ptrs;
     std::vector<DeviceMemoryType*> b_ptrs;
     std::vector<DeviceMemoryType*> c_ptrs;
-    a_device_memory.reserve(batch_size);
-    b_device_memory.reserve(batch_size);
+    a_device_memory.reserve(bcast.x_batch_size());
+    b_device_memory.reserve(bcast.y_batch_size());
     c_device_memory.reserve(batch_size);
     a_ptrs.reserve(batch_size);
     b_ptrs.reserve(batch_size);
@@ -419,13 +464,31 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     auto* a_base_ptr = in_x.template flat<Scalar>().data();
     auto* b_base_ptr = in_y.template flat<Scalar>().data();
     auto* c_base_ptr = out->template flat<Scalar>().data();
-    for (int64 i = 0; i < batch_size; ++i) {
-      a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
-      b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
-      c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
-      a_ptrs.push_back(&a_device_memory.back());
-      b_ptrs.push_back(&b_device_memory.back());
-      c_ptrs.push_back(&c_device_memory.back());
+
+    if (!bcast.IsBroadcastingRequired()) {
+      for (int64 i = 0; i < batch_size; ++i) {
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+        a_ptrs.push_back(&a_device_memory.back());
+        b_ptrs.push_back(&b_device_memory.back());
+        c_ptrs.push_back(&c_device_memory.back());
+      }
+    } else {
+      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
+      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+      }
+      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+      }
+      for (int64 i = 0; i < batch_size; ++i) {
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+        a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
+        b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+        c_ptrs.push_back(&c_device_memory.back());
+      }
     }
 
     typedef float Coefficient;
@@ -480,17 +543,24 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
 template <typename Scalar>
 struct ParallelMatMulKernelSYCL {
   static void Run(const OpKernelContext* context, const Tensor& in_x,
-                  const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out,
-                  int start, int limit) {
+                  const Tensor& in_y, bool adj_x, bool adj_y,
+                  const MatMulBCast& bcast, Tensor* out, int start, int limit) {
     auto Tx = in_x.tensor<Scalar, 3>();
     auto Ty = in_y.tensor<Scalar, 3>();
     auto Tz = out->tensor<Scalar, 3>();
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
     contract_pairs[0] = ContractionDims(adj_x, adj_y);
     auto d = context->eigen_sycl_device();
-    for (int i = start; i < limit; ++i) {
-      auto x = Tx.template chip<0>(i);
-      auto y = Ty.template chip<0>(i);
+
+    const bool should_bcast = bcast.IsBroadcastingRequired();
+    const auto& x_batch_indices = bcast.x_batch_indices();
+    const auto& y_batch_indices = bcast.y_batch_indices();
+    for (int64 i = start; i < limit; ++i) {
+      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+
+      auto x = Tx.template chip<0>(x_batch_index);
+      auto y = Ty.template chip<0>(y_batch_index);
       auto z = Tz.template chip<0>(i);
       z.device(d) = x.contract(y, contract_pairs);
     }
@@ -500,54 +570,58 @@ struct ParallelMatMulKernelSYCL {
 template <typename Scalar>
 struct LaunchBatchMatMul<SYCLDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
-                     const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
+                     const Tensor& in_y, bool adj_x, bool adj_y,
+                     const MatMulBCast& bcast, Tensor* out) {
     // Number of matrix multiplies i.e. size of the batch.
-    const int64 batch_size = in_x.dim_size(0);
+    const int64 batch_size = bcast.output_batch_size();
     ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y,
-                                          out, 0, batch_size);
+                                          bcast, out, 0, batch_size);
   }
 };
 #endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename Scalar>
-class BatchMatMul : public OpKernel {
+class BaseBatchMatMulOp : public OpKernel {
  public:
-  explicit BatchMatMul(OpKernelConstruction* context) : OpKernel(context) {
+  explicit BaseBatchMatMulOp(OpKernelConstruction* context)
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
     OP_REQUIRES_OK(context, context->GetAttr("adj_y", &adj_y_));
   }
 
-  virtual ~BatchMatMul() {}
+  ~BaseBatchMatMulOp() override {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
-    OP_REQUIRES(ctx, in0.dims() == in1.dims(),
-                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
-                                        in0.shape().DebugString(), " vs. ",
-                                        in1.shape().DebugString()));
-    const int ndims = in0.dims();
+
+    ValidateInputTensors(ctx, in0, in1);
+
+    MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
-        ctx, ndims >= 2,
-        errors::InvalidArgument("In[0] and In[1] ndims must be >= 2: ", ndims));
-    TensorShape out_shape;
-    for (int i = 0; i < ndims - 2; ++i) {
-      OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
-                  errors::InvalidArgument(
-                      "In[0].dim(", i, ") and In[1].dim(", i,
-                      ") must be the same: ", in0.shape().DebugString(), " vs ",
-                      in1.shape().DebugString()));
-      out_shape.AddDim(in0.dim_size(i));
-    }
-    auto n = (ndims == 2) ? 1 : out_shape.num_elements();
-    auto d0 = in0.dim_size(ndims - 2);
-    auto d1 = in0.dim_size(ndims - 1);
+        ctx, bcast.IsValid(),
+        errors::InvalidArgument(
+            "In[0] and In[1] must have compatible batch dimensions: ",
+            in0.shape().DebugString(), " vs. ", in1.shape().DebugString()));
+
+    TensorShape out_shape = bcast.output_batch_shape();
+    auto batch_size = bcast.output_batch_size();
+    auto d0 = in0.dim_size(in0.dims() - 2);
+    auto d1 = in0.dim_size(in0.dims() - 1);
     Tensor in0_reshaped;
-    CHECK(in0_reshaped.CopyFrom(in0, TensorShape({n, d0, d1})));
-    auto d2 = in1.dim_size(ndims - 2);
-    auto d3 = in1.dim_size(ndims - 1);
+    OP_REQUIRES(
+        ctx,
+        in0_reshaped.CopyFrom(in0, TensorShape({bcast.x_batch_size(), d0, d1})),
+        errors::Internal("Failed to reshape In[0] from ",
+                         in0.shape().DebugString()));
+    auto d2 = in1.dim_size(in1.dims() - 2);
+    auto d3 = in1.dim_size(in1.dims() - 1);
     Tensor in1_reshaped;
-    CHECK(in1_reshaped.CopyFrom(in1, TensorShape({n, d2, d3})));
+    OP_REQUIRES(
+        ctx,
+        in1_reshaped.CopyFrom(in1, TensorShape({bcast.y_batch_size(), d2, d3})),
+        errors::Internal("Failed to reshape In[1] from ",
+                         in1.shape().DebugString()));
     if (adj_x_) std::swap(d0, d1);
     if (adj_y_) std::swap(d2, d3);
     OP_REQUIRES(ctx, d1 == d2,
@@ -568,31 +642,102 @@ class BatchMatMul : public OpKernel {
       return;
     }
     Tensor out_reshaped;
-    CHECK(out_reshaped.CopyFrom(*out, TensorShape({n, d0, d3})));
-    LaunchBatchMatMul<Device, Scalar>::Launch(ctx, in0_reshaped, in1_reshaped,
-                                              adj_x_, adj_y_, &out_reshaped);
+    OP_REQUIRES(ctx,
+                out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
+                errors::Internal("Failed to reshape output from ",
+                                 out->shape().DebugString()));
+    LaunchBatchMatMul<Device, Scalar>::Launch(
+        ctx, in0_reshaped, in1_reshaped, adj_x_, adj_y_, bcast, &out_reshaped);
   }
+
+ protected:
+  virtual void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                                    const Tensor& in1) = 0;
 
  private:
   bool adj_x_;
   bool adj_y_;
 };
 
-#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMul<CPUDevice, TYPE>)
+// BatchMatMul Op implementation which disallows broadcasting.
+template <typename Device, typename Scalar>
+class BatchMatMulOp : public BaseBatchMatMulOp<Device, Scalar> {
+ public:
+  explicit BatchMatMulOp(OpKernelConstruction* context)
+      : BaseBatchMatMulOp<Device, Scalar>(context) {}
 
-#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMul<GPUDevice, TYPE>)
+  ~BatchMatMulOp() override {}
+
+ private:
+  void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                            const Tensor& in1) override {
+    // Disallow broadcasting support. Ensure that all batch dimensions of the
+    // input tensors match.
+    OP_REQUIRES(ctx, in0.dims() == in1.dims(),
+                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
+                                        in0.shape().DebugString(), " vs. ",
+                                        in1.shape().DebugString()));
+    const int ndims = in0.dims();
+    OP_REQUIRES(
+        ctx, ndims >= 2,
+        errors::InvalidArgument("In[0] and In[1] ndims must be >= 2: ", ndims));
+    for (int i = 0; i < ndims - 2; ++i) {
+      OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
+                  errors::InvalidArgument(
+                      "In[0].dim(", i, ") and In[1].dim(", i,
+                      ") must be the same: ", in0.shape().DebugString(), " vs ",
+                      in1.shape().DebugString()));
+    }
+  }
+};
+
+// BatchMatMul Op implementation with broadcasting support.
+template <typename Device, typename Scalar>
+class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
+ public:
+  explicit BatchMatMulV2Op(OpKernelConstruction* context)
+      : BaseBatchMatMulOp<Device, Scalar>(context) {}
+
+  ~BatchMatMulV2Op() override {}
+
+ private:
+  void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                            const Tensor& in1) override {
+    // Enable broadcasting support. Validity of broadcasting is checked in
+    // BaseBatchMatMulOp.
+    OP_REQUIRES(
+        ctx, in0.dims() >= 2,
+        errors::InvalidArgument("In[0] ndims must be >= 2: ", in0.dims()));
+    OP_REQUIRES(
+        ctx, in1.dims() >= 2,
+        errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims()));
+  }
+};
+
+#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                   \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),   \
+      BatchMatMulOp<CPUDevice, TYPE>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
+      BatchMatMulV2Op<CPUDevice, TYPE>)
+
+#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                   \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),   \
+      BatchMatMulOp<GPUDevice, TYPE>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("BatchMatMulV2").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
+      BatchMatMulV2Op<GPUDevice, TYPE>)
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_BATCH_MATMUL_SYCL(TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("BatchMatMul").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      BatchMatMul<SYCLDevice, TYPE>)
+#define REGISTER_BATCH_MATMUL_SYCL(TYPE)                                   \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("BatchMatMul").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"),   \
+      BatchMatMulOp<SYCLDevice, TYPE>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("BatchMatMulV2").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
+      BatchMatMulV2Op<SYCLDevice, TYPE>)
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
