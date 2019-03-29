@@ -254,6 +254,30 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0],
                        '{')
 
+  def testCborReport(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [2, 2], name="a")
+      pb = array_ops.placeholder(np.float32, [2, 2], name="b")
+      out = math_ops.add(pa, pb)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system(text_report=False, cbor_report=True)
+
+    with tu.ipu_session() as sess:
+      fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
+      sess.run(report, fd)
+
+      sess.run(out, fd)
+
+      rep = sess.run(report, fd)
+      evts = tu.extract_all_events(rep)
+      self.assertEqual(len(evts), 3)  # begin, end, execute
+
+      self.assertEqual(evts[1].compile_end.compilation_report[0], 217)
+      self.assertEqual(evts[2].execute.execution_report[0], 217)
+
   def testIpuEventsWithoutPoplarReporting(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [2, 2], name="a")

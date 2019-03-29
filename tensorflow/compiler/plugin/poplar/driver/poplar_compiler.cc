@@ -621,6 +621,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
           auto opts = poplarExecutor->GetReportFlags();
           poplarExecutor->setFlagIfNotPresent(opts, "showVarStorage", "true");
           poplar::printGraphSummary(stream, rep, opts);
+        } else if (poplarExecutor->CompilerReportingCborFormat()) {
+          poplar::serializeToCBOR(stream, rep);
         } else {
           poplar::serializeToJSON(stream, rep);
         }

@@ -39,6 +39,9 @@ message IpuOptions {
 
     // Enable IPU trace events - indpendently of poplar reporting
     bool enable_ipu_trace_events = 7;
+
+    // Set to have the poplar reports in CBOR, not JSON
+    bool enable_poplar_reports_cbor = 8;
   };
   Profiling profiling = 2;
 

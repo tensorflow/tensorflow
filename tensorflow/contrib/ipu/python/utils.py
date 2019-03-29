@@ -50,6 +50,7 @@ def configure_ipu_system(config, device="cpu"):
 def create_ipu_config(profiling=False,
                       enable_ipu_events=False,
                       use_poplar_text_report=False,
+                      use_poplar_cbor_report=False,
                       report_every_nth_execution=0,
                       always_rearrange_copies_on_the_host=False,
                       disable_graph_convolution_caching=False,
@@ -61,6 +62,7 @@ def create_ipu_config(profiling=False,
                       events.
     :param enable_ipu_events: Enable IPU trace events without poplar reports.
     :param use_poplar_text_report: Enable the poplar textual report summary
+    :param use_poplar_cbor_report: Enable the poplar CBOR reports
     :param report_every_nth_execution: Only produce an execution report on
                                        every Nth execution.  0=One report
                                        only.
@@ -109,6 +111,7 @@ def create_ipu_config(profiling=False,
   opts.profiling.enable_io_trace = profiling
   opts.profiling.enable_execution_trace = profiling
   opts.profiling.enable_poplar_reports_text = use_poplar_text_report
+  opts.profiling.enable_poplar_reports_cbor = use_poplar_cbor_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
 
   opts.speed_size_config.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
