@@ -283,5 +283,13 @@ TEST(LiteralTestUtil, NearComparatorDifferentLengths) {
   EXPECT_FALSE(LiteralTestUtil::Near(b, a, ErrorSpec{0.0001}));
 }
 
+TEST(LiteralTestUtilTest, ExpectNearDoubleOutsideFloatValueRange) {
+  auto two_times_float_max =
+      LiteralUtil::CreateR0<double>(2.0 * std::numeric_limits<float>::max());
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(
+      LiteralTestUtil::Near(two_times_float_max, two_times_float_max, error));
+}
+
 }  // namespace
 }  // namespace xla
