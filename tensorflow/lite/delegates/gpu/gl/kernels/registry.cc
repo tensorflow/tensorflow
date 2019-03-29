@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/registry.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -55,13 +56,10 @@ namespace gl {
 namespace {
 
 class Registry : public NodeShader {
-  using ShaderMap =
-      std::unordered_map<std::string, std::vector<UniqueNodeShader>>;
-
  public:
   Registry() {
     using Type = OperationType;
-    using NewShaderFunc = std::function<UniqueNodeShader()>;
+    using NewShaderFunc = std::function<std::unique_ptr<NodeShader>()>;
 
     auto insert_op = [&](Type type, NewShaderFunc func) {
       shaders_[ToString(type)].push_back(func());
@@ -126,7 +124,8 @@ class Registry : public NodeShader {
   }
 
  private:
-  ShaderMap shaders_, tex_shaders_;
+  std::unordered_map<std::string, std::vector<std::unique_ptr<NodeShader>>>
+      shaders_;
 };
 
 }  // namespace
