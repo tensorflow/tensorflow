@@ -31,6 +31,9 @@ class TemplateMirroredStrategyTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_merge_call(self):
+    if not test.is_gpu_available():
+      self.skipTest("No GPU available")
+
     def fn():
       var1 = variable_scope.get_variable(
           "var1", shape=[], initializer=init_ops.constant_initializer(21.))

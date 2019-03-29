@@ -42,7 +42,7 @@ class Member {
   }
 
   Status SetAssignedDeviceName(const string& device_name);
-
+  Status SetResourceDeviceName(const Node& node);
   Status SetRequestedDeviceName(const Node& node);
 
   Status EnsureCompatibilityAcrossResourceEdge(
@@ -78,7 +78,17 @@ class Member {
   }
   const std::vector<Device*>& possible_devices() { return possible_devices_; }
 
-  string DebugString();
+  // Returns a (parsed) device name that is based on requested_device_name()
+  // but with potentially cleared device type and ID fields. A field is cleared
+  // if the assigned_device_name does not specify it. If it does, the field
+  // is not cleared because soft placement cannot violate assigned device names.
+  DeviceNameUtils::ParsedName GetSoftDeviceName() const;
+
+  // Same as GetSoftDeviceName but device type and device ID fields are not
+  // cleared if resource device has them set.
+  DeviceNameUtils::ParsedName GetPreferredSoftDeviceName() const;
+
+  string DebugString() const;
 
  private:
   // The id of the node that is the parent of this one, or its own
@@ -112,19 +122,47 @@ class Member {
   // to finally select devices for nodes.  We can override requested devices due
   // to resource colocation constraints but not assigned devices (unless soft
   // placement is on).
+  // INVARIANT: requested_device_name_ is always kept a
+  // DeviceNameUtils::IsSpecialization of assigned_device_name_ and
+  // resource_device_name_. This makes requested_device_name_ the "accumulation
+  // of all wishes" about the device.
   DeviceNameUtils::ParsedName requested_device_name_;
 
   // The merged form of the device assigned for this node, with
   // those of all of its children.
   // This field is used to raise errors due to unsatisfiable constraints.
   // Can be a partial specification.
-  // INVARIANT: requested_device_name_ is always a
-  // DeviceNameUtils::IsSpecialization of assigned_device_name_.
   DeviceNameUtils::ParsedName assigned_device_name_;
+
+  // The merged form of the requested resource device assigned for this node,
+  // with those of all of its children.
+  // This field is used to raise errors due to unsatisfiable constraints.
+  // Can be a partial specification.
+  // resource_device_name_ is initialized with user-requested device on nodes
+  // producing resources, e.g. VarHandleOp.
+  // For historical reasons, with soft placement enabled, Placer can "move"
+  // resources (place resource producing ops on a device different from what
+  // the user explicitly requested) when the colocation group of a resource
+  // producing op contains ops that are not supported on the user-requested
+  // resource device. A classic example of this is a sparse optimizer (only
+  // supported on CPU) used on a GPU variable. In this case, the whole group
+  // will be assigned to some device supported by all ops in the colocation
+  // group. This is a surprising and unfortunate behavior because:
+  //   1. Since soft_placement is on by default, users don't know that their
+  //   variables are created on a different device than what they requested.
+  //   Among other things, this can lead to surprising poor performance.
+  //   2. Eager runtime cannot "move" resources. The same code can "work" when
+  //   wrapped in tf.function but will fail when run eagerly.
+  //   3. Extra complexity here to preserve these resource moving capabilities.
+  DeviceNameUtils::ParsedName resource_device_name_;
 
   // The intersection of all device types supported by this node,
   // and those of all of its children, in priority order
   // of the preferred device.
+  // It is possible that supported_device_types_ has an empty intersection with
+  // requested/assigned/resource devices. We could have detected such cases
+  // as soon as they happen and raise an error. Instead, for historical reasons,
+  // we leave such error detection to the final device picking stage.
   PrioritizedDeviceTypeVector supported_device_types_;
 
   // If this node is a root, stores a list of Devices to which this node
@@ -221,6 +259,10 @@ class ColocationGraph {
   Status GetDevicesForNode(Node* node,
                            const std::vector<Device*>** possible_devices);
 
+  void GetSoftDeviceCandidates(const Node& node, const Member& root_member,
+                               int root_id,
+                               std::vector<Device*>* possible_devices);
+
   Status InitializeMembers();
 
   string DebugString();
@@ -230,7 +272,6 @@ class ColocationGraph {
 
   Status InitializeMemberWithAssignedDevice(const string& assigned_device_name,
                                             const string& node_type,
-                                            bool must_be_full_name,
                                             Member* member);
 
   Status InitializeMember(const Node& node, Member* member);
