@@ -777,20 +777,42 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
   TestPrepareTensorForShape_Tensor({1, 1}, {}, {}, converter_.get());
 }
 
-TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
+void TestPrepareTensorForShape_Weights(
+    const std::vector<int>& weights_dims, const std::vector<int>& reshape_dims,
+    const std::vector<int>& expected_tensor_dims, Converter* converter,
+    error::Code expected_code = error::OK,
+    const char* expected_error_msg_substr = nullptr) {
   TRT_ShapedWeights weights = weight_store_->GetTempWeights(
       nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
   nvinfer1::ITensor* output_tensor = nullptr;
   for (bool validation_only : {false, true}) {
     TF_EXPECT_OK(converter_->PrepareTensorForShape(
-        TRT_TensorOrWeights(weights), GetTestDims({10, 3}), validation_only,
-        &output_tensor));
+        TRT_TensorOrWeights(weights), GetTestDims(reshape_dims),
+        validation_only, &output_tensor));
     if (validation_only) {
       EXPECT_EQ(nullptr, output_tensor);
     } else {
-      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+      ExpectTrtDimsEqualsArray(expected_tensor_dims,
+                               output_tensor->getDimensions());
     }
   }
+}
+
+TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
+  // Shape size doesn't match.
+  Reset();
+  TestPrepareTensorForShape_Weights({2, 3, 5}, {2, 3, 6}, {}, converter_.get(),
+                                    error::INVALID_ARGUMENT,
+                                    "Incompatible shapes");
+
+  // Regular shape.
+  Reset();
+  TestPrepareTensorForShape_Weights({2, 3, 5}, {10, 3}, {10, 3},
+                                    converter_.get());
+
+  // Reshape to zero rank.
+  Reset();
+  TestPrepareTensorForShape_Weights({1, 1}, {}, {}, converter_.get());
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
