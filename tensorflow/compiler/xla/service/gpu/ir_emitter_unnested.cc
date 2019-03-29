@@ -632,9 +632,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
         if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
-          // TODO(b/129089333): Support tiled vectorized variadic reduce.
-          return Unimplemented(
-              "Vectorized variadic reduce is not supported on GPU");
+          // TODO(b/118332391): Support variadic reduce.
+          return Unimplemented("Variadic reduce is not supported on GPU");
         }
         return EmitReductionToVector(fusion);
       }
@@ -723,7 +722,11 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
-  if (IsReductionToVector(*reduce) && reduce->shape().IsArray()) {
+  // TODO(b/118332391): Support multi-output reduce.
+  if (!reduce->shape().IsArray()) {
+    return Unimplemented("Multi-output reduce is not supported on GPU");
+  }
+  if (IsReductionToVector(*reduce)) {
     return EmitReductionToVector(reduce);
   }
 
@@ -2176,10 +2179,9 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   int unroll_factor = thunk->unroll_factor();
   VLOG(3) << bindings_.ToString();
 
-  bool multi_output = hlo.shape().IsTuple();
-
-  const Shape& element_shape =
-      multi_output ? ShapeUtil::GetSubshape(hlo.shape(), {0}) : hlo.shape();
+  const Shape& element_shape = hlo.IsMultiOutputFusion()
+                                   ? ShapeUtil::GetSubshape(hlo.shape(), {0})
+                                   : hlo.shape();
   VLOG(3) << "EmitTargetElementLoopInThunk "
           << ShapeUtil::HumanStringWithLayout(hlo.shape())
           << " for unroll_factor " << unroll_factor;
@@ -2187,7 +2189,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
       element_shape, ir_emitter_context_->device_description(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
-  if (!multi_output) {
+  if (!hlo.IsMultiOutputFusion()) {
     return ParallelLoopEmitter(element_generator, GetIrArray(hlo, hlo),
                                launch_dimensions, &b_, unroll_factor)
         .EmitLoop(
