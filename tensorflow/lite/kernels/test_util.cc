@@ -176,6 +176,21 @@ void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
 
 TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 
+void SingleOpModel::BuildInterpreter(
+    std::vector<std::vector<int>> input_shapes) {
+  BuildInterpreter(input_shapes, -1, false);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     int num_threads) {
+  BuildInterpreter(input_shapes, num_threads, false);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool allow_fp32_relax_to_fp16) {
+  BuildInterpreter(input_shapes, -1, allow_fp32_relax_to_fp16);
+}
+
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
   force_use_nnapi = use_nnapi;
