@@ -491,11 +491,11 @@ dialect wishes to assign a canonical name to a type, it can be done via
 
 The MLIR type system provides first class support for defining
 [tuple types](LangRef.md#tuple-type). This is due to the fact that `Tuple`
-represents a universal concept that is likely to, and already has, present
-itself in many different dialects. Though this type is first class in the type
-system, it merely serves to provide a common mechanism in which to represent
-this concept in MLIR. As such, MLIR provides no standard operations for
-interfacing with `tuple` types. It is up to dialect authors to provide
+represents a universal concept that is likely to, and has already begun to,
+present itself in many different dialects. Though this type is first class in
+the type system, it merely serves to provide a common mechanism in which to
+represent this concept in MLIR. As such, MLIR provides no standard operations
+for interfacing with `tuple` types. It is up to dialect authors to provide
 operations, e.g. extract_tuple_element, to interpret and manipulate them. When
 possible, operations should prefer to use multiple results instead. These
 provide a myriad of benefits, such as alleviating any need for tuple-extract
