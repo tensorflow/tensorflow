@@ -73,8 +73,7 @@ public:
   llvm::Module &getLLVMModule() { return module; }
 
   /// Parse a type registered to this dialect.
-  Type parseType(StringRef tyData, Location loc,
-                 MLIRContext *context) const override;
+  Type parseType(StringRef tyData, Location loc) const override;
 
   /// Print a type registered to this dialect.
   void printType(Type type, raw_ostream &os) const override;

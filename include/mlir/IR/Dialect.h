@@ -78,8 +78,7 @@ public:
       };
 
   /// Parse a type registered to this dialect.
-  virtual Type parseType(StringRef tyData, Location loc,
-                         MLIRContext *context) const;
+  virtual Type parseType(StringRef tyData, Location loc) const;
 
   /// Print a type registered to this dialect.
   /// Note: The data printed for the provided type must not include any '"'

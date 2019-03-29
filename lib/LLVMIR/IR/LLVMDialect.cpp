@@ -75,13 +75,12 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
 #include "mlir/LLVMIR/LLVMOps.cpp.inc"
 
 /// Parse a type registered to this dialect.
-Type LLVMDialect::parseType(StringRef tyData, Location loc,
-                            MLIRContext *context) const {
+Type LLVMDialect::parseType(StringRef tyData, Location loc) const {
   llvm::SMDiagnostic errorMessage;
   llvm::Type *type = llvm::parseType(tyData, errorMessage, module);
   if (!type)
-    return (context->emitError(loc, errorMessage.getMessage()), nullptr);
-  return LLVMType::get(context, type);
+    return (getContext()->emitError(loc, errorMessage.getMessage()), nullptr);
+  return LLVMType::get(getContext(), type);
 }
 
 /// Print a type registered to this dialect.

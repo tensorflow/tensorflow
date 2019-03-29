@@ -518,7 +518,7 @@ Type Parser::parseExtendedType() {
 
   // If we found a registered dialect, then ask it to parse the type.
   if (auto *dialect = state.context->getRegisteredDialect(identifier)) {
-    result = dialect->parseType(typeData, loc, state.context);
+    result = dialect->parseType(typeData, loc);
     if (!result)
       return nullptr;
   } else {

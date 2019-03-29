@@ -68,10 +68,9 @@ Dialect::Dialect(StringRef namePrefix, MLIRContext *context)
 Dialect::~Dialect() {}
 
 /// Parse a type registered to this dialect.
-Type Dialect::parseType(StringRef tyData, Location loc,
-                        MLIRContext *context) const {
-  context->emitError(loc, "dialect '" + getNamespace() +
-                              "' provides no type parsing hook");
+Type Dialect::parseType(StringRef tyData, Location loc) const {
+  getContext()->emitError(loc, "dialect '" + getNamespace() +
+                                   "' provides no type parsing hook");
   return Type();
 }
 
