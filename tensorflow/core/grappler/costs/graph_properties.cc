@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
-#include "absl/types/optional.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -604,31 +603,22 @@ class SymbolicShapeRefiner {
           " was not previously added to SymbolicShapeRefiner.");
     }
 
-    const absl::optional<GrapplerFunctionItem>& maybe_grappler_function_item =
-        it->second;
-    if (!maybe_grappler_function_item.has_value()) {
-      VLOG(3) << "Skip failed to instantiate function call: function_name="
-              << function_node->op();
-
-      auto* ctx = GetNodeContext(function_node);
-      auto* ic = ctx->inference_context.get();
-      for (int i = 0; i < ic->num_outputs(); ++i) {
-        TF_RETURN_IF_ERROR(SetUnknownShape(function_node, i));
-      }
-
-      return Status::OK();
-    }
-
     // Copy (not reference) so that changes we make here (e.g., replacing
-    // _Arg with Const and _Retval with Identity) don't affect one in
+    // Placeholder with Const) don't affect one in
     // fun_to_grappler_function_item_.
-    GrapplerFunctionItem grappler_function_item = *maybe_grappler_function_item;
+    GrapplerFunctionItem grappler_function_item = it->second;
     MutableGraphView gv(&grappler_function_item.graph);
 
     // Forward shapes from function input nodes to argument nodes.
     for (int i = 0; i < grappler_function_item.inputs().size(); ++i) {
       auto& fun_input = grappler_function_item.input(i);
-      NodeDef* fun_node = gv.GetNode(fun_input.node_name);
+      if (fun_input.placeholders.size() > 1) {
+        // TODO(jmdecker): Handle case with multiple input placeholders
+        return errors::Unimplemented(
+            "Input arguments with multiple placeholders are not yet "
+            "supported.");
+      }
+      NodeDef* fun_node = gv.GetNode(fun_input.input_name);
       const TensorId input_tensor = ParseTensorName(function_node->input(i));
 
       if (IsControlInput(input_tensor)) {
@@ -659,18 +649,11 @@ class SymbolicShapeRefiner {
           proto.mutable_dim(i)->set_size(-1);
         }
       }
-
-      // Turn _Arg node into a Placeholder. _Arg node is a system op without a
-      // valid shape function.
       *attr_output_shape.mutable_shape() = proto;
-      fun_node->set_op("Placeholder");
-      (*fun_node->mutable_attr())["dtype"] = (*fun_node->mutable_attr())["T"];
-      (*fun_node->mutable_attr()).erase("index");
-      (*fun_node->mutable_attr()).erase("T");
       (*fun_node->mutable_attr())["shape"] = attr_output_shape;
     }
 
-    // Replace input nodes with Consts, if values are known. Note that
+    // Replace input Placeholders with Consts, if values are known. Note that
     // we don't check exceptions here as it's done in the above loop.
     auto* ctx = GetNodeContext(function_node);
     auto* ic = ctx->inference_context.get();
@@ -701,15 +684,6 @@ class SymbolicShapeRefiner {
       }
     }
 
-    // Replace output _Retval nodes with Identity nodes. _Retval is a system op
-    // without outputs and registered shape function.
-    for (const auto& output_arg : grappler_function_item.outputs()) {
-      NodeDef* output_node = gv.GetNode(output_arg.node_name);
-      DCHECK_EQ(output_node->op(), "_Retval");
-      output_node->set_op("Identity");
-      output_node->mutable_attr()->erase("index");
-    }
-
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
     TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
@@ -720,9 +694,16 @@ class SymbolicShapeRefiner {
     ctx->output_tensor_protos.resize(grappler_function_item.output_size(),
                                      nullptr);
     for (auto const& out_arg : grappler_function_item.outputs()) {
+      if (out_arg.output_nodes.size() > 1) {
+        // TODO(jmdecker): Handle case of multiple output tensors
+        return errors::Unimplemented(
+            "Output arguments with multiple output tensors are not yet "
+            "supported.");
+      }
+
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      TensorId out_tensor = ParseTensorName(out_arg.node_name);
+      TensorId out_tensor = ParseTensorName(out_arg.output_nodes[0]);
 
       const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
@@ -1061,18 +1042,9 @@ class SymbolicShapeRefiner {
         CHECK_NOTNULL(function_library_.Find(function_node->op()));
 
     GrapplerFunctionItem grappler_function_item;
-    Status function_instantiated =
+    TF_RETURN_IF_ERROR(
         MakeGrapplerFunctionItem(*function_def, function_library_,
-                                 graph_def_version_, &grappler_function_item);
-
-    // If function instantiation failed we will skip it during shape inference.
-    if (!function_instantiated.ok()) {
-      VLOG(3) << "Failed to instantiate a function. Error: "
-              << function_instantiated.error_message();
-      fun_to_grappler_function_item_[function_def->signature().name()] =
-          absl::nullopt;
-      return Status::OK();
-    }
+                                 graph_def_version_, &grappler_function_item));
 
     if (grappler_function_item.inputs().size() > function_node->input_size()) {
       return errors::FailedPrecondition(
@@ -1719,9 +1691,7 @@ class SymbolicShapeRefiner {
   std::unordered_map<const NodeDef*, NodeContext> node_to_context_;
   std::unordered_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
   std::unordered_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
-  // Store function instantiations only for valid function. If function
-  // instantiation failed it will have an `absl::nullopt`.
-  std::unordered_map<string, absl::optional<GrapplerFunctionItem>>
+  std::unordered_map<string, GrapplerFunctionItem>
       fun_to_grappler_function_item_;
   FunctionLibraryDefinition function_library_;
   const std::unordered_map<string, std::unordered_set<int>>& fed_ports_;
