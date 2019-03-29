@@ -53,6 +53,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_fast_math(true);
   opts.set_xla_gpu_enable_fast_min_max(true);
 
+  opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   return opts;
 }
@@ -381,6 +382,11 @@ static void AllocateFlags() {
           flag_values->xla_hlo_graph_sharding_color(),
           "Assign colors based on sharding assignments when generating the "
           "HLO graphs."),
+      tensorflow::Flag(
+          "xla_allow_excess_precision",
+          bool_setter_for(&DebugOptions::set_xla_allow_excess_precision),
+          flag_values->xla_allow_excess_precision(),
+          "Allow xla to increase the output precision of an instruction."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
