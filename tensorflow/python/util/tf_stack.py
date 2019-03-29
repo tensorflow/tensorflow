@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import linecache
 import sys
 
@@ -68,6 +69,40 @@ def extract_stack(extract_frame_info_fn=None):
     ret.append((filename, lineno, name, frame_globals, func_start_lineno,
                 frame_info))
     f = f.f_back
+  ret.reverse()
+  return ret
+
+
+FileAndLine = collections.namedtuple('FileAndLine', ['file', 'line'])
+
+
+def extract_stack_file_and_line(max_length=1000):
+  """A version of extract_stack that only returns filenames and line numbers.
+
+  Callers often only require filenames and line numbers, and do not need the
+  additional information gathered by extract_stack, as they never call
+  convert_stack.
+
+  As a further optimisation, we allow users to specify a limit on the number of
+  frames examined.
+
+  Args:
+    max_length: The maximum length of stack to extract.
+
+  Returns:
+    A list of FileAndLine objects corresponding to the call stack of the current
+    thread.
+  """
+  try:
+    raise ZeroDivisionError
+  except ZeroDivisionError:
+    frame = sys.exc_info()[2].tb_frame.f_back
+  ret = []
+  length = 0
+  while frame is not None and length < max_length:
+    ret.append(FileAndLine(frame.f_code.co_filename, frame.f_lineno))
+    length += 1
+    frame = frame.f_back
   ret.reverse()
   return ret
 
