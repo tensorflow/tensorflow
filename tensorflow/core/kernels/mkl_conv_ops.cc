@@ -1791,25 +1791,22 @@ class MklQuantizedConv2DSumReluOp
       MklDnnShape summand_mkl_shape;
       GetMklShape(context, summand_idx, &summand_mkl_shape);
       auto dst_md = summand_mkl_shape.GetMklLayout();
-      if (summand_mkl_shape.IsMklTensor()) {
-        if (summand_type == DT_QINT8) {
-          OP_REQUIRES_OK(context, summand.BitcastFrom(summand, DT_QUINT8,
-                                                      summand.shape()));
-          dst_md.data.data_type =
-              static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
-          summand_mkl_shape.SetMklLayout(&dst_md);
-          summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
-        }
-        ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
-                                            summand_mkl_shape);
-        *output_tensor = const_cast<Tensor*>(&summand);
-        return;
-      } else {
-        TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
-                           "Current fusion is not successful."));
+
+      // TODO(mdfaijul): handle both non-MKL and MKL tensors
+      if (summand_type == DT_QINT8) {
+        OP_REQUIRES_OK(
+            context, summand.BitcastFrom(summand, DT_QUINT8, summand.shape()));
+        dst_md.data.data_type =
+            static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
+        summand_mkl_shape.SetMklLayout(&dst_md);
+        summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
       }
+      ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
+                                          summand_mkl_shape);
+      *output_tensor = const_cast<Tensor*>(&summand);
+      return;
     }
-    // TODO(mdfaijul): Add cleaner code for non-mkl tensor
+
     MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
               bias_enabled, false,
               false>::AllocateOutputTensor(context, conv_prim_desc,

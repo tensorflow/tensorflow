@@ -243,12 +243,13 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     const auto& computation_shape =
         computation.parameter_instruction(i)->shape();
     const auto& arg_shape = arg_literals[i]->shape();
-    if (!ShapeUtil::Equal(computation_shape, arg_shape)) {
+    if (!Shape::Equal().MinorToMajorOnlyInLayout()(computation_shape,
+                                                   arg_shape)) {
       return InvalidArgument(
           "Shape mismatch at parameter %d. Computation expected %s, but arg "
           "was %s.",
           i, ShapeUtil::HumanStringWithLayout(computation_shape),
-          ShapeUtil::HumanString(arg_shape));
+          ShapeUtil::HumanStringWithLayout(arg_shape));
     }
   }
 
@@ -1804,8 +1805,9 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!LayoutUtil::LayoutsInShapesEqual(GetEvaluatedLiteralFor(hlo).shape(),
-                                        hlo->shape())) {
+  if (!Layout::Equal().MinorToMajorOnly()(
+          GetEvaluatedLiteralFor(hlo).shape().layout(),
+          hlo->shape().layout())) {
     evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
   }
   return Status::OK();

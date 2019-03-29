@@ -181,6 +181,7 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 // target.
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status);
 

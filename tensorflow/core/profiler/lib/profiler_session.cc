@@ -68,7 +68,8 @@ void AssignLanes(RunMetadata* run_metadata) {
 
 void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
                                     profiler::Trace* trace,
-                                    const uint64 profile_start_time_micros) {
+                                    const uint64 profile_start_time_micros,
+                                    const uint64 profile_end_time_micros) {
   AssignLanes(run_metadata);
   auto trace_devices = trace->mutable_devices();
 
@@ -95,7 +96,9 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Emit events.
     for (auto node :
          run_metadata->step_stats().dev_stats(device_id).node_stats()) {
-      if (node.all_start_micros() < profile_start_time_micros) {
+      if (node.all_start_micros() < profile_start_time_micros ||
+          node.all_start_micros() + node.all_end_rel_micros() >
+              profile_end_time_micros) {
         continue;
       }
       auto* event = trace->add_trace_events();
@@ -146,7 +149,9 @@ Status ProfilerSession::SerializeToString(string* content) {
 
   profiler::Trace trace;
 
-  ConvertRunMetadataToTraceEvent(&run_metadata, &trace, start_time_micros_);
+  ConvertRunMetadataToTraceEvent(
+      &run_metadata, &trace, start_time_micros_,
+      Env::Default()->NowNanos() / EnvTime::kMicrosToNanos);
 
   trace.SerializeToString(content);
   return Status::OK();

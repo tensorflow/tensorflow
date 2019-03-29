@@ -1218,6 +1218,44 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual([2], root.f([2]).numpy())
 
+  def test_named_tuple(self, cycles):
+
+    class NamedTupleType(collections.namedtuple("NamedTupleType", ["a", "b"])):
+      pass
+
+    @def_function.function
+    def f(x):
+      return x.a + x.b
+
+    f.get_concrete_function(
+        NamedTupleType(
+            a=tensor_spec.TensorSpec(None, dtypes.float32, name="a"),
+            b=tensor_spec.TensorSpec(None, dtypes.float32, name="b")))
+    obj = tracking.AutoTrackable()
+    obj.__call__ = f
+    imported = self.cycle(obj)
+    self.assertAllClose(3.,
+                        imported(NamedTupleType(a=constant_op.constant(1.),
+                                                b=constant_op.constant(2.))))
+
+  def test_extra_args(self, cycles):
+
+    @def_function.function
+    def f(x):
+      return math_ops.add(x["a"], 1.)
+    # Trigger a trace.
+    f({"a": constant_op.constant(2.0)})
+
+    obj = tracking.AutoTrackable()
+    obj.__call__ = f
+    imported = self.cycle(obj)
+
+    self.assertEqual(4.0, imported({"a": 3.0}).numpy())
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function to call"):
+      imported({"a": 2.0, "b": 3.0})
+
   def test_shapes_available(self, cycles):
 
     @def_function.function(input_signature=[

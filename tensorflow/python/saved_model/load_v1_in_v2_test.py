@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -203,6 +204,90 @@ class LoadTest(test.TestCase):
     fn = third_import.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
+
+  def _v1_cond_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      branch_selector = array_ops.placeholder(
+          name="branch_selector", shape=[], dtype=dtypes.bool)
+      output = control_flow_ops.cond(
+          branch_selector,
+          lambda: array_ops.ones([]),
+          lambda: array_ops.zeros([]))
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"branch_selector": branch_selector},
+            outputs={"output": output})
+    return path
+
+  def test_cond(self):
+    first_path = self._v1_cond_saved_model()
+    imported = load.load(first_path)
+    function = imported.signatures["serving_default"]
+    self.assertAllClose({"output": 1.}, function(constant_op.constant(True)))
+    self.assertAllClose({"output": 0.}, function(constant_op.constant(False)))
+
+  def _v1_while_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      loop_iterations = array_ops.placeholder(
+          name="loop_iterations", shape=[], dtype=dtypes.int32)
+      _, output = control_flow_ops.while_loop(
+          lambda index, accum: index <= loop_iterations,
+          lambda index, accum: (index + 1, accum + index),
+          [constant_op.constant(0), constant_op.constant(0)])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"loop_iterations": loop_iterations},
+            outputs={"output": output})
+    return path
+
+  def test_while(self):
+    first_path = self._v1_while_saved_model()
+    imported = load.load(first_path)
+    function = imported.signatures["serving_default"]
+    self.assertAllClose({"output": 10}, function(constant_op.constant(4)))
+    self.assertAllClose({"output": 15}, function(constant_op.constant(5)))
+
+  def _v1_nested_while_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+
+      def _inner_while(loop_iterations):
+        _, output = control_flow_ops.while_loop(
+            lambda index, accum: index <= loop_iterations,
+            lambda index, accum: (index + 1, accum + index),
+            [constant_op.constant(0), constant_op.constant(0)])
+        return output
+
+      loop_iterations = array_ops.placeholder(
+          name="loop_iterations", shape=[], dtype=dtypes.int32)
+      _, output = control_flow_ops.while_loop(
+          lambda index, accum: index <= loop_iterations,
+          lambda index, accum: (index + 1, accum + _inner_while(index)),
+          [constant_op.constant(0), constant_op.constant(0)])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"loop_iterations": loop_iterations},
+            outputs={"output": output})
+    return path
+
+  def test_nested_while(self):
+    first_path = self._v1_nested_while_saved_model()
+    imported = load.load(first_path)
+    function = imported.signatures["serving_default"]
+    self.assertAllClose({"output": 20}, function(constant_op.constant(4)))
+    self.assertAllClose({"output": 35}, function(constant_op.constant(5)))
+
 
 if __name__ == "__main__":
   test.main()

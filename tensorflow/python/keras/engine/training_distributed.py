@@ -312,11 +312,6 @@ def experimental_tpu_fit_loop(model,
   iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
   steps_per_epoch = training_utils.infer_steps_for_dataset(
       dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
-  if (current_strategy.extended.steps_per_run != 1 and
-      steps_per_epoch is None):
-    raise ValueError('`steps_per_epoch` should be specified when calling '
-                     '`fit` on the model with TPUStrategy when '
-                     '`steps_per_run` != 1 .')
 
   scope = distributed_training_utils.distributed_scope(
       strategy=current_strategy, learning_phase=1)
@@ -334,12 +329,12 @@ def experimental_tpu_fit_loop(model,
     tensor = model._all_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  use_steps = steps_per_epoch is not None
-  if use_steps:
+  if steps_per_epoch is not None:
     iteration_value = min(steps_per_epoch,
                           current_strategy.extended.steps_per_run)
   else:
-    iteration_value = current_strategy.extended.steps_per_run
+    raise ValueError('Number of steps could not be infered from the data, '
+                     'please pass the steps_per_epoch argument.')
 
   steps_per_run = K.variable(
       value=iteration_value,
@@ -367,16 +362,13 @@ def experimental_tpu_fit_loop(model,
       mode=mode)
 
   # Calculate the steps each time on the device.
-  if use_steps:
-    steps_to_run = ([current_strategy.extended.steps_per_run] *
-                    (steps_per_epoch //
-                     current_strategy.extended.steps_per_run))
-    if steps_per_epoch % current_strategy.extended.steps_per_run:
-      steps_to_run.append(
-          steps_per_epoch % current_strategy.extended.steps_per_run)
-    target_steps = len(steps_to_run)
-  else:
-    target_steps = np.inf
+  steps_to_run = ([current_strategy.extended.steps_per_run] *
+                  (steps_per_epoch //
+                   current_strategy.extended.steps_per_run))
+  if steps_per_epoch % current_strategy.extended.steps_per_run:
+    steps_to_run.append(
+        steps_per_epoch % current_strategy.extended.steps_per_run)
+  target_steps = len(steps_to_run)
 
   callbacks._call_begin_hook(mode)
   for epoch in range(initial_epoch, epochs):
@@ -387,7 +379,7 @@ def experimental_tpu_fit_loop(model,
     prev_step_count = None
     current_step = 0
     while current_step < target_steps:
-      step_count = steps_to_run[current_step] if use_steps else 1
+      step_count = steps_to_run[current_step]
       batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks._call_batch_hook(mode, 'begin', step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
@@ -396,18 +388,11 @@ def experimental_tpu_fit_loop(model,
       try:
         _, outputs = K.batch_get_value([train_op, output_tensors])
       except errors.OutOfRangeError:
-        if use_steps:
-          logging.warning('Your dataset iterator ran out of data; '
-                          'interrupting training. Make sure that your dataset '
-                          'can generate at least `steps_per_epoch * epochs` '
-                          'batches (in this case, %d batches).' %
-                          steps_per_epoch * epochs)
-        else:
-          target_steps = current_step
-          logging.info('Dataset iterator ran out of data. Inferring the '
-                       'value of `steps_per_epoch` as %s  .' % target_steps)
-          distributed_training_utils.initialize_iterator(iterator,
-                                                         current_strategy)
+        logging.warning('Your dataset iterator ran out of data; '
+                        'interrupting training. Make sure that your dataset '
+                        'can generate at least `steps_per_epoch * epochs` '
+                        'batches (in this case, %d batches).' %
+                        steps_per_epoch * epochs)
         break
 
       batch_logs.update(outputs)
@@ -513,7 +498,7 @@ def experimental_tpu_test_loop(model,
       # workaround until new metrics are in place.
       reduce_op = ds_reduce_util.ReduceOp.MEAN
     output_tensors[label] = current_strategy.reduce(reduce_op, output)
-  test_op = control_flow_ops.group(output_tensors.values())
+  test_op = control_flow_ops.group(list(output_tensors.values()))
 
   if verbose >= 1:
     progbar = Progbar(target=steps)
@@ -538,7 +523,8 @@ def experimental_tpu_test_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    target_steps = np.inf
+    raise ValueError('Number of steps could not be infered from the data, '
+                     'please pass the steps argument.')
 
   current_step = 0
   while current_step < target_steps:
@@ -547,11 +533,8 @@ def experimental_tpu_test_loop(model,
     try:
       _, batch_outs = K.batch_get_value([test_op, output_tensors])
     except errors.OutOfRangeError:
-      if steps is not None:
-        warning_msg = 'Make sure that your dataset can generate at least '
-        '`steps` batches (in this case, {} batches).'.format(steps)
-      else:
-        warning_msg = 'Number of steps ran: {} steps'.format(current_step)
+      warning_msg = 'Make sure that your dataset can generate at least '
+      '`steps` batches (in this case, {} batches).'.format(steps)
 
       logging.warning('Your dataset iterator ran out of data; '
                       'interrupting evaluation. ' + warning_msg)
@@ -567,10 +550,13 @@ def experimental_tpu_test_loop(model,
 
     batch_logs = cbks.make_logs(model, batch_logs, outs, mode)
     callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
-    if verbose >= 1:
+    if verbose == 1:
       progbar.update(current_step + 1)
     current_step += 1
 
+  if verbose >= 1:
+    # Progress bar finishes at the end.
+    progbar.update(target_steps)
   callbacks._call_end_hook(mode)
 
   scope.__exit__(None, None, None)
@@ -660,7 +646,7 @@ def experimental_tpu_predict_loop(model,
   output_tensors = distributed_training_utils.flatten_perdevice_values(
       current_strategy, per_replica_outputs)
 
-  if verbose == 1:
+  if verbose >= 1:
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
@@ -687,7 +673,8 @@ def experimental_tpu_predict_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    target_steps = np.inf
+    raise ValueError('Number of steps could not be infered from the data, '
+                     'please pass the steps argument.')
 
   current_step = 0
   while current_step < target_steps:
@@ -698,11 +685,8 @@ def experimental_tpu_predict_loop(model,
       _, batch_outs = K.batch_get_value([predict_ops, output_tensors])
 
     except errors.OutOfRangeError:
-      if steps is not None:
-        warning_msg = 'Make sure that your dataset can generate at least '
-        '`steps` batches (in this case, {} batches).'.format(steps)
-      else:
-        warning_msg = 'Number of steps ran: {} steps'.format(current_step)
+      warning_msg = 'Make sure that your dataset can generate at least '
+      '`steps` batches (in this case, {} batches).'.format(steps)
 
       logging.warning('Your dataset iterator ran out of data; '
                       'interrupting evaluation. ' + warning_msg)
@@ -718,9 +702,13 @@ def experimental_tpu_predict_loop(model,
 
     batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
     callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
-    if verbose >= 1:
+    if verbose == 1:
       progbar.update(current_step + 1)
     current_step += 1
+
+  if verbose >= 1:
+    # Progress bar finishes at the end.
+    progbar.update(current_step)
 
   callbacks._call_end_hook(mode)
 

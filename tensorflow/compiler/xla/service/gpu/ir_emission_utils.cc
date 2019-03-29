@@ -90,8 +90,7 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
     return DotImplementedAsGemm(hlo);
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
+  if (hlo.IsOutputFusion() &&
       (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
        hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.

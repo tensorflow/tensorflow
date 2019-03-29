@@ -72,11 +72,12 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   for (int64 i = 0; i < computation->num_parameters(); ++i) {
     const auto& expected_shape = computation->parameter_instruction(i)->shape();
     const auto& actual_shape = arguments[i]->on_device_shape();
-    if (!ShapeUtil::Equal(expected_shape, actual_shape)) {
+    if (!Shape::Equal().MinorToMajorOnlyInLayout()(expected_shape,
+                                                   actual_shape)) {
       return InvalidArgument(
           "Shape mismatch on parameter %d.  Expected %s, but was %s.", i,
-          ShapeUtil::HumanString(expected_shape),
-          ShapeUtil::HumanString(actual_shape));
+          ShapeUtil::HumanStringWithLayout(expected_shape),
+          ShapeUtil::HumanStringWithLayout(actual_shape));
     }
   }
 

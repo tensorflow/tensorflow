@@ -675,11 +675,23 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinSoftmax:
         if (version == 1) {
+          const auto& input = context->tensors[node->outputs->data[0]];
+          if (input.type != kTfLiteFloat32 && input.type != kTfLiteUInt8) {
+            return nullptr;
+          }
+          const int input_rank = input.dims->size;
+          if (input_rank > 4) return nullptr;
+          // Before API level 29 only 2D and 4D input tensors were supported.
+          if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+            if (input_rank != 2 && input_rank != 4) return nullptr;
+          }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             auto builtin = reinterpret_cast<TfLiteSoftmaxParams*>(
                 mapping_args.node->builtin_data);
             mapping_args.builder->AddScalarFloat32Operand(builtin->beta);
+            // Optional scalar specifying the dimension the activation would be
+            // performed on is not added. Default to -1.
             return ANEURALNETWORKS_SOFTMAX;
           };
         }

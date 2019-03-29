@@ -3077,13 +3077,13 @@ ENTRY main {
                 .status()
                 .error_message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2].");
+            "but arg was s32[2]{0}.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input_wrong_shape})
                 .status()
                 .error_message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2].");
+            "but arg was s32[2]{0}.");
 }
 
 // Check that we get a useful error if we pass too many or too few inputs.

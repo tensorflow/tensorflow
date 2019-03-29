@@ -18,9 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.python import summary
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.eager import def_function
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -41,15 +44,15 @@ _EXPECTED_FEATURE = 2
 _EXPECTED_LABEL = 3
 
 
-@test_util.run_v1_only('b/128927195')
-class XLACompileContextTest(test.TestCase):
+class XLACompileContextTest(test.TestCase, parameterized.TestCase):
 
   def create_test_xla_compile_context(self):
     computation_name = ops.get_default_graph().unique_name('computation')
     pivot = control_flow_ops.no_op(name=computation_name + '/pivot')
     return xla.XLACompileContext(name=computation_name, pivot=pivot)
 
-  def test_report_unsupported_operations(self):
+  @test_util.run_v1_only('Testing graph mode behavior only')
+  def test_report_unsupported_operations_graph_mode(self):
     """Tests that unsupported operations are detected."""
     context = self.create_test_xla_compile_context()
     context.Enter()
@@ -75,16 +78,33 @@ class XLACompileContextTest(test.TestCase):
         u'print_op'
     ])
 
-  def test_resource_variable(self):
+  @test_util.run_v1_only('Testing graph mode behavior only')
+  def test_resource_variable_graph_mode(self):
     """Tests that resource variable usage is allowed."""
     a = variable_scope.get_variable(
-        name='variable_a', shape=(1), use_resource=True)
+        name='variable_a', use_resource=True, initializer=1)
 
     context = self.create_test_xla_compile_context()
     context.Enter()
-    state_ops.assign(a, a + 1)
+    a.assign(2)
     context.Exit()
 
+  def test_resource_variable_in_function(self):
+    """Tests that resource variable usage is allowed."""
+    a = variable_scope.get_variable(
+        name='variable_a', use_resource=True, initializer=1)
+
+    @def_function.function
+    def func():
+      context = self.create_test_xla_compile_context()
+      context.Enter()
+      o = a.assign(2)
+      context.Exit()
+      return o
+
+    self.assertEqual(self.evaluate(func()), 2)
+
+  @test_util.run_v1_only('Testing v1-only ref variable handling.')
   def test_non_resource_variable_error(self):
     """Tests that non-resource variable usage is disallowed."""
     a = variable_scope.get_variable(
@@ -98,6 +118,7 @@ class XLACompileContextTest(test.TestCase):
       state_ops.assign(a, a + 1)
     context.Exit()
 
+  @test_util.build_as_function_and_v1_graph
   def test_nested_xla_compile_error(self):
     """Tests that nested XLA computation leads to fatal error."""
     context1 = self.create_test_xla_compile_context()
@@ -111,6 +132,7 @@ class XLACompileContextTest(test.TestCase):
     context2.Exit()
     context1.Exit()
 
+  @test_util.build_as_function_and_v1_graph
   def test_xla_compile_attr(self):
     """Tests that ops are tagged with XLA compile ID attribute."""
     context = self.create_test_xla_compile_context()
@@ -119,6 +141,7 @@ class XLACompileContextTest(test.TestCase):
     context.Exit()
     self.assertIn('_xla_compile_id', op.op.node_def.attr)
 
+  @test_util.build_as_function_and_v1_graph
   def test_op_without_input(self):
     """Tests that ops without inputs depend on pivot correctly."""
     context = self.create_test_xla_compile_context()
@@ -128,7 +151,8 @@ class XLACompileContextTest(test.TestCase):
 
     self.assertIn(context._pivot, op.op.control_inputs)
 
-  def test_external_control_edges(self):
+  @test_util.run_v1_only('Testing graph mode behavior only')
+  def test_external_control_edges_graph_mode(self):
     """Tests that external control edges are handled correctly."""
     i = constant_op.constant(1)
     op1 = constant_op.constant(1)
@@ -150,6 +174,7 @@ class XLACompileContextTest(test.TestCase):
     control_flow_ops.while_loop(
         cond=lambda i: math_ops.less(i, 10), body=while_body, loop_vars=[i])
 
+  @test_util.build_as_function_and_v1_graph
   def test_op_output_marked_as_seen(self):
     """Tests that any op output is marked as seen in context."""
     context = self.create_test_xla_compile_context()
@@ -159,7 +184,8 @@ class XLACompileContextTest(test.TestCase):
 
     self.assertIn(op.name, context._values)
 
-  def testOpIsInContext(self):
+  @test_util.build_as_function_and_v1_graph
+  def test_op_is_in_context(self):
     """Tests that XLACompileContext is recognized as an XLA context."""
     op1 = constant_op.constant(1)
     context = self.create_test_xla_compile_context()
@@ -169,7 +195,8 @@ class XLACompileContextTest(test.TestCase):
     self.assertFalse(control_flow_util.IsInXLAContext(op1.op))
     self.assertTrue(control_flow_util.IsInXLAContext(op2.op))
 
-  def testOpPreventFeeding(self):
+  @test_util.build_as_function_and_v1_graph
+  def test_op_prevent_feeding(self):
     """Tests that ops created inside XLACompileContext can not be fed."""
     context = self.create_test_xla_compile_context()
     context.Enter()
@@ -177,7 +204,8 @@ class XLACompileContextTest(test.TestCase):
     context.Exit()
     self.assertFalse(op.graph.is_feedable(op.op))
 
-  def testOpPreventFetching(self):
+  @test_util.build_as_function_and_v1_graph
+  def test_op_prevent_fetching(self):
     """Tests that ops created inside XLACompileContext can not be fetched."""
     context = self.create_test_xla_compile_context()
     context.Enter()
@@ -186,10 +214,55 @@ class XLACompileContextTest(test.TestCase):
     self.assertFalse(op.graph.is_fetchable(op.op))
 
 
-@test_util.run_v1_only('b/128927195')
+class XlaCompileTest(test.TestCase):
+
+  @test_util.run_v2_only
+  def test_xla_compile_eager(self):
+    """Tests that xla.compile raises proper exception when used eagerly."""
+
+    def computation():
+      return 1
+
+    with self.assertRaisesRegexp(
+        RuntimeError, 'xla.experimental.compile is not supported when eager '
+        'execution is enabled. Try use it inside tf.function.'):
+      xla.compile(computation)
+
+  def test_xla_compile_in_function(self):
+    """Tests that xla.compile works in tf.function."""
+
+    @def_function.function
+    def func_wrapper(a):
+
+      def compute(a):
+        return a + 1
+
+      return xla.compile(compute, [a])
+
+    self.assertEqual(self.evaluate(func_wrapper(1))[0], 2)
+
+  def test_xla_compile_write_variable_in_function(self):
+    """Tests that xla.compile works with variable in tf.function."""
+    a = variable_scope.get_variable(
+        name='variable_a', use_resource=True, initializer=1)
+
+    @def_function.function
+    def func_wrapper():
+
+      def compute():
+        a.assign_add(1)
+        a.assign_sub(2)
+        return a.read_value()
+
+      return xla.compile(compute)
+
+    self.evaluate(a.initializer)
+    self.assertEqual(self.evaluate(func_wrapper())[0], 0)
+
+
 class CheckFunctionArgumentCountTest(test.TestCase):
 
-  def testSimple(self):
+  def test_simple(self):
     """Tests that arg checker works for functions with no varargs or defaults.
     """
 
@@ -204,7 +277,7 @@ class CheckFunctionArgumentCountTest(test.TestCase):
     self.assertEqual('exactly 3 arguments',
                      xla.check_function_argument_count(func, 2, queue))
 
-  def testDefaultArgs(self):
+  def test_default_args(self):
     """Tests that arg checker works for a function with no varargs."""
 
     def func(x, y, z=17):
@@ -224,7 +297,7 @@ class CheckFunctionArgumentCountTest(test.TestCase):
     self.assertEqual('at most 3 arguments',
                      xla.check_function_argument_count(func, 4, queue))
 
-  def testVarArgs(self):
+  def test_var_args(self):
     """Tests that arg checker works for a function with varargs."""
 
     def func(x, y, *z):
@@ -242,7 +315,7 @@ class CheckFunctionArgumentCountTest(test.TestCase):
     self.assertEqual('at least 2 arguments',
                      xla.check_function_argument_count(func, 0, queue))
 
-  def testVarArgsAndDefaults(self):
+  def test_var_args_and_defaults(self):
     """Tests that arg checker works for a function with varargs and defaults."""
 
     def func(x, y, z=17, *q):  # pylint: disable=keyword-arg-before-vararg

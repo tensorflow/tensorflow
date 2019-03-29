@@ -532,6 +532,23 @@ class FunctionLibraryRuntime {
 
     // This interface is EXPERIMENTAL and subject to change.
     //
+    // For multi-device functions, a mapping from _Arg node index to input
+    // tensor shape.
+    // REQUIRES: if input_tensor_shapes.count(i) > 0 then i-th argument type
+    // must not be DT_RESOURCE.
+    std::unordered_map<int, TensorShape> input_tensor_shapes;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // For multi-device functions, a mapping from _Arg node index to type and
+    // shape for input resources.
+    // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
+    // argument type must be DT_RESOURCE.
+    std::unordered_map<int, std::pair<DataType, TensorShape>>
+        input_resource_dtypes_and_shapes;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
     // If non-null, the runtime will use `lib_def` to resolve function(s) named
     // in `function_name` and `attrs`. Otherwise, the runtime will use its
     // internal library.

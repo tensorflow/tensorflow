@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import def_function
@@ -28,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import logging_ops
@@ -41,7 +45,13 @@ g_seeded = None
 g_unseeded = None
 
 
-class StatefulRandomOpsTest(test.TestCase):
+GPU_FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
+CPU_FLOATS = GPU_FLOATS + [dtypes.bfloat16]
+FLOATS = GPU_FLOATS
+INTS = [dtypes.int32, dtypes.int64]
+
+
+class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
   def testCreateRNGStateIntSeed(self):
     """Tests `create_rng_state` when `seed` is int."""
@@ -54,6 +64,16 @@ class StatefulRandomOpsTest(test.TestCase):
                  [0] * (random.PHILOX_STATE_SIZE - 2))),
         state)
 
+  def assertAllDifferent(self, tensors):
+    """Checks that there are no duplicate elements anywhere among the tensors.
+
+    Args:
+      tensors: a list of tensors. They can have different shapes.
+    """
+    tensors = [array_ops.reshape(t, shape=[-1]) for t in tensors]
+    ls = array_ops.concat(tensors, axis=0).numpy().tolist()
+    self.assertAllEqual(len(ls), len(set(ls)))
+
   @test_util.run_v2_only
   def testNonDeterministicInts(self):
     """Tests that non_deterministic_ints returns different results every time.
@@ -61,12 +81,54 @@ class StatefulRandomOpsTest(test.TestCase):
     This test is flaky, but with very low probability of failing.
     """
     shape = [2, 3]
-    dtype = dtypes.uint64
+    dtype = dtypes.int64
     a = random.non_deterministic_ints(shape=shape, dtype=dtype)
     self.assertAllEqual(shape, a.shape)
     self.assertEqual(dtype, a.dtype)
     b = random.non_deterministic_ints(shape, dtype=dtype)
-    self.assertNotAllClose(a, b)
+    self.assertAllDifferent([a, b])
+
+  @test_util.run_v2_only
+  def testBatchSeeds(self):
+    """Test for batch seeds.
+    """
+    shape = [2, 3]
+    count = 6
+    gen = random.Generator(seed=1234)
+    keys1 = gen._make_int64_keys(shape=shape)
+    keys2 = gen._make_int64_keys(shape=shape)
+    self.assertAllDifferent([keys1, keys2])
+    seeds1 = gen.make_seeds(count=count)
+    seeds2 = gen.make_seeds(count=count)
+    self.assertAllDifferent([seeds1[0, :], seeds2[0, :]])
+    gens = gen.split(count=count)
+    self.assertAllEqual(count, len(gens))
+    randoms = [g.uniform_full_int(shape=shape, dtype=dtypes.int32)
+               for g in gens]
+    self.assertAllDifferent(randoms)
+    # Tests graph mode.
+    @def_function.function
+    def f():
+      return gen.make_seeds(count=count)
+    for _ in range(3):
+      f()
+
+  def assertRegex(self, pattern, text):
+    self.assertTrue(
+        re.search(pattern, text),
+        "Can't find pattern '%s' in text '%s'" % (pattern, text))
+
+  @test_util.run_v2_only
+  @test_util.run_cuda_only
+  def testCrossDeviceSplit(self):
+    """Tests that a CPU RNG can split into RNGs on GPU.
+    """
+    with ops.device("/device:CPU:0"):
+      gen = random.Generator(seed=1234)  # gen is on CPU
+      self.assertRegex("CPU", gen.state.device)
+    with ops.device(test_util.gpu_device_name()):
+      gens = gen.split(count=10)  # gens are on GPU
+      self.assertRegex("GPU", gens[0].state.device)
 
   @test_util.run_v2_only
   def testGeneratorCreationInDefun(self):
@@ -115,12 +177,12 @@ class StatefulRandomOpsTest(test.TestCase):
       gen1 = random.Generator(seed=seed)
       gen2 = random.Generator()
       sess.run((gen1._state_var.initializer, gen2._state_var.initializer))
-      r1 = gen1.normal(shape)
-      r2 = gen2.normal(shape)
+      r1 = gen1.normal(shape, dtype=dtypes.float32)
+      r2 = gen2.normal(shape, dtype=dtypes.float32)
       def f():
         return sess.run((r1, r2))
       def check_results(expected_normal, v1, v2):
-        self.assertAllEqual(expected_normal, v1)
+        self.assertAllClose(expected_normal, v1, rtol=1e-5, atol=1e-5)
         self.assertAllEqual(shape, v2.shape)
       check_results(expected_normal1, *f())
       check_results(expected_normal2, *f())
@@ -193,7 +255,7 @@ class StatefulRandomOpsTest(test.TestCase):
     compare(True, True)
     compare(True, False)
 
-  def _sameAsOldRandomOps(self, device):
+  def _sameAsOldRandomOps(self, device, floats):
     def compare(dtype, old, new):
       seed1, seed2 = 79, 25
       # note how the two seeds for the old op correspond to the seed for the new
@@ -225,90 +287,100 @@ class StatefulRandomOpsTest(test.TestCase):
           shape, dtype=dtype, seed=seed1, seed2=seed2)
     def new_normal(dtype, gen):
       return gen._standard_normal(shape, dtype=dtype)
-    def old_uniform(dtype, seed1, seed2):
+    def old_truncated_normal(dtype, seed1, seed2):
+      return gen_random_ops.truncated_normal(
+          shape, dtype=dtype, seed=seed1, seed2=seed2)
+    def new_truncated_normal(dtype, gen):
+      return gen._truncated_normal(shape, dtype=dtype)
+    def old_uniform_int(dtype, seed1, seed2):
       minval2 = constant_op.constant(minval, dtype=dtype)
       maxval2 = constant_op.constant(maxval, dtype=dtype)
       return gen_random_ops.random_uniform_int(
           shape, minval=minval2, maxval=maxval2, seed=seed1, seed2=seed2)
+    def new_uniform_int(dtype, gen):
+      return gen.uniform(shape, minval=minval, maxval=maxval, dtype=dtype)
+    def old_uniform(dtype, seed1, seed2):
+      return gen_random_ops.random_uniform(
+          shape, dtype=dtype, seed=seed1, seed2=seed2)
     def new_uniform(dtype, gen):
-      return gen.uniform(
-          shape, minval=minval, maxval=maxval, dtype=dtype)
+      return gen._uniform(shape, dtype=dtype)
 
-    for dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                  dtypes.float64):
+    for dtype in floats:
       compare(dtype, old_normal, new_normal)
-    for dtype in [dtypes.int32, dtypes.int64]:
+      compare(dtype, old_truncated_normal, new_truncated_normal)
       compare(dtype, old_uniform, new_uniform)
+    for dtype in INTS:
+      compare(dtype, old_uniform_int, new_uniform_int)
 
   @test_util.run_v2_only
-  def testCPUSameAsOldRandomOps(self):
+  def testSameAsOldRandomOpsCPU(self):
     """Tests that the generated numbers are the same as the old random_ops.py.
 
     The CPU version.
     """
-    self._sameAsOldRandomOps("/device:CPU:0")
+    self._sameAsOldRandomOps("/device:CPU:0", CPU_FLOATS)
 
   @test_util.run_v2_only
   @test_util.run_cuda_only
-  def testGPUSameAsOldRandomOps(self):
+  def testSameAsOldRandomOpsGPU(self):
     """Tests that the generated numbers are the same as the old random_ops.py.
 
     The GPU version.
     """
-    self._sameAsOldRandomOps(test_util.gpu_device_name())
+    self._sameAsOldRandomOps(test_util.gpu_device_name(), GPU_FLOATS)
 
+  @parameterized.parameters(FLOATS + INTS)
   @test_util.run_v2_only
-  def testUniformIntIsInRange(self):
+  def testUniformIsInRange(self, dtype):
     minval = 2
     maxval = 33
     size = 1000
     gen = random.Generator(seed=1234)
-    for dtype in [dtypes.int32, dtypes.int64]:
-      x = gen.uniform(
-          shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
-      self.assertTrue(np.all(x >= minval))
-      self.assertTrue(np.all(x < maxval))
+    x = gen.uniform(
+        shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
+    self.assertTrue(np.all(x >= minval))
+    self.assertTrue(np.all(x < maxval))
 
+  @parameterized.parameters(FLOATS)
   @test_util.run_v2_only
-  def testNormalIsFinite(self):
+  def testNormalIsFinite(self, dtype):
     gen = random.Generator(seed=1234)
-    for dtype in [dtypes.float32]:
-      x = gen.normal(shape=[10000], dtype=dtype).numpy()
-      self.assertTrue(np.all(np.isfinite(x)))
+    x = gen.normal(shape=[10000], dtype=dtype).numpy()
+    self.assertTrue(np.all(np.isfinite(x)))
 
+  @parameterized.parameters(FLOATS + INTS)
   @test_util.run_v2_only
-  def testDistributionOfUniform(self):
+  def testDistributionOfUniform(self, dtype):
     """Use Pearson's Chi-squared test to test for uniformity."""
     n = 1000
     seed = 12
-    for dtype in [dtypes.int32, dtypes.int64]:
-      gen = random.Generator(seed=seed)
-      maxval = 1
-      if dtype.is_integer:
-        maxval = 100
-      x = gen.uniform(shape=[n], maxval=maxval, dtype=dtype).numpy()
-      if maxval > 1:
-        # Normalize y to range [0, 1).
-        x = x.astype(float) / maxval
-      # Tests that the values are distributed amongst 10 bins with equal
-      # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
-      # p=0.05. This test is probabilistic and would be flaky if the random
-      # seed were not fixed.
-      val = random_test_util.chi_squared(x, 10)
-      self.assertLess(val, 16.92)
+    gen = random.Generator(seed=seed)
+    maxval = 1
+    if dtype.is_integer:
+      maxval = 100
+    x = gen.uniform(shape=[n], maxval=maxval, dtype=dtype).numpy()
+    if maxval > 1:
+      # Normalize y to range [0, 1).
+      x = x.astype(float) / maxval
+    # Tests that the values are distributed amongst 10 bins with equal
+    # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
+    # p=0.05. This test is probabilistic and would be flaky if the random
+    # seed were not fixed.
+    val = random_test_util.chi_squared(x, 10)
+    self.assertLess(val, 16.92)
 
+  @parameterized.parameters(FLOATS)
   @test_util.run_v2_only
-  def testDistributionOfNormal(self):
+  def testDistributionOfNormal(self, dtype):
     """Use Anderson-Darling test to test distribution appears normal."""
     n = 1000
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      gen = random.Generator(seed=1234)
-      x = gen.normal(shape=[n], dtype=dtype).numpy()
-      # The constant 2.492 is the 5% critical value for the Anderson-Darling
-      # test where the mean and variance are known. This test is probabilistic
-      # so to avoid flakiness the seed is fixed.
-      self.assertLess(
-          random_test_util.anderson_darling(x.astype(float)), 2.492)
+    gen = random.Generator(seed=1234)
+    x = gen.normal(shape=[n], dtype=dtype).numpy()
+    # The constant 2.492 is the 5% critical value for the Anderson-Darling
+    # test where the mean and variance are known. This test is probabilistic
+    # so to avoid flakiness the seed is fixed.
+    self.assertLess(
+        random_test_util.anderson_darling(x.astype(float)), 2.492)
 
   @test_util.run_v2_only
   def testErrors(self):
@@ -350,28 +422,6 @@ class StatefulRandomOpsTest(test.TestCase):
           var.handle, random.RNG_ALG_PHILOX, shape)
 
   @test_util.run_v2_only
-  def testStatefulStandardNormal(self):
-    """Tests that the deprecated op 'StatefulStandardNormal' still works.
-    """
-    shape = constant_op.constant([4, 7])
-    dtype = dtypes.float64
-    seed = 1234
-    algorithm = random.RNG_ALG_PHILOX
-    state = random._make_state_from_seed(seed, algorithm)
-    with ops.device("/device:CPU:0"):
-      var1 = variables.Variable(
-          np.concatenate((np.array([algorithm], dtype=random.STATE_TYPE),
-                          state), axis=None),
-          dtype=random.STATE_TYPE)
-      var2 = variables.Variable(state, dtype=random.STATE_TYPE)
-      for _ in range(100):
-        t1 = gen_stateful_random_ops.stateful_standard_normal(
-            var1.handle, shape, dtype)
-        t2 = gen_stateful_random_ops.stateful_standard_normal_v2(
-            var2.handle, algorithm, shape, dtype)
-        self.assertAllEqual(t1, t2)
-
-  @test_util.run_v2_only
   def testResetGlobalGeneratorBadWithDefun(self):
     """Demonstrates that reset_global_generator don't work properly with defun.
     """
@@ -384,10 +434,9 @@ class StatefulRandomOpsTest(test.TestCase):
     random.reset_global_generator(50)
     with self.assertRaisesWithPredicateMatch(
         errors.NotFoundError, "Resource .+ does not exist"):
-      a = f()
+      _ = f()
       random.reset_global_generator(50)
-      b = f()
-      self.assertAllEqual(a, b)
+      _ = f()
 
 
 if __name__ == "__main__":

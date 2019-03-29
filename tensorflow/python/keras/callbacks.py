@@ -31,6 +31,7 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -810,6 +811,14 @@ class ModelCheckpoint(Callback):
           saved (`model.save_weights(filepath)`), else the full model
           is saved (`model.save(filepath)`).
       period: Interval (number of epochs) between checkpoints.
+      load_weights_on_restart: Whether the training should restore the model.
+          If True, the model will attempt to load the checkpoint file from
+          `filepath` at the start of `model.fit()`. This saves the need of
+          manually calling `model.load_weights()` before `model.fit(). In
+          multi-worker distributed training, this provides fault-tolerance
+          and loads the model automatically upon recovery of workers.
+          The callback gives up loading if the filepath does not exist, and
+          raises ValueError if format does not match. Defaults to False.
   """
 
   def __init__(self,
@@ -819,7 +828,8 @@ class ModelCheckpoint(Callback):
                save_best_only=False,
                save_weights_only=False,
                mode='auto',
-               period=1):
+               period=1,
+               load_weights_on_restart=False):
     super(ModelCheckpoint, self).__init__()
     self.monitor = monitor
     self.verbose = verbose
@@ -828,6 +838,7 @@ class ModelCheckpoint(Callback):
     self.save_weights_only = save_weights_only
     self.period = period
     self.epochs_since_last_save = 0
+    self.load_weights_on_restart = load_weights_on_restart
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('ModelCheckpoint mode %s is unknown, '
@@ -848,8 +859,9 @@ class ModelCheckpoint(Callback):
         self.monitor_op = np.less
         self.best = np.Inf
 
-    # Only the chief worker writes model checkpoints.
-    self._chief_worker_only = True
+    # Only the chief worker writes model checkpoints, but all workers
+    # restore checkpoint at on_train_begin().
+    self._chief_worker_only = False
 
   def set_model(self, model):
     self.model = model
@@ -859,9 +871,37 @@ class ModelCheckpoint(Callback):
         model.__class__.__name__ != 'Sequential'):
       self.save_weights_only = True
 
+  def on_train_begin(self, logs=None):
+    # TODO(rchao): Replace dc_context reference with
+    # distributed_training_utils.should_current_worker_load_model() once
+    # distributed_training_utils.py no longer depends on callbacks.py.
+    if K.in_multi_worker_mode(
+    ) and not dc_context.get_current_worker_context().experimental_should_init:
+      # For multi-worker training, it should not restore a model in certain
+      # worker setting (e.g. non-chief worker in ParameterServerStrategy).
+      return
+
+    if (self.load_weights_on_restart and self.filepath is not None and
+        os.path.exists(self.filepath)):
+      try:
+        self.model.load_weights(self.filepath)
+      except (IOError, ValueError) as e:
+        raise ValueError('Error loading file from {}. Reason: {}'.format(
+            self.filepath, e))
+
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
     self.epochs_since_last_save += 1
+
+    # TODO(rchao): Replace dc_context reference with
+    # distributed_training_utils.should_current_worker_checkpoint() once
+    # distributed_training_utils.py no longer depends on callbacks.py.
+    if K.in_multi_worker_mode(
+    ) and not dc_context.get_current_worker_context().should_checkpoint:
+      # For multi-worker training, it should not checkpoint a model in certain
+      # worker setting (e.g. non-chief worker in MultiWorkerMirroredStrategy).
+      return
+
     if self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
       filepath = self.filepath.format(epoch=epoch + 1, **logs)

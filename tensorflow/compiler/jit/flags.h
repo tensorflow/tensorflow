@@ -82,6 +82,17 @@ struct BuildXlaOpsPassFlags {
   bool tf_xla_print_cluster_outputs;
 };
 
+// Flags for the IntroduceFloatingPointJitter pass.
+struct IntroduceFloatingPointJitterPassFlags {
+  // The amount of jitter to introduce.  This amount is added to each element in
+  // the tensors named in `tensor_names.
+  float jitter_amount;
+
+  // The Tensors to add the jitter to.  The tensors are named in the TensorId
+  // format of <node name>:<output idx>.
+  std::vector<string> tensor_names;
+};
+
 // Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
@@ -93,6 +104,9 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
+
+const IntroduceFloatingPointJitterPassFlags&
+GetIntroduceFloatingPointJitterPassFlags();
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.

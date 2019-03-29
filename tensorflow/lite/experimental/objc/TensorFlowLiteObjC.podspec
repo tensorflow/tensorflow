@@ -20,7 +20,6 @@ Pod::Spec.new do |s|
 
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true
-  s.prefix_header_file = false
 
   base_dir = 'tensorflow/lite/experimental/objc/'
   s.public_header_files = base_dir + 'apis/*.h'
@@ -30,7 +29,7 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
-      '"${PODS_TARGET_SRCROOT}/"' + base_dir  + '"apis"',
+      '"${PODS_TARGET_SRCROOT}/' + base_dir  + 'apis"',
   }
 
   s.test_spec 'Tests' do |ts|

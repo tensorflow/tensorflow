@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 
 import gast
 
@@ -44,9 +45,11 @@ class Context(object):
     self.current_origin = None
 
 
-# TODO(mdan): Use namedtuple.
 # TODO(mdan): Move to a standalone file.
-class EntityInfo(object):
+class EntityInfo(
+    collections.namedtuple(
+        'EntityInfo',
+        ('source_code', 'source_file', 'future_features', 'namespace'))):
   """Contains information about a Python entity.
 
   Immutable.
@@ -61,19 +64,8 @@ class EntityInfo(object):
       https://docs.python.org/2/reference/simple_stmts.html#future.
     namespace: Dict[str, ], containing symbols visible to the entity (excluding
       parameters).
-    arg_values: dict[str -> *], containing parameter values, if known.
-    arg_types: dict[str -> *], containing parameter types, if known.
   """
-
-  # TODO(mdan): Remove the default and update tests.
-  def __init__(self, source_code, source_file, future_features, namespace,
-               arg_values, arg_types):
-    self.source_code = source_code
-    self.source_file = source_file
-    self.future_features = future_features
-    self.namespace = namespace
-    self.arg_values = {} if arg_values is None else arg_values
-    self.arg_types = {} if arg_types is None else arg_types
+  pass
 
 
 class _StateStack(object):

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/model_utils.h"
+#include <memory>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -72,7 +73,7 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
   op->reset(op_raw);
 }
 
-// Create a new TensorT object.
+// Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
@@ -81,6 +82,18 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
   tensor_raw->type = type;
 
   tensor->reset(tensor_raw);
+}
+
+// Create a new TensorT object with quantization parameters.
+void MakeTensorWithQuantParam(const string& name,
+                              const std::vector<int32_t>& shape,
+                              const TensorType& type, float scale,
+                              int64_t zero_point,
+                              std::unique_ptr<TensorT>* tensor) {
+  MakeTensor(name, shape, type, tensor);
+  (*tensor)->quantization = absl::make_unique<QuantizationParametersT>();
+  (*tensor)->quantization->scale.push_back(scale);
+  (*tensor)->quantization->zero_point.push_back(zero_point);
 }
 
 }  // namespace utils

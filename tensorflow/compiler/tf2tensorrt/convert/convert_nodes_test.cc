@@ -346,7 +346,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       assigned = *original_ptr;
 
       for (auto ptr : {original_ptr, &copy, &assigned}) {
-        EXPECT_EQ(true, ptr->is_tensor());
+        ASSERT_TRUE(ptr->is_tensor());
         EXPECT_EQ(false, ptr->is_weights());
         if (original_ptr == &tw) {
           EXPECT_EQ(-1, ptr->batch_size());
@@ -369,7 +369,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
     assigned = tw;
 
     for (auto ptr : {&tw, &copy, &assigned}) {
-      EXPECT_EQ(true, ptr->is_tensor());
+      ASSERT_TRUE(ptr->is_tensor());
       EXPECT_EQ(false, ptr->is_weights());
       EXPECT_EQ(1, ptr->batch_size());
       EXPECT_NE(nullptr, ptr->tensor());
@@ -469,7 +469,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
     TRT_TensorOrWeights output;
     ExpectStatus(
         convert_to_tensor_or_weights({batch_size, non_batch_dim}, &output));
-    EXPECT_EQ(true, output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     EXPECT_EQ(batch_size, output.batch_size());
     EXPECT_NE(nullptr, output.tensor());
     ExpectTrtDimsEqualsArray({non_batch_dim}, output.GetTrtDims());
@@ -1495,7 +1495,7 @@ TEST_F(OpConverterTest, ConvertTranspose) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_transpose", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({3, 1, 2}, output.tensor()->getDimensions());
 
     const DataVec input_data{
@@ -1599,7 +1599,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_reshape", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     const std::vector<int> expected_output_dims(shape.begin() + 1, shape.end());
     const nvinfer1::Dims actual_output_dims = output.tensor()->getDimensions();
     ExpectTrtDimsEqualsArray(expected_output_dims, actual_output_dims);
@@ -1669,7 +1669,7 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
 
     const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
@@ -1725,7 +1725,7 @@ void TestConvertBiasAdd(OpConverterTest* test) {
       test->RunValidationAndConversion(node_def);
       TRT_TensorOrWeights output;
       TF_EXPECT_OK(test->GetTensorOrWeights("my_biasadd", &output));
-      EXPECT_TRUE(output.is_tensor());
+      ASSERT_TRUE(output.is_tensor());
       ExpectTrtDimsEqualsArray(dims_array, output.tensor()->getDimensions());
 
       // Build and run the engine.
@@ -1828,7 +1828,7 @@ void TestBinaryTensorOpWeightNoBroadcast(OpConverterTest* test) {
     // Check the dims of the output ITensor.
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 1, 2}, output.tensor()->getDimensions());
 
     const DataVec input_data{
@@ -1883,7 +1883,7 @@ void TestBinaryTensorOpWeightWithChannelWiseBroadcast(OpConverterTest* test) {
     // Check the dims of the output ITensor.
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
 
     const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
@@ -1918,7 +1918,7 @@ void TestBinaryTensorOpWeightWithUniformlyBroadcast(OpConverterTest* test) {
   // Check the dims of the output ITensor.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
 
   const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
@@ -1957,7 +1957,7 @@ void TestBinaryTensorOpWeightFallback(OpConverterTest* test,
 
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
 
   // Check the dims of the output ITensor.
   std::vector<int> expected_output_dims = input_dims;
@@ -2009,7 +2009,7 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   // Check output dims.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
 
   const DataVec input_data{
@@ -2171,7 +2171,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2192,7 +2192,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2213,7 +2213,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2254,7 +2254,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2276,7 +2276,7 @@ void TestConvertSquare(OpConverterTest* test) {
   test->RunValidationAndConversion(node_def);
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({1, 20}, output.tensor()->getDimensions());
 
   const int num_inputs = 20;
@@ -2400,10 +2400,10 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     TF_EXPECT_OK(GetTensorOrWeights("my_nms:2", &nmsed_classes));
     TF_EXPECT_OK(GetTensorOrWeights("my_nms:3", &valid_detections));
 
-    EXPECT_TRUE(nmsed_boxes.is_tensor());
-    EXPECT_TRUE(nmsed_scores.is_tensor());
-    EXPECT_TRUE(nmsed_classes.is_tensor());
-    EXPECT_TRUE(valid_detections.is_tensor());
+    ASSERT_TRUE(nmsed_boxes.is_tensor());
+    ASSERT_TRUE(nmsed_scores.is_tensor());
+    ASSERT_TRUE(nmsed_classes.is_tensor());
+    ASSERT_TRUE(valid_detections.is_tensor());
 
     ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_boxes_dims,
                              nmsed_boxes.tensor()->getDimensions());
@@ -2427,7 +2427,7 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
                 ElementsAre(0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4));
     EXPECT_THAT(GetSpanForData<float>(output_data[1]), ElementsAre(0.7, 0.4));
     EXPECT_THAT(GetSpanForData<float>(output_data[2]), ElementsAre(1, 0));
-    EXPECT_THAT(GetSpanForData<float>(output_data[3]), ElementsAre(2));
+    EXPECT_THAT(GetSpanForData<int32>(output_data[3]), ElementsAre(2));
   }
 }
 
@@ -2506,7 +2506,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
     if (op_name == "Relu6") {
       // Relu6 should set quantization range automatically.
@@ -2625,7 +2625,7 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -2755,7 +2755,7 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3271,7 +3271,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3413,7 +3413,7 @@ TEST_F(OpConverterTest, ConvertSlice) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_slice", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3682,7 +3682,7 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_conv2d", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3733,7 +3733,7 @@ TEST_F(OpConverterTest, ConvertTopK) {
       TF_EXPECT_OK(GetTensorOrWeights("my_topk", &outputs[0]));
       TF_EXPECT_OK(GetTensorOrWeights("my_topk:1", &outputs[1]));
       for (auto& output : outputs) {
-        EXPECT_TRUE(output.is_tensor());
+        ASSERT_TRUE(output.is_tensor());
         ExpectTrtDimsEqualsArray({1, 2, 2}, output.tensor()->getDimensions());
       }
 
@@ -3804,7 +3804,7 @@ void TestConvertGather(OpConverterTest* test) {
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_gather", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -4031,7 +4031,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
 
     const std::vector<float> input = {-0.9f, 0.6f, 0.0f, -3.5f, 100.0f, 2.9f};
@@ -4136,7 +4136,7 @@ void TestConvertConcat(OpConverterTest* test) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_concat", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
     // Create input data for tensors.

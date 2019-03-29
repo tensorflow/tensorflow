@@ -112,11 +112,13 @@ std::pair<xla::XlaOp, xla::XlaOp> StatefulRngUniform(xla::XlaOp key,
           counter);
     }
     default:
-      return std::make_pair(builder->ReportError(xla::Unimplemented(
-                                "Types other than F32, U32, S32, U64 and S64 "
-                                "are not implemented by "
-                                "StatefulRngUniform.")),
-                            counter);
+      return std::make_pair(
+          builder->ReportError(xla::Unimplemented(
+              "Types other than F32, U32, S32, U64 and S64 "
+              "are not implemented by "
+              "StatefulRngUniform; got: %s",
+              xla::primitive_util::LowercasePrimitiveTypeName(type))),
+          counter);
   }
 }
 
@@ -243,6 +245,46 @@ Status CompileImpl(XlaOpKernelContext* ctx, int state_input_idx,
   }
 }
 
+class StatefulUniformOp : public XlaOpKernel {
+ public:
+  explicit StatefulUniformOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto builder = ctx->builder();
+    auto sample_with_threefry = [builder, this](
+                                    xla::XlaOp counter, xla::XlaOp key,
+                                    TensorShape shape) -> sampler_return_type {
+      xla::Shape xla_shape;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+      auto uniform_counter = StatefulRngUniform(
+          key, counter, xla_shape, xla::ConstantR0<float>(builder, 0.0),
+          xla::ConstantR0<float>(builder, 1.0));
+      auto uniform = uniform_counter.first;
+      counter = uniform_counter.second;
+      uniform = MaybeConvertF32ToBF16(uniform, dtype_);
+      return {{uniform, counter}};
+    };
+    OP_REQUIRES_OK(ctx,
+                   CompileImpl(ctx, /*state_input_idx=*/0, /*alg_input_idx=*/1,
+                               /*shape_input_idx=*/2, sample_with_threefry));
+  }
+
+ private:
+  DataType dtype_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformOp);
+};
+
+// TODO(wangpeng): Support plain float16 and float64 to get rid of the
+//   `TypeConstraint`.
+REGISTER_XLA_OP(Name("StatefulUniform")
+                    .CompileTimeConstantInput("algorithm")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16}),
+                StatefulUniformOp);
+
 class StatefulStandardNormalOp : public XlaOpKernel {
  public:
   explicit StatefulStandardNormalOp(OpKernelConstruction* ctx)
@@ -290,6 +332,51 @@ REGISTER_XLA_OP(Name("StatefulStandardNormalV2")
                     .CompileTimeConstantInput("shape")
                     .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16}),
                 StatefulStandardNormalOp);
+
+class StatefulTruncatedNormalOp : public XlaOpKernel {
+ public:
+  explicit StatefulTruncatedNormalOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto builder = ctx->builder();
+    auto sample_with_threefry =
+        // Needs explicit lambda return type because it fails to be inferred.
+        [builder, this](xla::XlaOp counter, xla::XlaOp key,
+                        TensorShape shape) -> sampler_return_type {
+      xla::Shape xla_shape;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+
+      auto uniform_counter = StatefulRngUniform(
+          key, counter, xla_shape,
+          xla::MinPositiveNormalValue(builder, xla_shape.element_type()),
+          xla::One(builder, xla_shape.element_type()));
+      auto uniform = uniform_counter.first;
+      counter = uniform_counter.second;
+      xla::XlaOp truncated_normal = TruncatedNormal(uniform);
+      truncated_normal = MaybeConvertF32ToBF16(truncated_normal, dtype_);
+      return {{truncated_normal, counter}};
+    };
+    OP_REQUIRES_OK(ctx,
+                   CompileImpl(ctx, /*state_input_idx=*/0, /*alg_input_idx=*/1,
+                               /*shape_input_idx=*/2, sample_with_threefry));
+  }
+
+ private:
+  DataType dtype_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StatefulTruncatedNormalOp);
+};
+
+// TODO(wangpeng): Support plain float16 and float64 to get rid of the
+//   `TypeConstraint`.
+REGISTER_XLA_OP(Name("StatefulTruncatedNormal")
+                    .CompileTimeConstantInput("algorithm")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16}),
+                StatefulTruncatedNormalOp);
 
 class StatefulUniformIntOp : public XlaOpKernel {
  public:
