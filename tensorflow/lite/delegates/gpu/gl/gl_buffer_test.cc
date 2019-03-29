@@ -60,13 +60,13 @@ TEST(Buffer, View) {
   EXPECT_EQ(0, buffer.offset());
 
   // Create view and write data there.
-  GlBuffer* buffer1_ptr = nullptr;
-  ASSERT_TRUE(buffer.MakeView(4, 16, buffer1_ptr).ok());
-  EXPECT_FALSE(buffer1_ptr->has_ownership());
-  EXPECT_EQ(16, buffer1_ptr->bytes_size());
-  EXPECT_EQ(4, buffer1_ptr->offset());
+  GlBuffer view;
+  ASSERT_TRUE(buffer.MakeView(4, 16, &view).ok());
+  EXPECT_FALSE(view.has_ownership());
+  EXPECT_EQ(16, view.bytes_size());
+  EXPECT_EQ(4, view.offset());
   std::vector<float> test = {1, 2, 3, 4};
-  ASSERT_TRUE(buffer1_ptr->Write<float>(test).ok());
+  ASSERT_TRUE(view.Write<float>(test).ok());
 
   // Check that data indeed landed in a buffer with proper offset.
   std::vector<float> from_buffer;
@@ -74,7 +74,7 @@ TEST(Buffer, View) {
   EXPECT_THAT(from_buffer, testing::ElementsAre(0, 1, 2, 3, 4, 0));
 
   std::vector<float> from_view;
-  ASSERT_TRUE(AppendFromBuffer(*buffer1_ptr, &from_view).ok());
+  ASSERT_TRUE(AppendFromBuffer(view, &from_view).ok());
   EXPECT_THAT(from_view, testing::ElementsAre(1, 2, 3, 4));
 }
 
@@ -86,15 +86,15 @@ TEST(Buffer, SubView) {
 
   // Create view and another view over that view.
 
-  GlBuffer* buffer1_ptr = nullptr;
-  ASSERT_TRUE(buffer.MakeView(4, 16, buffer1_ptr).ok());
-  GlBuffer* buffer2_ptr = nullptr;
-  EXPECT_NE(buffer1_ptr->MakeView(1, 16, buffer2_ptr), OkStatus());
-  ASSERT_TRUE(buffer1_ptr->MakeView(2, 2, buffer2_ptr).ok());
+  GlBuffer view1;
+  ASSERT_TRUE(buffer.MakeView(4, 16, &view1).ok());
+  GlBuffer view2;
+  EXPECT_NE(view1.MakeView(1, 16, &view2), OkStatus());
+  ASSERT_TRUE(view1.MakeView(2, 2, &view2).ok());
 
-  EXPECT_FALSE(buffer2_ptr->has_ownership());
-  EXPECT_EQ(2, buffer2_ptr->bytes_size());
-  EXPECT_EQ(6, buffer2_ptr->offset());
+  EXPECT_FALSE(view2.has_ownership());
+  EXPECT_EQ(2, view2.bytes_size());
+  EXPECT_EQ(6, view2.offset());
 }
 
 TEST(Buffer, Copy) {
@@ -104,15 +104,15 @@ TEST(Buffer, Copy) {
   ASSERT_TRUE(CreateReadWriteShaderStorageBuffer<float>(4, &buffer).ok());
 
   // Create view and write data there.
-  GlBuffer* buffer1_ptr = nullptr;
-  ASSERT_TRUE(buffer.MakeView(4, 4, buffer1_ptr).ok());
+  GlBuffer view1;
+  ASSERT_TRUE(buffer.MakeView(4, 4, &view1).ok());
 
-  GlBuffer* buffer2_ptr = nullptr;
-  ASSERT_TRUE(buffer.MakeView(8, 4, buffer2_ptr).ok());
+  GlBuffer view2;
+  ASSERT_TRUE(buffer.MakeView(8, 4, &view2).ok());
 
   // Copy data from one view to another
-  ASSERT_TRUE(buffer1_ptr->Write<float>({1}).ok());
-  ASSERT_TRUE(CopyBuffer(*buffer1_ptr, *buffer2_ptr).ok());
+  ASSERT_TRUE(view1.Write<float>({1}).ok());
+  ASSERT_TRUE(CopyBuffer(view1, view2).ok());
 
   // Check that data indeed landed correctly.
   std::vector<float> from_buffer;
