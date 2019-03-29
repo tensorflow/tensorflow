@@ -62,7 +62,7 @@ tf_module {
   }
   member_method {
     name: "decode_image"
-    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'num_returned_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'3_OR_4\', \'None\'], "
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'expand_animations\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'True\', \'None\'], "
   }
   member_method {
     name: "decode_jpeg"

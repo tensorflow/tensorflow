@@ -2056,7 +2056,7 @@ tf_export('io.extract_jpeg_shape', 'image.extract_jpeg_shape',
 @tf_export('io.decode_image', 'image.decode_image',
            v1=['io.decode_image', 'image.decode_image'])
 def decode_image(contents, channels=None, dtype=dtypes.uint8,
-                 num_returned_dims="3_OR_4", name=None):
+                 expand_animations=True, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
 
@@ -2068,26 +2068,20 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8,
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
   arrays `[height, width, num_channels]`. Make sure to take this into account
   when constructing your graph if you are intermixing GIF files with BMP, JPEG,
-  and/or PNG files. Alternately, set the `num_returned_dims` argument of this
-  op to "3" or "4", in which case this op will return the same number of
-  dimensions for all image types.
+  and/or PNG files. Alternately, set the `expand_animations` argument of this
+  function to `False`, in which case the op will return 3-dimensional tensors
+  and will truncate animated GIF files to the first frame.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
     channels: An optional `int`. Defaults to `0`. Number of color channels for
       the decoded image.
     dtype: The desired DType of the returned `Tensor`.
-    num_returned_dims: Number of dimensions of the returned tensor. This
-      parameter can have the following values:
-      * "3_OR_4" (default): Return a 3-D array with shape
-        `[height, width, num_channels]` for BMP, JPEG, and PNG images; and
-        return a 4-D array with shape `[num_frames, height, width, 3]` for
-        GIF images.
-      * 3 or "3": Always return a 3-D array with shape
-        `[height, width, num_channels]`. Only render the first frame of
-        animated GIF images.
-      * 4 or "4": Always return a 4-D array with shape
-        `[num_frames, height, width, num_channels]`.
+    expand_animations: Controls the shape of the returned op's output. If
+      `True`, the returned op will produce a 3-D tensor for PNG, JPEG, and 
+      BMP files; and a 4-D tensor for all GIFs, whether animated or not.
+      If, `False`, the returned op will produce a 3-D tensor for all file 
+      types and will truncate animated GIFs to the first frame.
     name: A name for the operation (optional)
 
   Returns:
@@ -2095,25 +2089,12 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8,
     the file type and the value of the `num_returned_dims` parameter.
 
   Raises:
-    ValueError: On incorrect number of channels or incorrect value of
-    num_returned_dims.
+    ValueError: On incorrect number of channels.
   """
-  # Allow integer values for num_returned_dims
-  if num_returned_dims not in (3, "3", 4, "4", "3_OR_4"):
-    raise ValueError("num_returned_dims must be '3', '4', or '3_OR_4'. "
-                     "Got '{}'".format(num_returned_dims))
   with ops.name_scope(name, 'decode_image'):
     if channels not in (None, 0, 1, 3, 4):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)
-
-    def _maybe_add_batch(decoded_image):
-      """Convert a single image to a one-image batch when running in 4D mode
-      """
-      if num_returned_dims in (4, "4"):
-        return array_ops.expand_dims(decoded_image, 0)
-      else:
-        return decoded_image
 
     def _bmp():
       """Decodes a BMP image."""
@@ -2127,8 +2108,7 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8,
       channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
-        return _maybe_add_batch(
-            convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype))
+        return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
 
     def _gif():
       """Decodes a GIF image."""
@@ -2142,9 +2122,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8,
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
         result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
-        if num_returned_dims in (3, "3"):
+        if not expand_animations:
           # For now we decode animated GIFs fully and toss out all but the
-          # first frame when num_returned_dims==3.
+          # first frame when expand_animations is False
           result = array_ops.gather(result, 0)
         return result
 
@@ -2155,11 +2135,11 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8,
 
     def _png():
       """Decodes a PNG image."""
-      return _maybe_add_batch(convert_image_dtype(
+      return convert_image_dtype(
           gen_image_ops.decode_png(contents, channels,
                                    dtype=dtypes.uint8
                                    if dtype == dtypes.uint8
-                                   else dtypes.uint16), dtype))
+                                   else dtypes.uint16), dtype)
 
     def check_png():
       """Checks if an image is PNG."""
@@ -2175,8 +2155,8 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8,
                       'images')
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return _maybe_add_batch(convert_image_dtype(
-            gen_image_ops.decode_jpeg(contents, channels), dtype))
+        return convert_image_dtype(
+            gen_image_ops.decode_jpeg(contents, channels), dtype)
 
     # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
     # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
