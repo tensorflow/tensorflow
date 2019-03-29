@@ -144,19 +144,19 @@ bool MaxPool3dGradBackward<T>::operator()(
       batch * channels * pooled_plane * pooled_height * pooled_width;
   CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
   if (data_format == FORMAT_NHWC) {
-    MaxPoolGradBackwardNoMaskNDHWC<<<config.block_count,
-                                     config.thread_per_block, 0, d.stream()>>>(
-        num_kernels, bottom_data, output_data, pooled_plane, pooled_height,
-        pooled_width, channels, plane, height, width, kernel_p, kernel_h,
-        kernel_w, stride_p, stride_h, stride_w, pad_p, pad_t, pad_l, top_diff,
-        bottom_diff);
+    TF_CHECK_OK(CudaLaunchKernel(
+        MaxPoolGradBackwardNoMaskNDHWC<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), num_kernels, bottom_data,
+        output_data, pooled_plane, pooled_height, pooled_width, channels, plane,
+        height, width, kernel_p, kernel_h, kernel_w, stride_p, stride_h,
+        stride_w, pad_p, pad_t, pad_l, top_diff, bottom_diff));
   } else {
-    MaxPoolGradBackwardNoMaskNCDHW<<<config.block_count,
-                                     config.thread_per_block, 0, d.stream()>>>(
-        num_kernels, bottom_data, output_data, pooled_plane, pooled_height,
-        pooled_width, channels, plane, height, width, kernel_p, kernel_h,
-        kernel_w, stride_p, stride_h, stride_w, pad_p, pad_t, pad_l, top_diff,
-        bottom_diff);
+    TF_CHECK_OK(CudaLaunchKernel(
+        MaxPoolGradBackwardNoMaskNCDHW<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), num_kernels, bottom_data,
+        output_data, pooled_plane, pooled_height, pooled_width, channels, plane,
+        height, width, kernel_p, kernel_h, kernel_w, stride_p, stride_h,
+        stride_w, pad_p, pad_t, pad_l, top_diff, bottom_diff));
   }
   return d.ok();
 }

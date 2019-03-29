@@ -38,9 +38,10 @@ void VarianceToInvVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           const T* variance, double epsilon,
                                           int channels, T* inv_variance) {
   CudaLaunchConfig config = GetCudaLaunchConfig(channels, d);
-  VarianceToInvVarianceKernel<<<config.block_count, config.thread_per_block, 0,
-                                d.stream()>>>(config.virtual_thread_count,
-                                              variance, epsilon, inv_variance);
+  TF_CHECK_OK(CudaLaunchKernel(VarianceToInvVarianceKernel<T>,
+                               config.block_count, config.thread_per_block, 0,
+                               d.stream(), config.virtual_thread_count,
+                               variance, epsilon, inv_variance));
 }
 
 template <class T>
@@ -60,9 +61,10 @@ void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           double epsilon, int sample_size,
                                           int channels, T* variance) {
   CudaLaunchConfig config = GetCudaLaunchConfig(channels, d);
-  InvVarianceToVarianceKernel<<<config.block_count, config.thread_per_block, 0,
-                                d.stream()>>>(config.virtual_thread_count,
-                                              epsilon, sample_size, variance);
+  TF_CHECK_OK(CudaLaunchKernel(InvVarianceToVarianceKernel<T>,
+                               config.block_count, config.thread_per_block, 0,
+                               d.stream(), config.virtual_thread_count, epsilon,
+                               sample_size, variance));
 }
 
 template <class T>
