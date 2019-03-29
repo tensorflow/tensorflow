@@ -131,7 +131,7 @@ def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a),
 ```
 
 ```c++
-void createTFLLeakyRelu(OperationInst *op, ArrayRef<Value *> operands,
+void createTFLLeakyRelu(Operation *op, ArrayRef<Value *> operands,
                         ArrayRef<Attribute> attrs, PatternRewriter &rewriter) {
   rewriter.replaceOpWithNewOp<mlir::TFL::LeakyReluOp>(
       op, operands[0]->getType(), /*arg=*/operands[0],
@@ -149,17 +149,35 @@ In case patterns are not sufficient there is also the fully C++ way of
 expressing a rewrite:
 
 ```c++
+/// Multi-step rewrite using "match" and "rewrite". This allows for separating
+/// the concerns of matching and rewriting.
 struct ConvertTFLeakyRelu : public RewritePattern {
   ConvertTFLeakyRelu(MLIRContext *context)
       : RewritePattern("tf.LeakyRelu", 1, context) {}
-  PatternMatchResult match(OperationInst *op) const override {
+
+  PatternMatchResult match(Operation *op) const override {
     return matchSuccess();
   }
 
-  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<TFL::LeakyReluOp>(
         op, op->getResult(0)->getType(), op->getOperand(0),
         /*alpha=*/op->getAttrOfType<FloatAttr>("alpha"));
+  }
+};
+
+/// Single-step rewrite with "matchAndRewrite". This allows for performing the
+/// rewrite immediately upon a successful match.
+struct ConvertTFLeakyRelu : public RewritePattern {
+  ConvertTFLeakyRelu(MLIRContext *context)
+      : RewritePattern("tf.LeakyRelu", 1, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<TFL::LeakyReluOp>(
+        op, op->getResult(0)->getType(), op->getOperand(0),
+        /*alpha=*/op->getAttrOfType<FloatAttr>("alpha"));
+    return matchSuccess();
   }
 };
 ```
@@ -169,8 +187,11 @@ construction. While in the pattern generator a simple heuristic is currently
 employed based around the number of ops matched and replaced.
 
 The above rule did not capture the matching operands/attributes, but in general
-`match` function may populate and return a `PatternState` (or class derived from
-one) to pass information extracted during matching to the rewrite.
+the `match` function in a multi-step rewrite may populate and return a
+`PatternState` (or class derived from one) to pass information extracted during
+matching to the rewrite. A single-step rewrite with the `matchAndRewrite`
+function has the benefit of being able to directly use any values created when
+matching; removing the need for `PatternState`.
 
 ## Testing
 
