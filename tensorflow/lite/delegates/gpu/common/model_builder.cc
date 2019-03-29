@@ -1792,21 +1792,21 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 }  // namespace
 
 Status ConvertTfliteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
-                                      TensorRefFloat32* flow_tensor) {
-  flow_tensor->type = ToDataType(tflite_tensor.type);
+                                      TensorRefFloat32* tensor_ref) {
+  tensor_ref->type = ToDataType(tflite_tensor.type);
   const TfLiteIntArray* dims = tflite_tensor.dims;
   switch (dims->size) {
     case 1:
-      flow_tensor->shape = BHWC(dims->data[0], 1, 1, 1);
+      tensor_ref->shape = BHWC(dims->data[0], 1, 1, 1);
       break;
     case 2:
-      flow_tensor->shape = BHWC(dims->data[0], 1, 1, dims->data[1]);
+      tensor_ref->shape = BHWC(dims->data[0], 1, 1, dims->data[1]);
       break;
     case 3:
-      flow_tensor->shape = BHWC(dims->data[0], 1, dims->data[1], dims->data[2]);
+      tensor_ref->shape = BHWC(dims->data[0], 1, dims->data[1], dims->data[2]);
       break;
     case 4:
-      flow_tensor->shape =
+      tensor_ref->shape =
           BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
       break;
     default:
