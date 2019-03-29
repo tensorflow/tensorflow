@@ -188,6 +188,12 @@ void RunInference(Settings* s) {
   interpreter->SetProfiler(profiler);
 
   if (s->profiling) profiler->StartProfiling();
+  if (s->loop_count > 1)
+    for (int i = 0; i < s->number_of_warmup_runs; i++) {
+      if (interpreter->Invoke() != kTfLiteOk) {
+        LOG(FATAL) << "Failed to invoke tflite!\n";
+      }
+    }
 
   struct timeval start_time, stop_time;
   gettimeofday(&start_time, nullptr);
@@ -255,7 +261,7 @@ void display_usage() {
   LOG(INFO)
       << "label_image\n"
       << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 not\n"
+      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
       << "--input_mean, -b: input mean\n"
       << "--input_std, -s: input standard deviation\n"
@@ -266,6 +272,7 @@ void display_usage() {
       << "--num_results, -r: number of results to show\n"
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
+      << "--warmup_runs, -w: number of warmup runs\n"
       << "\n";
 }
 
@@ -287,6 +294,7 @@ int Main(int argc, char** argv) {
         {"input_mean", required_argument, nullptr, 'b'},
         {"input_std", required_argument, nullptr, 's'},
         {"num_results", required_argument, nullptr, 'r'},
+        {"warmup_runs", required_argument, nullptr, 'w'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
@@ -339,6 +347,10 @@ int Main(int argc, char** argv) {
         break;
       case 'v':
         s.verbose =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'w':
+        s.number_of_warmup_runs =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'h':
