@@ -529,14 +529,13 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
+  std::unique_ptr<void, decltype(free)*> builtin_data_deleter(builtin_data,
+                                                              free);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError("AddNodeWithParameters is disallowed when graph is immutable.");
     return kTfLiteError;
   }
   state_ = kStateUninvokable;
-
-  std::unique_ptr<void, decltype(free)*> builtin_data_deleter(builtin_data,
-                                                              free);
 
   TF_LITE_ENSURE_OK(context_, CheckTensorIndices("node inputs", inputs.data(),
                                                  inputs.size()));
