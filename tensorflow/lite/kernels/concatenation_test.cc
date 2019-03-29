@@ -101,6 +101,68 @@ TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 4, 7}));
 }
 
+TEST(ConcatenationOpTest, FiveDimensionalOneInput) {
+  ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2, 1, 3}}, /*axis=*/2,
+                          /*num_inputs=*/1);
+  m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
+                  11.0f, 12.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
+TEST(ConcatenationOpTest, FiveDimensionalTwoInput) {
+  ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2, 1, 3}}, /*axis=*/0,
+                          /*num_inputs=*/2);
+  m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
+                  11.0f, 12.0f});
+  m0.SetInput(1, {13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0f, 21.0f,
+                  22.0f, 23.0f, 24.0f});
+  m0.Invoke();
+  EXPECT_THAT(
+      m0.GetOutput(),
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+}
+
+TEST(ConcatenationOpTest, FiveDimensionalTwoInputNegativeAxes) {
+  ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2, 1, 3}}, /*axis=*/-2,
+                          /*num_inputs=*/2);
+  m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
+                  11.0f, 12.0f});
+  m0.SetInput(1, {13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f, 20.0f, 21.0f,
+                  22.0f, 23.0f, 24.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray({1, 2, 3, 13, 14, 15, 4,  5,  6,  16, 17, 18,
+                                7, 8, 9, 19, 20, 21, 10, 11, 12, 22, 23, 24}));
+}
+
+TEST(ConcatenationOpTest, FiveDimensionalTwoInputQuantizedUint8) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 1, 2, 1, 3}, -12.7, 12.8},
+      /*axis=*/0,
+      /*num_inputs=*/2);
+
+  m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
+                           10.0f, 11.0f, 12.0f});
+  m0.SetInput<uint8_t>(1, {1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 7.1f, 8.1f, 9.1f,
+                           10.1f, 11.1f, 12.1f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  1.0f, 2.0f,  3.0f,  4.0f,  5.0f, 6.0f,  7.0f,  8.0f,
+                  9.0f, 10.0f, 11.0f, 12.0f, 1.1f, 2.1f,  3.1f,  4.1f,
+                  5.1f, 6.1f,  7.1f,  8.1f,  9.1f, 10.1f, 11.1f, 12.1f,
+              })));
+  EXPECT_THAT(
+      m0.GetOutput<uint8_t>(),
+      ElementsAreArray({
+          137, 147, 157, 167, 177, 187, 197, 207, 217, 227, 237, 247, 138,  //
+          148, 158, 168, 178, 188, 198, 208, 218, 228, 238, 248,
+      }));
+}
+
 TEST(ConcatenationOpTest, OneTrivialInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {1}}, /*axis=*/0,
                           /*num_inputs=*/1);
