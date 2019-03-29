@@ -904,7 +904,7 @@ class AutoMixedPrecisionImpl {
   AutoMixedPrecisionImpl(Cluster* cluster,
                          const std::unordered_set<string>& nodes_to_preserve,
                          GraphDef* graph, string id)
-      : virtual_placer_(cluster),
+      : virtual_placer_(cluster->GetDevices()),
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
         id_(id),
