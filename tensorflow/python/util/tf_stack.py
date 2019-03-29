@@ -29,7 +29,7 @@ TB_FUNCNAME = 2
 TB_CODEDICT = 3  # Dictionary of Python interpreter state.
 
 
-def extract_stack(extract_frame_info_fn=None):
+def extract_stack():
   """A lightweight, extensible re-implementation of traceback.extract_stack.
 
   NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
@@ -38,21 +38,13 @@ def extract_stack(extract_frame_info_fn=None):
       should apply _convert_stack to the result to obtain a traceback that can
       be formatted etc. using traceback methods.
 
-  Args:
-    extract_frame_info_fn: Optional callable fn(stack_frame) applied to each
-        stack frame.  This callable's return value is stored as the sixth (last)
-        element of the returned tuples.  If not provided, the returned tuples
-        will have None as their sixth value.
-
   Returns:
-    A list of 6-tuples
-        (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
+    A list of 5-tuples
+        (filename, lineno, name, frame_globals, func_start_lineno)
     corresponding to the call stack of the current thread.  The returned tuples
     have the innermost stack frame at the end, unlike the Python inspect
     module's stack() function.
   """
-  default_fn = lambda f: None
-  extract_frame_info_fn = extract_frame_info_fn or default_fn
   try:
     raise ZeroDivisionError
   except ZeroDivisionError:
@@ -65,9 +57,7 @@ def extract_stack(extract_frame_info_fn=None):
     name = co.co_name
     frame_globals = f.f_globals
     func_start_lineno = co.co_firstlineno
-    frame_info = extract_frame_info_fn(f)
-    ret.append((filename, lineno, name, frame_globals, func_start_lineno,
-                frame_info))
+    ret.append((filename, lineno, name, frame_globals, func_start_lineno))
     f = f.f_back
   ret.reverse()
   return ret
@@ -123,8 +113,7 @@ def convert_stack(stack, include_func_start_lineno=False):
     input tuple.
   """
   ret = []
-  for (filename, lineno, name, frame_globals, func_start_lineno,
-       unused_frame_info) in stack:
+  for (filename, lineno, name, frame_globals, func_start_lineno) in stack:
     linecache.checkcache(filename)
     line = linecache.getline(filename, lineno, frame_globals)
     if line:
