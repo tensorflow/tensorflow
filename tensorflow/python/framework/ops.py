@@ -332,6 +332,7 @@ class Tensor(_TensorLike):
     # to easily navigate a computation graph.
     self._consumers = []
     self._id = uid()
+    self._name = None
 
   @property
   def op(self):
@@ -351,9 +352,11 @@ class Tensor(_TensorLike):
   @property
   def name(self):
     """The string name of this tensor."""
-    if not self._op.name:
-      raise ValueError("Operation was not named: %s" % self._op)
-    return "%s:%d" % (self._op.name, self._value_index)
+    if self._name is None:
+      if not self._op.name:
+        raise ValueError("Operation was not named: %s" % self._op)
+      self._name = "%s:%d" % (self._op.name, self._value_index)
+    return self._name
 
   @property
   def device(self):
