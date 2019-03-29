@@ -10,7 +10,7 @@ understood (even though the LLVM implementation is flawed in many ways).
 
 The design team since decided to change to a different module, which eschews
 `const` entirely for the core IR types: you should never see a `const` method on
-`Instruction`, should never see the type `const Value *`, and you shouldn't feel
+`Operation`, should never see the type `const Value *`, and you shouldn't feel
 bad about this. That said, you *should* use `const` for non-IR types, like
 `SmallVector`'s and many other things.
 
@@ -40,16 +40,16 @@ a poor tradeoff, and proposes switching to a much simpler approach - eliminating
 the use of const of these IR types entirely.
 
 **Note:** **This document is only discussing things like `const Value*` and
-`const Instruction*`. There is no proposed change for other types, e.g.
+`const Operation*`. There is no proposed change for other types, e.g.
 `SmallVector` references, the immutable types like `Attribute`, etc.**
 
 ## Background: The LLVM Const Model
 
 The LLVM and MLIR data structures provide the IR data structures (like
-`mlir::Instruction`s and their users) as a structured cyclic graph data
-structure. Clients of the IR typically walk up and down the graph, perform
-dynamic down casting (of various sorts) to check for patterns, and use some
-high-abstraction pattern matching and binding facilities to do their work.
+`mlir::Operation`s and their users) as a structured cyclic graph data structure.
+Clients of the IR typically walk up and down the graph, perform dynamic down
+casting (of various sorts) to check for patterns, and use some high-abstraction
+pattern matching and binding facilities to do their work.
 
 The basic idea of LLVM's design is that these traversals of the IR should
 preserve the const'ness of a pointer: if you have a const pointer to an
@@ -122,7 +122,7 @@ versions. This causes API bloat and slows compile time, but these are minor
 problems.
 
 The more significant issue is that this duplication can be so significant that
-the signal disappears in the noise, for example `mlir::Instruction` ends up with
+the signal disappears in the noise, for example `mlir::Operation` ends up with
 things like this, which is twice as much API surface area just to try to satisfy
 const.
 
@@ -135,7 +135,7 @@ const.
 
   // Support const operand iteration.
   using const_operand_iterator =
-      OperandIterator<const Instruction, const Value>;
+      OperandIterator<const Operation, const Value>;
   using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
   const_operand_iterator operand_begin() const;
@@ -182,31 +182,31 @@ though matching and binding values themselves makes perfect sense for both const
 and non-const values. Actually fixing this would cause massive code bloat and
 complexity.
 
-Other parts of the code are just outright incorrect. For example, the
-instruction cloning methods are defined on Instruction like this:
+Other parts of the code are just outright incorrect. For example, the operation
+cloning methods are defined on Operation like this:
 
 ```C++
-Instruction *clone(BlockAndValueMapping &mapper, MLIRContext *context) const;
+Operation *clone(BlockAndValueMapping &mapper, MLIRContext *context) const;
 
-Instruction *clone(MLIRContext *context) const;
+Operation *clone(MLIRContext *context) const;
 ```
 
 While it makes sense for a clone method to be `const` conceptually (the original
-instruction isn't modified) this is a violation of the model, since the returned
-instruction must be mutable, and provides access to the full graph of operands
-as the original instruction, violating the graph based const model we were
-shooting for.
+operation isn't modified) this is a violation of the model, since the returned
+operation must be mutable, and provides access to the full graph of operands as
+the original operation, violating the graph based const model we were shooting
+for.
 
 ### The `OpPointer` and `ConstOpPointer` Classes
 
 The "typed operation" classes for registered operations (e.g. like `DimOp` for
-the "std.dim" instruction in standard ops) contain a pointer to an instruction
-and provide typed APIs for processing it.
+the "std.dim" operation in standard ops) contain a pointer to an operation and
+provide typed APIs for processing it.
 
 However, this is a problem for our current `const` design - `const DimOp` means
 the pointer itself is immutable, not the pointee. The current solution for this
 is the `OpPointer<>` and `ConstOpPointer<>` classes, which exist solely to
-provide const correctness when referring to a typed instruction. Instead of
+provide const correctness when referring to a typed operation. Instead of
 referring to `DimOp` directly, we need to use `OpPointer<DimOp>` and
 `ConstOpPointer<DimOp>` to preserve this constness.
 
@@ -261,10 +261,10 @@ As such, we propose eliminating support for const references in MLIR. This
 implies the following changes to the codebase:
 
 1.  All of the const-duplicated accessors would be eliminated, e.g.
-    `Instruction::getParent() const` would be removed. This is expected to
-    remove approximately ~130 lines of code from just Instruction.h alone.
+    `Operation::getParent() const` would be removed. This is expected to remove
+    approximately ~130 lines of code from just Operation.h alone.
 1.  Const-only predicates would be changed to be non-const, e.g.
-    `Instruction::isTerminator() const` would have the const removed.
+    `Operation::isTerminator() const` would have the const removed.
 1.  Iterators and other types and functions that are templated to support
     `const` can have those template arguments removed.
 1.  Types like `OpPointer` and `ConstOpPointer` that exist solely to propagate

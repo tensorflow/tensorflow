@@ -774,7 +774,7 @@ class tAttr<code transform> {
 // creation/replacement by invoking a C++ function with the operands and
 // attributes. The function specified needs to have the signature:
 //
-//   void f(OperationInst *op, ArrayRef<Value *> operands,
+//   void f(Operation *op, ArrayRef<Value *> operands,
 //          ArrayRef<Attribute> attrs, PatternRewriter &rewriter);
 //
 // The operands and attributes are passed to this function in the order of

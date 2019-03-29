@@ -30,8 +30,8 @@ document describes the human-readable textual form.
 
 The top-level unit of code in MLIR is a [Module](#module). A module contains a
 list of [Functions](#functions). Functions are represented as a composition of
-[instructions](#operations) and contain a Control Flow Graph (CFG) of
-[Blocks](#blocks), which contain instructions and end with
+[operations](#operations) and contain a Control Flow Graph (CFG) of
+[Blocks](#blocks), which contain operations and end with
 [terminator operations](#terminator-operations) (like branches).
 
 MLIR is an
@@ -50,7 +50,7 @@ represent operations on N-dimensional arrays.
 
 Finally, MLIR supports operations for allocating buffers, producing views to
 transform them, represent target-independent arithmetic, target-specific
-instructions, and even supports arbitrary user-defined high-level tensor
+operations, and even supports arbitrary user-defined high-level tensor
 operations.
 
 Here's an example of an MLIR module:
@@ -181,7 +181,7 @@ function-id ::= `@` bare-id
 ssa-id ::= `%` suffix-id
 ssa-id-list ::= ssa-id (`,` ssa-id)*
 
-// Uses of an SSA value, e.g. in an operand list to an instruction.
+// Uses of an SSA value, e.g. in an operand list to an operation.
 ssa-use ::= ssa-id
 ssa-use-list ::= ssa-use (`,` ssa-use)*
 ```
@@ -368,7 +368,7 @@ Examples:
 #affine_map42 =
   (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2)) size (10, s0)
 
-// Use an affine mapping definition in an alloc instruction, binding the
+// Use an affine mapping definition in an alloc operation, binding the
 // SSA value %N to the symbol s0.
 %a = alloc()[%N] : memref<4x4xf32, #affine_map42>
 
@@ -567,7 +567,7 @@ MLIR supports first-class functions: the
 [`constant` operation](#'constant'-operation) produces the address of a function
 as an SSA value. This SSA value may be passed to and returned from functions,
 merged across control flow boundaries with [block arguments](#blocks), and
-called with the [`call_indirect` instruction](#'call_indirect'-operation).
+called with the [`call_indirect` operation](#'call_indirect'-operation).
 
 Function types are also used to indicate the arguments and results of
 [operations](#operations).
@@ -636,7 +636,7 @@ static-dimension-list ::= (decimal-literal `x`)+
 ```
 
 The vector type represents a SIMD style vector, used by target-specific
-instruction sets like AVX. While the most common use is for 1D vectors (e.g.
+operation sets like AVX. While the most common use is for 1D vectors (e.g.
 vector<16 x f32>) we also support multidimensional registers on targets that
 support them (like TPUs).
 
@@ -850,7 +850,7 @@ conformant: the number of dimensions of the range of one map, must match the
 number of dimensions of the domain of the next map in the composition.
 
 The semi-affine map composition specified in the memref type, maps from accesses
-used to index the memref in load/store instructions to other index spaces (i.e.
+used to index the memref in load/store operations to other index spaces (i.e.
 logical to physical index mapping). Each of the
 [semi-affine maps](#semi-affine-maps) and thus its composition is required to be
 one-to-one.
@@ -1191,7 +1191,7 @@ func @count(%x: i64) -> (i64, i64)
 Syntax:
 
 ``` {.ebnf}
-block           ::= bb-label instruction+
+block           ::= bb-label operation+
 bb-label        ::= bb-id bb-arg-list? `:`
 bb-id           ::= caret-id
 ssa-id-and-type ::= ssa-id `:` type
@@ -1203,8 +1203,8 @@ bb-arg-list ::= `(` ssa-id-and-type-list? `)`
 ```
 
 A [basic block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list
-of instructions without control flow (calls are not considered control flow for
-this purpose) that are executed from top to bottom. The last instruction in a
+of operations without control flow (calls are not considered control flow for
+this purpose) that are executed from top to bottom. The last operation in a
 block is a [terminator operation](#terminator-operations), which ends the block.
 
 Blocks in MLIR take a list of block arguments, which represent SSA PHI nodes in
@@ -1238,7 +1238,7 @@ func @simple(i64, i1) -> i64 {
 ```
 
 **Context:** The "block argument" representation eliminates a number of special
-cases from the IR compared to traditional "PHI nodes are instructions" SSA IRs
+cases from the IR compared to traditional "PHI nodes are operations" SSA IRs
 (like LLVM). For example, the
 [parallel copy semantics](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.524.5461&rep=rep1&type=pdf)
 of SSA is immediately apparent, and function arguments are no longer a special
@@ -1250,9 +1250,9 @@ case: they become arguments to the entry block
 Syntax:
 
 ``` {.ebnf}
-instruction ::= inst-result? string-literal `(` ssa-use-list? `)`
+operation ::= op-result? string-literal `(` ssa-use-list? `)`
               (`[` successor-list `]`)? attribute-dict? `:` function-type
-inst-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
+op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
 successor-list ::= successor (`,` successor)*
 ```
 
@@ -1261,7 +1261,7 @@ _operations_. Operations in MLIR are fully extensible (there is no fixed list of
 operations), and have application-specific semantics. For example, MLIR supports
 [target-independent operations](#memory-operations),
 [affine operations](Dialects/Affine.md), and
-[target-specific machine instructions](#target-specific-operations).
+[target-specific machine operations](#target-specific-operations).
 
 The internal representation of an operation is simple: an operation is
 identified by a unique string (e.g. `dim`, `tf.Conv2d`, `x86.repmovsb`,
@@ -1273,16 +1273,16 @@ used to indicate the types of the results and operands.
 Example:
 
 ```mlir {.mlir}
-// Call a function that returns two results.
-// The results of %call can be accessed via the <name> `#` <opNo> syntax.
-%call:2 = call @multi_return() : () -> (f32, i32)
+// An operation that produces two results.
+// The results of %result can be accessed via the <name> `#` <opNo> syntax.
+%result:2 = "foo_div"() : () -> (f32, i32)
 
 // Pretty form that defines a unique name for each result.
-%foo, %bar = call @multi_return() : () -> (f32, i32)
+%foo, %bar = "foo_div"() : () -> (f32, i32)
 
 // Invoke a TensorFlow function called tf.scramble with two inputs
 // and an attribute "fruit".
-%2 = "tf.scramble"(%call#0, %bar){fruit: "banana"} : (f32, i32) -> f32
+%2 = "tf.scramble"(%result#0, %bar){fruit: "banana"} : (f32, i32) -> f32
 
 // Invoke the TPU specific add instruction that takes two vector register
 // as input and produces a vector register.
@@ -1336,11 +1336,11 @@ successor ::= bb-id branch-use-list?
 branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
 ```
 
-The `br` terminator instruction represents an unconditional jump to a target
+The `br` terminator operation represents an unconditional jump to a target
 block. The count and types of operands to the branch must align with the
 arguments in the target block.
 
-The MLIR branch instruction is not allowed to target the entry block for a
+The MLIR branch operation is not allowed to target the entry block for a
 function.
 
 ##### 'cond_br' terminator operation {#'cond_br'-terminator-operation}
@@ -1352,17 +1352,17 @@ operation ::=
   `cond_br` ssa-use `,` successor `,` successor
 ```
 
-The `cond_br` terminator instruction represents a conditional branch on a
-boolean (1-bit integer) value. If the bit is set, then the first destination is
-jumped to; if it is false, the second destination is chosen. The count and types
-of operands must align with the arguments in the corresponding target blocks.
+The `cond_br` terminator operation represents a conditional branch on a boolean
+(1-bit integer) value. If the bit is set, then the first destination is jumped
+to; if it is false, the second destination is chosen. The count and types of
+operands must align with the arguments in the corresponding target blocks.
 
-The MLIR conditional branch instruction is not allowed to target the entry block
-for a function. The two destinations of the conditional branch instruction are
+The MLIR conditional branch operation is not allowed to target the entry block
+for a function. The two destinations of the conditional branch operation are
 allowed to be the same.
 
-The following example illustrates a function with a conditional branch
-instruction that targets the same block:
+The following example illustrates a function with a conditional branch operation
+that targets the same block:
 
 ```mlir {.mlir}
 func @select(%a : i32, %b :i32, %flag : i1) -> i32 {
@@ -1382,7 +1382,7 @@ Syntax:
 operation ::= `return` (ssa-use-list `:` type-list-no-parens)?
 ```
 
-The `return` terminator instruction represents the completion of a function, and
+The `return` terminator operation represents the completion of a function, and
 produces the result values. The count and types of the operands must match the
 result types of the enclosing function. It is legal for multiple blocks in a
 single function to return.
@@ -1468,7 +1468,7 @@ operation ::= ssa_id `=` `reshape` ssa-use `:` memref-type
     dim-and-symbol-use-list `:` memref-type
 ```
 
-Reshapes the input to the requested shape. The reshape instruction creates a new
+Reshapes the input to the requested shape. The reshape operation creates a new
 memref, but changes how the total dimension size is factored into individual
 dimensions sizes as long as the products of the dimension sizes of both shapes
 are the same. For example, a `16x16xf32` memref can be reshaped into a
@@ -1503,9 +1503,9 @@ is only defined when its index map maps to a range that is contained in the base
 memref's index space. The element type and memory space of a view matches those
 of the operand memref.
 
-The view instruction defines a new memref which aliases the buffer of its
-operand memref, but in a new index system, specified by the index map in its
-type (and any captured symbols). See the figure below for an example.
+The view operation defines a new memref which aliases the buffer of its operand
+memref, but in a new index system, specified by the index map in its type (and
+any captured symbols). See the figure below for an example.
 
 ![2x2 view of 3x3 base MemRef](includes/img/view-operation.svg "Illustration of a 2x2 view of a 3x3 base memref")
 
@@ -1546,8 +1546,8 @@ appear in the shape signature of the memref) while the symbols required by the
 layout map are passed in the square brackets in lexicographical order. If no
 layout maps are specified in the memref, then an identity mapping is used.
 
-The buffer referenced by a memref type is created by the `alloc` instruction,
-and destroyed by the `dealloc` instruction.
+The buffer referenced by a memref type is created by the `alloc` operation, and
+destroyed by the `dealloc` operation.
 
 Example:
 
@@ -1573,7 +1573,7 @@ operation ::=
 Allocates a new memref of specified type with a fixed base pointer location in
 memory. 'alloc_static' does not support types that have dynamic shapes or that
 require dynamic symbols in their layout function (use the
-[`alloc'`instruction](#'alloc'-operation) in those cases).
+[`alloc'`operation](#'alloc'-operation) in those cases).
 
 Example:
 
@@ -1581,7 +1581,7 @@ Example:
 %A = alloc_static(0x1232a00) : memref<1024 x 64 x f32, #layout_map0, hbm>
 ```
 
-The `alloc_static` instruction is used to represent code after buffer allocation
+The `alloc_static` operation is used to represent code after buffer allocation
 has been performed.
 
 #### 'dealloc' operation {#'dealloc'-operation}
@@ -1594,7 +1594,7 @@ operation ::= `dealloc` ssa-use `:` memref-type
 
 Delineates the end of the lifetime of the memory corresponding to a memref
 allocation. It is paired with an [`alloc`](#'alloc'-operation) or
-[`alloc_static`](#'alloc_static'-operation) instruction.
+[`alloc_static`](#'alloc_static'-operation) operation.
 
 Example:
 
@@ -1620,8 +1620,8 @@ of elements (of the elemental type of the memref), a tag memref with its
 indices, and optionally two additional arguments corresponding to the stride (in
 terms of number of elements) and the number of elements to transfer per stride.
 The tag location is used by a dma_wait operation to check for completion. The
-indices of the source memref, destination memref, and the tag memref have the same
-restrictions as any load/store instruction in a affine context (whenever DMA
+indices of the source memref, destination memref, and the tag memref have the
+same restrictions as any load/store operation in a affine context (whenever DMA
 operations appear in an affine context). See
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
 in affine contexts. This allows powerful static analysis and transformations in
@@ -1723,12 +1723,12 @@ Example:
 %13 = load %A[%3, %2] : memref<4x?xi32, #layout, hbm>
 ```
 
-**Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to an element of a memref, and (in affine `affine.if`
-and `affine.for` instructions) the compiler can follow use-def chains (e.g.
-through [`affine.apply`](Dialects/Affine.md#'affine.apply'-operation)
-operations) to precisely analyze references at compile-time using polyhedral
-techniques. This is possible because of the
+**Context:** The `load` and `store` operations are specifically crafted to fully
+resolve a reference to an element of a memref, and (in affine `affine.if` and
+`affine.for` operations) the compiler can follow use-def chains (e.g. through
+[`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
+precisely analyze references at compile-time using polyhedral techniques. This
+is possible because of the
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
 in these contexts.
 
@@ -1759,13 +1759,12 @@ Example:
 store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 ```
 
-**Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to an element of a memref, and (in polyhedral
-`affine.if` and `affine.for` instructions) the compiler can follow use-def
-chains (e.g. through
-[`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
-precisely analyze references at compile-time using polyhedral techniques. This
-is possible because of the
+**Context:** The `load` and `store` operations are specifically crafted to fully
+resolve a reference to an element of a memref, and (in polyhedral `affine.if`
+and `affine.for` operations) the compiler can follow use-def chains (e.g.
+through [`affine.apply`](Dialects/Affine.md#'affine.apply'-operation)
+operations) to precisely analyze references at compile-time using polyhedral
+techniques. This is possible because of the
 [restrictions on dimensions and symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols)
 in these contexts.
 
@@ -2251,7 +2250,7 @@ directly through to MLIR.
 Example:
 
 ```mlir {.mlir}
-// TPU vector add instruction
+// TPU vector add operation
 %f = "tpu.vaddf32"(%a, %b)
              : (vector<8x128xf32>, vector<8x128xf32>) -> vector<8x128xf32>
 ```
@@ -2259,7 +2258,7 @@ Example:
 In addition to the LLO backend, some targets go through LLVM. LLVM has a rich
 set of intrinsics for certain target-independent operations (e.g. addition with
 overflow check) as well as providing access to target-specific operations for
-the targets it supports (e.g. vector permutation instructions). LLVM intrinsics
+the targets it supports (e.g. vector permutation operations). LLVM intrinsics
 start with an "llvm." name.
 
 Example:

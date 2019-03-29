@@ -40,7 +40,7 @@ Some important things to think about w.r.t. canonicalization patterns:
 
 These transformation are applied to all levels of IR:
 
-*   Elimination of instructions that have no side effects and have no uses.
+*   Elimination of operations that have no side effects and have no uses.
 
 *   Constant folding - e.g. "(addi 1, 2)" to "3". Constand folding hooks are
     specified by operations.
@@ -53,10 +53,10 @@ These transformation are applied to all levels of IR:
 These transformations are applied to builtin ops:
 
 *   `constant` ops are uniqued and hoisted into the entry block of a function.
-*   (TODO) Merge `affine.apply` instructions that directly feed each other.
+*   (TODO) Merge `affine.apply` operations that directly feed each other.
 
 ## Standard Ops Canonicalizations
 
-*   Shape folding of `alloc` instructions to turn dynamic dimensions into static
+*   Shape folding of `alloc` operations to turn dynamic dimensions into static
     ones.
-*   Folding `memref_cast` instructions into users where possible.
+*   Folding `memref_cast` operations into users where possible.

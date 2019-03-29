@@ -581,10 +581,10 @@ func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
 ```
 
 As per the [MLIR spec](LangRef.md), the restrictions on dimensions and symbol
-identifiers to be used with the affine.apply instruction only apply to accesses
-inside `affine.for` and `affine.if` instructions. However, an analysis of
-accesses inside the called function (`@search_body`) is necessary to determine
-if the `%i` loop could be parallelized: such function access analysis is calling
+identifiers to be used with the affine.apply operation only apply to accesses
+inside `affine.for` and `affine.if` operations. However, an analysis of accesses
+inside the called function (`@search_body`) is necessary to determine if the
+`%i` loop could be parallelized: such function access analysis is calling
 context sensitive.
 
 ### Non-affine loop bounds {#non-affine-loop-bounds}

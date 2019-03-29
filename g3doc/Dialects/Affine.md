@@ -10,7 +10,7 @@ The affine dialect imposes certain restrictions on dimension and symbolic
 identifiers to enable powerful analysis and transformation. A symbolic
 identifier can be bound to an SSA value that is either an argument to the
 function, a value defined at the top level of that function (outside of all
-loops and if instructions), the result of a
+loops and if operations), the result of a
 [`constant` operation](../LangRef.md#'constant'-operation), or the result of an
 [`affine.apply` operation](#'affine.apply'-operation) that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
@@ -29,11 +29,11 @@ Syntax:
 operation ::= ssa-id `=` `affine.apply` affine-map dim-and-symbol-use-list
 ```
 
-The `affine.apply` instruction applies an
+The `affine.apply` operation applies an
 [affine mapping](../LangRef.md#affine-expressions) to a list of SSA values,
 yielding a single SSA value. The number of dimension and symbol arguments to
 affine.apply must be equal to the respective number of dimensional and symbolic
-inputs to the affine mapping; the `affine.apply` instruction always returns one
+inputs to the affine mapping; the `affine.apply` operation always returns one
 value. The input operands and result must all have 'index' type.
 
 Example:
@@ -53,7 +53,7 @@ Syntax:
 
 ``` {.ebnf}
 operation   ::= `affine.for` ssa-id `=` lower-bound `to` upper-bound
-                      (`step` integer-literal)? `{` inst* `}`
+                      (`step` integer-literal)? `{` op* `}`
 
 lower-bound ::= `max`? affine-map dim-and-symbol-use-list | shorthand-bound
 upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
@@ -113,8 +113,8 @@ func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
 Syntax:
 
 ``` {.ebnf}
-operation    ::= `affine.if` if-inst-cond `{` inst* `}` (`else` `{` inst* `}`)?
-if-inst-cond ::= integer-set dim-and-symbol-use-list
+operation    ::= `affine.if` if-op-cond `{` op* `}` (`else` `{` op* `}`)?
+if-op-cond ::= integer-set dim-and-symbol-use-list
 ```
 
 The `affine.if` operation restricts execution to a subset of the loop iteration

@@ -56,8 +56,8 @@ struct MyFunctionPass : public FunctionPass<MyFunctionPass> {
     // Get the current function being operated on.
     Function *f = getFunction();
 
-    // Operate on the instructions within the function.
-    f->walk([](Instruction *inst) {
+    // Operate on the operations within the function.
+    f->walk([](Operation *inst) {
       ....
     });
   }

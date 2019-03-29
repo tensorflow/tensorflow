@@ -1,7 +1,7 @@
 # LLVM IR Dialect
 
 This dialect wraps the LLVM IR types and instructions into MLIR types and
-operations. It provides several additional instructions that are necessary to
+operations. It provides several additional operations that are necessary to
 cover for the differences in the IR structure (e.g., MLIR does not have `phi`
 operations and LLVM IR does not have a `constant` operation).
 
@@ -101,7 +101,7 @@ Examples:
 %1 = "llvm.fdiv"(%a, %b) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
 ```
 
-#### Memory-related instructions
+#### Memory-related operations
 
 -   `<r> = alloca <size>`
 -   `<r> = getelementptr <address>, <index> (, <index>)+`
@@ -213,7 +213,7 @@ this behavior by providing a variadic `call` operation for 0- and 1-result
 functions. Even though MLIR supports multi-result functions, LLVM IR dialect
 disallows them.
 
-The `call` instruction supports both direct and indirect calls. Direct calls
+The `call` operation supports both direct and indirect calls. Direct calls
 require the `callee` attribute of function type to be present. Otherwise, the
 call is considered indirect and expects the function as its first argument.
 

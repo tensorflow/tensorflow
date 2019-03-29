@@ -94,7 +94,7 @@ On a GPU one could then map `i`, `j`, `k` to blocks and threads. Notice that the
 temporary storage footprint is `3 * 5` values but `3 * 4 * 5` values are
 actually transferred betwen `%A` and `%tmp`.
 
-Alternatively, if a notional vector broadcast instruction were available, the
+Alternatively, if a notional vector broadcast operation were available, the
 lowered code would resemble:
 
 ```mlir {.mlir}

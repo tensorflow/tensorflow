@@ -178,7 +178,7 @@ func @qux(!llvm.type<"i32">, !llvm.type<"float">) -> !llvm.type<"{i64, double}">
 func @quux(() -> ()) -> (() -> ())
 // are converted into pointers to functions
 func @quux(!llvm.type<"void ()*">) -> !llvm.type<"void ()*">
-// the call flow is handled by the LLVM dialect `call` instruction supporting both
+// the call flow is handled by the LLVM dialect `call` operation supporting both
 // direct and indirect calls
 ```
 
@@ -291,8 +291,8 @@ Accesses to a memref element are transformed into an access to an element of the
 buffer pointed to by the descriptor. The position of the element in the buffer
 is calculated by linearizing memref indices in row-major order (lexically first
 index is the slowest varying, similar to C). The computation of the linear
-address is emitted as arithmetic instructions in the LLVM IR dialect. Static
-sizes are introduced as constants. Dynamic sizes are extracted from the memref
+address is emitted as arithmetic operation in the LLVM IR dialect. Static sizes
+are introduced as constants. Dynamic sizes are extracted from the memref
 descriptor.
 
 Accesses to zero-dimensional memref (that are interpreted as pointers to the

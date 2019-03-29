@@ -6,7 +6,7 @@ This document describes the available MLIR passes and their contracts.
 
 ## Affine control lowering (`-lower-affine`) {#lower-affine-apply}
 
-Convert instructions related to affine control into a graph of blocks using
+Convert operations related to affine control into a graph of blocks using
 operations from the standard dialect.
 
 Loop statements are converted to a subgraph of blocks (initialization, condition
@@ -39,7 +39,7 @@ These restrictions may be lifted in the future.
 
 ### Output IR
 
-Functions with `affine.for` and `affine.if` instructions eliminated. These
+Functions with `affine.for` and `affine.if` operations eliminated. These
 functions may contain operations from the Standard dialect in addition to those
 already present before the pass.
 
