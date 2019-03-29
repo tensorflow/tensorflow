@@ -26,6 +26,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Parallel.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Threading.h"
 
 using namespace mlir;
@@ -177,7 +178,8 @@ void ModuleToFunctionPassAdaptor::runOnModule() {
 
 namespace {
 /// A utility class to ensure that diagnostics are emitted in a deterministic
-/// order when executing a pipeline asynchronously.
+/// order when executing a pipeline asynchronously with
+/// ModuleToFunctionPassAdaptorParallel.
 struct ParallelDiagnosticHandler {
   struct ThreadDiagnostic {
     ThreadDiagnostic(size_t id, Location loc, StringRef msg,
@@ -186,6 +188,8 @@ struct ParallelDiagnosticHandler {
     bool operator<(const ThreadDiagnostic &rhs) const { return id < rhs.id; }
 
     /// The function id for this diagnostic, this is used for ordering.
+    /// Note: This id corresponds to the ordered position of the current
+    ///       function within its parent module.
     size_t id;
 
     /// Information for the diagnostic.
@@ -214,6 +218,17 @@ struct ParallelDiagnosticHandler {
     if (diagnostics.empty())
       return;
 
+    // Emit the diagnostics back to the context.
+    emitDiagnostics(
+        [&](Location loc, StringRef message, MLIRContext::DiagnosticKind kind) {
+          return context.emitDiagnostic(loc, message, kind);
+        });
+  }
+
+  /// Utility method to emit any held diagnostics.
+  void emitDiagnostics(
+      std::function<void(Location, StringRef, MLIRContext::DiagnosticKind)>
+          emitFn) {
     // Stable sort all of the diagnostics that were emitted. This creates a
     // deterministic ordering for the diagnostics based upon which function they
     // were emitted for.
@@ -221,7 +236,7 @@ struct ParallelDiagnosticHandler {
 
     // Emit each diagnostic to the context again.
     for (ThreadDiagnostic &diag : diagnostics)
-      context.emitDiagnostic(diag.loc, diag.msg, diag.kind);
+      emitFn(diag.loc, diag.msg, diag.kind);
   }
 
   /// Set the function id for the current thread.
@@ -246,6 +261,47 @@ struct ParallelDiagnosticHandler {
   /// The context to emit the diagnostics to.
   MLIRContext &context;
 };
+
+/// A utility stack trace entry that dumps any dangling diagnostics held by a
+/// ParallelDiagnosticHandler in the event of a crash.
+struct PrettyStackTraceParallelDiagnosticEntry
+    : public llvm::PrettyStackTraceEntry {
+  PrettyStackTraceParallelDiagnosticEntry(
+      ParallelDiagnosticHandler &parallelHandler)
+      : parallelHandler(parallelHandler) {}
+
+  void print(raw_ostream &os) const override {
+    // Early exit if there are no diagnostics, this is the common case.
+    if (parallelHandler.diagnostics.empty())
+      return;
+
+    os << "In-Flight Diagnostics:\n";
+    parallelHandler.emitDiagnostics(
+        [&](Location loc, StringRef message, MLIRContext::DiagnosticKind kind) {
+          os.indent(4);
+
+          // Print each diagnostic with the format:
+          //   "<location>: <kind>: <msg>"
+          if (!loc.isa<UnknownLoc>())
+            os << loc << ": ";
+          switch (kind) {
+          case MLIRContext::DiagnosticKind::Error:
+            os << "error: ";
+            break;
+          case MLIRContext::DiagnosticKind::Warning:
+            os << "warning: ";
+            break;
+          case MLIRContext::DiagnosticKind::Note:
+            os << "note: ";
+            break;
+          }
+          os << message << '\n';
+        });
+  }
+
+  // A reference to the parallel handler to dump on the event of a crash.
+  ParallelDiagnosticHandler &parallelHandler;
+};
 } // end anonymous namespace
 
 // Run the held function pipeline synchronously across the functions within
@@ -269,6 +325,10 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
   // A parallel diagnostic handler that provides deterministic diagnostic
   // ordering.
   ParallelDiagnosticHandler diagHandler(getContext());
+
+  // A pretty stack entry to print any dangling diagnostics in the event of a
+  // crash.
+  PrettyStackTraceParallelDiagnosticEntry diagCrashEntry(diagHandler);
 
   // An index for the current function/analysis manager pair.
   std::atomic<unsigned> funcIt(0);
