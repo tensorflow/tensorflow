@@ -2,6 +2,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 cc_library(
     name = "util",
     hdrs = ["util.h"],
@@ -43,6 +45,7 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":bhwc_to_phwc4",
@@ -87,6 +90,7 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":phwc4_to_bhwc",
@@ -100,3 +104,5 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+tflite_portable_test_suite()

@@ -2,6 +2,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 cc_library(
     name = "add",
     srcs = ["add.cc"],
@@ -24,7 +26,10 @@ cc_test(
         "-lEGL",
         "-lGLESv3",
     ],
-    tags = ["notap"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":add",
         ":test_util",
@@ -102,7 +107,10 @@ cc_test(
         "-lEGL",
         "-lGLESv3",
     ],
-    tags = ["notap"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":elementwise",
         ":test_util",
@@ -369,3 +377,5 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+tflite_portable_test_suite()
