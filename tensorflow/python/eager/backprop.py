@@ -212,6 +212,11 @@ def implicit_val_and_grad(f):
     if not variables:
       raise ValueError("No trainable variables were accessed while the "
                         "function was being computed.")
+    for v in variables:
+      if not is_floating(v):
+      raise ValueError("Gradient Calculations support only float types.")
+    
+
     sources = [v.handle for v in variables]
     grad = imperative_grad.imperative_grad(this_tape, nest.flatten(end_node),
                                            sources)
@@ -922,6 +927,11 @@ class GradientTape(object):
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
                          "non-persistent tapes.")
+    for v in nest.flatten(target):
+      if not is_floating(v):
+        raise ValueError("GradientTape.gradient can only be called when "
+                         "data type is float.")
+
     if self._recording:
       if not self._persistent:
         self._pop_tape()
