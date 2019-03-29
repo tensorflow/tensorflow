@@ -1222,13 +1222,13 @@ Status AutoMixedPrecisionImpl::Optimize() {
   // 2) Add nodes to the black_set iff they are numerically-dangerous (aka
   //    "blacklist" ops) or they are on a forward path from a blacklist node to
   //    a black/gray node (including the node at the end of the path) through
-  //    zero or more numerically-safe ops (aka "clearlist" ops).
+  //    non-numerically-dangerous ops (aka "greylist" and "clearlist" ops).
   //    This is done to prevent numerically-dangerous ops and their downstream
   //    effects from being changed to fp16, which would risk breaking the
   //    numerical accuracy of the model.
-  // 3) For all remaining nodes that are not considered dangerous (aka
-  //    "greylist" and clearlist ops), find those that are between (i.e., both
-  //    upstream and downstream of) white nodes, and add them to the white_set.
+  // 3) For all remaining nodes that are not considered dangerous (greylist
+  //    and clearlist ops), find those that are between (i.e., both upstream
+  //    and downstream of) white nodes, and add them to the white_set.
   //    This is done to avoid unnecessary casts between whitelist ops.
   // 4) For all remaining clearlist nodes, add them to the white_set if they are
   //    connected to a node in the white_set via other clearlist nodes.
@@ -1335,7 +1335,7 @@ void AutoMixedPrecisionImpl::AddWhitelistOps(
 
 // Adds nodes to black_set iff they are on the blacklist or they are on a
 // forward path from a blacklist node to a black/gray node (including the node
-// at the end of the path) through zero or more clear nodes.
+// at the end of the path) through clear and gray nodes.
 // E.g., black -> gray -> clear -> gray -> clear -> white -> gray
 // becomes: black -> black -> black -> black -> clear -> white -> gray.
 void AutoMixedPrecisionImpl::PropagateBlackFwdThroughClearAndGray(
