@@ -37,13 +37,6 @@ from six.moves import xrange
 
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 
-# Import the XRT backend, if available.
-try:
-  # pylint: disable=g-import-not-at-top
-  from tensorflow.compiler.xla.python import pywrap_xrt as xrt_api
-except ImportError:
-  xrt_api = None
-
 
 # Most functions are snake_case for consistency with other modules, whereas
 # method names of ComputationBuilder and Computation are CamelCase for
@@ -75,6 +68,14 @@ OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
 @six.add_metaclass(abc.ABCMeta)
 class Backend(object):
   """Abstract base class for XLA backends."""
+
+  def __init__(self, platform):
+    """Creates a new Backend.
+
+    Args:
+      platform: A string naming the platform; for example 'gpu'.
+    """
+    self.platform = platform
 
   @abc.abstractmethod
   def device_count(self):
@@ -117,12 +118,18 @@ def _maybe_encode_string(s):
     return s
 
 
-class XlaLocalBackend(Backend):
+class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None):
-    platform = platform or _get_default_platform_name()
-    self.client = c_api.LocalClient.Get(_maybe_encode_string(platform))
+  def __init__(self, platform=None, xla_platform_id=None):
+    """Creates a new LocalBackend.
+
+    Args:
+      platform: A string; the user-visible platform name, e.g. 'gpu'.
+      xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
+    """
+    super(LocalBackend, self).__init__(platform)
+    self.client = c_api.LocalClient.Get(_maybe_encode_string(xla_platform_id))
     self._delete_buffer = c_api.DeleteLocalShapedBuffer
     self._delete_executable = c_api.DeleteLocalExecutable
 
@@ -155,80 +162,81 @@ class XlaLocalBackend(Backend):
     return [output_buffer_tup.Release(i) for i in xrange(size)]
 
 
-class XrtBackend(Backend):
-  """XLA backend implemented using XRT."""
-
-  def __init__(self, target):
-    self.target = target
-    self._delete_buffer = xrt_api.DeleteXrtAllocation
-    self._delete_executable = xrt_api.DeleteXrtExecutable
-
-  def device_count(self):
-    return 1  # Multidevice execution not implemented.
-
-  def buffer_from_pyval(self, pyval, device=0):
-    if device != 0:
-      raise NotImplementedError(
-          'Multi-replica execution is not yet supported via the XRT backend.')
-    return xrt_api.XrtAllocation.FromLiteral(pyval,
-                                             _maybe_encode_string(self.target))
-
-  def delete_buffer(self, c_buffer):
-    self._delete_buffer(c_buffer)
-
-  def destructure_tuple(self, c_buffer):
-    result = xrt_api.DestructureXrtAllocationTuple(
-        c_buffer, _maybe_encode_string(self.target))
-    return [result.Release(i) for i in xrange(result.size())]
-
-  def compile(self, c_computation, argument_shapes, result_shape,
-              compile_options):
-    return xrt_api.XrtExecutable.CompileForXrt(
-        c_computation.GetSerializedProto(), argument_shapes, result_shape,
-        _maybe_encode_string(self.target))
-
-  def delete_executable(self, executable):
-    self._delete_executable(executable)
-
-  def execute(self, executable, args):
-    return executable.Execute(args)
-
-  def execute_replicated(self, executable, per_replica_args):
-    if len(per_replica_args) != 1:
-      raise NotImplementedError(
-          'Multi-replica execution is not yet supported via the XRT backend.')
-    return [executable.Execute(per_replica_args[0])]
+# Backend factories, keyed by user-visible name, in increasing priority order.
+_local_backend_factories = collections.OrderedDict([
+    ('cpu', lambda: LocalBackend(platform='cpu', xla_platform_id='Host')),
+    ('gpu', lambda: LocalBackend(platform='gpu', xla_platform_id='CUDA')),
+])
 
 
-_default_platform_name = 'Host'
-_default_backend = None
+def register_local_backend_factory(name, factory):
+  _local_backend_factories[name] = factory
 
 
-def _get_default_platform_name():
-  return _default_platform_name
+_local_backends = None
 
 
-def _get_default_local_backend():
-  global _default_backend
+def _get_local_backends():
+  """Instantiates all known local backends."""
+  global _local_backends
+  if _local_backends is not None:
+    return _local_backends
+
+  _local_backends = collections.OrderedDict()
+  for name, factory in _local_backend_factories.items():
+    try:
+      backend = factory()
+    except RuntimeError:
+      # If the backend isn't built into the binary, or if it has no devices, we
+      # expect a RuntimeError.
+      continue
+    _local_backends[name] = backend
+  return _local_backends
+
+
+def get_local_backend(name=None):
+  """Returns a local backend.
+
+  Args:
+    name: the backend name. If `None`, a default local backend is returned,
+      typically `gpu` if one is present, or `cpu` if not. If a string, the named
+      backend is returned or an exception raised.
+
+  Returns:
+    A LocalBackend object.
+  """
+  backends = _get_local_backends()
+  if name is not None:
+    try:
+      return backends[name]
+    except KeyError:
+      raise RuntimeError('Unknown backend {}'.format(name))
+
+  return list(backends.values())[-1]
+
+
+# Compatibility shims to support older clients.
+
+_default_platform_name = None
+
+
+def XlaLocalBackend():
+  # Deprecated. Use get_local_backend(platform_name).
+  return get_local_backend(_default_platform_name)
+
+
+def initialize_platform_name(platform_name):
+  """Deprecated. Use get_local_backend(platform_name)."""
+  if platform_name == 'Host':
+    platform_name = 'cpu'
+  elif platform_name == 'CUDA':
+    platform_name = 'gpu'
+
+  # Make sure the platform is valid by trying to instantiate it.
+  get_local_backend(platform_name)
+
   global _default_platform_name
-  if _default_backend is None:
-    _default_backend = XlaLocalBackend(_default_platform_name)
-  return _default_backend
-
-
-class BackendType(enum.Enum):
-  XLA_LOCAL = 1
-  XRT = 2
-
-
-def BackendSpec(backend, target):
-  """Compatibility wrapper to support older clients. Do not use in new code."""
-  if backend == BackendType.XLA_LOCAL:
-    return _get_default_local_backend()
-  elif backend == BackendType.XRT:
-    return XrtBackend(target)
-  else:
-    raise ValueError('Unknown backend {}'.format(backend))
+  _default_platform_name = platform_name
 
 
 def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
@@ -415,7 +423,7 @@ class LocalBuffer(object):
   @staticmethod
   def from_pyval(pyval, device=0, backend=None):
     """Allocate and copy to XLA the given python value."""
-    backend = backend or _get_default_local_backend()
+    backend = backend or get_local_backend()
     pyval = require_numpy_array_layout(pyval)
     cbuf = backend.buffer_from_pyval(pyval, device)
     return LocalBuffer(cbuf, backend, device)
@@ -665,7 +673,7 @@ class CompileOptions(object):
     self.dump_hlo_as_text = None
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
-    self.num_replicas = get_replica_count()
+    self.num_replicas = 1
 
 
 def transfer_to_infeed(value, device_ordinal=0):
@@ -682,7 +690,7 @@ def transfer_to_infeed(value, device_ordinal=0):
       distinct infeed queue.
   """
   # TODO(phawkins): support non-default backends.
-  backend = _get_default_local_backend()
+  backend = get_local_backend()
   backend.client.TransferToInfeed(
       require_numpy_array_layout(value), device_ordinal)
 
@@ -699,7 +707,7 @@ def transfer_from_outfeed(shape, device_ordinal=0):
     The literal value that is produced from the outfeed queue.
   """
   # TODO(phawkins): support non-default backends.
-  backend = _get_default_local_backend()
+  backend = get_local_backend()
   return backend.client.TransferFromOutfeed(shape, device_ordinal)
 
 
@@ -763,7 +771,7 @@ class Computation(object):
     Returns:
       A Executable instance.
     """
-    backend = backend or self._backend or _get_default_local_backend()
+    backend = backend or self._backend or get_local_backend()
     result_shape = _wrap_shape(self.computation.GetReturnValueShape())
 
     if layout_fn:
@@ -1230,7 +1238,7 @@ class ComputationBuilder(object):
           _make_replica_group_proto(group) for group in replica_groups
       ]
     if not replica_groups:
-      split_count = get_replica_count()
+      split_count = 1
     else:
       split_count = len(replica_groups[0])
       if not all(split_count == len(g) for g in replica_groups):
@@ -1821,47 +1829,6 @@ def _forward_methods_to_local_builder():
 
 
 _forward_methods_to_local_builder()
-
-_default_replica_count = 1
-
-
-def initialize_replica_count(replica_count):
-  """Initializes the default replica count to use.
-
-  Deprecated; pass `num_replicas` as an option to `Computation.Compile()`
-  instead.
-
-  Args:
-    replica_count: number of replicas that are desired for set up during XLA
-      initialization.
-
-  Raises:
-    A runtime exception if the XLA service has already been initialized.
-  """
-  global _default_replica_count
-  _default_replica_count = replica_count
-
-
-def get_replica_count():
-  """Returns the default replica count.
-
-  Deprecated; pass `num_replicas` as an option to `Computation.Compile()`
-  instead.
-  """
-  return _default_replica_count
-
-
-def initialize_platform_name(platform_name):
-  """Initializes the default platform name to use for XLA.
-
-  Args:
-    platform_name: string name of platform.
-  """
-  global _default_platform_name
-  _default_platform_name = platform_name
-
-  # Make sure the platform is valid by trying to instantiate it.
-  _get_default_local_backend()
 
 
 def register_cpu_custom_call_target(name, fn):
