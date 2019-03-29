@@ -15,11 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_EVALUATION_STAGES_TOPK_ACCURACY_EVAL_STAGE_H_
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_STAGES_TOPK_ACCURACY_EVAL_STAGE_H_
 
-#include <memory>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 
@@ -28,39 +25,40 @@ namespace evaluation {
 
 // EvaluationStage to compute top-K accuracy of a classification model.
 // The computed weights in the model output should be in the same order
-// as ALL_LABELS provided during Init.
-// GROUND_TRUTH_LABEL must be one of ALL_LABELS.
+// as the vector provided during SetAllLabels
+// Ground truth label must be one of provided labels.
 // Current accuracies can be obtained with GetLatestMetrics().
-// Note: MODEL_OUTPUT_* are taken as Initializers & not in the config, since
-// they are typically computed by inference stage after analyzing a tflite file.
-//
-// Initializer TAGs (Object Class): ALL_LABELS (std::vector<string>*),
-//                                  MODEL_OUTPUT_TYPE (tflite::TfLiteType*),
-//                                  MODEL_OUTPUT_SHAPE (tflite::TfLiteIntArray*)
-// Input TAGs (Object Class): MODEL_OUTPUT (pointer to model output, based on
-//                                TopkAccuracyEvalParams.output_type),
-//                            GROUND_TRUTH_LABEL (std::string*)
 class TopkAccuracyEvalStage : public EvaluationStage {
  public:
   explicit TopkAccuracyEvalStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
 
-  bool Run(absl::flat_hash_map<std::string, void*>& object_map) override;
+  TfLiteStatus Init() override;
+
+  TfLiteStatus Run() override;
 
   EvaluationStageMetrics LatestMetrics() override;
 
   ~TopkAccuracyEvalStage() {}
 
- protected:
-  bool DoInit(absl::flat_hash_map<std::string, void*>& object_map) override;
+  // Call before Init().
+  // model_output_shape is not owned, so this class does not free the
+  // TfLiteIntArray.
+  void SetTaskInfo(const std::vector<std::string>& all_labels,
+                   TfLiteType model_output_type,
+                   TfLiteIntArray* model_output_shape) {
+    // We copy ground_truth_labels to ensure we can access the data throughout
+    // the lifetime of this evaluation stage.
+    ground_truth_labels_ = all_labels;
+    model_output_type_ = model_output_type;
+    model_output_shape_ = model_output_shape;
+  }
 
-  std::vector<std::string> GetInitializerTags() override {
-    return {kAllLabelsTag, kModelOutputTypeTag, kModelOutputShapeTag};
+  // Call before Run().
+  void SetEvalInputs(void* model_raw_output, std::string* ground_truth_label) {
+    model_output_ = model_raw_output;
+    ground_truth_label_ = ground_truth_label;
   }
-  std::vector<std::string> GetInputTags() override {
-    return {kModelOutputTag, kGroundTruthLabelTag};
-  }
-  std::vector<std::string> GetOutputTags() override { return {}; }
 
  private:
   // Returns the index of label from ground_truth_labels_.
@@ -70,27 +68,19 @@ class TopkAccuracyEvalStage : public EvaluationStage {
   void UpdateCounts(const std::vector<int>& topk_indices,
                     int ground_truth_index);
 
-  int k_;
   std::vector<std::string> ground_truth_labels_;
+  TfLiteType model_output_type_ = kTfLiteNoType;
+  TfLiteIntArray* model_output_shape_ = nullptr;
   int num_total_labels_;
+  void* model_output_ = nullptr;
+  std::string* ground_truth_label_ = nullptr;
+
   // Equal to number of samples evaluated so far.
   int num_runs_;
   // Stores |k_| values, where the ith value denotes number of samples (out of
   // num_runs_) for which correct label appears in the top (i+1) model outputs.
   std::vector<int> accuracy_counts_;
-  // Output type of model.
-  TfLiteType output_type_;
-
-  // Initializers.
-  static const char kAllLabelsTag[];
-  static const char kModelOutputTypeTag[];
-  static const char kModelOutputShapeTag[];
-  // Inputs.
-  static const char kModelOutputTag[];
-  static const char kGroundTruthLabelTag[];
 };
-
-DECLARE_FACTORY(TopkAccuracyEvalStage);
 
 }  // namespace evaluation
 }  // namespace tflite

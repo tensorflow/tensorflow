@@ -38,9 +38,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:stats_calculator_portable",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/core:tflite_portable_logging",
@@ -66,11 +64,9 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":image_preprocessing_stage",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -82,11 +78,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -97,11 +91,9 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":topk_accuracy_eval_stage",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )

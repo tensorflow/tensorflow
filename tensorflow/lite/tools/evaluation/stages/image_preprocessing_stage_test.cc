@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
@@ -27,23 +26,14 @@ namespace evaluation {
 namespace {
 
 constexpr char kImagePreprocessingStageName[] = "inception_preprocessing_stage";
-constexpr char kImagePathInput[] = "file_path";
-constexpr char kPreprocessedImageName[] = "out_image";
-constexpr char kInputMapping[] = "IMAGE_PATH:file_path";
-constexpr char kOutputMapping[] = "PREPROCESSED_IMAGE:out_image";
 constexpr char kTestImage[] =
     "tensorflow/lite/tools/evaluation/stages/testdata/"
     "grace_hopper.jpg";
 constexpr int kImageDim = 224;
 
 EvaluationStageConfig GetImagePreprocessingStageConfig(TfLiteType output_type) {
-  ImagePreprocessingStage_ENABLE();
   EvaluationStageConfig config;
   config.set_name(kImagePreprocessingStageName);
-  config.add_inputs(kInputMapping);
-  config.add_outputs(kOutputMapping);
-
-  config.mutable_specification()->set_process_class(IMAGE_PREPROCESSING);
   auto* params =
       config.mutable_specification()->mutable_image_preprocessing_params();
   params->set_image_height(kImageDim);
@@ -52,21 +42,12 @@ EvaluationStageConfig GetImagePreprocessingStageConfig(TfLiteType output_type) {
   return config;
 }
 
-TEST(ImagePreprocessingStage, NoSpecification) {
-  EvaluationStageConfig config =
-      GetImagePreprocessingStageConfig(kTfLiteFloat32);
-  config.clear_specification();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  EXPECT_EQ(stage_ptr, nullptr);
-}
-
 TEST(ImagePreprocessingStage, NoParams) {
   EvaluationStageConfig config =
       GetImagePreprocessingStageConfig(kTfLiteFloat32);
   config.mutable_specification()->clear_image_preprocessing_params();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
 }
 
 TEST(ImagePreprocessingStage, NoImageHeight) {
@@ -75,9 +56,8 @@ TEST(ImagePreprocessingStage, NoImageHeight) {
   config.mutable_specification()
       ->mutable_image_preprocessing_params()
       ->clear_image_height();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
 }
 
 TEST(ImagePreprocessingStage, NoImageWidth) {
@@ -86,9 +66,8 @@ TEST(ImagePreprocessingStage, NoImageWidth) {
   config.mutable_specification()
       ->mutable_image_preprocessing_params()
       ->clear_image_width();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
 }
 
 TEST(ImagePreprocessingStage, InvalidCroppingFraction) {
@@ -97,9 +76,18 @@ TEST(ImagePreprocessingStage, InvalidCroppingFraction) {
   config.mutable_specification()
       ->mutable_image_preprocessing_params()
       ->set_cropping_fraction(-0.8);
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
+}
+
+TEST(ImagePreprocessingStage, ImagePathNotSet) {
+  EvaluationStageConfig config =
+      GetImagePreprocessingStageConfig(kTfLiteFloat32);
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
 }
 
 TEST(ImagePreprocessingStage, TestImagePreprocessingFloat) {
@@ -107,16 +95,18 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingFloat) {
 
   EvaluationStageConfig config =
       GetImagePreprocessingStageConfig(kTfLiteFloat32);
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_TRUE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
 
-  object_map[kImagePathInput] = &image_path;
-  EXPECT_TRUE(stage_ptr->Run(object_map));
-  EvaluationStageMetrics metrics = stage_ptr->LatestMetrics();
+  // Pre-run.
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
+
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
 
   float* preprocessed_image_ptr =
-      static_cast<float*>(object_map[kPreprocessedImageName]);
+      static_cast<float*>(stage.GetPreprocessedImageData());
   EXPECT_NE(preprocessed_image_ptr, nullptr);
   // We check raw values computed from central-cropping & bilinear interpolation
   // on the test image. The interpolation math is similar to Unit Square formula
@@ -146,16 +136,18 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingFloat_NoCrop) {
   config.mutable_specification()
       ->mutable_image_preprocessing_params()
       ->set_cropping_fraction(0);
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_TRUE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
 
-  object_map[kImagePathInput] = &image_path;
-  EXPECT_TRUE(stage_ptr->Run(object_map));
-  EvaluationStageMetrics metrics = stage_ptr->LatestMetrics();
+  // Pre-run.
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
+
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
 
   float* preprocessed_image_ptr =
-      static_cast<float*>(object_map[kPreprocessedImageName]);
+      static_cast<float*>(stage.GetPreprocessedImageData());
   EXPECT_NE(preprocessed_image_ptr, nullptr);
   // We check raw values computed from central-cropping & bilinear interpolation
   // on the test image. The interpolation math is similar to Unit Square formula
@@ -181,16 +173,18 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingUInt8Quantized) {
   std::string image_path = kTestImage;
 
   EvaluationStageConfig config = GetImagePreprocessingStageConfig(kTfLiteUInt8);
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_TRUE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
 
-  object_map[kImagePathInput] = &image_path;
-  EXPECT_TRUE(stage_ptr->Run(object_map));
-  EvaluationStageMetrics metrics = stage_ptr->LatestMetrics();
+  // Pre-run.
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
+
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
 
   uint8_t* preprocessed_image_ptr =
-      static_cast<uint8_t*>(object_map[kPreprocessedImageName]);
+      static_cast<uint8_t*>(stage.GetPreprocessedImageData());
   EXPECT_NE(preprocessed_image_ptr, nullptr);
   // We check raw values computed from central-cropping & bilinear interpolation
   // on the test image. The interpolation math is similar to Unit Square formula
@@ -216,16 +210,18 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingInt8Quantized) {
   std::string image_path = kTestImage;
 
   EvaluationStageConfig config = GetImagePreprocessingStageConfig(kTfLiteInt8);
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
-  absl::flat_hash_map<std::string, void*> object_map;
-  EXPECT_TRUE(stage_ptr->Init(object_map));
+  ImagePreprocessingStage stage = ImagePreprocessingStage(config);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
 
-  object_map[kImagePathInput] = &image_path;
-  EXPECT_TRUE(stage_ptr->Run(object_map));
-  EvaluationStageMetrics metrics = stage_ptr->LatestMetrics();
+  // Pre-run.
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
+
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
 
   int8_t* preprocessed_image_ptr =
-      static_cast<int8_t*>(object_map[kPreprocessedImageName]);
+      static_cast<int8_t*>(stage.GetPreprocessedImageData());
   EXPECT_NE(preprocessed_image_ptr, nullptr);
   // We check raw values computed from central-cropping & bilinear interpolation
   // on the test image. The interpolation math is similar to Unit Square formula
