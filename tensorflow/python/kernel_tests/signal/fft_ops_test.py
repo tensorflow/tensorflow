@@ -559,42 +559,40 @@ class FFTShiftTest(test.TestCase):
   def testDefinition(self):
     x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
     y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-    self.assertTrue((fft_ops.fftshift(x).numpy() ==  y).all())
-    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  x).all())
+    self.assertAllEqual(fft_ops.fftshift(x).numpy(), y)
+    self.assertAllEqual(fft_ops.ifftshift(y).numpy(), x)
     x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
     y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
-    self.assertTrue((fft_ops.fftshift(x).numpy() == y).all())
-    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  x).all())
+    self.assertAllEqual(fft_ops.fftshift(x).numpy(), y)
+    self.assertAllEqual(fft_ops.ifftshift(y).numpy(), x)
 
   def testAxesKeyword(self):
     freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
     shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
-    self.assertTrue((fft_ops.fftshift(freqs, axes=(0, 1)).numpy() == \
-    shifted).all())
-    self.assertTrue((fft_ops.fftshift(freqs, axes=0).numpy() == \
-    fft_ops.fftshift(freqs, axes=(0,)).numpy()).all())
-    self.assertTrue((fft_ops.ifftshift(shifted, axes=(0, 1)).numpy() == \
-    freqs).all())
-    self.assertTrue((fft_ops.ifftshift(shifted, axes=0).numpy() == \
-    fft_ops.ifftshift(shifted, axes=(0,)).numpy()).all())
-    self.assertTrue((fft_ops.fftshift(freqs).numpy() == shifted).all())
-    self.assertTrue((fft_ops.ifftshift(shifted).numpy() == freqs).all())
+    self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, 1)).numpy(), shifted)
+    self.assertAllEqual(fft_ops.fftshift(freqs, axes=0).numpy(),
+                        fft_ops.fftshift(freqs, axes=(0,)).numpy())
+    self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, 1)).numpy(), freqs)
+    self.assertAllEqual(fft_ops.ifftshift(shifted, axes=0).numpy(),
+                        fft_ops.ifftshift(shifted, axes=(0,)).numpy())
+    self.assertAllEqual(fft_ops.fftshift(freqs).numpy(), shifted)
+    self.assertAllEqual(fft_ops.ifftshift(shifted).numpy(), freqs)
 
   def testNumpyCompatibility(self):
     x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
     y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-    self.assertTrue((fft_ops.fftshift(x).numpy() ==  np.fft.fftshift(x)).all())
-    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  np.fft.ifftshift(y)).all())
+    self.assertAllEqual(fft_ops.fftshift(x).numpy(), np.fft.fftshift(x))
+    self.assertAllEqual(fft_ops.ifftshift(y).numpy(), np.fft.ifftshift(y))
     x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
     y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
-    self.assertTrue((fft_ops.fftshift(x).numpy() == np.fft.fftshift(x)).all())
-    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  np.fft.ifftshift(y)).all())
+    self.assertAllEqual(fft_ops.fftshift(x).numpy(), np.fft.fftshift(x))
+    self.assertAllEqual(fft_ops.ifftshift(y).numpy(), np.fft.ifftshift(y))
     freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
     shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
-    self.assertTrue((fft_ops.fftshift(freqs, axes=(0, 1)).numpy() == \
-    np.fft.fftshift(freqs, axes=(0, 1))).all())
-    self.assertTrue((fft_ops.ifftshift(shifted, axes=(0, 1)).numpy() == \
-    np.fft.ifftshift(shifted, axes=(0, 1))).all())
+    self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, 1)).numpy(),
+                        np.fft.fftshift(freqs, axes=(0, 1)))
+    self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, 1)).numpy(),
+                        np.fft.ifftshift(shifted, axes=(0, 1)))
 
 if __name__ == "__main__":
   test.main()
