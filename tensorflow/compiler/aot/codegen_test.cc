@@ -175,14 +175,19 @@ TEST(CodegenTest, Golden) {
   fetch->mutable_id()->set_node_name("fetch0");
   fetch->set_name("myfetch");
   tf2xla::Variable* variable = config.add_variable();
-  variable->set_node_name("myvar");
+  variable->set_node_name("myvar_readonly");
   variable->mutable_shape()->add_dim()->set_size(1);
   variable->set_type(DT_FLOAT);
+  variable->set_readonly(true);
   tf2xla::Variable* variable2 = config.add_variable();
-  variable2->set_node_name("my/var");
-  variable2->set_name("myvar2");
-  variable2->mutable_shape()->add_dim()->set_size(5);
-  variable2->set_type(DT_INT32);
+  variable2->set_node_name("myvar");
+  variable2->mutable_shape()->add_dim()->set_size(1);
+  variable2->set_type(DT_FLOAT);
+  tf2xla::Variable* variable3 = config.add_variable();
+  variable3->set_node_name("my/var");
+  variable3->set_name("myvar2");
+  variable3->mutable_shape()->add_dim()->set_size(5);
+  variable3->set_type(DT_INT32);
   CompileResult compile_result;
   compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
       {},
@@ -197,6 +202,7 @@ TEST(CodegenTest, Golden) {
           {
               xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
               xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
               xla::ShapeUtil::MakeShape(xla::F32, {1}),
               xla::ShapeUtil::MakeShape(xla::S32, {5}),
           },

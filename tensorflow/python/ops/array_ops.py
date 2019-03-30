@@ -3524,6 +3524,250 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   return result
 
 
+@tf_export(v1=["gather_nd", "manip.gather_nd"])
+@dispatch.add_dispatch_support
+@deprecated_endpoints("manip.gather_nd")
+def gather_nd(params, indices, name=None, batch_dims=0):
+  r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
+
+  `indices` is an K-dimensional integer tensor, best thought of as a
+  (K-1)-dimensional tensor of indices into `params`, where each element defines
+  a slice of `params`:
+
+      output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
+
+  Whereas in `tf.gather` `indices` defines slices into the first
+  dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+  first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+  The last dimension of `indices` can be at most the rank of
+  `params`:
+
+      indices.shape[-1] <= params.rank
+
+  The last dimension of `indices` corresponds to elements
+  (if `indices.shape[-1] == params.rank`) or slices
+  (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+  of `params`.  The output tensor has shape
+
+      indices.shape[:-1] + params.shape[indices.shape[-1]:]
+
+  Additionally both 'params' and 'indices' can have M leading batch
+  dimensions that exactly match. In this case 'batch_dims' must be M.
+
+  Note that on CPU, if an out of bound index is found, an error is returned.
+  On GPU, if an out of bound index is found, a 0 is stored in the
+  corresponding output value.
+
+  Some examples below.
+
+  Simple indexing into a matrix:
+
+  ```python
+      indices = [[0, 0], [1, 1]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = ['a', 'd']
+  ```
+
+  Slice indexing into a matrix:
+
+  ```python
+      indices = [[1], [0]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = [['c', 'd'], ['a', 'b']]
+  ```
+
+  Indexing into a 3-tensor:
+
+  ```python
+      indices = [[1]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[['a1', 'b1'], ['c1', 'd1']]]
+
+
+      indices = [[0, 1], [1, 0]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['c0', 'd0'], ['a1', 'b1']]
+
+
+      indices = [[0, 0, 1], [1, 0, 1]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = ['b0', 'b1']
+  ```
+
+  The examples below are for the case when only indices have leading extra
+  dimensions. If both 'params' and 'indices' have leading batch dimensions, use
+  the 'batch_dims' parameter to run gather_nd in batch mode.
+
+  Batched indexing into a matrix:
+
+  ```python
+      indices = [[[0, 0]], [[0, 1]]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = [['a'], ['b']]
+  ```
+
+  Batched slice indexing into a matrix:
+
+  ```python
+      indices = [[[1]], [[0]]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = [[['c', 'd']], [['a', 'b']]]
+  ```
+
+  Batched indexing into a 3-tensor:
+
+  ```python
+      indices = [[[1]], [[0]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[[['a1', 'b1'], ['c1', 'd1']]],
+                [[['a0', 'b0'], ['c0', 'd0']]]]
+
+      indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[['c0', 'd0'], ['a1', 'b1']],
+                [['a0', 'b0'], ['c1', 'd1']]]
+
+
+      indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['b0', 'b1'], ['d0', 'c1']]
+  ```
+
+  Examples with batched 'params' and 'indices':
+
+  ```python
+      batch_dims = 1
+      indices = [[1], [0]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['c0', 'd0'], ['a1', 'b1']]
+
+      batch_dims = 1
+      indices = [[[1]], [[0]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[['c0', 'd0']], [['a1', 'b1']]]
+
+      batch_dims = 1
+      indices = [[[1, 0]], [[0, 1]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['c0'], ['b1']]
+  ```
+
+  See also `tf.gather`.
+
+  Args:
+    params: A `Tensor`. The tensor from which to gather values.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      Index tensor.
+    name: A name for the operation (optional).
+    batch_dims: An integer or a scalar 'Tensor'. The number of batch dimensions.
+
+  Returns:
+    A `Tensor`. Has the same type as `params`.
+  """
+  batch_dims_ = tensor_util.constant_value(batch_dims)
+  if batch_dims_ is not None:
+    batch_dims = int(batch_dims_)
+  if batch_dims == 0:
+    return gen_array_ops.gather_nd(params, indices, name=name)
+  else:
+    return batch_gather_nd(
+        params, indices, batch_dims=batch_dims, name=name)
+
+
+@tf_export("gather_nd", v1=[])
+@dispatch.add_dispatch_support
+def gather_nd_v2(params, indices, batch_dims=0, name=None):
+  return gather_nd(params, indices, name=name, batch_dims=batch_dims)
+
+
+gather_nd_v2.__doc__ = gather_nd.__doc__
+
+
+def batch_gather_nd(params, indices, batch_dims, name=None):
+  """gather_nd implementation with batch support."""
+  with ops.name_scope(name, "BatchGatherND", [params, indices]):
+    indices = ops.convert_to_tensor(indices, name="indices")
+    params = ops.convert_to_tensor(params, name="params")
+
+    if not isinstance(batch_dims, int):
+      raise TypeError("batch_dims must be an int; got %r" % batch_dims)
+    if batch_dims < 0:
+      raise ValueError("tf.gather_nd does not allow negative batch_dims.")
+    params_ndims = params.shape.ndims
+    indices_ndims = indices.shape.ndims
+    if indices_ndims is not None and batch_dims >= indices_ndims:
+      raise ValueError("batch_dims = %d must be less than rank(indices) = %d" %
+                       (batch_dims, indices_ndims))
+    if params_ndims is not None and batch_dims >= params_ndims:
+      raise ValueError("batch_dims = %d must be less than rank(params) = %d" %
+                       (batch_dims, params_ndims))
+
+    expand = batch_dims == 0
+    if expand:
+      # Normally gather_nd will be called when batch_dims == 0.
+      # But if this function is called with batch_dims = 0, e.g. for testing
+      # purposes, this adds a dummy batch dimension to make batch_dims = 1.
+      params = expand_dims(params, axis=0)
+      indices = expand_dims(indices, axis=0)
+      batch_dims = 1
+
+    params_shape = shape(params)
+    indices_shape = shape(indices)
+    batch_shape = params_shape[:batch_dims]
+    batch_size = gen_math_ops.prod(batch_shape, [0])
+    index_internal_ndims = rank(indices) - batch_dims - 1
+    indices_internal_shape = indices_shape[batch_dims:-1]
+
+    # Assuming a 'params' with shape [b1, ..., bM, g1, ..., gN] and an 'indices'
+    # with shape [b1, ..., bM, i1, ..., iK, C], where C <= N, we need to modify
+    # 'indices' s.t. it has shape [i1, ..., iK, D], where D <= M + N and slices
+    # to the entire 'params' tensor.
+    # Assuming we have a batch of shape [B1, B2], we use meshgrid to create a
+    # grid of size B1 x B2.
+    batch_dim_list = unstack(batch_shape, axis=0)
+    dim_ranges = [
+        gen_math_ops.cast(gen_math_ops._range(0, x, 1), indices.dtype)
+        for x in batch_dim_list]
+    mesh_list = meshgrid(*dim_ranges, indexing="ij") if dim_ranges else []
+    # Then we flatten and stack the tensors to form a (B1.B2) by 2 matrix.
+    flat_list = [reshape(x, shape=(-1,)) for x in mesh_list]
+    index_grid = transpose(stack(flat_list, axis=0))
+    # We need to concatenate these batch coordinates with the internal indices.
+    # concat -> index_grid [B1.B2, 2] with indices [i1, ..., iK, C]
+    # So we reshape them both to [(B1.B2), i1, ..., iK, *]
+    index_grid_shape = shape(index_grid)
+    index_grid = reshape(index_grid,
+                         concat([index_grid_shape[:1],
+                                 ones(index_internal_ndims, dtype=dtypes.int32),
+                                 index_grid_shape[1:]], axis=0))
+    tile_shape = concat(((1,), indices_internal_shape, (1,)), axis=0)
+    index_grid = tile(index_grid, multiples=tile_shape)
+    # index_grid now has shape [(B1.B2), i1, ..., iK, 2]
+    flat_shape = concat(([batch_size], indices_shape[batch_dims:]), axis=0)
+    flat_indices = reshape(indices, shape=flat_shape)
+    # flat_indices now has shape [(B1.B2), i1, ..., iK, C]
+    indices = concat((index_grid, flat_indices), axis=-1)
+    # indices has shape [(B1.B2), i1, ..., iK, 2+C]
+    out = gen_array_ops.gather_nd(params, indices)
+    # out has shape [(B1.B2), i1, ..., iK, N-C]. Now we reshape batch to
+    # its original form.
+    out_shape = shape(out)
+    out = reshape(out, shape=concat((batch_shape, out_shape[1:]), axis=0))
+    if expand:
+      out = squeeze(out, axis=0)
+  return out
+
+
 # Define quantize_v2 here in order to make name the second-to-last attribute,
 # because round_mode was added later.
 @tf_export(v1=["quantize_v2"])

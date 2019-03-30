@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -28,6 +29,12 @@ auto* graph_runs = monitoring::Counter<0>::New(
 auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
+
+auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/core/graph_run_time_usecs_histogram",
+     "The wall-clock time spent on executing graphs in microseconds."},
+    // Power of 2 with bucket count 20 (> 17 minutes)
+    {monitoring::Buckets::Exponential(1000, 2, 20)});
 
 auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
@@ -81,6 +88,7 @@ void UpdateGraphExecTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     graph_runs->GetCell()->IncrementBy(1);
     graph_run_time_usecs->GetCell()->IncrementBy(running_time_usecs);
+    graph_run_time_usecs_histogram->GetCell()->Add(running_time_usecs);
   }
 }
 

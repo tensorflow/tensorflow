@@ -929,8 +929,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   for (const HloValue* value : GetValueSet(operand, index).values()) {
     for (const HloUse& use : value->uses()) {
       if (use.instruction == user) {
-        if (user->opcode() == HloOpcode::kFusion &&
-            user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+        if (user->IsLoopFusion()) {
           HloInstruction* fusion_param =
               user->fused_parameter(use.operand_number);
           const HloValue& value =
@@ -1056,12 +1055,11 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       return fusion_can_share_buffer_(user, operand);
     }
 
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
+    if (user->IsLoopFusion() || user->IsInputFusion()) {
       return AreTransitiveUsesElementwiseOrTuple(fusion_param);
     }
 
-    if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+    if (user->IsOutputFusion() &&
         user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 

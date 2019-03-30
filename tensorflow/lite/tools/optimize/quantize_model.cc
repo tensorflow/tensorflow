@@ -27,13 +27,159 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/subgraph_quantizer.h"
 
 namespace tflite {
 namespace optimize {
 
+namespace {
+
+// True if the tensor type has to be modified.
+bool TensorTypeChangeRequired(const TensorT* tensor, const TensorType& type) {
+  // The quantized model is type INT8, so if the user provided type is INT8, we
+  // do not have to do any custom logic. Additionally, if the current tensor
+  // isn't INT8 quantized, the custom type doesn't apply.
+  return (type != TensorType_INT8 && tensor->type == TensorType_INT8 &&
+          !tensor->quantization->scale.empty());
+}
+
+// Sets the input type, adding a Leading Op node at the start of the model if
+// necessary.
+// Returns the new input tensor index.
+int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
+                     const int32_t tensor_idx, const TensorType& input_type) {
+  TensorT* tensor = subgraph->tensors[tensor_idx].get();
+  if (!TensorTypeChangeRequired(tensor, input_type)) {
+    return -1;
+  }
+  if (input_type == TensorType_FLOAT32 || input_type == TensorType_UINT8) {
+    // Create a new tensor to be the input of the leading Op.
+    std::unique_ptr<TensorT> leading_op_input;
+    if (input_type == TensorType_FLOAT32) {
+      // Add tensor for quantize operator. Scales and zero points are not
+      // needed.
+      const string leading_op_name = tensor->name + "_quantize";
+      utils::MakeTensor(leading_op_name, tensor->shape, input_type,
+                        &leading_op_input);
+    } else {
+      // Get scale and zero point from the first tensor.
+      const float scale = subgraph->tensors[tensor_idx]->quantization->scale[0];
+      const int64_t zero_point =
+          subgraph->tensors[tensor_idx]->quantization->zero_point[0];
+
+      //  Add tensor for requantize operator. Scale is the existing scale and
+      //  zero point is shifted by +128.
+      TFLITE_DCHECK_GE(zero_point, -128);
+      TFLITE_DCHECK_LE(zero_point, 127);
+      const string leading_op_name = tensor->name + "_requantize";
+      utils::MakeTensorWithQuantParam(leading_op_name, tensor->shape,
+                                      input_type, scale, zero_point + 128,
+                                      &leading_op_input);
+    }
+    const int32_t leading_op_input_idx = subgraph->tensors.size();
+    subgraph->tensors.push_back(std::move(leading_op_input));
+
+    // Create the leading op, which is Quantize Op that quantize or requantize
+    // the input.
+    std::unique_ptr<OperatorT> leading_op;
+    utils::MakeQuantizeOperator(model, &leading_op, leading_op_input_idx,
+                                tensor_idx);
+
+    // Insert the new op at the start of the model.
+    subgraph->operators.insert(subgraph->operators.begin(),
+                               std::move(leading_op));
+    return leading_op_input_idx;
+  }
+  return -1;
+}
+
+// Sets the output type, adding a Tailing Op node at the end of the model if
+// necessary.
+// Returns the new output tensor index.
+int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
+                      const int32_t tensor_idx, const TensorType& output_type) {
+  TensorT* tensor = subgraph->tensors[tensor_idx].get();
+  if (!TensorTypeChangeRequired(tensor, output_type)) {
+    return -1;
+  }
+  if (output_type == TensorType_FLOAT32 || output_type == TensorType_UINT8) {
+    // Create a new tensor to be the output of the tailing op.
+    std::unique_ptr<TensorT> tailing_op_output;
+    if (output_type == TensorType_FLOAT32) {
+      const string tailing_op_name = tensor->name + "_dequantize";
+      utils::MakeTensor(tailing_op_name, tensor->shape, output_type,
+                        &tailing_op_output);
+    } else {
+      // Get scale and zero point from the last tensor.
+      const float scale = subgraph->tensors[tensor_idx]->quantization->scale[0];
+      const int64_t zero_point =
+          subgraph->tensors[tensor_idx]->quantization->zero_point[0];
+
+      //  Add tensor for requantize operator. Scale is the existing scale and
+      //  zero point is shifted by +128.
+      TFLITE_DCHECK_GE(zero_point, -128);
+      TFLITE_DCHECK_LE(zero_point, 127);
+      const string tailing_op_name = tensor->name + "_requantize";
+      utils::MakeTensorWithQuantParam(tailing_op_name, tensor->shape,
+                                      output_type, scale, zero_point + 128,
+                                      &tailing_op_output);
+    }
+    const int32_t tailing_op_output_idx = subgraph->tensors.size();
+    subgraph->tensors.push_back(std::move(tailing_op_output));
+
+    // Create the tailing operation.
+    std::unique_ptr<OperatorT> tailing_op;
+    if (output_type == TensorType_FLOAT32) {
+      // Tailing Op is Dequantize Op.
+      utils::MakeDequantizeOperator(model, &tailing_op, tensor_idx,
+                                    tailing_op_output_idx);
+    } else {
+      // Tailing Op is Quantize Op that does requantization.
+      utils::MakeQuantizeOperator(model, &tailing_op, tensor_idx,
+                                  tailing_op_output_idx);
+    }
+    // Add the operator at the end of the model.
+    subgraph->operators.push_back(std::move(tailing_op));
+    return tailing_op_output_idx;
+  }
+  return -1;
+}
+
+// Sets the input and output types to the provided types. Leading and
+// tailing operations will be added if needed.
+// For Float input and output, leading op is Quantize and tailing op is
+// Dequantize.
+// For Uint8 input and output, leading op is Quantize (uint8 to
+// int8, can be thought as "requant") and tailing op is also Quantize (int8 to
+// uint8, can be thought as "requant").
+void SetInputAndOutputTypes(ModelT* model, SubGraphT* subgraph,
+                            const TensorType& input_type,
+                            const TensorType& output_type) {
+  for (int i = 0; i < subgraph->inputs.size(); ++i) {
+    const int32_t input_idx =
+        SetInputType(model, subgraph, subgraph->inputs[i], input_type);
+    if (input_idx < 0) {
+      continue;
+    }
+    subgraph->inputs[i] = input_idx;
+  }
+  for (int i = 0; i < subgraph->outputs.size(); ++i) {
+    const int32_t output_idx =
+        SetOutputType(model, subgraph, subgraph->outputs[i], output_type);
+    if (output_idx < 0) {
+      continue;
+    }
+    subgraph->outputs[i] = output_idx;
+  }
+}
+
+}  // namespace
+
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* model, ErrorReporter* error_reporter) {
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type,
+                           ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -50,6 +196,16 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
         return kTfLiteError;
       }
     }
+    // For each subgraph, set the types of quantize inputs and outputs to the
+    // user defined ones.
+    if ((input_type != TensorType_FLOAT32 && input_type != TensorType_INT8 &&
+         input_type != TensorType_UINT8) ||
+        (output_type != TensorType_FLOAT32 && output_type != TensorType_INT8 &&
+         input_type != TensorType_UINT8)) {
+      error_reporter->Report("Provided input and output type not supported");
+      return kTfLiteError;
+    }
+    SetInputAndOutputTypes(model, subgraph, input_type, output_type);
   }
 
   flatbuffers::Offset<Model> output_model_location =
@@ -57,6 +213,12 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   FinishModelBuffer(*builder, output_model_location);
 
   return kTfLiteOk;
+}
+
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, TensorType_FLOAT32, TensorType_FLOAT32,
+                       error_reporter);
 }
 
 }  // namespace optimize

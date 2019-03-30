@@ -55,10 +55,6 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags->tf_xla_clustering_fuel,
            "Places an artificial limit on the number of ops marked as "
            "eligible for clustering."),
-      Flag("tf_xla_fusion_only",
-           &mark_for_compilation_flags->tf_xla_fusion_only,
-           "enable fusion of element-wise operations only using XLA when "
-           "global_jit_level is ON*."),
       Flag("tf_xla_disable_deadness_safety_checks_for_debugging",
            &mark_for_compilation_flags
                 ->tf_xla_disable_deadness_safety_checks_for_debugging,
@@ -70,6 +66,7 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
 void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
+  build_ops_flags->tf_xla_print_cluster_outputs = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->tf_xla_auto_jit = 0;
@@ -80,7 +77,6 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->tf_xla_cpu_global_jit = false;
   mark_for_compilation_flags->tf_xla_clustering_fuel =
       std::numeric_limits<int64>::max();
-  mark_for_compilation_flags->tf_xla_fusion_only = false;
   mark_for_compilation_flags
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
 
@@ -93,6 +89,10 @@ void AllocateAndParseFlags() {
   flag_list = new std::vector<Flag>({
       Flag("tf_xla_enable_lazy_compilation",
            &build_ops_flags->tf_xla_enable_lazy_compilation, ""),
+      Flag("tf_xla_print_cluster_outputs",
+           &build_ops_flags->tf_xla_print_cluster_outputs,
+           "If true then insert Print nodes to print out values produced by "
+           "XLA clusters."),
 
       Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
            "Switch a device into 'on-demand' mode, where instead of "

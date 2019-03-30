@@ -135,7 +135,8 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
   const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall";
+  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall" ||
+         op_type == "ReduceDataset";
 }
 
 bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {

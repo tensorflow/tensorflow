@@ -49,11 +49,6 @@ struct MarkForCompilationPassFlags {
   // eligible for clustering.
   int64 tf_xla_clustering_fuel;
 
-  // tf_xla_fusion_only is effective only when global_jit_level is set to ON*
-  // and overrides its behavior. If true, enable fusion of element-wise
-  // operations only using XLA.
-  bool tf_xla_fusion_only;
-
   // If tf_xla_disable_deadness_safety_checks_for_debugging is set to true then
   // we do not do deadness related safety checks.  This is unsound in general,
   // but can be used as a debugging aid.
@@ -81,6 +76,10 @@ struct BuildXlaOpsPassFlags {
   // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
   // Defaults to true.
   bool tf_xla_enable_lazy_compilation;
+
+  // If true then insert Print nodes to print out values produced by XLA
+  // clusters.  Useful for debugging.
+  bool tf_xla_print_cluster_outputs;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

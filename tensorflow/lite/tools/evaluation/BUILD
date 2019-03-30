@@ -17,7 +17,6 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 common_linkopts = tflite_linkopts() + select({
@@ -35,8 +34,8 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -50,13 +49,13 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":evaluation_stage",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "evaluation_stage_test",
     srcs = ["evaluation_stage_test.cc"],
     linkopts = common_linkopts,
@@ -64,8 +63,8 @@ tf_cc_test(
     deps = [
         ":evaluation_stage",
         ":identity_stage",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],

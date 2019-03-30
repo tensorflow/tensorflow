@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -150,8 +151,8 @@ Status EmitTiledCompareLoop(
     LLVMTargetIRBuilder& llvm_target_ir_builder) {
   llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
   KernelSupportLibrary ksl(b);
-  llvm::Value* thread_id = llvm_ir::EmitCallToTargetIntrinsic(
-                kTHREAD_ID_X, {}, {}, llvm_target_ir_builder);
+  llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
                             llvm::cast<llvm::Instruction>(thread_id));
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
@@ -202,8 +203,7 @@ Status EmitTiledCompareLoop(
     });
   }
   // Wait until all reads have happened.
-  llvm_ir::EmitCallToTargetIntrinsic(kBARRIER_ID, {}, {},
-          llvm_target_ir_builder);
+  gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBarrierId, {}, {}, b);
 
   // Now emit the bodies of the comparison loops.
   auto element_address = [&](int64 operand, llvm::Value* index) {
@@ -264,8 +264,8 @@ Status EmitTiledCompareLoop(
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
-    llvm_ir::EmitCallToTargetIntrinsic(kBARRIER_ID, {}, {},
-            llvm_target_ir_builder);
+    gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBarrierId, {}, {},
+                                   b);
   }
 
   // Copy the operand tiles back from shared memory to the operand buffers.

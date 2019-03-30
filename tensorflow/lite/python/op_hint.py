@@ -114,7 +114,7 @@ class OpHint(object):
   FUNCTION_NAME_ATTR = "_tflite_function_name"
   # UUID of the function (each OpHint gets a new uuid).
   FUNCTION_UUID_ATTR = "_tflite_function_uuid"
-  # The index index of the input (or nothing if it is an output).
+  # The input index of the input (or nothing if it is an output).
   FUNCTION_INPUT_INDEX_ATTR = "_tflite_function_input_index"
   # The output index of the output (or nothing if it is an input).
   FUNCTION_OUTPUT_INDEX_ATTR = "_tflite_function_output_index"
@@ -728,10 +728,10 @@ def _find_all_hints_in_nodes(nodes):
   for node in nodes:
     attr = node.attr
     # This is an op hint if it has a FUNCTION_UUID_ATTR, otherwise skip
-    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
     if (OpHint.FUNCTION_UUID_ATTR not in attr
         or not attr[OpHint.FUNCTION_UUID_ATTR].s):
       continue
+    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
 
     # Start building function
     call_def = func_calls[uuid]
@@ -795,7 +795,7 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
 
   # Make nodes inside function def inputs point to the real nodes.
   for node in function_def.node_def:
-    for i in range(len(node.input)):
+    for i, _ in enumerate(node.input):
       if node.input[i] in nodes_mapping:
         node.input[i] = nodes_mapping[node.input[i]]
     new_nodes.append(_copy.deepcopy(node))
@@ -855,7 +855,7 @@ def _find_children_hints(call, graph_def):
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
               nodes_mapping = {}
-              for i in range(len(function_inputs)):
+              for i, _ in enumerate(function_inputs):
                 nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
@@ -1224,6 +1224,12 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   This is used to get all the output nodes those are ophinted, it is important
   for operation like convert_variables_to_constants keep all ophints structure.
   Note: only one of session or graph_def should be used, not both.
+  Why this can be useful? Some TensorFlow ops (e.g. bidirectional rnn), can
+  generate multiple outputs for unfused subgraph. If not all output nodes are
+  consumed, graph optimization can potentially drop the unused nodes and cause
+  ophints in an invalid states (due to missing ophinted output nodes). So it's
+  important for us to find all those hinted output nodes and make sure they're
+  not discarded away.
 
   Args:
     session: A TensorFlow session that contains the graph to convert.
@@ -1242,8 +1248,8 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   elif graph_def is not None:
     hints = _find_all_hints_in_nodes(graph_def.node)
   for hint in _six.itervalues(hints):
-    _, ouput_nodes = hint.flattened_inputs_and_outputs()
-    hinted_outputs_nodes.extend(ouput_nodes)
+    _, output_nodes = hint.flattened_inputs_and_outputs()
+    hinted_outputs_nodes.extend(output_nodes)
   return hinted_outputs_nodes
 
 

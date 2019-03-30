@@ -1009,7 +1009,7 @@ TF_Buffer* TF_GetAllOpList() {
 // --------------------------------------------------------------------------
 // ListDevices & SessionListDevices API
 
-void TF_DeleteDeviceList(TF_DeviceList* s) { delete s; }
+void TF_DeleteDeviceList(TF_DeviceList* list) { delete list; }
 
 TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
@@ -1527,7 +1527,7 @@ int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
   if (TF_GetCode(status) != TF_OK) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
-    status->status = InvalidArgument("Input arg '", arg_name, "' not found");
+    status->status = InvalidArgument("Output arg '", arg_name, "' not found");
     return -1;
   }
   return iter->second.second - iter->second.first;
@@ -1832,21 +1832,21 @@ void TF_OperationGetAttrShape(TF_Operation* oper, const char* attr_name,
 }
 
 void TF_OperationGetAttrShapeList(TF_Operation* oper, const char* attr_name,
-                                  int64_t** values, int* num_dims,
-                                  int max_values, int64_t* storage,
-                                  int storage_size, TF_Status* status) {
+                                  int64_t** dims, int* num_dims, int num_shapes,
+                                  int64_t* storage, int storage_size,
+                                  TF_Status* status) {
   std::vector<PartialTensorShape> shapes;
   status->status =
       tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shapes);
   if (TF_GetCode(status) != TF_OK) return;
-  auto len = std::min(static_cast<int>(shapes.size()), max_values);
+  auto len = std::min(static_cast<int>(shapes.size()), num_shapes);
   int64_t* p = storage;
   int storage_left = storage_size;
   for (int i = 0; i < len; ++i) {
     // shapes[i].dims() == -1 for shapes with an unknown rank.
     int64_t n = shapes[i].dims();
     num_dims[i] = n;
-    values[i] = p;
+    dims[i] = p;
     if (n < 0) {
       continue;
     }
@@ -1941,7 +1941,10 @@ TF_Graph::TF_Graph()
       refiner(graph.versions().producer(), graph.op_registry()),
       delete_requested(false),
       parent(nullptr),
-      parent_inputs(nullptr) {}
+      parent_inputs(nullptr) {
+  // Tell the shape refiner to also run shape inference on functions.
+  refiner.set_function_library_for_shape_inference(&graph.flib_def());
+}
 
 TF_Graph* TF_NewGraph() { return new TF_Graph; }
 

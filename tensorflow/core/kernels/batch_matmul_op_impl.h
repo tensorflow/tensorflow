@@ -127,25 +127,6 @@ struct ParallelMatMulKernel<Scalar, false> {
   }
 };
 
-// TODO(rmlarsen): Get rid of this when we have upstreamed improvements
-// for matrix*vector and vector*matrix to Eigen's general matrix product.
-template <typename Tx, typename Ty, typename Tz>
-static void Multiply(bool adj_x, bool adj_y, Tx x, Ty y, Tz z) {
-  if (!adj_x) {
-    if (!adj_y) {
-      z.noalias() = x * y;
-    } else {
-      z.noalias() = x * y.adjoint();
-    }
-  } else {
-    if (!adj_y) {
-      z.noalias() = x.adjoint() * y;
-    } else {
-      z.noalias() = x.adjoint() * y.adjoint();
-    }
-  }
-}
-
 // Sequential batch matmul kernel that calls the regular Eigen matmul.
 // We prefer this over the tensor contraction because it performs
 // better on vector-matrix and matrix-vector products.
@@ -175,19 +156,18 @@ struct SequentialMatMulKernel {
       auto x = ConstTensorSliceToEigenMatrix(in_x, i);
       auto y = ConstTensorSliceToEigenMatrix(in_y, i);
       auto z = TensorSliceToEigenMatrix(out, i);
-      // TODO(rmlarsen): Get rid of the special casing here when we have
-      // upstreamed improvements for matrix*vector and vector*matrix to
-      // Eigen's general matrix product.
-      if (!adj_x && x.rows() == 1) {
-        Multiply(adj_x, adj_y, x.row(0), y, z);
-      } else if (adj_x && x.cols() == 1) {
-        Multiply(adj_x, adj_y, x.col(0), y, z);
-      } else if (!adj_y && y.cols() == 1) {
-        Multiply(adj_x, adj_y, x, y.col(0), z);
-      } else if (adj_y && y.rows() == 1) {
-        Multiply(adj_x, adj_y, x, y.row(0), z);
+      if (!adj_x) {
+        if (!adj_y) {
+          z.noalias() = x * y;
+        } else {
+          z.noalias() = x * y.adjoint();
+        }
       } else {
-        Multiply(adj_x, adj_y, x, y, z);
+        if (!adj_y) {
+          z.noalias() = x.adjoint() * y;
+        } else {
+          z.noalias() = x.adjoint() * y.adjoint();
+        }
       }
     }
   }
@@ -484,11 +464,11 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
                   batch_size, &scratch_allocator)
               .ok();
       if (!blas_launch_status) {
-        context->SetStatus(
-            errors::Internal("Blas xGEMMBatched launch failed : a.shape=",
-                             in_x.shape().DebugString(), ", b.shape=",
-                             in_y.shape().DebugString(), ", m=", m, ", n=", n,
-                             ", k=", k, ", batch_size=", batch_size));
+        context->SetStatus(errors::Internal(
+            "Blas xGEMMBatched launch failed : a.shape=",
+            in_x.shape().DebugString(),
+            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+            ", k=", k, ", batch_size=", batch_size));
       }
     }
   }
@@ -614,6 +594,6 @@ class BatchMatMul : public OpKernel {
       Name("BatchMatMul").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
       BatchMatMul<SYCLDevice, TYPE>)
 #endif  // TENSORFLOW_USE_SYCL
-}  // end namespace tensorflow
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_

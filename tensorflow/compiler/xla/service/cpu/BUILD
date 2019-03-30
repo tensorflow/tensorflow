@@ -98,6 +98,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
+        "//tensorflow/compiler/xla/service:conditional_to_select",
         "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -206,6 +207,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
+)
+
+cc_library(
+    name = "runtime_lightweight_check",
+    hdrs = ["runtime_lightweight_check.h"],
+    copts = runtime_copts(),
 )
 
 cc_library(
@@ -536,6 +543,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
@@ -571,6 +579,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:framework_lite",
@@ -595,6 +604,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         ":runtime_matvec",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
@@ -626,6 +636,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",

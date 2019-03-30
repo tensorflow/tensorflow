@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -90,8 +91,7 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
     return DotImplementedAsGemm(hlo);
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
+  if (hlo.IsOutputFusion() &&
       (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
        hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
@@ -170,12 +170,7 @@ bool IsReductionToVector(const HloInstruction& reduce) {
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                              dims_to_keep) &&
-         ShapeUtil::Equal(
-             reduce.shape(),
-             ShapeUtil::FilterDimensions(
-                 [&](int64 dim) { return absl::c_count(dims_to_keep, dim); },
-                 input->shape()));
+                                              dims_to_keep);
 }
 
 llvm::Value* EmitDeviceFunctionCall(
@@ -250,14 +245,10 @@ llvm::Value* EmitFullWarpShuffleDown(
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    llvm::Value* value_as_int = builder->CreateBitCast(value, builder->getIntNTy(bit_width));
-    llvm::Value*  result = EmitDeviceFunctionCall(
-        "__ockl_readuplane_i32",
-        {value_as_int, offset},
-        {S32, S32}, S32, {}, builder, module);
-
-    llvm::Value* result_as_float = builder->CreateBitCast(result, value->getType());
-    return result_as_float;
+    return EmitCallToTargetIntrinsic(
+        TargetIntrinsicID::kShflDownF32,
+        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
+        builder);
   }
 
 
@@ -272,10 +263,11 @@ llvm::Value* EmitFullWarpShuffleDown(
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        EmitDeviceFunctionCall("__ockl_readuplane_i32",
-                               {builder->CreateExtractElement(x, i),
-                                offset},
-                               {S32, S32}, S32, {}, builder, module),
+        EmitCallToTargetIntrinsic(
+            TargetIntrinsicID::kShflDownI32,
+            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
+             builder->getInt32(kWarpSize - 1)},
+            {}, builder),
         i);
   }
   return builder->CreateBitCast(
@@ -320,12 +312,12 @@ llvm::Value* IsBlock0Thread0(
     llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder) {
   llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
   return b->CreateAnd(
-      b->CreateICmpEQ(b->getInt32(0), llvm_ir::EmitCallToTargetIntrinsic(
-                                          llvm_ir::kTHREAD_ID_X, {}, {},
-                                          llvm_target_ir_builder)),
-      b->CreateICmpEQ(b->getInt32(0), llvm_ir::EmitCallToTargetIntrinsic(
-                                          llvm_ir::kBLOCK_ID_X, {}, {},
-                                          llvm_target_ir_builder)));
+      b->CreateICmpEQ(
+          b->getInt32(0),
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
+      b->CreateICmpEQ(
+          b->getInt32(0),
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
 }
 
 }  // namespace gpu

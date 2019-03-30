@@ -45,9 +45,17 @@ TFLITE_DEFAULT_COPTS = if_not_windows([
 ])
 
 cc_library(
-    name = "schema_fbs_version",
+    name = "version",
     hdrs = ["version.h"],
     copts = TFLITE_DEFAULT_COPTS,
+    # Note that we only use the header defines from :version_lib.
+    deps = ["//tensorflow/core:version_lib"],
+)
+
+# TODO(b/128420794): Migrate clients to use :version directly.
+alias(
+    name = "schema_fbs_version",
+    actual = ":version",
 )
 
 cc_library(
@@ -63,7 +71,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
@@ -181,10 +189,10 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
-        ":schema_fbs_version",
         ":simple_memory_arena",
         ":string",
         ":util",
+        ":version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/nnapi:nnapi_implementation",

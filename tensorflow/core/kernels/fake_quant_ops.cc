@@ -30,7 +30,7 @@ using tensorflow::BinaryElementWiseOp;
 using tensorflow::DEVICE_CPU;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using tensorflow::DEVICE_GPU;
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using tensorflow::OpKernel;
 using tensorflow::OpKernelConstruction;
 using tensorflow::OpKernelContext;

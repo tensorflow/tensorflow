@@ -343,7 +343,7 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
 
   // Check that the 'compare' computation returns a PRED.
   Shape compare_shape = compare->root_instruction()->shape();
-  if (!ShapesSame(compare_shape, ShapeUtil::MakeShape(PRED, {}))) {
+  if (!ShapeUtil::Compatible(compare_shape, ShapeUtil::MakeShape(PRED, {}))) {
     return InternalError(
         "The Sort compare computation shape does not lead to a scalar "
         "predicate shape: %s",
@@ -393,7 +393,8 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
     return InternalError("Constant is required to have a valid literal: %s",
                          constant->ToString());
   }
-  return CheckShape(constant, constant->literal().shape());
+  return CheckShape(constant, constant->literal().shape(),
+                    /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
@@ -654,7 +655,8 @@ Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
       CheckOperandAndParameter(xla_while, 0, xla_while->while_condition(), 0));
   const Shape& conditional_shape =
       xla_while->while_condition()->root_instruction()->shape();
-  if (!ShapesSame(conditional_shape, ShapeUtil::MakeShape(PRED, {}))) {
+  if (!ShapeUtil::Compatible(conditional_shape,
+                             ShapeUtil::MakeShape(PRED, {}))) {
     return InternalError(
         "Conditional computation shape does not lead to a scalar predicate "
         "shape: %s",
@@ -696,7 +698,8 @@ Status ShapeVerifier::HandleSend(HloInstruction* send) {
   return CheckShape(send,
                     ShapeUtil::MakeTupleShape({send->operand(0)->shape(),
                                                ShapeUtil::MakeShape(U32, {}),
-                                               ShapeUtil::MakeTokenShape()}));
+                                               ShapeUtil::MakeTokenShape()}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
@@ -705,9 +708,11 @@ Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
 
 Status ShapeVerifier::HandleRecv(HloInstruction* recv) {
   return CheckShape(
-      recv, ShapeUtil::MakeTupleShape(
-                {ShapeUtil::GetTupleElementShape(recv->shape(), 0),
-                 ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()}));
+      recv,
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::GetTupleElementShape(recv->shape(), 0),
+           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()}),
+      /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
@@ -844,7 +849,8 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
-                                 const Shape& inferred_shape) {
+                                 const Shape& inferred_shape,
+                                 bool only_compare_minor_to_major_in_layout) {
   // If allow_mixed_precision_ is false, check if there are operands with
   // different precisions. We need this check because ShapeInference allows
   // mixed precision inputs.
@@ -878,7 +884,8 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kTuple:
       case HloOpcode::kTupleSelect:
       case HloOpcode::kWhile:
-        return ShapesSame(instruction->shape(), inferred_shape);
+        return ShapesSame(instruction->shape(), inferred_shape,
+                          only_compare_minor_to_major_in_layout);
 
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion

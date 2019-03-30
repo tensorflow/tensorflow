@@ -1154,8 +1154,8 @@ def resize_images_v2(images,
     Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
-    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
-    sigma = 1.5 / 3.]
+    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3, 
+    sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
     'antialias' has no effect when used with nearest neighbor interpolation.
@@ -1877,8 +1877,15 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   if min_jpeg_quality >= max_jpeg_quality:
     raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
 
-  np.random.seed(seed)
-  jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
+  if compat.forward_compatible(2019, 4, 4):
+    jpeg_quality = random_ops.random_uniform([],
+                                             min_jpeg_quality,
+                                             max_jpeg_quality,
+                                             seed=seed,
+                                             dtype=dtypes.int32)
+  else:
+    np.random.seed(seed)
+    jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
   return adjust_jpeg_quality(image, jpeg_quality)
 
 
@@ -1895,7 +1902,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
-    jpeg_quality: int.  jpeg encoding quality.
+    jpeg_quality: Python int or Tensor of type int32.  jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
@@ -1908,7 +1915,14 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     # Convert to uint8
     image = convert_image_dtype(image, dtypes.uint8)
     # Encode image to jpeg with given jpeg quality
-    image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+    if compat.forward_compatible(2019, 4, 4):
+      if not _is_tensor(jpeg_quality):
+        # If jpeg_quality is a int (not tensor).
+        jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
+      image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
+    else:
+      image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+
     # Decode jpeg image
     image = gen_image_ops.decode_jpeg(image)
     # Convert back to original dtype and return

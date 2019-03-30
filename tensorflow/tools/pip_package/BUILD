@@ -10,7 +10,7 @@ load(
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
-load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load(
@@ -65,6 +65,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/autograph/core:test_lib",
     "//tensorflow/python/autograph/pyct/testing:test_modules",
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
+    "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python:meta_graph_testdata",
@@ -77,7 +78,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/kernel_tests:filter_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
+    "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:distribute_strategy_test_lib",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",

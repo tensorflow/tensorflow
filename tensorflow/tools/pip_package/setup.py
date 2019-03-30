@@ -35,6 +35,7 @@ import re
 import sys
 
 from setuptools import Command
+from setuptools import Extension
 from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
@@ -271,6 +272,13 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
+    # Make setup aware this is an extension that cannot go into purelib.
+    ext_modules=[
+        Extension(
+            name='tensorflow',
+            sources=[],
+        )
+    ],
     # PyPI package information.
     classifiers=[
         'Development Status :: 5 - Production/Stable',

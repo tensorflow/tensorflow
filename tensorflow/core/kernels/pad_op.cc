@@ -395,7 +395,7 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .HostMemory("constant_values")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32, int64>);
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 // Registration of the GPU implementations.

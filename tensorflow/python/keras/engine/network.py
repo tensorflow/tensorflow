@@ -180,8 +180,8 @@ class Network(base_layer.Layer):
       self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    self._maybe_create_attribute('_trainable_weights', [])
+    self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
@@ -201,7 +201,7 @@ class Network(base_layer.Layer):
 
     # All layers in order of horizontal graph traversal.
     # Entries are unique. Includes input and output layers.
-    self._layers = []
+    self._maybe_create_attribute('_layers', [])
 
     # Used in symbolic mode only, only in conjunction with graph-networks
     self._outbound_nodes = []
@@ -660,10 +660,11 @@ class Network(base_layer.Layer):
     # built symbolically, and captures the wrong tensors from a different
     # func graph (causing a crash later on when trying to execute the
     # graph function)
-    with ops.init_scope():
-      if context.executing_eagerly():
-        return [loss for loss in losses
-                if loss.graph == ops.get_default_graph()]
+    if ops.executing_eagerly_outside_functions():
+      return [
+          loss for loss in losses
+          if getattr(loss, 'graph', None) == ops.get_default_graph()
+      ]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -695,17 +696,6 @@ class Network(base_layer.Layer):
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
-
-  @property
-  def metrics(self):
-    """Returns the network's symbolic metrics.
-
-    Model overrides this function to include the metrics from `compile` API.
-    """
-    metrics = []
-    for layer in self.layers:
-      metrics += layer._metrics  # pylint: disable=protected-access
-    return metrics + self._metrics
 
   @property
   def _all_metrics_tensors(self):
@@ -1084,6 +1074,8 @@ class Network(base_layer.Layer):
                   tf_utils.ListWrapper(
                       [inbound_layer.name, new_node_index, tensor_id, kwargs]))
             node_data = nest.pack_sequence_as(node.input_tensors, node_data)
+            if not nest.is_sequence(node_data):
+              node_data = [node_data]
             # Convert ListWrapper to list for backwards compatible configs.
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)

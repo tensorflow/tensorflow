@@ -36,21 +36,21 @@ namespace data {
 
 class CapturedFunction;
 
-// An InstantiatedCapturedFunction encapsulates all the runtime support needed
+// `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
 //
-// While CapturedFunction (below) encapsulates the more permanent attributes
-// of the function i.e. name, captured arguments etc.,
-// InstantiatedCapturedFunction encapsulates the more runtime aspects i.e.
-// FunctionLibraryRuntime, function handle etc.
+// While `CapturedFunction` encapsulates constant attributes of the function,
+// such as its name and captured arguments, `InstantiatedCapturedFunction`
+// encapsulates runtime aspects, such as `FunctionLibraryRuntime` and function
+// handle.
 //
-// The `Iterator-`related classes use `InstantiatedCapturedFunction` to execute
-// functions outside a the normal `OpKernel::Compute()` context.
+// The `Iterator` related classes use `InstantiatedCapturedFunction` to execute
+// functions outside of the normal `OpKernel::Compute()` context.
 class InstantiatedCapturedFunction {
  public:
   ~InstantiatedCapturedFunction();
 
-  // Runs the "Instantiated Captured function". This method takes ownership of
+  // Runs the instantiated captured function. This method takes ownership of
   // the tensors in `args`, in order to be able to deallocate them as early as
   // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
   // ownership of the `args`.
@@ -113,31 +113,30 @@ class InstantiatedCapturedFunction {
 // arguments that it closed over in the user program.
 class CapturedFunction {
  public:
-  // Creates a new instance using a list of named attributes, fetching captured
-  // inputs from a context argument.
-  static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       const string& argument_name,
-                       std::unique_ptr<CapturedFunction>* out_function);
+  struct Params {
+    bool use_inter_op_parallelism = true;
+    bool is_multi_device_function = false;
+  };
 
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
-  //
-  // If `use_inter_op_parallelism` is false, the runtime may use an executor
-  // that is optimized for small functions.
   static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       const string& argument_name,
-                       bool use_inter_op_parallelism,
+                       const string& argument_name, Params params,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided
   // captured inputs.
-  //
-  // If `use_inter_op_parallelism` is false, the runtime may use an executor
-  // that is optimized for small functions.
   static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       std::vector<Tensor>&& captured_inputs,
-                       bool use_inter_op_parallelism,
+                       std::vector<Tensor>&& captured_inputs, Params params,
                        std::unique_ptr<CapturedFunction>* out_function);
+
+  // Adds the definition of this captured function into the given graph,
+  // returning its captured inputs and types through the respective output
+  // arguments.
+  Status AddToGraph(SerializationContext* ctx,
+                    DatasetBase::DatasetGraphDefBuilder* b,
+                    std::vector<Node*>* other_arguments,
+                    DataTypeVector* other_arguments_types) const;
 
   // Instantiates this function for use in the given context, providing an
   // InstantiatedCapturedFunction that can be used to execute functions.
@@ -145,20 +144,34 @@ class CapturedFunction {
                      std::unique_ptr<InstantiatedCapturedFunction>*
                          instantiated_captured_function);
 
-  // Returns the named list of function arguments.
-  const NameAttrList& func() { return func_; }
+  // Returns the additional captured inputs that will be passed to the function.
+  const std::vector<Tensor>& captured_inputs() const {
+    return captured_inputs_;
+  }
 
-  // Returns that additional captured inputs that will be passed to the function
-  const std::vector<Tensor>& captured_inputs() { return captured_inputs_; }
+  // Returns the named list of function arguments.
+  const NameAttrList& func() const { return func_; }
+
+  // Indicates whether the function is multi-device.
+  bool is_multi_device_function() const { return is_multi_device_function_; }
+
+  // Returns the transitive set of function definition required to instantiate
+  // this function.
+  const FunctionLibraryDefinition* lib_def() const { return &lib_def_; }
+
+  // Indicates whether the function should use inter op parallelism.
+  bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
  private:
   CapturedFunction(const NameAttrList& func,
                    std::vector<Tensor> captured_inputs,
-                   bool use_inter_op_parallelism);
+                   FunctionLibraryDefinition&& flib_def, Params params);
 
   const NameAttrList func_;
   const std::vector<Tensor> captured_inputs_;
   const bool use_inter_op_parallelism_;
+  const bool is_multi_device_function_;
+  const FunctionLibraryDefinition lib_def_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

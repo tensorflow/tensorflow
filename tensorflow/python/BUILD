@@ -1020,8 +1020,10 @@ cuda_py_test(
         ":constant_op",
         ":client_testlib",
         ":platform",
+        ":test_ops",
         ":util",
     ],
+    tags = ["no_pip"],  # test_ops are not available in pip.
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1209,6 +1211,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )
@@ -2990,6 +2993,7 @@ cuda_py_test(
         ":client_testlib",
         ":logging_ops",
         ":random_ops_gen",
+        "//tensorflow/python/kernel_tests/random:util",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -3743,6 +3747,7 @@ cuda_py_test(
     ],
     shard_count = 16,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -4696,6 +4701,7 @@ tf_py_test(
     additional_deps = [
         ":array_ops",
         ":client",
+        ":config",
         ":control_flow_ops",
         ":data_flow_ops",
         ":errors",
@@ -5574,6 +5580,7 @@ cuda_py_test(
     ],
     main = "layers/normalization_test.py",
     shard_count = 10,
+    xla_enable_strict_auto_jit = True,
 )
 
 # -----------------------------------------------------------------------------

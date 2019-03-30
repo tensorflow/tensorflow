@@ -87,24 +87,20 @@ class OriginInfo(
 
 
 # TODO(mdan): This source map should be a class - easier to refer to.
-def create_source_map(nodes, code, filename, indices_in_code):
+# TODO(mdan): Drop indices_in_code.
+def create_source_map(nodes, code, filename):
   """Creates a source map between an annotated AST and the code it compiles to.
 
   Args:
     nodes: Iterable[ast.AST, ...]
     code: Text
     filename: Optional[Text]
-    indices_in_code: Union[int, Iterable[int, ...]], the positions at which
-        nodes appear in code. The parser always returns a module when parsing
-        code. This argument indicates the position in that module's body at
-        which the corresponding of node should appear.
 
   Returns:
     Dict[LineLocation, OriginInfo], mapping locations in code to locations
     indicated by origin annotations in node.
   """
-  reparsed_nodes = parser.parse_str(code)
-  reparsed_nodes = [reparsed_nodes.body[i] for i in indices_in_code]
+  reparsed_nodes = parser.parse_str(code, preamble_len=0, single_node=False)
   for node in reparsed_nodes:
     resolve(node, code)
 

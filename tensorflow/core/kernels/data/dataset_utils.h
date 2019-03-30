@@ -22,6 +22,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Returns a GraphDef representation of the given dataset.
+Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+                  GraphDef* graph_def);
+
 // This method is used to determine whether we can short-circuit the evaluation
 // of the user-defined function `func`. Short-circuting is possible if every
 // function output corresponds to one of its inputs (e.g. `f(x) = x`, `f(x,y) =

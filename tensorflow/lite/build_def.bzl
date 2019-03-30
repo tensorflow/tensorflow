@@ -248,6 +248,7 @@ def generated_test_models():
         "equal",
         "exp",
         "expand_dims",
+        "eye",
         "fill",
         "floor",
         "floor_div",
@@ -260,6 +261,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "identity",
         "sum",
         "l2norm",
         "l2norm_shared_epsilon",
@@ -274,6 +276,8 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_diag",
+        "matrix_set_diag",
         "max_pool",
         "maximum",
         "mean",
@@ -398,7 +402,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_flex"
+        flags = "--ignore_converter_errors --run_with_flex"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

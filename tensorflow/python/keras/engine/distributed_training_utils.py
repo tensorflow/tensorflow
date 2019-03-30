@@ -310,9 +310,9 @@ def validate_all_tensor_types(x, x_values):
 
 def validate_all_tensor_shapes(x, x_values):
   # Validate that the shape of all the elements in x have the same shape
-  x_shape = x_values[0].get_shape().as_list()
+  x_shape = x_values[0].shape.as_list()
   for i in range(1, len(x_values)):
-    if x_shape != x_values[i].get_shape().as_list():
+    if x_shape != x_values[i].shape.as_list():
       raise ValueError('Input tensor shapes do not match for distributed tensor'
                        ' inputs {}'.format(x))
 
@@ -632,11 +632,11 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
   # We rely on the internal methods to avoid having share_weights weights in the
   # public API.
   if isinstance(model, sequential.Sequential):
-    updated_model = models._clone_sequential_model(model, input_tensors=inputs,
-                                                   share_weights=True)
+    updated_model = models._clone_sequential_model(
+        model, input_tensors=inputs, layer_fn=models.share_weights)
   else:
-    updated_model = models._clone_functional_model(model, input_tensors=inputs,
-                                                   share_weights=True)
+    updated_model = models._clone_functional_model(
+        model, input_tensors=inputs, layer_fn=models.share_weights)
 
   # Recast all low precision outputs back to float32 since we only casted
   # the inputs to bfloat16 and not targets. This is done so that we can preserve
@@ -906,6 +906,10 @@ def distributed_scope(strategy, learning_phase):
     yield
 
 
+def is_current_worker_chief():
+  return dc_context.get_current_worker_context().is_chief
+
+
 def filter_distributed_callbacks(callbacks_list):
   """Filter Callbacks based on the worker context when running multi-worker.
 
@@ -921,18 +925,16 @@ def filter_distributed_callbacks(callbacks_list):
         'filter_distributed_callbacks() should only be called when Keras '
         'is in multi worker mode.')
 
-  worker_context = dc_context.get_current_worker_context()
   callbacks_list = callbacks_list or []
   if not [
       c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
   ]:
     # TODO(rchao): Consider providing a ModelCheckpoint here if the user
-    # fails to.
+    # fails to (possibly with tempfile directory).
     logging.warning('ModelCheckpoint callback is not provided. '
                     'Workers will need to restart training if any fails.')
-  # TODO(rchao): Add similar warning for restoring callback (to be designed).
 
-  if callbacks_list is None or worker_context.is_chief:
+  if callbacks_list is None or is_current_worker_chief():
     return callbacks_list
 
   # Some Callbacks should only run on the chief worker.

@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -153,7 +154,7 @@ class Attention(BaseDenseAttention):
      `return tf.matmul(distribution, value)`.
 
   Args:
-    scale: If `True`, will create a scalar variable to scale the attention
+    use_scale: If `True`, will create a scalar variable to scale the attention
       scores.
 
   Call Arguments:
@@ -226,17 +227,21 @@ class Attention(BaseDenseAttention):
   ```
   """
 
-  def __init__(self, scale=False, **kwargs):
+  def __init__(self, use_scale=False, **kwargs):
     super(Attention, self).__init__(**kwargs)
-    # TODO(b/125916026): Support scale.
-    if scale:
-      raise NotImplementedError('scale=True is not supported yet.')
-    self.scale = scale
+    self.use_scale = use_scale
 
   def build(self, input_shape):
-    """Creates scale variable if scale==True."""
-    # TODO(b/125916026): Create scale variable if self.scale is True.
-    self.scale_var = None
+    """Creates scale variable if use_scale==True."""
+    if self.use_scale:
+      self.scale = self.add_weight(
+          name='scale',
+          shape=(),
+          initializer=init_ops.ones_initializer(),
+          dtype=self.dtype,
+          trainable=self.trainable)
+    else:
+      self.scale = None
     super(Attention, self).build(input_shape)
 
   def _calculate_scores(self, query, key):
@@ -249,6 +254,6 @@ class Attention(BaseDenseAttention):
       Tensor of shape `[batch_size, Tq, Tv]`.
     """
     scores = math_ops.matmul(query, key, transpose_b=True)
-    if self.scale_var is not None:
-      scores *= self.scale_var
+    if self.scale is not None:
+      scores *= self.scale
     return scores

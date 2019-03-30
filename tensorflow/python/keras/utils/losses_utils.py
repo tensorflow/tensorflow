@@ -80,7 +80,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     the last dimension squeezed,
     `sample_weight` could be extended by one dimension.
   """
-  y_pred_shape = y_pred.get_shape()
+  y_pred_shape = y_pred.shape
   y_pred_rank = y_pred_shape.ndims
   if y_true is not None:
 
@@ -88,7 +88,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     # may be > 1. Eg: y_true = [0, 1, 2] (shape=(3,)),
     # y_pred = [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]] (shape=(3, 3))
     # In this case, we should not try to remove squeezable dimension.
-    y_true_shape = y_true.get_shape()
+    y_true_shape = y_true.shape
     y_true_rank = y_true_shape.ndims
     if (y_true_rank is not None) and (y_pred_rank is not None):
       # Use static rank for `y_true` and `y_pred`.
@@ -110,7 +110,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     return y_pred, y_true, None
 
   sample_weight = ops.convert_to_tensor(sample_weight)
-  weights_shape = sample_weight.get_shape()
+  weights_shape = sample_weight.shape
   weights_rank = weights_shape.ndims
   if weights_rank == 0:  # If weights is scalar, do nothing.
     return y_pred, y_true, sample_weight
@@ -225,7 +225,7 @@ def compute_weighted_loss(losses,
       weight_ndim = K.ndim(sample_weight)
       losses = K.mean(losses, axis=list(range(weight_ndim, ndim)))
 
-    sample_weight.get_shape().assert_is_compatible_with(losses.get_shape())
+    sample_weight.shape.assert_is_compatible_with(losses.get_shape())
     weighted_losses = math_ops.multiply(losses, sample_weight)
     # Apply reduction function to the individual weighted losses.
     loss = reduce_weighted_loss(weighted_losses, reduction)

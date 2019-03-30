@@ -40,7 +40,7 @@ class CountingVisitor(cfg.GraphVisitor):
 class GraphVisitorTest(test.TestCase):
 
   def _build_cfg(self, fn):
-    node, _, _ = parser.parse_entity(fn)
+    node, _ = parser.parse_entity(fn, future_features=())
     cfgs = cfg.build(node)
     return cfgs, node
 
@@ -91,7 +91,7 @@ class GraphVisitorTest(test.TestCase):
 class AstToCfgTest(test.TestCase):
 
   def _build_cfg(self, fn):
-    node, _, _ = parser.parse_entity(fn)
+    node, _ = parser.parse_entity(fn, future_features=())
     cfgs = cfg.build(node)
     return cfgs
 

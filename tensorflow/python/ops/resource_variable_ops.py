@@ -1453,7 +1453,11 @@ class _UnreadVariable(ResourceVariable):
     self._is_initialized_op = None
     self._initializer_op = None
     self._parent_op = parent_op
-    if context.executing_eagerly():
+    # Only create a graph_element if we're in session.run-land as only
+    # session.run requires a preexisting tensor to evaluate. Otherwise we can
+    # avoid accidentally reading the variable.
+    if (context.executing_eagerly()
+        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
       self._graph_element = None
     else:
       self._graph_element = self.read_value()
@@ -1478,7 +1482,6 @@ class _UnreadVariable(ResourceVariable):
                                                           self._dtype)
       _maybe_set_handle_data(self._dtype, self._handle, result)
       return result
-
 
   @property
   def op(self):

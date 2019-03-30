@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "cuda/extras/CUPTI/include/cupti.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/cupti_wrapper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -47,10 +47,7 @@ Status ToStatus(CUptiResult result) {
     return Status::OK();
   }
   const char* str = nullptr;
-  if (auto wrapper =
-          absl::make_unique<perftools::gputools::profiler::CuptiWrapper>()) {
-    wrapper->GetResultString(result, &str);
-  }
+  cuptiGetResultString(result, &str);
   return errors::Unavailable("CUPTI error: ", str ? str : "<unknown>");
 }
 
@@ -164,13 +161,11 @@ class CudaEventRecorder {
 // and after kernel launches and memory copies.
 class CuptiCallbackHook {
  public:
-  CuptiCallbackHook()
-      : cupti_wrapper_(new perftools::gputools::profiler::CuptiWrapper()),
-        subscriber_(nullptr) {}
+  CuptiCallbackHook() : subscriber_(nullptr) {}
 
   Status Enable(CudaEventRecorder* recorder) {
-    TF_RETURN_IF_ERROR(ToStatus(
-        cupti_wrapper_->Subscribe(&subscriber_, &CuptiCallback, recorder)));
+    TF_RETURN_IF_ERROR(
+        ToStatus(cuptiSubscribe(&subscriber_, &CuptiCallback, recorder)));
     for (auto cbid : {CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
                       CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
                       CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
@@ -180,15 +175,13 @@ class CuptiCallbackHook {
                       CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
                       CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
                       CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2}) {
-      TF_RETURN_IF_ERROR(ToStatus(cupti_wrapper_->EnableCallback(
+      TF_RETURN_IF_ERROR(ToStatus(cuptiEnableCallback(
           /*enable=*/1, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API, cbid)));
     }
     return Status::OK();
   }
 
-  ~CuptiCallbackHook() {
-    LogIfError(ToStatus(cupti_wrapper_->Unsubscribe(subscriber_)));
-  }
+  ~CuptiCallbackHook() { LogIfError(ToStatus(cuptiUnsubscribe(subscriber_))); }
 
  private:
   static void CUPTIAPI CuptiCallback(void* userdata,
@@ -312,7 +305,6 @@ class CuptiCallbackHook {
     }
   }
 
-  std::unique_ptr<perftools::gputools::profiler::CuptiWrapper> cupti_wrapper_;
   CUpti_SubscriberHandle subscriber_;
 };
 }  // namespace

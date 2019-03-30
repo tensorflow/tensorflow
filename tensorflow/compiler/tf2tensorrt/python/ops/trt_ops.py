@@ -21,6 +21,7 @@ from __future__ import print_function
 import threading
 
 import platform
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.python.framework import errors
 
 _tf_trt_so = None
@@ -30,6 +31,9 @@ _module_lock = threading.Lock()
 def load_trt_ops():
   """Load TF-TRT op libraries so if it hasn't been loaded already."""
   global _tf_trt_so
+
+  if not is_tensorrt_enabled():
+    return
 
   if platform.system() == "Windows":
     raise RuntimeError("Windows platforms are not supported")

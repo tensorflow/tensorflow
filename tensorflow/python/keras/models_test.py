@@ -104,7 +104,7 @@ class TestModelCloning(keras_parameterized.TestCase):
 
     if share_weights:
       clone_fn = functools.partial(
-          keras.models._clone_sequential_model, share_weights=True)
+          keras.models._clone_sequential_model, layer_fn=models.share_weights)
     else:
       clone_fn = keras.models.clone_model
 
@@ -151,7 +151,7 @@ class TestModelCloning(keras_parameterized.TestCase):
   def test_clone_functional_model(self, share_weights):
     if share_weights:
       clone_fn = functools.partial(
-          keras.models._clone_functional_model, share_weights=True)
+          keras.models._clone_functional_model, layer_fn=models.share_weights)
     else:
       clone_fn = keras.models.clone_model
 
@@ -212,7 +212,7 @@ class TestModelCloning(keras_parameterized.TestCase):
   def test_clone_functional_with_masking(self, share_weights):
     if share_weights:
       clone_fn = functools.partial(
-          keras.models._clone_functional_model, share_weights=True)
+          keras.models._clone_functional_model, layer_fn=models.share_weights)
     else:
       clone_fn = keras.models.clone_model
 

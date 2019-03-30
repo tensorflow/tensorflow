@@ -7,7 +7,7 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library_py",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
@@ -1376,7 +1376,6 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo",
-        ":hlo_casting_utils",
         ":hlo_ordering",
         ":hlo_pass",
         ":logical_buffer",
@@ -1764,10 +1763,12 @@ cc_library(
     srcs = ["conditional_simplifier.cc"],
     hdrs = ["conditional_simplifier.h"],
     deps = [
+        ":call_graph",
         ":call_inliner",
         ":hlo",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -1784,6 +1785,7 @@ tf_cc_test(
         ":conditional_simplifier",
         ":hlo",
         ":hlo_matchers",
+        ":hlo_parser",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -2600,6 +2602,7 @@ cc_library(
         "layout_assignment.h",
     ],
     deps = [
+        ":call_graph",
         ":computation_layout",
         ":hlo",
         ":hlo_casting_utils",
@@ -2617,6 +2620,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -2843,6 +2847,7 @@ tf_cc_test(
         ":algebraic_simplifier",
         ":computation_layout",
         ":hlo",
+        ":hlo_parser",
         ":layout_assignment",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
@@ -2853,7 +2858,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -3791,6 +3795,7 @@ tf_cc_test(
         ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",  # fixdeps: keep
@@ -3972,5 +3977,37 @@ tf_cc_test(
         ":hlo_casting_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "conditional_to_select",
+    srcs = ["conditional_to_select.cc"],
+    hdrs = ["conditional_to_select.h"],
+    deps = [
+        ":call_graph",
+        ":call_inliner",
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "conditional_to_select_test",
+    srcs = ["conditional_to_select_test.cc"],
+    deps = [
+        ":conditional_to_select",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/memory",
     ],
 )

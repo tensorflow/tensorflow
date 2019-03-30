@@ -147,6 +147,22 @@ cc_library(
 )
 
 cc_library(
+    name = "target_util",
+    srcs = ["target_util.cc"],
+    hdrs = ["target_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
@@ -170,6 +186,7 @@ cc_library(
         ":nccl_all_reduce_thunk",
         ":parallel_loop_emitter",
         ":partition_assignment",
+        ":target_util",
         ":thunk",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -443,6 +460,7 @@ cc_library(
     hdrs = ["ir_emission_utils.h"],
     deps = [
         ":backend_configs",
+        ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -1136,6 +1154,7 @@ cc_library(
     hdrs = ["buffer_comparator.h"],
     deps = [
         ":gpu_executable",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
@@ -1158,6 +1177,7 @@ xla_test(
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     tags = ["no_rocm"],
 )

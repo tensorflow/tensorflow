@@ -149,6 +149,8 @@ tensorflow/core/kernels/lookup_table_op.cc
 tensorflow/core/kernels/lookup_util.cc
 tensorflow/core/kernels/lrn_op.cc
 tensorflow/core/kernels/matmul_op.cc
+tensorflow/core/kernels/matrix_diag_op.cc
+tensorflow/core/kernels/matrix_set_diag_op.cc
 tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/meta_support.cc
 tensorflow/core/kernels/mfcc.cc
@@ -257,6 +259,7 @@ tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
 tensorflow/core/kernels/stack.cc
 tensorflow/core/kernels/stack_ops.cc
+tensorflow/core/kernels/stateful_random_ops.cc
 tensorflow/core/kernels/stateless_random_ops.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/strided_slice_op_inst_0.cc

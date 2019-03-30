@@ -21,13 +21,13 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 import six
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
@@ -42,14 +42,12 @@ _GLOBAL_BATCH_SIZE = 64
 
 
 all_strategies = [
-    combinations.default_strategy,
-    combinations.one_device_strategy,
-    combinations.mirrored_strategy_with_gpu_and_cpu,
-    combinations.mirrored_strategy_with_two_gpus,
-    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-    combinations.core_mirrored_strategy_with_two_gpus,
-    combinations.tpu_strategy,  # steps_per_run=2
-    combinations.tpu_strategy_one_step,
+    strategy_combinations.default_strategy,
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus,
+    strategy_combinations.tpu_strategy,  # steps_per_run=2
+    strategy_combinations.tpu_strategy_one_step,
 ]
 
 
@@ -92,8 +90,10 @@ def test_combinations_for_embedding_model():
 
 
 def test_combinations_with_tpu_strategies():
-  tpu_strategies = [combinations.tpu_strategy,
-                    combinations.tpu_strategy_one_step]
+  tpu_strategies = [
+      strategy_combinations.tpu_strategy,
+      strategy_combinations.tpu_strategy_one_step
+  ]
 
   return (
       combinations.times(

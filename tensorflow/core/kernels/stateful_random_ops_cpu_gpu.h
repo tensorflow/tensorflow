@@ -79,7 +79,7 @@ struct UpdateVariableAndFill_Philox;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 using GPUDevice = Eigen::GpuDevice;
 
@@ -87,12 +87,12 @@ using GPUDevice = Eigen::GpuDevice;
 template <typename Distribution>
 struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const GPUDevice& device,
-                  int64 output_size, int64 alg_tag_skip,
+                  Distribution dist, int64 output_size, int64 alg_tag_skip,
                   ScopedUnlockUnrefVar* not_used, Tensor* state_tensor,
                   typename Distribution::ResultElementType* output_data);
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
 

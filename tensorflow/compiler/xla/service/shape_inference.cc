@@ -308,6 +308,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             HloOpcodeString(opcode), PrimitiveType_Name(shape.element_type()));
       }
       return shape;
+    case HloOpcode::kPopulationCount:
+      if (!ShapeUtil::ElementIsIntegral(shape)) {
+        return InvalidArgument(
+            "Expected an integral element type in argument to PopulationCount "
+            "operation; got %s.",
+            PrimitiveType_Name(shape.element_type()));
+      }
+      return shape;
     case HloOpcode::kSign:
       if (!ShapeUtil::ElementIsSigned(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
@@ -2799,6 +2807,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           inferred_shape.set_dynamic_dimension(i, true);
         }
       }
+    }
+
+    if (inferred_shape.IsTuple()) {
+      return InvalidArgument(
+          "Select operation is not supported for tuples: %s."
+          " Use tuple-select instead.",
+          ShapeUtil::HumanString(inferred_shape));
     }
     return inferred_shape;
   }

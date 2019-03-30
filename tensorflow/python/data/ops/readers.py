@@ -178,19 +178,21 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
                num_parallel_reads=None):
     """Creates a `TFRecordDataset` to read one or more TFRecord files.
 
-    NOTE: The `num_parallel_reads` argument can be used to improve performance
-    when reading from a remote filesystem.
-
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
         more filenames.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes in the read buffer. 0 means no buffering.
+        bytes in the read buffer. If your input pipeline is I/O bottlenecked,
+        consider setting this parameter to a value 1-100 MBs. If `None`, a
+        sensible default for both local and remote file systems is used.
       num_parallel_reads: (Optional.) A `tf.int64` scalar representing the
-        number of files to read in parallel. Defaults to reading files
-        sequentially.
+        number of files to read in parallel. If greater than one, the records of
+        files read in parallel are outputted in an interleaved order. If your
+        input pipeline is I/O bottlenecked, consider setting this parameter to a
+        value greater than one to parallelize the I/O. If `None`, files will be
+        read sequentially.
 
     Raises:
       TypeError: If any argument does not have the expected type.

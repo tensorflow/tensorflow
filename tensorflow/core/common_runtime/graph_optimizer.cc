@@ -89,6 +89,12 @@ void GraphOptimizer::Optimize(
     if (opts_.do_function_inlining()) {
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.override_device = true;
+      // GraphOptimizer is running:
+      //   (1) After partitioning when executing with a Session API.
+      //   (2) For a single device function body after instantiation.
+      // We can't inline multi-device functions in these cases, because it might
+      // lead to multiple device assignments.
+      expand_inline_opts.multi_device_options.disable_inlining = true;
 
       bool was_mutated = ExpandInlineFunctions(runtime, g, expand_inline_opts);
       if (was_mutated) {

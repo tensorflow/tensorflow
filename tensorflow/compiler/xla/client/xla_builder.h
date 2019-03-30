@@ -852,6 +852,7 @@ class XlaBuilder {
   friend XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Not(const XlaOp& operand);
+  friend XlaOp PopulationCount(const XlaOp& operand);
   friend XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> broadcast_dimensions);
   friend XlaOp ShiftRightArithmetic(
@@ -1518,6 +1519,8 @@ XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Not(const XlaOp& operand);
+
+XlaOp PopulationCount(const XlaOp& operand);
 
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                 absl::Span<const int64> broadcast_dimensions = {});

@@ -470,6 +470,19 @@ class HParamsTest(test.TestCase):
     hparams.set_hparam('none', '1')
     self.assertEqual('1', hparams.none)
 
+  def testSetHParamExactTypeMatch(self):
+    class DummyContext(object):
+
+      def __init__(self, a, b=0):
+        self.a = a
+        self.b = b
+
+    hparams = hparam.HParams(x=DummyContext(a=100, b=100))
+    # Verify x is assigned directly, without casting.
+    hparams.set_hparam('x', DummyContext(a=100, b=100))
+    self.assertEqual(hparams.x.a, 100)
+    self.assertEqual(hparams.x.b, 100)
+
   def testNonProtoFails(self):
     with self.assertRaisesRegexp(AssertionError, ''):
       hparam.HParams(hparam_def=1)

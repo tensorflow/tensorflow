@@ -98,6 +98,11 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  def testTakeWhileDatasetWithRepeat(self):
+    dataset = dataset_ops.Dataset.range(10).apply(
+        take_while_ops.take_while(lambda x: x < 2)).repeat(5)
+    self.assertDatasetProduces(dataset, np.tile([0, 1], 5))
+
 
 if __name__ == "__main__":
   test.main()

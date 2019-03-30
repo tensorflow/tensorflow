@@ -184,7 +184,7 @@ class Conv(Layer):
       op_padding = op_padding.upper()
     self._convolution_op = nn_ops.Convolution(
         input_shape,
-        filter_shape=self.kernel.get_shape(),
+        filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=op_padding,

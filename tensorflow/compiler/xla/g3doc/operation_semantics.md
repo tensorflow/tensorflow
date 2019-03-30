@@ -1237,6 +1237,9 @@ if and only if the corresponding input element is finite.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
+<b>`PopulationCount(operand)`</b> Computes the number of bits set in each
+element of `operand`.
+
 <b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where

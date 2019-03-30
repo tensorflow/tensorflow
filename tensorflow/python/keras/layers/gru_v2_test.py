@@ -151,13 +151,18 @@ class GRUV2Test(keras_parameterized.TestCase):
           input_shape=(timestep, input_shape),
           num_classes=rnn_state_size)
       y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+      # For the last batch item of the test data, we filter out the last
+      # timestep to simulate the variable length sequence and masking test.
+      x_train[-2:, -1, :] = 0.0
+      y_train[-2:] = 0
 
       inputs = keras.layers.Input(
           shape=[timestep, input_shape], dtype=dtypes.float32)
+      masked_input = keras.layers.Masking()(inputs)
       gru_layer = rnn_v1.GRU(rnn_state_size,
                              recurrent_activation='sigmoid',
                              reset_after=True)
-      output = gru_layer(inputs)
+      output = gru_layer(masked_input)
       gru_model = keras.models.Model(inputs, output)
       weights = gru_model.get_weights()
       y_1 = gru_model.predict(x_train)
@@ -169,7 +174,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         cudnn_layer = rnn.GRU(rnn_state_size,
                               recurrent_activation='sigmoid',
                               reset_after=True)
-        cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
+        cudnn_model = keras.models.Model(inputs, cudnn_layer(masked_input))
       cudnn_model.set_weights(weights)
       y_3 = cudnn_model.predict(x_train)
       cudnn_model.compile('rmsprop', 'mse')
@@ -417,6 +422,8 @@ class GRUV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
+  # Run in V2 only due to b/120160788.
+  @test_util.run_v2_only
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -477,7 +484,16 @@ class GRUV2Test(keras_parameterized.TestCase):
     right_padded_input[1, -2:] = 0
     out7 = model.predict(right_padded_input)
 
-    np.testing.assert_allclose(out7, out6, atol=1e-5)
+    layer.reset_states()
+
+    mix_padded_input = np.ones((num_samples, timesteps))
+    mix_padded_input[0, 1] = 0
+    mix_padded_input[1, 0] = 0
+    mix_padded_input[1, 2] = 0
+    out8 = model.predict(mix_padded_input)
+
+    self.assertAllClose(out7, out6, atol=1e-5)
+    self.assertAllClose(out8, out7, atol=1e-5)
 
   def test_stateful_GRU_training(self):
     # See b/123587692 for more context.

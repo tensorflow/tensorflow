@@ -28,7 +28,8 @@ from __future__ import print_function
 import os
 from absl.testing import parameterized
 
-from tensorflow.contrib.distribute.python import combinations
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -62,15 +63,16 @@ class CheckpointUtilsWithDistributionStrategyTest(
       v1, v2 = _create_checkpoints(session, checkpoint_dir)
     return checkpoint_dir, v1, v2
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.default_strategy,
-                    combinations.one_device_strategy,
-                    combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus,
-                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-                    combinations.core_mirrored_strategy_with_two_gpus],
-      in_replica_mode=[True, False],
-      mode=["graph"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.default_strategy,
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          in_replica_mode=[True, False],
+          mode=["graph"]))
   def testInitFromCheckpoint(self, distribution, in_replica_mode):
     checkpoint_dir, v1_value, v2_value = self._get_test_object()
 
@@ -98,11 +100,10 @@ class CheckpointUtilsWithDistributionStrategyTest(
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.default_strategy, combinations.one_device_strategy,
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.mirrored_strategy_with_two_gpus,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_two_gpus
+              strategy_combinations.default_strategy,
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
           ],
           in_replica_mode=[True, False],
           mode=["graph"]))

@@ -3006,7 +3006,7 @@ class GraphExecutionFunction(object):
     # output from a fetch in `fetches`: { fetch: function(fetch_output) }
     # A Callback can use this to register a function with access to the
     # output values for a fetch it added.
-    self.fetch_callbacks = dict()
+    self.fetch_callbacks = {}
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
@@ -3393,7 +3393,7 @@ def rnn(step_function,
   time_steps_t = array_ops.shape(flatted_inputs[0])[0]
 
   for input_ in flatted_inputs:
-    input_.get_shape().with_rank_at_least(3)
+    input_.shape.with_rank_at_least(3)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
@@ -3593,7 +3593,8 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          new_state.set_shape(state.shape)
+          if hasattr(new_state, 'set_shape'):
+            new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
             array_ops.where(m, s, ps)
@@ -3631,7 +3632,8 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          new_state.set_shape(state.shape)
+          if hasattr(new_state, 'set_shape'):
+            new_state.set_shape(state.shape)
 
         flat_output = nest.flatten(output)
         output_ta_t = tuple(
@@ -3655,10 +3657,11 @@ def rnn(step_function,
 
   # static shape inference
   def set_shape(output_):
-    shape = output_.shape.as_list()
-    shape[0] = time_steps
-    shape[1] = batch
-    output_.set_shape(shape)
+    if hasattr(output_, 'set_shape'):
+      shape = output_.shape.as_list()
+      shape[0] = time_steps
+      shape[1] = batch
+      output_.set_shape(shape)
     return output_
 
   outputs = nest.map_structure(set_shape, outputs)

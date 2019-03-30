@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.ops import array_ops
@@ -174,6 +175,22 @@ class AttentionTest(test.TestCase):
     expected = np.array([[[1.76]], [[5.46]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
+  def test_calculate_scores_one_dim_with_scale(self):
+    """Tests that scores are multiplied by scale."""
+    # Query tensor of shape [1, 1, 1]
+    q = np.array([[[1.1]]], dtype=np.float32)
+    # Key tensor of shape [1, 1, 1]
+    k = np.array([[[1.6]]], dtype=np.float32)
+    attention_layer = dense_attention.Attention(use_scale=True)
+    attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+    attention_layer.scale = -2.
+    actual = attention_layer._calculate_scores(query=q, key=k)
+
+    # Expected tensor of shape [1, 1, 1].
+    # expected000 = -2*1.1*1.6 = -3.52
+    expected = np.array([[[-3.52]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
   def test_shape(self):
     # Query tensor of shape [1, 2, 4]
     q = np.array(
@@ -264,10 +281,27 @@ class AttentionTest(test.TestCase):
     expected = np.array([[[0.58127362329]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
-  def test_scale_not_implemented(self):
-    with self.assertRaisesRegexp(
-        NotImplementedError, 'scale=True is not supported yet'):
-      dense_attention.Attention(scale=True)
+  def test_scale_None(self):
+    """Tests that scale is None by default."""
+    attention_layer = dense_attention.Attention()
+    attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+    self.assertIsNone(attention_layer.scale)
+
+  def test_scale_init_eager(self):
+    """Tests that scale initializes to 1 when use_scale=True."""
+    with context.eager_mode():
+      attention_layer = dense_attention.Attention(use_scale=True)
+      attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+      self.assertAllClose(1., attention_layer.scale.value())
+
+  @test_util.deprecated_graph_mode_only
+  def test_scale_init_graph(self):
+    """Tests that scale initializes to 1 when use_scale=True."""
+    with self.cached_session() as sess:
+      attention_layer = dense_attention.Attention(use_scale=True)
+      attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+      sess.run(attention_layer.scale.initializer)
+      self.assertAllClose(1., attention_layer.scale.value())
 
   def test_query_mask_not_implemented(self):
     attention_layer = dense_attention.Attention()

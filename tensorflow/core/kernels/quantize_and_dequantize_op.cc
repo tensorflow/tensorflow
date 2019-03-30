@@ -262,5 +262,5 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

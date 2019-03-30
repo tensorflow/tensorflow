@@ -31,8 +31,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -44,6 +46,51 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+namespace {
+
+// If the tensor is a resource variable, return its data type and shape.
+Status GetResourceVariableDtypeAndShapeInternal(
+    const tensorflow::Tensor& tensor, Device* resource_device,
+    std::pair<DataType, TensorShape>* result) {
+  if (tensor.dtype() != DT_RESOURCE) {
+    return errors::InvalidArgument(
+        "TensorHandle::GetResourceDtypeAndShape should be called on tensor "
+        "handles with data type DT_RESOURCE. Actual tensor: ",
+        tensor.DebugString());
+  }
+
+  // Try to get resource data type and shape from ResourceMgr.
+  const ResourceHandle& resource_handle = tensor.flat<ResourceHandle>()(0);
+  if (!resource_device) {
+    return errors::Internal("Cannot get resource device for tensor ",
+                            tensor.DebugString());
+  }
+  ResourceMgr* resource_mgr = resource_device->resource_manager();
+  if (!resource_mgr) {
+    return errors::Internal("Cannot get ResourceMgr for device ",
+                            resource_device->DebugString());
+  }
+  Var* resource_var;
+  // Here we do not differentiate between "resource does not exist" and
+  // "resource is not a resource variable".
+  // ResourceMgr uses resource's C++ class name as part of lookup key, so we
+  // must provide the correct C++ class when calling Lookup().
+  Status s = resource_mgr->Lookup(resource_handle.container(),
+                                  resource_handle.name(), &resource_var);
+  if (!s.ok()) {
+    return errors::InvalidArgument(
+        "ResourceHandle does not exist, or is not a resource variable: ",
+        resource_handle.DebugString());
+  }
+
+  // Return the result.
+  *result = std::make_pair(resource_var->tensor()->dtype(),
+                           resource_var->tensor()->shape());
+  return Status::OK();
+}
+
+}  // namespace
 
 TensorHandle::TensorHandle(const class Tensor& t, Device* d, Device* op_device,
                            EagerContext* ctx)
@@ -57,7 +104,8 @@ TensorHandle::TensorHandle(const class Tensor& t, Device* d, Device* op_device,
       remote_output_num_(-1),
       remote_shape_node_id_(-1),
       ctx_(ctx),
-      is_ready_(true) {}
+      is_ready_(true),
+      resource_dtype_and_shape_initialized_(false) {}
 
 TensorHandle::TensorHandle(uint64 node_id, Device* d, Device* op_device,
                            Device* resource_device, DataType dtype,
@@ -72,7 +120,8 @@ TensorHandle::TensorHandle(uint64 node_id, Device* d, Device* op_device,
       remote_output_num_(-1),
       remote_shape_node_id_(-1),
       ctx_(ctx),
-      is_ready_(ctx == nullptr) {
+      is_ready_(ctx == nullptr),
+      resource_dtype_and_shape_initialized_(false) {
   DCHECK_GT(node_id_, 0);
   DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
                               : resource_device_ == nullptr);
@@ -93,7 +142,8 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
       remote_shape_node_id_(remote_shape_node_id),
       call_on_destroy_(std::move(call_on_destroy)),
       ctx_(ctx),
-      is_ready_(true) {
+      is_ready_(true),
+      resource_dtype_and_shape_initialized_(false) {
   DCHECK(IsRemote()) << "Op ID and output num should be >= 0. Op ID: " << op_id
                      << ", Output num: " << output_num;
   DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
@@ -340,6 +390,34 @@ string TensorHandle::DebugString() const {
   strings::StrAppend(&out, ", Tensor: ", device_ ? "?" : tensor_.DebugString(),
                      "\n");
   return out;
+}
+
+Status TensorHandle::GetResourceVariableDtypeAndShape(
+    std::pair<DataType, TensorShape>* result) {
+  if (IsRemote()) {
+    return errors::Unimplemented(
+        "Getting resource data type and shape for a remote tensor is not "
+        "implemented yet");
+  }
+
+  {
+    mutex_lock l(ctx_mutex_);
+    if (resource_dtype_and_shape_initialized_) {
+      *result = resource_dtype_and_shape_;
+      return resource_dtype_and_shape_status_;
+    }
+  }
+
+  // Wait for this TensorHandle to be ready.
+  TF_RETURN_IF_ERROR(WaitReady());
+  DCHECK(IsReady());
+
+  mutex_lock l(ctx_mutex_);
+  resource_dtype_and_shape_status_ = GetResourceVariableDtypeAndShapeInternal(
+      tensor_, resource_device_, &resource_dtype_and_shape_);
+  resource_dtype_and_shape_initialized_ = true;
+  *result = resource_dtype_and_shape_;
+  return resource_dtype_and_shape_status_;
 }
 
 }  // namespace tensorflow

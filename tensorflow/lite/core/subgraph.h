@@ -163,10 +163,10 @@ class Subgraph {
   // Return the number of ops in the model.
   size_t nodes_size() const { return nodes_and_registration_.size(); }
 
-  // Read only access to list of variable tensors.
+  // Return vector of node indices in the order of execution.
   std::vector<int>& execution_plan() { return execution_plan_; }
 
-  // Read only access to list of variable tensors.
+  // Return read-only vector of node indices in the order of execution.
   const std::vector<int>& execution_plan() const { return execution_plan_; }
 
   // Mutable form of tensors (TEMPORARY for refactor).

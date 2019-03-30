@@ -272,13 +272,6 @@ class ConvolutionOpModel : public SingleOpModelWithNNAPI {
 
     output_ = AddOutput(output);
 
-    if (input_type_ != TensorType_FLOAT32) {
-      // The following is required by quantized inference. It is the unittest's
-      // responsibility to make sure the output scale falls into the correct
-      // range.
-      CHECK_LT(GetScale(input_) * GetScale(filter_), GetScale(output_));
-    }
-
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
                  CreateConv2DOptions(
                      builder_, padding, stride_width, stride_height, activation,
@@ -430,10 +423,48 @@ TEST(ConvolutionOpTest, NoActivation) {
                              }));
 }
 
+TEST(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
+  // output_multiplier = 1.0118
+  ConvolutionOpModel quant_op({TensorType_UINT8, {2, 2, 4, 1}, -128.5, 128},
+                              {TensorType_UINT8, {3, 2, 2, 1}, -128.5, 128},
+                              {TensorType_UINT8, {}, -127, 128});
+  ConvolutionOpModel float_op({TensorType_FLOAT32, {2, 2, 4, 1}},
+                              {TensorType_FLOAT32, {3, 2, 2, 1}},
+                              {TensorType_FLOAT32, {}});
+  std::initializer_list<float> input = {
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  };
+  std::initializer_list<float> filter = {
+      1,  2,  3,  4,  // first 2x2 filter
+      -1, 1,  -1, 1,  // second 2x2 filter
+      -1, -1, 1,  1,  // third 2x2 filter
+  };
+  std::initializer_list<float> bias = {1, 2, 3};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
+}
+
 class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {
  public:
   DepthwiseConvolutionOpModel(const TensorData& input, const TensorData& filter,
-                              const TensorData& output) {
+                              const TensorData& output)
+      : input_type_(input.type) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -465,21 +496,36 @@ class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
   }
 
-  void SetFilter(std::initializer_list<float> f) { PopulateTensor(filter_, f); }
-
-  void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
-
   void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
+    SetData(input_, input_type_, data);
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  void SetFilter(std::initializer_list<float> data) {
+    SetData(filter_, input_type_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    const auto bias_type =
+        (input_type_ == TensorType_FLOAT32) ? input_type_ : TensorType_INT32;
+    SetData(bias_, bias_type, data);
+  }
+
+  std::vector<float> GetOutput() {
+    if (input_type_ == TensorType_FLOAT32) {
+      return ExtractVector<float>(output_);
+    } else {
+      return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                                 GetScale(output_), GetZeroPoint(output_));
+    }
+  }
 
  protected:
   int input_;
   int filter_;
   int bias_;
   int output_;
+
+  const TensorType input_type_;
 };
 
 TEST(NNAPIDelegate, DepthwiseConv2DWithNoActivation) {
@@ -506,6 +552,42 @@ TEST(NNAPIDelegate, DepthwiseConv2DWithNoActivation) {
                                  71, -34, 99, -20,  //
                                  91, -26, 127, -4,  //
                              }));
+}
+
+TEST(QuantizedDepthwiseConv2DTest, FilterMultiplierGreaterThan1) {
+  DepthwiseConvolutionOpModel quant_op(
+      {TensorType_UINT8, {1, 3, 2, 2}, -128.5, 128},
+      {TensorType_UINT8, {1, 2, 2, 4}, -128.5, 128},
+      {TensorType_UINT8, {}, -127, 128});
+  DepthwiseConvolutionOpModel float_op({TensorType_FLOAT32, {1, 3, 2, 2}},
+                                       {TensorType_FLOAT32, {1, 2, 2, 4}},
+                                       {TensorType_FLOAT32, {}});
+
+  std::initializer_list<float> input = {
+      1, 2, 7,  8,   // column 1
+      3, 4, 9,  10,  // column 2
+      5, 6, 11, 12,  // column 3
+  };
+  std::initializer_list<float> filter = {
+      1,  2,   3,   4,    //
+      -9, 10,  -11, 12,   //
+      5,  6,   7,   8,    //
+      13, -14, 15,  -16,  //
+  };
+  std::initializer_list<float> bias = {1, 2, 3, 4};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
 class FullyConnectedOpModel : public SingleOpModelWithNNAPI {
@@ -552,7 +634,14 @@ class FullyConnectedOpModel : public SingleOpModelWithNNAPI {
     SetData(bias_, bias_type, data);
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<float> GetOutput() {
+    if (input_type_ == TensorType_FLOAT32) {
+      return ExtractVector<float>(output_);
+    } else {
+      return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                                 GetScale(output_), GetZeroPoint(output_));
+    }
+  }
 
  protected:
   int input_;
@@ -607,15 +696,41 @@ TEST(FullyConnectedOpTest, FloatInputQuantizedWeights) {
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60}, 1.3)));
 }
 
+TEST(FullyConnectedOpTest, QuantizedOutputMultiplierGreaterThan1) {
+  // real_multiplier = 2.
+  FullyConnectedOpModel m(
+      /*input=*/{TensorType_UINT8, {2, 10}, -127, 128},
+      /*weights=*/{TensorType_UINT8, {3, 10}, -127, 128},
+      /*output=*/{TensorType_UINT8, {}, -63.5, 64});
+
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 24, 25, 26,  // first batch
+                                 58, 59, 60,  // second batch
+                             })));
+}
+
 class SoftmaxOpModel : public SingleOpModelWithNNAPI {
  public:
-  SoftmaxOpModel(int batches, int size, float beta)
-      : batches_(batches), input_size_(size), beta_(beta) {
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
+  SoftmaxOpModel(const TensorData& input, float beta) {
+    input_ = AddInput(input);
+    output_ = AddOutput(input);
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
-                 CreateSoftmaxOptions(builder_, beta_).Union());
-    BuildInterpreter({{batches_, input_size_}});
+                 CreateSoftmaxOptions(builder_, beta).Union());
+    BuildInterpreter({GetShape(input_)});
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -631,17 +746,13 @@ class SoftmaxOpModel : public SingleOpModelWithNNAPI {
  private:
   int input_;
   int output_;
-
-  int batches_;
-  int input_size_;
-  float beta_;
 };
 
-TEST(NNAPIDelegate, SoftmaxSimpleTest) {
-  SoftmaxOpModel m(/*batches=*/2, /*size=*/5, /*beta=*/1.0);
+TEST(SoftmaxOpTest, SimpleTest) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {2, 5}}, /*beta=*/1.0);
   m.SetInput({
       1.0, 2.0, 3.0, 4.0, 5.0,       // b = 0
-      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 1
   });
 
   m.Invoke();
@@ -651,6 +762,63 @@ TEST(NNAPIDelegate, SoftmaxSimpleTest) {
       ElementsAreArray(ArrayFloatNear(
           {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
            0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231},
+          1e-6)));
+}
+
+TEST(SoftmaxOpTest, Beta2) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {1, 5}}, /*beta=*/2.0);
+  m.SetInput({
+      1.0, 2.0, 3.0, 4.0, 5.0,  // b = 0
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.000290076, 0.002143387, 0.015837606, 0.117024957, 0.864703974},
+          1e-6)));
+}
+
+TEST(SoftmaxOpTest, 3dInput) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {2, 2, 5}}, /*beta=*/1.0);
+  m.SetInput({
+      1.0,  2.0,  3.0,  4.0,  5.0,   // b = 0
+      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      5.0,  1.0,  2.0,  3.0,  4.0,   // b = 1
+      -5.0, -1.0, -2.0, -3.0, -4.0,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
+           0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231,
+           0.636408647, 0.011656231, 0.031684921, 0.086128544, 0.234121657,
+           0.011656231, 0.636408647, 0.234121657, 0.086128544, 0.031684921},
+          1e-6)));
+}
+
+TEST(SoftmaxOpTest, 4dInput) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {2, 2, 1, 5}}, /*beta=*/1.0);
+  m.SetInput({
+      1.0,  2.0,  3.0,  4.0,  5.0,   // b = 0
+      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      5.0,  1.0,  2.0,  3.0,  4.0,   // b = 1
+      -5.0, -1.0, -2.0, -3.0, -4.0,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
+           0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231,
+           0.636408647, 0.011656231, 0.031684921, 0.086128544, 0.234121657,
+           0.011656231, 0.636408647, 0.234121657, 0.086128544, 0.031684921},
           1e-6)));
 }
 
