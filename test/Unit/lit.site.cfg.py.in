@@ -1,0 +1,26 @@
+@LIT_SITE_CFG_IN_HEADER@
+
+import sys
+
+config.llvm_src_root = "@LLVM_SOURCE_DIR@"
+config.llvm_obj_root = "@LLVM_BINARY_DIR@"
+config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
+config.llvm_build_mode = "@LLVM_BUILD_MODE@"
+config.enable_shared = @ENABLE_SHARED@
+config.shlibdir = "@SHLIBDIR@"
+config.mlir_src_root = "@MLIR_SOURCE_DIR@"
+config.mlir_obj_root = "@MLIR_BINARY_DIR@"
+config.mlir_tools_dir = "@MLIR_TOOLS_DIR@"
+
+# Support substitution of the tools_dir and build_mode with user parameters.
+# This is used when we can't determine the tool dir at configuration time.
+try:
+    config.llvm_tools_dir = config.llvm_tools_dir % lit_config.params
+    config.llvm_build_mode = config.llvm_build_mode % lit_config.params
+except KeyError:
+    e = sys.exc_info()[1]
+    key, = e.args
+    lit_config.fatal("unable to find %r parameter, use '--param=%s=VALUE'" % (key,key))
+
+# Let the main config do the real work.
+lit_config.load_config(config, "@MLIR_SOURCE_DIR@/test/Unit/lit.cfg.py")

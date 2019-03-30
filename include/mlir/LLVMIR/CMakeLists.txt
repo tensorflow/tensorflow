@@ -1,0 +1,7 @@
+set(LLVM_TARGET_DEFINITIONS LLVMOps.td)
+mlir_tablegen(LLVMOps.h.inc -gen-op-decls)
+mlir_tablegen(LLVMOps.cpp.inc -gen-op-defs)
+add_public_tablegen_target(MLIRLLVMOpsIncGen)
+set(LLVM_TARGET_DEFINITIONS LLVMOps.td)
+mlir_tablegen(LLVMConversions.inc -gen-llvmir-conversions)
+add_public_tablegen_target(MLIRLLVMConversionsIncGen)

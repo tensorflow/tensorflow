@@ -25,9 +25,7 @@ For more information on MLIR, please see:
     decisions,
 *   previous external [talks](#talks),
 
-or join the [MLIR mailing list](TODO).
-
-TODO: Replace with actual mailing list.
+or join the [MLIR mailing list](https://groups.google.com/a/tensorflow.org/forum/#!forum/mlir).
 
 ## What is MLIR for?
 
@@ -79,6 +77,19 @@ ways. For example, LLVM has non-obvious design mistakes that prevent a
 multithreaded compiler from working on multiple functions in an LLVM module at
 the same time. MLIR solves these problems by having per-function constant pools
 and by making references explicit with function_ref.
+
+# Getting started with MLIR
+
+```
+git clone https://github.com/llvm/llvm-project.git
+cd llvm/projects/
+git clone https://github.com/tensorflow/mlir
+cd ../../
+mkdir build
+cd build
+env CC=clang CXX=clang++ cmake -G Ninja -DLLVM_ENABLE_RTTI=1 ../llvm/
+ninja check-mlir
+```
 
 # MLIR talks {#talks}
 
