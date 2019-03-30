@@ -127,6 +127,7 @@ def _extract_graph_summary(graph_def):
     name_to_node[n] = node
     name_to_input_name[n] = [_node_name(x) for x in node.input]
     if "_class" in node.attr:
+      # Prevent colocated nodes being lost
       for v in node.attr["_class"].list.s:
         v_str = v.decode("utf-8")
         if v_str.startswith("loc:@"):
@@ -262,7 +263,8 @@ def convert_variables_to_constants(sess,
       if op_name in control_ops or op_name == "Identity" :
         curr_input_name = _node_name(current_node.input[0])
       else:
-        raise ValueError("Op type %s should be in the path between ReadVariableOp and VarHandleOp" % current_node.op)
+        raise ValueError("Op type %s should not be in the path " +
+                         "between ReadVariableOp and VarHandleOp" % current_node.op)
       current_name = curr_input_name
 
     return current_name, nodes_in_path
