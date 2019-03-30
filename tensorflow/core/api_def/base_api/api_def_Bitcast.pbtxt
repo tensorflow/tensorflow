@@ -12,17 +12,24 @@ If `T` is smaller than `type`, the operator requires that the rightmost
 dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 [..., sizeof(`type`)/sizeof(`T`)] to [...].
 
-tf.bitcast() is used when you have to cast to an unsigned dtype (e.g. tf.uint8)
-where tf.cast() will not work effectively.
-
-```
-python
-code here
-```
+tf.bitcast() and tf.cast() work differently when real dtype is casted as a complex dtype
+(e.g. tf.complex64 or tf.complex128) as tf.cast() make imaginary part 0 while tf.bitcast()
+gives module error.
 For example,
-  tf.bitcast(tf.cast(my_tensor, tf.int8), tf.uint8)
+Example 1:
+>>> import tensorflow as tf
+>>> a = [1., 2., 3.]
+>>> euality_bitcast = tf.bitcast(a,tf.complex128)
+tensorflow.python.framework.errors_impl.InvalidArgumentError: Cannot bitcast from float to complex128: shape [3] [Op:Bitcast]
+>>> equality_cast = tf.cast(a,tf.complex128)
+>>> print(equality_cast)
+tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
 
-Other example,
+Example 2:
+>>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
+<tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
+
+Example 3:
 >>> import tensorflow as tf
 >>> x = [1., 2., 3.]
 >>> y = [0., 2., 3.]
