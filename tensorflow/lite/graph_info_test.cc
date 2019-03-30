@@ -101,8 +101,22 @@ void CheckPartitionSubgraphs(
 }
 
 // Test an empty trivial graph with no partitions.
-TEST(PartitionTest, Nodes0_PartitionNodes0) {
+TEST(PartitionTest, Nodes0PartitionNodes0) {
   SimpleTestGraph graph;
+  std::vector<int> nodes_to_partition = {};
+  std::vector<NodeSubset> generated_subgraphs;
+  PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
+  CheckPartitionSubgraphs(generated_subgraphs, {});
+}
+
+// Test a trivial graph with no node and only 1 tensor.
+// The tensor is input & output of the graph at the same time.
+// Note: This is a regression test to ensure the partitioning logic
+// handles this case without crashing.
+TEST(PartitionTest, Nodes0PartitionNodes0Tensors1) {
+  SimpleTestGraph graph;
+  graph.AddTensors(1);
+  graph.SetInputsAndOutputs({0}, {0});
   std::vector<int> nodes_to_partition = {};
   std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);

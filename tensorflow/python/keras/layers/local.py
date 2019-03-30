@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
@@ -27,10 +29,10 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.LocallyConnected1D')
+@keras_export('keras.layers.LocallyConnected1D')
 class LocallyConnected1D(Layer):
   """Locally-connected layer for 1D inputs.
 
@@ -198,8 +200,7 @@ class LocallyConnected1D(Layer):
           kernel_shape=self.kernel_size,
           strides=self.strides,
           padding=self.padding,
-          data_format=self.data_format,
-          dtype=self.kernel.dtype
+          data_format=self.data_format
       )
 
     else:
@@ -293,7 +294,7 @@ class LocallyConnected1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.LocallyConnected2D')
+@keras_export('keras.layers.LocallyConnected2D')
 class LocallyConnected2D(Layer):
   """Locally-connected layer for 2D inputs.
 
@@ -482,8 +483,7 @@ class LocallyConnected2D(Layer):
           kernel_shape=self.kernel_size,
           strides=self.strides,
           padding=self.padding,
-          data_format=self.data_format,
-          dtype=self.kernel.dtype
+          data_format=self.data_format
       )
 
     else:
@@ -585,14 +585,13 @@ def get_locallyconnected_mask(input_shape,
                               kernel_shape,
                               strides,
                               padding,
-                              data_format,
-                              dtype):
+                              data_format):
   """Return a mask representing connectivity of a locally-connected operation.
 
-  This method returns a masking tensor of 0s and 1s (of type `dtype`) that,
-  when element-wise multiplied with a fully-connected weight tensor, masks out
-  the weights between disconnected input-output pairs and thus implements local
-  connectivity through a sparse fully-connected weight tensor.
+  This method returns a masking numpy array of 0s and 1s (of type `np.float32`)
+  that, when element-wise multiplied with a fully-connected weight tensor, masks
+  out the weights between disconnected input-output pairs and thus implements
+  local connectivity through a sparse fully-connected weight tensor.
 
   Assume an unshared convolution with given parameters is applied to an input
   having N spatial dimensions with `input_shape = (d_in1, ..., d_inN)`
@@ -613,10 +612,9 @@ def get_locallyconnected_mask(input_shape,
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
     data_format: a string, `"channels_first"` or `"channels_last"`.
-    dtype: type of the layer operation, e.g. `tf.float64`.
 
   Returns:
-    a `dtype`-tensor of shape
+    a `np.float32`-type `np.ndarray` of shape
     `(1, d_in1, ..., d_inN, 1, d_out1, ..., d_outN)`
     if `data_format == `"channels_first"`, or
     `(d_in1, ..., d_inN, 1, d_out1, ..., d_outN, 1)`
@@ -634,15 +632,14 @@ def get_locallyconnected_mask(input_shape,
   )
 
   ndims = int(mask.ndim / 2)
-  mask = K.variable(mask, dtype)
 
   if data_format == 'channels_first':
-    mask = K.expand_dims(mask, 0)
-    mask = K.expand_dims(mask, - ndims - 1)
+    mask = np.expand_dims(mask, 0)
+    mask = np.expand_dims(mask, -ndims - 1)
 
   elif data_format == 'channels_last':
-    mask = K.expand_dims(mask, ndims)
-    mask = K.expand_dims(mask, -1)
+    mask = np.expand_dims(mask, ndims)
+    mask = np.expand_dims(mask, -1)
 
   else:
     raise ValueError('Unrecognized data_format: ' + str(data_format))

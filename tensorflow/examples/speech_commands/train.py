@@ -446,7 +446,7 @@ if __name__ == '__main__':
       '--preprocess',
       type=str,
       default='mfcc',
-      help='Spectrogram processing mode. Can be "mfcc" or "average"')
+      help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

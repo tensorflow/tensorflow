@@ -24,6 +24,7 @@ py_library(
         "ast_util.py",
         "cfg.py",
         "compiler.py",
+        "errors.py",
         "inspect_utils.py",
         "origin_info.py",
         "parser.py",
@@ -94,6 +95,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/pyct/testing:test_modules",
         "@gast_archive//:gast",
     ],
 )

@@ -140,7 +140,7 @@ Status HloSchedule::UpdateComputationSchedule(
   std::queue<HloInstruction*> worklist;
 
   for (HloInstruction* instruction : computation->instructions()) {
-    if (ids_in_schedule.count(instruction->unique_id()) == 0) {
+    if (!ids_in_schedule.contains(instruction->unique_id())) {
       // This is a newly added instruction which is not in the schedule.
       if (instruction->operands().empty()) {
         worklist.push(instruction);
@@ -204,7 +204,7 @@ Status HloSchedule::Update() {
   std::vector<HloComputation*> nonfusion_computations =
       module_->MakeNonfusionComputations();
   for (const HloComputation* computation : nonfusion_computations) {
-    TF_RET_CHECK(sequences_.count(computation->unique_id()) == 1)
+    TF_RET_CHECK(sequences_.contains(computation->unique_id()))
         << "Computation " << computation->name() << " not in HloSchedule.";
   }
   if (sequences_.size() > nonfusion_computations.size()) {
@@ -215,7 +215,7 @@ Status HloSchedule::Update() {
       nonfusion_computations_ids.insert(computation->unique_id());
     }
     for (auto it = sequences_.begin(); it != sequences_.end();) {
-      if (nonfusion_computations_ids.count(it->first) == 0) {
+      if (!nonfusion_computations_ids.contains(it->first)) {
         sequences_.erase(it++);
       } else {
         ++it;
@@ -244,7 +244,7 @@ Status HloSchedule::Verify() const {
       << "Schedule has " << sequences_.size() << " sequences, but module has "
       << nonfusion_computations.size() << " non-fusion computations";
   for (const HloComputation* computation : nonfusion_computations) {
-    TF_RET_CHECK(sequences_.count(computation->unique_id()) == 1)
+    TF_RET_CHECK(sequences_.contains(computation->unique_id()))
         << "Computation " << computation->name()
         << " missing from HLO schedule.";
   }
@@ -268,7 +268,7 @@ Status HloSchedule::Verify() const {
         << instruction_position.size() << " instructions, expected "
         << computation->instruction_count();
     for (const HloInstruction* instruction : computation->instructions()) {
-      TF_RET_CHECK(instruction_position.count(instruction) == 1)
+      TF_RET_CHECK(instruction_position.contains(instruction))
           << "Instruction " << instruction->name() << " is not in schedule";
     }
 

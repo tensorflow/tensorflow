@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorboard/db/schema.h"
-#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
-#include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/summary/schema.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
+#include "tensorflow/core/summary/summary_file_writer.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -53,6 +53,7 @@ class CreateSummaryFileWriterOp : public OpKernel {
                                   max_queue, flush_millis, logdir,
                                   filename_suffix, ctx->env(), s);
                             }));
+    core::ScopedUnref unref(s);
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryFileWriter").Device(DEVICE_CPU),
@@ -89,6 +90,7 @@ class CreateSummaryDbWriterOp : public OpKernel {
                   db, experiment_name, run_name, user_name, ctx->env(), s));
               return Status::OK();
             }));
+    core::ScopedUnref unref(s);
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryDbWriter").Device(DEVICE_CPU),

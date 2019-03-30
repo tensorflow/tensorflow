@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -46,8 +47,12 @@ bool IsBlacklisted(const NodeDef& node) {
       IsNoOp(node);
 }
 
-// Check if Tensor is integer and small size.
-bool IsTensorIntegerAndSmall(const OpInfo::TensorProperties& prop) {
+// Check if Tensor is either a string or is integer and small size
+bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
+  if (prop.dtype() == DataType::DT_STRING) {
+    return true;
+  }
+
   // Check type to be int32 or int64.
   if (prop.dtype() != DataType::DT_INT32 &&
       prop.dtype() != DataType::DT_INT64) {
@@ -107,7 +112,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
                  << node.DebugString();
     return Status::OK();
   }
-  if (!IsTensorIntegerAndSmall(output_properties[port_id])) {
+  if (!IsTensorSmall(output_properties[port_id])) {
     return Status::OK();
   }
 
@@ -250,7 +255,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
         /*assume_valid_feeds=*/false));
   }
   for (const auto& prop : properties->GetOutputProperties(node.name())) {
-    if (!IsTensorIntegerAndSmall(prop)) {
+    if (!IsTensorSmall(prop)) {
       return Status::OK();
     }
   }
@@ -285,16 +290,6 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
   // We couldn't find an appropriate Host device, return no device.
   return "";
 }
-
-bool IsTPUGraphDef(const GraphDef& def) {
-  for (const auto& node : def.node()) {
-    if (node.op() == "TPUCompile" || node.op() == "TPUExecute" ||
-        node.op() == "TPUPartitionedCall") {
-      return true;
-    }
-  }
-  return false;
-}
 }  // end namespace internal
 
 Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -302,7 +297,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
 
   // Skip all TPU graphs.
-  if (internal::IsTPUGraphDef(*optimized_graph)) {
+  if (IsTPUGraphDef(*optimized_graph)) {
     return Status::OK();
   }
 

@@ -481,9 +481,9 @@ def _reshape_for_efficiency(a,
 
   # Permutation to put the extra dims at the end.
   perm = (
-      array_ops.concat(
-          (math_ops.range(b_extra_ndims, b.shape.ndims),
-           math_ops.range(0, b_extra_ndims)), 0))
+      np.concatenate(
+          (np.arange(b_extra_ndims, b.shape.ndims),
+           np.arange(0, b_extra_ndims)), 0))
   b_extra_on_end = array_ops.transpose(b, perm=perm)
 
   # Now squash this end into one long dim.
@@ -497,7 +497,7 @@ def _reshape_for_efficiency(a,
     y_extra_shape = array_ops.concat(
         (array_ops.shape(y)[:-1], [b_main_sh[-1]], b_extra_sh), 0)
     y_extra_on_end = array_ops.reshape(y, y_extra_shape)
-    return array_ops.transpose(
-        y_extra_on_end, perm=array_ops.invert_permutation(perm))
+    inverse_perm = np.argsort(perm)
+    return array_ops.transpose(y_extra_on_end, perm=inverse_perm)
 
   return a, b_squashed_end, reshape_inv, still_need_to_transpose

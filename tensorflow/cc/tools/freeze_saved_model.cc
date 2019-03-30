@@ -124,7 +124,9 @@ Status GetVariableNameToTensorMap(
     return Status::OK();
   }
   std::vector<string> variable_names;
+  variable_names.reserve(variable_names_set.size());
   std::vector<string> tensor_names;
+  tensor_names.reserve(variable_names_set.size());
   for (const string& node_name : variable_names_set) {
     variable_names.push_back(node_name);
     NodeDef* node_def = name_to_node_map.at(node_name);

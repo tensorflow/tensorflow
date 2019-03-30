@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "make_initializable_iterator"
-    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'dataset\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "make_one_shot_iterator"

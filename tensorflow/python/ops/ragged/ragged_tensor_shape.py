@@ -21,13 +21,13 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_conversion_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 
@@ -55,7 +55,7 @@ class RaggedTensorDynamicShape(object):
       be ragged.
 
     * "Inner dimensions" are dimensions that are encoded using a
-      `RaggedTensor`'s `inner_values`.  Inner dimensions are always uniform.
+      `RaggedTensor`'s `flat_values`.  Inner dimensions are always uniform.
 
   The sizes of partitioned dimensions are recorded using `partitioned_dim_sizes`
   and `inner_dim_sizes`:
@@ -161,15 +161,15 @@ class RaggedTensorDynamicShape(object):
   def from_tensor(cls, rt_input):
     """Constructs a ragged shape for a potentially ragged tensor."""
     with ops.name_scope(None, 'RaggedTensorDynamicShapeFromTensor', [rt_input]):
-      rt_input = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(rt_input)
+      rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(rt_input)
       if not ragged_tensor.is_ragged(rt_input):
         return cls([], array_ops.shape(rt_input))
       else:
-        partitioned_dim_sizes = ((ragged_array_ops.nrows(rt_input),) +
-                                 ragged_array_ops.nested_row_lengths(rt_input))
+        partitioned_dim_sizes = (
+            (rt_input.nrows(),) + rt_input.nested_row_lengths())
         return RaggedTensorDynamicShape(
             partitioned_dim_sizes,
-            array_ops.shape(rt_input.inner_values)[1:])
+            array_ops.shape(rt_input.flat_values)[1:])
 
   def dimension_size(self, axis):
     """Returns the size of slices across the specified dimension."""
@@ -197,7 +197,7 @@ class RaggedTensorDynamicShape(object):
   @property
   def rank(self):
     """The number of dimensions in this shape, or None if unknown."""
-    inner_ndims = self._inner_dim_sizes.shape[0].value
+    inner_ndims = tensor_shape.dimension_value(self._inner_dim_sizes.shape[0])
     if inner_ndims is None:
       return None
     else:
@@ -229,7 +229,7 @@ class RaggedTensorDynamicShape(object):
   @property
   def num_inner_dimensions(self):
     """The number of inner dimensions, or `None` if not statically known."""
-    return self._inner_dim_sizes.shape[0].value
+    return tensor_shape.dimension_value(self._inner_dim_sizes.shape[0])
 
   def broadcast_to_rank(self, rank):
     """Adds leading size-1 dimensions to broadcast `self` to the given rank.
@@ -456,7 +456,7 @@ def broadcast_to(rt_input, shape, broadcast_inner_dimensions=True):
   """
   if not isinstance(shape, RaggedTensorDynamicShape):
     raise TypeError('shape must be a RaggedTensorDynamicShape')
-  rt_input = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(rt_input)
+  rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(rt_input)
 
   # Broadcasting to a uniform shape.
   if shape.num_partitioned_dimensions == 0:
@@ -497,17 +497,20 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
       rt_input = array_ops.reshape(
           rt_input, array_ops.concat([[-1], dst_shape.inner_dim_sizes], axis=0))
     for _ in range(dst_shape.rank - rt_input.shape.ndims):
-      rt_input = ragged_factory_ops.from_row_lengths(
-          rt_input, [ragged_array_ops.nrows(rt_input)])
+      if ragged_tensor.is_ragged(rt_input):
+        nrows = rt_input.nrows()
+      else:
+        nrows = array_ops.shape(rt_input, out_type=dtypes.int64)[0]
+      rt_input = ragged_tensor.RaggedTensor.from_row_lengths(rt_input, [nrows])
 
   # Add ragged dimensions to match dst_shape.
   if ragged_tensor.is_ragged(rt_input):
     inner_rank_diff = (
-        rt_input.inner_values.shape.ndims - 1 - dst_shape.num_inner_dimensions)
+        rt_input.flat_values.shape.ndims - 1 - dst_shape.num_inner_dimensions)
     if inner_rank_diff > 0:
-      rt_input = rt_input.with_inner_values(
+      rt_input = rt_input.with_flat_values(
           ragged_conversion_ops.from_tensor(
-              rt_input.inner_values, ragged_rank=inner_rank_diff))
+              rt_input.flat_values, ragged_rank=inner_rank_diff))
   else:
     rt_input = ragged_conversion_ops.from_tensor(
         rt_input, ragged_rank=dst_shape.num_partitioned_dimensions - 1)
@@ -528,9 +531,9 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
     rt_input = ragged_array_ops.tile(rt_input, multiples)
 
   if broadcast_inner_dimensions:
-    rt_input = rt_input.with_inner_values(
+    rt_input = rt_input.with_flat_values(
         array_ops.reshape(
-            rt_input.inner_values,
+            rt_input.flat_values,
             array_ops.concat([[-1], dst_shape.inner_dim_sizes], axis=0)))
 
   # Do broadcasting for dimensions that become ragged.  We must do these from
@@ -555,7 +558,7 @@ def _ragged_tile_axis(rt_input, axis, repeats):
         _ragged_tile_axis(rt_input.values, axis - 1, repeats))
   else:
     src_row_splits = rt_input.nested_row_splits
-    src_row_lengths = ragged_array_ops.nested_row_lengths(rt_input)
+    src_row_lengths = rt_input.nested_row_lengths()
     splits = src_row_splits[0]
 
     dst_row_lengths = [repeats]
@@ -563,8 +566,7 @@ def _ragged_tile_axis(rt_input, axis, repeats):
       dst_row_lengths.append(
           ragged_util.repeat_ranges(src_row_lengths[i], splits, repeats))
       splits = array_ops.gather(src_row_splits[i], splits)
-    dst_values = ragged_util.repeat_ranges(rt_input.inner_values, splits,
+    dst_values = ragged_util.repeat_ranges(rt_input.flat_values, splits,
                                            repeats)
-    return ragged_factory_ops.from_nested_row_lengths(dst_values,
-                                                      dst_row_lengths)
-
+    return ragged_tensor.RaggedTensor.from_nested_row_lengths(
+        dst_values, dst_row_lengths)

@@ -76,7 +76,7 @@ cat <<EOF > /tmp/check_tf.py
 import tensorflow as tf;
 print("tf.VERSION = %s" % tf.VERSION)
 print("tf.GIT_VERSION = %s" % tf.GIT_VERSION)
-print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
+print("tf.COMPILER_VERSION = %s" % tf.COMPILER_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF

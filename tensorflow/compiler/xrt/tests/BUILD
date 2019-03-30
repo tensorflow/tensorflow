@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",

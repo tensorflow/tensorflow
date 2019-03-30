@@ -34,6 +34,7 @@ def xla_test(
         xla_test_library_deps = [],
         backends = [],
         blacklisted_backends = [],
+        real_hardware_only = False,
         args = [],
         tags = [],
         copts = [],
@@ -108,6 +109,10 @@ def xla_test(
         use for that target.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
+
+    # All of the backends in all_backends are real hardware.
+    _ignore = [real_hardware_only]
+
     test_names = []
     if not backends:
         backends = all_backends

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_FILTER_FUSION_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_FILTER_FUSION_H_
 
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -26,7 +26,7 @@ namespace grappler {
 // component. The FilterDataset is transformed to FilterByLastComponent - a
 // custom kernel that filters elements based on a value of the boolean
 // component.
-class MapAndFilterFusion : public CustomGraphOptimizer {
+class MapAndFilterFusion : public TFDataOptimizerBase {
  public:
   MapAndFilterFusion() = default;
   ~MapAndFilterFusion() override = default;
@@ -38,14 +38,15 @@ class MapAndFilterFusion : public CustomGraphOptimizer {
     return Status::OK();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* output) override;
+  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
+                                 GraphDef* output,
+                                 OptimizationStats* stats) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
 };
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_FILTER_FUSION_H_

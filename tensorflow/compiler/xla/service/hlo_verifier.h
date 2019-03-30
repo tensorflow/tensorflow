@@ -52,9 +52,12 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleCholesky(HloInstruction* hlo) override;
+  Status HandleTriangularSolve(HloInstruction* hlo) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
@@ -103,7 +106,8 @@ class ShapeVerifier : public DfsHloVisitor {
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
-                    const Shape& inferred_shape);
+                    const Shape& inferred_shape,
+                    bool only_compare_minor_to_major_in_layout = false);
 
   // Overload which takes a StatusOr to reduce boilerplate in the caller.
   Status CheckShape(const HloInstruction* instruction,
@@ -117,14 +121,31 @@ class ShapeVerifier : public DfsHloVisitor {
 
  private:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b) {
-    return layout_sensitive_ ? ShapeUtil::Equal(a, b)
-                             : ShapeUtil::Compatible(a, b);
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  bool minor_to_major_only = false) {
+    if (!layout_sensitive_) {
+      return ShapeUtil::Compatible(a, b);
+    }
+    Shape::Equal equal;
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    return equal(a, b);
   }
-  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b) {
-    return layout_sensitive_ ? ShapeUtil::EqualIgnoringFpPrecision(a, b)
-                             : ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+
+  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
+                                     bool minor_to_major_only = false) {
+    if (!layout_sensitive_) {
+      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+    }
+    Shape::Equal equal;
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    equal.IgnoreFpPrecision();
+    return equal(a, b);
   }
+
   string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
@@ -168,8 +189,13 @@ class ShapeVerifier : public DfsHloVisitor {
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
+  TargetVerifierMetadata(std::function<int64(const Shape&)> shape_size_function)
+      : shape_size_function_(shape_size_function) {}
+
   // Returns a target-specific shape size.
-  virtual int64 ShapeSize(const Shape& shape) const = 0;
+  int64 ShapeSize(const Shape& shape) const {
+    return shape_size_function_(shape);
+  }
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
@@ -178,19 +204,22 @@ class TargetVerifierMetadata {
 
   TargetVerifierMetadata(const TargetVerifierMetadata&) = delete;
   TargetVerifierMetadata& operator=(const TargetVerifierMetadata&) = delete;
+
+ private:
+  // Returns a target-specific shape size.
+  std::function<int64(const Shape&)> shape_size_function_;
 };
 
 // The default implementation of TargetVerifierMetadata, used unless the target
 // needs to override it.
 class DefaultVerifierMetadata : public TargetVerifierMetadata {
  public:
-  DefaultVerifierMetadata(bool layout_sensitive, bool allow_mixed_precision)
-      : layout_sensitive_(layout_sensitive),
+  DefaultVerifierMetadata(
+      bool layout_sensitive, bool allow_mixed_precision,
+      std::function<int64(const Shape&)> shape_size_function)
+      : TargetVerifierMetadata(shape_size_function),
+        layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
-
-  int64 ShapeSize(const Shape& shape) const override {
-    return ShapeUtil::ByteSizeOf(shape);
-  }
 
   // Creates a ShapeVerifier that checks that shapes match inferred
   // expectations. This creates a new verifier every time because ShapeVerifier,
@@ -210,11 +239,14 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
 // the module.
 class HloVerifier : public HloModulePass {
  public:
-  explicit HloVerifier(bool layout_sensitive, bool allow_mixed_precision,
-                       std::function<bool(const HloInstruction*)>
-                           instruction_can_change_layout_func = {})
+  explicit HloVerifier(
+      bool layout_sensitive, bool allow_mixed_precision,
+      std::function<bool(const HloInstruction*)>
+          instruction_can_change_layout_func = {},
+      std::function<int64(const Shape&)> shape_size_func =
+          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
-            layout_sensitive, allow_mixed_precision)),
+            layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
             std::move(instruction_can_change_layout_func)) {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);

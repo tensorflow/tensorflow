@@ -107,7 +107,6 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Notification note;
     Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
@@ -144,12 +143,15 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void DefineWorkers(int num_workers, int num_devices,
-                     const string& device_type) {
+                     const string& device_type, bool nccl) {
     ConfigProto config;
     for (int w = 0; w < num_workers; ++w) {
       string name = strings::StrCat("/job:worker/replica:0/task:", w);
       if (w == 0) {
         config.mutable_experimental()->set_collective_group_leader(name);
+        if (nccl) {
+          config.mutable_experimental()->set_collective_nccl(true);
+        }
       }
       DefineWorker(config, name, device_type, num_devices);
     }
@@ -268,6 +270,8 @@ class DeviceResDistTest : public ::testing::Test {
         EXPECT_EQ(cp_[idx].instance.device_names[idx], device_name);
         EXPECT_EQ(cp_[idx].instance.task_names[idx], task_name);
         if (idx > 0) {
+          EXPECT_EQ(cp_[0].group.runtime_details.communicator_key,
+                    cp_[idx].group.runtime_details.communicator_key);
           for (int i = 0; i < dev_count; ++i) {
             EXPECT_EQ(cp_[0].instance.device_names[i],
                       cp_[idx].instance.device_names[i]);
@@ -296,7 +300,7 @@ class DeviceResDistTest : public ::testing::Test {
 TEST_F(DeviceResDistTest, Workers1Devices1) {
   const int num_workers = 1;
   const int num_devices = 1;
-  DefineWorkers(num_workers, num_devices, "CPU");
+  DefineWorkers(num_workers, num_devices, "CPU", false);
   DefineCollectiveParams(num_workers, num_devices);
   IssueRequests(num_workers, num_devices);
   ValidateCollectiveParams(num_workers, num_devices);
@@ -305,16 +309,43 @@ TEST_F(DeviceResDistTest, Workers1Devices1) {
 TEST_F(DeviceResDistTest, Workers2Devices2) {
   const int num_workers = 2;
   const int num_devices = 2;
-  DefineWorkers(num_workers, num_devices, "CPU");
+  DefineWorkers(num_workers, num_devices, "CPU", false);
   DefineCollectiveParams(num_workers, num_devices);
   IssueRequests(num_workers, num_devices);
   ValidateCollectiveParams(num_workers, num_devices);
 }
 
+#ifndef GOOGLE_CUDA
+namespace {
+// A mock NcclReducer for testing group runtime details initialization with CPU
+// builds.  The only meaningful function in this class is
+// `InitializeCollectiveGroupRuntimeDetails`.
+class MockNcclReducer : public CollectiveImplementationInterface {
+ public:
+  MockNcclReducer() = default;
+
+  Status InitializeCollectiveParams(CollectiveParams*) override {
+    return Status::OK();
+  }
+  Status InitializeCollectiveContext(CollectiveContext*) override {
+    return Status::OK();
+  }
+  Status InitializeCollectiveGroupRuntimeDetails(
+      CollGroupRuntimeDetails* col_group_runtime_details) override {
+    col_group_runtime_details->communicator_key = "mock-communicator-key";
+    return Status::OK();
+  }
+  void Run(StatusCallback done) override {}
+};
+}  // namespace
+
+REGISTER_COLLECTIVE(NcclReduce, MockNcclReducer);
+#endif
+
 TEST_F(DeviceResDistTest, Workers4Devices3) {
   const int num_workers = 4;
   const int num_devices = 3;
-  DefineWorkers(num_workers, num_devices, "CPU");
+  DefineWorkers(num_workers, num_devices, "CPU", true);
   DefineCollectiveParams(num_workers, num_devices);
   IssueRequests(num_workers, num_devices);
   ValidateCollectiveParams(num_workers, num_devices);

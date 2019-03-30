@@ -59,7 +59,7 @@ message XLAComputation {
 
 // Literal to allocate space for, and transfer to, device memory.
 message XLAAllocation {
-  int32 device_ordinal = 1;
+  reserved 1;
   xla.LiteralProto value = 2;
 }
 

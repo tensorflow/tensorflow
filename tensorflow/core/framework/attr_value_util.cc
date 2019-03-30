@@ -54,9 +54,7 @@ uint64 TensorProtoHash(const TensorProto& tp) {
   DCHECK(success);
   TensorProto p;
   tensor.AsProtoTensorContent(&p);
-  string s;
-  SerializeToStringDeterministic(p, &s);
-  return Hash64(s);
+  return DeterministicProtoHash64(p);
 }
 
 // Do not create large tensors in memory, compute hash based on TensorProto
@@ -64,12 +62,8 @@ uint64 TensorProtoHash(const TensorProto& tp) {
 // different hash code if they are defined with different TensorProto
 // representations.
 uint64 FastTensorProtoHash(const TensorProto& tp) {
-  string s;
   if (TensorByteSize(tp) > kMaxAttrValueTensorByteSize) {
-    string s;
-    bool success = SerializeToStringDeterministic(tp, &s);
-    DCHECK(success);
-    return Hash64(s);
+    return DeterministicProtoHash64(tp);
   } else {
     return TensorProtoHash(tp);
   }
@@ -95,11 +89,7 @@ bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
   TensorProto rhs_tp;
   rhs_t.AsProtoTensorContent(&rhs_tp);
 
-  string lhs_str, rhs_str;
-  SerializeToStringDeterministic(lhs_tp, &lhs_str);
-  SerializeToStringDeterministic(rhs_tp, &rhs_str);
-
-  return lhs_str == rhs_str;
+  return AreSerializedProtosEqual(lhs_tp, rhs_tp);
 }
 
 // Do not construct large tensors in memory, compare equality using TensorProto
@@ -139,9 +129,7 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   }
 
   // If `a` is not a tensor or func, get a hash of serialized string.
-  string s;
-  SerializeToStringDeterministic(a, &s);
-  return Hash64(s);
+  return DeterministicProtoHash64(a);
 }
 
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
@@ -175,10 +163,7 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
 
   // All other fields in AttrValue have deterministic representations.
   // It is safe to compare their serialized strings.
-  string a_str, b_str;
-  SerializeToStringDeterministic(a, &a_str);
-  SerializeToStringDeterministic(b, &b_str);
-  return a_str == b_str;
+  return AreSerializedProtosEqual(a, b);
 }
 
 string SummarizeString(const string& str) {

@@ -293,8 +293,11 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
                                      const Rendezvous::Args& recv_args,
                                      DoneCallback done) {
   VLOG(1) << "RemoteRendezvous Recv " << this << " " << parsed.FullKey();
-  CHECK(is_initialized()) << "RecvAsync called when uninitialized.";
   Status s = ValidateDevices(parsed, false /*!is_src*/);
+  if (s.ok() && !is_initialized()) {
+    s.Update(errors::Internal(
+        "RecvAsync called when uninitialized (key:", parsed.FullKey(), ")."));
+  }
   if (!s.ok()) {
     done(s, Args(), recv_args, Tensor(), false);
     return;

@@ -276,8 +276,8 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
       if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
               *use.instruction, use.operand_number)) {
         if (use.instruction->opcode() == HloOpcode::kTuple ||
-            (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
-             ShapeUtil::IsTuple(use.instruction->shape()))) {
+            (use.instruction->opcode() == HloOpcode::kAllReduce &&
+             use.instruction->shape().IsTuple())) {
           ShapeIndex use_output_index{use.operand_number};
           for (int64 i : use.operand_index) {
             use_output_index.push_back(i);
@@ -674,11 +674,13 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
       }
-      if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
+      if (!Shape::Equal().MinorToMajorOnlyInLayout()(hlo->literal().shape(),
+                                                     hlo->shape())) {
         TF_ASSIGN_OR_RETURN(auto converted_literal,
                             hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
+        UpdateLayout(new_constant->mutable_shape());
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
       }
     }
@@ -797,6 +799,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
       auto subshape = entry.first;
       CHECK_EQ(subshape->element_type(), F32);
       subshape->set_element_type(BF16);
+      UpdateLayout(subshape);
       changed_ = true;
     }
   }

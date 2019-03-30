@@ -1,14 +1,14 @@
 workspace(name = "org_tensorflow")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "a38539c5b5c358548e75b44141b4ab637bba7c4dc02b46b1f62a96d6433f56ae",
-    strip_prefix = "rules_closure-dbb96841cc0a5fb2664c37822803b06dab20c7d1",
+    sha256 = "ddce3b3a3909f99b28b25071c40b7fec7e2e1d1d1a4b2e933f3082aa99517105",
+    strip_prefix = "rules_closure-316e6133888bfc39fb860a4f1a31cfcbae485aef",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",
-        "https://github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",  # 2018-04-13
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",
+        "https://github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",  # 2019-03-21
     ],
 )
 
@@ -16,38 +16,82 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
-http_archive(
-    name = "base_images_docker",
-    sha256 = "e2b1b7254270bb7605e814a9dbf6d1e4ae04a11136ff1714fbfdabe3f87f7cf9",
-    strip_prefix = "base-images-docker-12801524f867e657fbb5d1a74f31618aff181ac6",
-    urls = ["https://github.com/GoogleCloudPlatform/base-images-docker/archive/12801524f867e657fbb5d1a74f31618aff181ac6.tar.gz"],
+load("//third_party/toolchains/preconfig/generate:archives.bzl",
+     "bazel_toolchains_archive")
+
+bazel_toolchains_archive()
+
+load(
+    "@bazel_toolchains//repositories:repositories.bzl",
+    bazel_toolchains_repositories = "repositories",
 )
 
-http_archive(
-    name = "bazel_toolchains",
-    sha256 = "15b5858b1b5541ec44df31b94c3b8672815b31d71215a98398761ea9f4c4eedb",
-    strip_prefix = "bazel-toolchains-6200b238c9c2d137c0d9a7262c80cc71d98e692b",
-    urls = [
-        "https://github.com/bazelbuild/bazel-toolchains/archive/6200b238c9c2d137c0d9a7262c80cc71d98e692b.tar.gz",
-    ],
+bazel_toolchains_repositories()
+
+load(
+    "@io_bazel_rules_docker//repositories:repositories.bzl",
+    container_repositories = "repositories",
 )
 
-http_archive(
-    name = "io_bazel_rules_docker",
-    sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
-    strip_prefix = "rules_docker-0.5.1",
-    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.5.1.tar.gz"],
-)
+container_repositories()
 
-load("//third_party/toolchains/preconfig/generate:workspace.bzl", "remote_config_workspace")
+load("//third_party/toolchains/preconfig/generate:workspace.bzl",
+     "remote_config_workspace")
 
 remote_config_workspace()
+
+# Apple and Swift rules.
+http_archive(
+    name = "build_bazel_rules_apple",
+    sha256 = "4b90786009fa8df25230442244bad2832ba8d6bc4987f68150a7de59c8827e90",
+    strip_prefix = "rules_apple-0.14.0",
+    urls = ["https://github.com/bazelbuild/rules_apple/archive/0.14.0.tar.gz"],
+)
+http_file(
+    name = "xctestrunner",
+    executable = 1,
+    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.6/ios_test_runner.par"],
+)
+
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "2c62d8cd4ab1e65c08647eb4afe38f51591f43f7f0885e7769832fa137633dcb",
+    strip_prefix = "bazel-skylib-0.7.0",
+    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/0.7.0.tar.gz"],
+)
+
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "835663c4bb02f4bf01dce8a2a176df7fa682dbb867d3698ae12258c1628bb8f0",
+    strip_prefix = "apple_support-0.5.0",
+    urls = ["https://github.com/bazelbuild/apple_support/archive/0.5.0.tar.gz"],
+)
+
+http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "32d124878cd49775d84f59ba90440c8b23b7c775aec8fec1978f751c76ddee8a",
+    strip_prefix = "rules_swift-0.7.0",
+    urls = ["https://github.com/bazelbuild/rules_swift/archive/0.7.0.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_apple_swift_swift_protobuf",
+    type = "zip",
+    strip_prefix = "swift-protobuf-1.2.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.2.0.zip"],
+)
+
+# Use swift_rules_dependencies to fetch the tolchains.
+# Since we defined all the "git_repository" rules above, the following call will
+# skip redefining them.
+load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
+swift_rules_dependencies()
 
 # We must check the bazel version before trying to parse any other BUILD
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.15.0")
+check_bazel_version_at_least("0.19.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
@@ -108,4 +152,3 @@ http_archive(
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
-

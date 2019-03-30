@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/logging_ops.h"
+
 #include <iostream>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -47,6 +50,22 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
 }
 
 }  // namespace
+
+namespace logging {
+
+typedef std::vector<void (*)(const char*)> Listeners;
+
+Listeners* GetListeners() {
+  static Listeners* listeners = new Listeners;
+  return listeners;
+}
+
+bool RegisterListener(void (*listener)(const char*)) {
+  GetListeners()->push_back(listener);
+  return true;
+}
+
+}  // end namespace logging
 
 class AssertOp : public OpKernel {
  public:
@@ -157,7 +176,12 @@ class PrintV2Op : public OpKernel {
       OP_REQUIRES_OK(ctx, AppendStringToFile(file_path_, msg, ctx->env()));
       return;
     }
-    if (output_stream_ == "stdout") {
+    auto listeners = logging::GetListeners();
+    if (!listeners->empty()) {
+      for (auto& listener : *listeners) {
+        listener(msg.c_str());
+      }
+    } else if (output_stream_ == "stdout") {
       std::cout << msg << std::endl;
     } else if (output_stream_ == "stderr") {
       std::cerr << msg << std::endl;

@@ -24,7 +24,21 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-// Join a list of data separated by delimiter.
+// Join a list of data with default precision separated by delimiter.
+template <typename T>
+string JoinDefault(T* data, size_t len, const string& delimiter) {
+  if (len == 0 || data == nullptr) {
+    return "";
+  }
+  std::stringstream result;
+  result << data[0];
+  for (int i = 1; i < len; i++) {
+    result << delimiter << data[i];
+  }
+  return result.str();
+}
+
+// Join a list of data with fixed precision separated by delimiter.
 template <typename T>
 string Join(T* data, size_t len, const string& delimiter) {
   if (len == 0 || data == nullptr) {

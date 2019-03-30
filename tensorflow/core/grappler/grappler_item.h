@@ -81,18 +81,23 @@ struct GrapplerItem {
   // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
 
-  // Restrict types of optimizations that are allowed for this GrapplerItem.
-  struct AllowedOptimizations {
+  struct OptimizationOptions {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
-    bool non_differentiable_rewrites = true;
-    // By default we are not allowed to inline ops with side effects into the
-    // main graph, because we can't guarantee that after pruning these ops will
-    // be executed. However if we are optimizing a function library (see
-    // meta_optimizer.cc) and a graph was instantiated by a function definition,
-    // we can do that, because functions guarantee that all side effects will be
-    // executed (see function_optimizer.cc for details).
-    bool inline_ops_with_side_effects = false;
+    bool allow_non_differentiable_rewrites = true;
+
+    // Tensorflow function execution semantics is slightly different from the
+    // main Tensorflow graph, and we need to make sure that we do not change it
+    // by running Grappler optimizer passes. One main difference is that
+    // functions do not prune ops with side-effects and dataset-output ops (see
+    // PruneFunctionBody in common_runtime/function.cc).
+    bool allow_pruning_stateful_and_dataset_ops = true;
+
+    // If true Grappler will optimize the main graph, and also all functions in
+    // the graph function library (function can't be polymorphic, it can't have
+    // undefined type parameters in the function signature, or placeholder
+    // attributes in the function body).
+    bool optimize_function_library = true;
   };
 
   const std::unordered_set<string>& devices() const;
@@ -109,8 +114,8 @@ struct GrapplerItem {
   // Clears a set of available devices.
   void ClearDevices();
 
-  const AllowedOptimizations& allowed_optimizations() const;
-  AllowedOptimizations& allowed_optimizations();
+  const OptimizationOptions& optimization_options() const;
+  OptimizationOptions& optimization_options();
 
  private:
   // TODO(ezhulenev) Make GrapplerItem a class and hide all public data members.
@@ -121,7 +126,7 @@ struct GrapplerItem {
   // Example of a fully defined name: "/job:work/replica:1/task:1/device:CPU:0"
   std::unordered_set<string> devices_;
 
-  AllowedOptimizations allowed_optimizations_;
+  OptimizationOptions optimization_options_;
 };
 
 // Return the transitive fanin of a set of terminal nodes.

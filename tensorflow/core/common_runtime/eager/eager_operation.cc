@@ -30,4 +30,28 @@ void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
+
+void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
+
+string EagerOperation::DebugString() const {
+  string out;
+  VLOG(1) << "EagerOperation::DebugString() over " << this;
+
+  strings::StrAppend(&out, "Name: ", name_, "\n");
+  strings::StrAppend(
+      &out, "Device: ", Device() ? Device()->DebugString() : "[]", "\n");
+  for (const auto& input : inputs_) {
+    VLOG(1) << "Input ptr: " << input;
+    strings::StrAppend(&out, "Input: ", input->DebugString(), "\n");
+  }
+
+  NodeDef ndef;
+  Attrs().FillAttrValueMap(ndef.mutable_attr());
+  strings::StrAppend(&out, "Attrs: ", ndef.DebugString(), "\n");
+  return out;
+}
+
 }  // namespace tensorflow

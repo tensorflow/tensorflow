@@ -33,6 +33,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -224,6 +225,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
 
 
 @tf_export(v1=["count_up_to"])
+@deprecated(None, "Prefer Dataset.range instead.")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 
@@ -430,19 +432,19 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
   `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
   ```
-  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
   ```
 
   For example, say we want to add 4 scattered elements to a rank-1 tensor to
-  8 elements. In Python, that update would look like this:
+  8 elements. In Python, that addition would look like this:
 
   ```python
-      ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-      indices = tf.constant([[4], [3], [1] ,[7]])
-      updates = tf.constant([9, 10, 11, 12])
-      add = tf.scatter_nd_add(ref, indices, updates)
-      with tf.Session() as sess:
-        print sess.run(add)
+  ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+  indices = tf.constant([[4], [3], [1], [7]])
+  updates = tf.constant([9, 10, 11, 12])
+  add = tf.scatter_nd_add(ref, indices, updates)
+  with tf.Session() as sess:
+    print sess.run(add)
   ```
 
   The resulting update to ref would look like this:
@@ -462,9 +464,8 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
     updates: A `Tensor`. Must have the same type as `ref`.
       A tensor of updated values to add to ref.
     use_locking: An optional `bool`. Defaults to `False`.
-      An optional bool. Defaults to True. If True, the assignment will
-      be protected by a lock; otherwise the behavior is undefined,
-      but may exhibit less contention.
+      If True, the assignment will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
     name: A name for the operation (optional).
 
   Returns:
@@ -548,19 +549,19 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
   `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
   ```
-  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
   ```
 
   For example, say we want to subtract 4 scattered elements from a rank-1 tensor
-  to 8 elements. In Python, that update would look like this:
+  with 8 elements. In Python, that update would look like this:
 
   ```python
-      ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-      indices = tf.constant([[4], [3], [1] ,[7]])
-      updates = tf.constant([9, 10, 11, 12])
-      op = tf.scatter_nd_sub(ref, indices, updates)
-      with tf.Session() as sess:
-        print sess.run(op)
+  ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+  indices = tf.constant([[4], [3], [1] ,[7]])
+  updates = tf.constant([9, 10, 11, 12])
+  op = tf.scatter_nd_sub(ref, indices, updates)
+  with tf.Session() as sess:
+    print sess.run(op)
   ```
 
   The resulting update to ref would look like this:
@@ -594,6 +595,220 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
   return ref._lazy_read(gen_state_ops.resource_scatter_nd_sub(  # pylint: disable=protected-access
       ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
       name=name))
+
+
+@tf_export(v1=["scatter_mul"])
+def scatter_mul(ref, indices, updates, use_locking=False, name=None):
+  # pylint: disable=line-too-long
+  r"""Multiplies sparse updates into a variable reference.
+
+  This operation computes
+
+  ```python
+      # Scalar indices
+      ref[indices, ...] *= updates[...]
+
+      # Vector indices (for each i)
+      ref[indices[i], ...] *= updates[i, ...]
+
+      # High rank indices (for each i, ..., j)
+      ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
+  ```
+
+  This operation outputs `ref` after the update is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Duplicate entries are handled correctly: if multiple `indices` reference
+  the same location, their contributions multiply.
+
+  Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape =
+  []`.
+
+  Args:
+    ref: A mutable `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`,
+      `qint8`, `quint8`, `qint32`, `bfloat16`, `uint16`, `complex128`, `half`,
+      `uint32`, `uint64`. Should be from a `Variable` node.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`. A
+      tensor of indices into the first dimension of `ref`.
+    updates: A `Tensor`. Must have the same type as `ref`. A tensor of updated
+      values to multiply to `ref`.
+    use_locking: An optional `bool`. Defaults to `False`. If True, the operation
+      will be protected by a lock; otherwise the behavior is undefined, but may
+      exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    A mutable `Tensor`. Has the same type as `ref`.
+  """
+  return gen_state_ops.scatter_mul(
+      ref=ref,
+      indices=indices,
+      updates=updates,
+      use_locking=use_locking,
+      name=name)
+
+
+@tf_export(v1=["scatter_div"])
+def scatter_div(ref, indices, updates, use_locking=False, name=None):
+  # pylint: disable=line-too-long
+  r"""Divides a variable reference by sparse updates.
+
+  This operation computes
+
+  ```python
+      # Scalar indices
+      ref[indices, ...] /= updates[...]
+
+      # Vector indices (for each i)
+      ref[indices[i], ...] /= updates[i, ...]
+
+      # High rank indices (for each i, ..., j)
+      ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
+  ```
+
+  This operation outputs `ref` after the update is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Duplicate entries are handled correctly: if multiple `indices` reference
+  the same location, their contributions divide.
+
+  Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape =
+  []`.
+
+  Args:
+    ref: A mutable `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`,
+      `qint8`, `quint8`, `qint32`, `bfloat16`, `uint16`, `complex128`, `half`,
+      `uint32`, `uint64`. Should be from a `Variable` node.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`. A
+      tensor of indices into the first dimension of `ref`.
+    updates: A `Tensor`. Must have the same type as `ref`. A tensor of values
+      that `ref` is divided by.
+    use_locking: An optional `bool`. Defaults to `False`. If True, the operation
+      will be protected by a lock; otherwise the behavior is undefined, but may
+      exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    A mutable `Tensor`. Has the same type as `ref`.
+  """
+  return gen_state_ops.scatter_div(
+      ref=ref,
+      indices=indices,
+      updates=updates,
+      use_locking=use_locking,
+      name=name)
+
+
+@tf_export(v1=["scatter_max"])
+def scatter_max(ref, indices, updates, use_locking=False, name=None):
+  # pylint: disable=line-too-long
+  r"""Reduces sparse updates into a variable reference using the `max` operation.
+
+  This operation computes
+
+      # Scalar indices
+      ref[indices, ...] = max(ref[indices, ...], updates[...])
+
+      # Vector indices (for each i)
+      ref[indices[i], ...] = max(ref[indices[i], ...], updates[i, ...])
+
+      # High rank indices (for each i, ..., j)
+      ref[indices[i, ..., j], ...] = max(ref[indices[i, ..., j], ...],
+      updates[i, ..., j, ...])
+
+  This operation outputs `ref` after the update is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Duplicate entries are handled correctly: if multiple `indices` reference
+  the same location, their contributions combine.
+
+  Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape =
+  []`.
+
+  <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png"
+  alt>
+  </div>
+
+  Args:
+    ref: A mutable `Tensor`. Must be one of the following types: `half`,
+      `bfloat16`, `float32`, `float64`, `int32`, `int64`. Should be from a
+      `Variable` node.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`. A
+      tensor of indices into the first dimension of `ref`.
+    updates: A `Tensor`. Must have the same type as `ref`. A tensor of updated
+      values to reduce into `ref`.
+    use_locking: An optional `bool`. Defaults to `False`. If True, the update
+      will be protected by a lock; otherwise the behavior is undefined, but may
+      exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    A mutable `Tensor`. Has the same type as `ref`.
+  """
+  return gen_state_ops.scatter_max(
+      ref=ref,
+      indices=indices,
+      updates=updates,
+      use_locking=use_locking,
+      name=name)
+
+
+@tf_export(v1=["scatter_min"])
+def scatter_min(ref, indices, updates, use_locking=False, name=None):
+  # pylint: disable=line-too-long
+  r"""Reduces sparse updates into a variable reference using the `min` operation.
+
+  This operation computes
+
+      # Scalar indices
+      ref[indices, ...] = min(ref[indices, ...], updates[...])
+
+      # Vector indices (for each i)
+      ref[indices[i], ...] = min(ref[indices[i], ...], updates[i, ...])
+
+      # High rank indices (for each i, ..., j)
+      ref[indices[i, ..., j], ...] = min(ref[indices[i, ..., j], ...],
+      updates[i, ..., j, ...])
+
+  This operation outputs `ref` after the update is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Duplicate entries are handled correctly: if multiple `indices` reference
+  the same location, their contributions combine.
+
+  Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape =
+  []`.
+
+  <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png"
+  alt>
+  </div>
+
+  Args:
+    ref: A mutable `Tensor`. Must be one of the following types: `half`,
+      `bfloat16`, `float32`, `float64`, `int32`, `int64`. Should be from a
+      `Variable` node.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`. A
+      tensor of indices into the first dimension of `ref`.
+    updates: A `Tensor`. Must have the same type as `ref`. A tensor of updated
+      values to reduce into `ref`.
+    use_locking: An optional `bool`. Defaults to `False`. If True, the update
+      will be protected by a lock; otherwise the behavior is undefined, but may
+      exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    A mutable `Tensor`. Has the same type as `ref`.
+  """
+  return gen_state_ops.scatter_min(
+      ref=ref,
+      indices=indices,
+      updates=updates,
+      use_locking=use_locking,
+      name=name)
 
 
 @tf_export(v1=["batch_scatter_update"])

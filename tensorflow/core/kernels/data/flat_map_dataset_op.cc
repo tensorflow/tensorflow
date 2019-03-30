@@ -40,8 +40,9 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
     *output = new Dataset(ctx, input, func_, std::move(captured_func),
                           output_types_, output_shapes_);
   }
@@ -67,8 +68,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::FlatMap")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::FlatMap")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -85,20 +86,12 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;

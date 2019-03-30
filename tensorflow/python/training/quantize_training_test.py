@@ -53,7 +53,7 @@ class PywrapQuantizeTrainingTest(test.TestCase):
 
   # Test that save/restoring works for EMA variables generated in the
   # quantized training rewrite.
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testQuantizedSaveRestore(self):
     save_path = os.path.join(self.get_temp_dir(), 'quantized_save_restore')
 

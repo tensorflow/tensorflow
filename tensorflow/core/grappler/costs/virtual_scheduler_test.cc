@@ -30,8 +30,13 @@ namespace grappler {
 // Class for testing virtual scheduler.
 class TestVirtualScheduler : public VirtualScheduler {
  public:
-  TestVirtualScheduler(const bool use_static_shapes, Cluster* cluster)
-      : VirtualScheduler(use_static_shapes, cluster, &ready_node_manager_) {}
+  TestVirtualScheduler(const bool use_static_shapes,
+                       const bool use_aggressive_shape_inference,
+                       Cluster* cluster)
+      : VirtualScheduler(use_static_shapes, use_aggressive_shape_inference,
+                         cluster, &ready_node_manager_) {
+    enable_mem_usage_tracking();
+  }
 
   FRIEND_TEST(VirtualSchedulerTest, MemoryUsage);
   FRIEND_TEST(VirtualSchedulerTest, ControlDependency);
@@ -66,7 +71,8 @@ class VirtualSchedulerTest : public ::testing::Test {
     devices[kCPU1] = cpu_device;
     cluster_ = absl::make_unique<VirtualCluster>(devices);
     scheduler_ = absl::make_unique<TestVirtualScheduler>(
-        /* use_static_shapes = */ true, cluster_.get());
+        /*use_static_shapes=*/true,
+        /*use_aggressive_shape_inference=*/true, cluster_.get());
   }
 
   NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
@@ -867,6 +873,674 @@ versions {
     grappler_item_->fetch = {"while/Exit", "while/Exit_1"};
   }
 
+  // A simple while loop strengthened with Switch outputs xxx.
+  void CreateGrapplerItemWithLoopAnnotated() {
+    // Test graph produced in python using:
+    /*
+      with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      m0 = tf.ones([2, 2])
+      c = lambda i, m: i < 10
+      b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+      r = tf.while_loop(
+      c, b, loop_vars=[i0, m0],
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+      with open('/tmp/graph.pbtxt', 'w') as f:
+      f.write(str(tf.get_default_graph().as_graph_def()))
+    */
+    const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 2
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "while/Enter_1"
+  op: "Enter"
+  input: "ones"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge_1"
+  op: "Merge"
+  input: "while/Enter_1"
+  input: "while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 11
+    }
+  }
+  attr {
+    key: "_output_slot_vector"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/Switch_1"
+  op: "Switch"
+  input: "while/Merge_1"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge_1"
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 11
+    }
+  }
+  attr {
+    key: "_output_slot_vector"
+    value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Identity_1"
+  op: "Identity"
+  input: "while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/concat/axis"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/concat"
+  op: "ConcatV2"
+  input: "while/Identity_1"
+  input: "while/Identity_1"
+  input: "while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "while/Exit_1"
+  op: "Exit"
+  input: "while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_execution_count"
+    value {
+      i: 1
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+
+    grappler_item_.reset(new GrapplerItem);
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
+                                                &grappler_item_->graph));
+    grappler_item_->id = "test_graph";
+    grappler_item_->fetch = {"while/Exit", "while/Exit_1"};
+  }
+
+  // A simple condition graph.
+  void CreateGrapplerItemWithCondition() {
+    // Handcrafted test graph: a/Less -> Switch -> First/Second -> Merge.
+    const string gdef_ascii = R"EOF(
+node {
+  name: "a"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 2.0
+      }
+    }
+  }
+}
+node {
+  name: "Less"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_BOOL
+        tensor_shape {
+        }
+        tensor_content: "\001"
+      }
+    }
+  }
+}
+node {
+  name: "Switch"
+  op: "Switch"
+  input: "a"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "First"
+  op: "Identity"
+  input: "Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Second"
+  op: "Identity"
+  input: "Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Merge"
+  op: "Merge"
+  input: "First"
+  input: "Second"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+versions {
+  producer: 27
+})EOF";
+
+    grappler_item_.reset(new GrapplerItem);
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
+                                                &grappler_item_->graph));
+    grappler_item_->id = "test_graph";
+    grappler_item_->fetch = {"Merge"};
+  }
+
+  // Create a FusedBatchNorm op that has multiple output ports.
   void CreateGrapplerItemWithInterDeviceTransfers() {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
 
@@ -1922,7 +2596,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
   // order of Enter, Merge, ...loop condition ..., ... loop body ...,
   // NextIteration, Merge, ... loop condition ..., Exit), re-enable dependency
-  // chaing test w/ Merge nodes.
+  // chaining test w/ Merge nodes.
   ValidateDependencyChain(
       start_times,
       {"Const", "while/Enter",  // "while/Merge",
@@ -1938,6 +2612,157 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
       start_times, {"while/Identity", "while/concat/axis", "while/concat"});
   ValidateDependencyChain(start_times, {"while/Identity", "while/add"});
   ValidateDependencyChain(start_times, {"while/Switch_1", "while/Exit_1"});
+}
+
+TEST_F(VirtualSchedulerTest, AnnotatedWhileLoop) {
+  {
+    // Init.
+    CreateGrapplerItemWithLoop();
+    InitScheduler();
+
+    // Runs the scheduler.
+    RunScheduler("");
+    Costs c = scheduler_->Summary();
+
+    EXPECT_EQ(23, c.execution_time.asMicroSeconds().count());
+    // Both while/Merge and while/Merge_1 are scheduled twice.
+    EXPECT_EQ(grappler_item_->graph.node_size() + 2, c.num_ops_total);
+    EXPECT_FALSE(c.inaccurate);
+    EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
+  }
+
+  {
+    // Init.
+    CreateGrapplerItemWithLoopAnnotated();
+    InitScheduler();
+
+    // Runs the scheduler.
+    RunScheduler("");
+    Costs c = scheduler_->Summary();
+
+    // The costs for Merge is accumulated twice for execution_count times, but
+    // since Merge's cost is minimal, we keep this behavior here.
+    EXPECT_EQ(178, c.execution_time.asMicroSeconds().count());
+    // Both while/Merge and while/Merge_1 are scheduled twice.
+    EXPECT_EQ(grappler_item_->graph.node_size() + 2, c.num_ops_total);
+    EXPECT_FALSE(c.inaccurate);
+    EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
+  }
+}
+
+TEST_F(VirtualSchedulerTest, Condition) {
+  // Without annotation.
+  {
+    // Inits.
+    CreateGrapplerItemWithCondition();
+    InitScheduler();
+
+    // Runs the scheduler.
+    RunScheduler("");
+    RunMetadata metadata;
+    Costs c = scheduler_->Summary(&metadata);
+
+    // Nodes in topological order: a/Less, Switch, First/Second, Merge.
+    int num_a = 0;
+    int num_less = 0;
+    int num_switch = 0;
+    int num_first = 0;
+    int num_second = 0;
+    int num_merge = 0;
+
+    for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
+      for (const auto& stats : device_step_stats.node_stats()) {
+        if (stats.node_name() == "a") {
+          ++num_a;
+        } else if (stats.node_name() == "Less") {
+          ++num_less;
+        } else if (stats.node_name() == "Switch") {
+          ++num_switch;
+        } else if (stats.node_name() == "First") {
+          ++num_first;
+        } else if (stats.node_name() == "Second") {
+          ++num_second;
+        } else if (stats.node_name() == "Merge") {
+          ++num_merge;
+        }
+      }
+    }
+
+    EXPECT_EQ(1, num_a);
+    EXPECT_EQ(1, num_less);
+    EXPECT_EQ(1, num_switch);
+    EXPECT_EQ(1, num_first);
+    EXPECT_EQ(1, num_second);
+    EXPECT_EQ(2, num_merge);
+
+    EXPECT_EQ(7, c.execution_time.asMicroSeconds().count());
+    // Merge is executed twice.
+    EXPECT_EQ(grappler_item_->graph.node_size() + 1, c.num_ops_total);
+    EXPECT_FALSE(c.inaccurate);
+    EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
+  }
+
+  // With annotation.
+  {
+    // Inits.
+    CreateGrapplerItemWithCondition();
+
+    // Annotates the Switch node.
+    for (auto& node : *grappler_item_->graph.mutable_node()) {
+      if (node.name() == "Switch") {
+        AttrValue attr_output_info;
+        // Adds one output slot 0 so that Second shouldn't be executed.
+        (*attr_output_info.mutable_list()).add_i(0);
+        AddNodeAttr(kOutputSlots, attr_output_info, &node);
+      }
+    }
+
+    InitScheduler();
+
+    // Runs the scheduler.
+    RunScheduler("");
+    RunMetadata metadata;
+    Costs c = scheduler_->Summary(&metadata);
+
+    // Nodes in topological order: a/Less, Switch, Merge
+    int num_a = 0;
+    int num_less = 0;
+    int num_switch = 0;
+    int num_first = 0;
+    int num_second = 0;
+    int num_merge = 0;
+
+    for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
+      for (const auto& stats : device_step_stats.node_stats()) {
+        if (stats.node_name() == "a") {
+          ++num_a;
+        } else if (stats.node_name() == "Less") {
+          ++num_less;
+        } else if (stats.node_name() == "Switch") {
+          ++num_switch;
+        } else if (stats.node_name() == "First") {
+          ++num_first;
+        } else if (stats.node_name() == "Second") {
+          ++num_second;
+        } else if (stats.node_name() == "Merge") {
+          ++num_merge;
+        }
+      }
+    }
+
+    EXPECT_EQ(1, num_a);
+    EXPECT_EQ(1, num_less);
+    EXPECT_EQ(1, num_switch);
+    EXPECT_EQ(1, num_first);
+    EXPECT_EQ(0, num_second);
+    EXPECT_EQ(1, num_merge);
+
+    EXPECT_EQ(5, c.execution_time.asMicroSeconds().count());
+    // Second is not executed.
+    EXPECT_EQ(grappler_item_->graph.node_size() - 1, c.num_ops_total);
+    EXPECT_FALSE(c.inaccurate);
+    EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
+  }
 }
 
 TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {

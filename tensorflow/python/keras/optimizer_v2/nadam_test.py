@@ -40,45 +40,54 @@ def get_beta_accumulators(opt, dtype):
   return (beta_1_power, beta_2_power)
 
 
+def update_m_cache(m_cache, t, beta1=0.9):
+  mu_t = beta1 * (1 - 0.5 * 0.96**(0.004 * (t + 1)))
+  m_cache_t = m_cache * mu_t
+  return m_cache_t
+
+
 def nadam_update_numpy(param,
                        g_t,
                        t,
                        m,
                        v,
+                       m_cache,
                        alpha=0.001,
                        beta1=0.9,
                        beta2=0.999,
                        epsilon=1e-8):
-  alpha_t = alpha * np.sqrt(1 - beta2**(t + 1)) / (1 - beta1**(t + 1))
 
+  mu_t = beta1 * (1 - 0.5 * 0.96**(0.004 * (t + 1)))
+  mu_t_1 = beta1 * (1 - 0.5 * 0.96**(0.004 * (t + 2)))
+  m_cache_t_1 = m_cache * mu_t_1
+  g_prime_t = g_t / (1 - m_cache)
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = beta2 * v + (1 - beta2) * g_t * g_t
 
-  m_bar = (1 - beta1) * g_t + beta1 * m_t
+  m_prime_t = m_t / (1 - m_cache_t_1)
+  v_prime_t = v_t / (1 - beta2**(t + 1))
+  m_bar_t = (1 - mu_t) * g_prime_t + mu_t_1 * m_prime_t
 
-  param_t = param - alpha_t * m_bar / (np.sqrt(v_t) + epsilon)
+  param_t = param - alpha * m_bar_t / (np.sqrt(v_prime_t) + epsilon)
   return param_t, m_t, v_t
 
 
 class NadamOptimizerTest(test.TestCase):
 
-  def doTestSparse(self, use_resource=False):
+  @test_util.run_deprecated_v1
+  def testSparse(self):
     sparse_epsilon = 1e-7
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
         # Initialize variables for numpy implementation.
-        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        m0, v0, m1, v1, mcache = 0.0, 0.0, 0.0, 0.0, 1.0
         var0_np = np.array([1.0, 1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0, 0.1], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0, 0.01], dtype=dtype.as_numpy_dtype)
 
-        if use_resource:
-          var0 = resource_variable_ops.ResourceVariable(var0_np)
-          var1 = resource_variable_ops.ResourceVariable(var1_np)
-        else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
+        var0 = resource_variable_ops.ResourceVariable(var0_np)
+        var1 = resource_variable_ops.ResourceVariable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
         grads0 = ops.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
@@ -103,39 +112,29 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
           update.run()
 
+          mcache = update_m_cache(mcache, t)
           var0_np, m0, v0 = nadam_update_numpy(
-              var0_np, grads0_np, t, m0, v0, epsilon=sparse_epsilon)
+              var0_np, grads0_np, t, m0, v0, mcache, epsilon=sparse_epsilon)
           var1_np, m1, v1 = nadam_update_numpy(
-              var1_np, grads1_np, t, m1, v1, epsilon=sparse_epsilon)
+              var1_np, grads1_np, t, m1, v1, mcache, epsilon=sparse_epsilon)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   @test_util.run_deprecated_v1
-  def testSparse(self):
-    self.doTestSparse(use_resource=False)
-
-  @test_util.run_deprecated_v1
-  def testResourceSparse(self):
-    self.doTestSparse(use_resource=True)
-
-  def doTestBasic(self, use_resource=False):
+  def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
         # Initialize variables for numpy implementation.
-        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
+        m0, v0, m1, v1, mcache = 0.0, 0.0, 0.0, 0.0, 1.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        if use_resource:
-          var0 = resource_variable_ops.ResourceVariable(var0_np)
-          var1 = resource_variable_ops.ResourceVariable(var1_np)
-        else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
+        var0 = resource_variable_ops.ResourceVariable(var0_np)
+        var1 = resource_variable_ops.ResourceVariable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
         opt = nadam.Nadam()
@@ -146,67 +145,47 @@ class NadamOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
 
-        beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
-
         # Run 3 steps of Nadam
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
           update.run()
 
-          var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = nadam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          mcache = update_m_cache(mcache, t)
+          var0_np, m0, v0 = nadam_update_numpy(var0_np, grads0_np, t, m0, v0,
+                                               mcache)
+          var1_np, m1, v1 = nadam_update_numpy(var1_np, grads1_np, t, m1, v1,
+                                               mcache)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  @test_util.run_deprecated_v1
-  def testResourceBasic(self):
-    self.doTestBasic(use_resource=True)
+  def testConstructNAdamWithLR(self):
+    opt = nadam.Nadam(lr=1.0)
+    opt_2 = nadam.Nadam(learning_rate=0.1, lr=1.0)
+    opt_3 = nadam.Nadam(learning_rate=0.1)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
 
-  @test_util.run_deprecated_v1
-  def testBasicWithLearningRateDecay(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-        # Initialize variables for numpy implementation.
-        m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
-        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
-        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
-        grads0 = constant_op.constant(grads0_np)
-        grads1 = constant_op.constant(grads1_np)
-        learning_rate = 0.001
-        decay = 0.5
-        opt = nadam.Nadam(learning_rate=learning_rate, decay=decay)
-        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+  def testConstructNAdamWithScheduleDecay(self):
+    opt = nadam.Nadam(schedule_decay=0.2)
+    self.assertIsInstance(opt.decay, variables.Variable)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.decay), (0.2))
 
-        # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+  def testConstructNAdamWithEpsilonValues(self):
+    opt = nadam.Nadam(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
 
-        beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
-
-        # Run 3 steps of Nadam
-        for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
-          update.run()
-
-          lr = learning_rate / (1 + decay * t)
-          var0_np, m0, v0 = nadam_update_numpy(
-              var0_np, grads0_np, t, m0, v0, alpha=lr)
-          var1_np, m1, v1 = nadam_update_numpy(
-              var1_np, grads1_np, t, m1, v1, alpha=lr)
-
-          # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+    opt = nadam.Nadam(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
 
 
 if __name__ == "__main__":

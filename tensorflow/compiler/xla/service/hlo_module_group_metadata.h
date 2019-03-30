@@ -38,7 +38,7 @@ namespace xla {
 // Class for bookkeeping the information on the given modules, in particular on
 // the interaction between computations.
 //
-// Companion instructions are one of the information collected as we build the
+// Companion instructions are one piece of information collected as we build the
 // metadata. For example, for each While instruction, companion instructions
 // refer to a set of While instructions in other computations that communicate
 // with each other.
@@ -51,6 +51,13 @@ namespace xla {
 // }                          While_4() { Recv(0) }
 //                          }
 //
+// Each instruction can belong to at most one companion set: While_0 and While_5
+// are in the same set even though they don't communicate with each other,
+// because they both communicate with While_2.
+//
+// A send and the matching recv must both have the same level of nesting of
+// companion instructions.
+//
 // Companion instructions are used to detect cycles in the graph and also for
 // global scheduling.
 class HloModuleGroupMetadata {
@@ -60,8 +67,7 @@ class HloModuleGroupMetadata {
     kInvalid,
     kWhileCondition,
     kWhileBody,
-    kConditionalTrue,
-    kConditionalFalse,
+    kConditionalBranch,
     kCallFunction,
   };
 
@@ -73,12 +79,13 @@ class HloModuleGroupMetadata {
   class TrackedInstruction {
    public:
     TrackedInstruction() = default;
-    TrackedInstruction(HloInstruction* instruction, ComputationKind kind)
-        : instruction_(instruction), kind_(kind) {}
+    TrackedInstruction(HloInstruction* instruction, ComputationKind kind,
+                       int index = -1)
+        : instruction_(instruction), kind_(kind), index_(index) {}
 
     bool operator==(const TrackedInstruction& rhs) const {
       return instruction_->opcode() == rhs.instruction_->opcode() &&
-             kind_ == rhs.kind_;
+             kind_ == rhs.kind_ && index_ == rhs.index_;
     }
     bool operator!=(const TrackedInstruction& rhs) const {
       return !operator==(rhs);
@@ -91,6 +98,7 @@ class HloModuleGroupMetadata {
    private:
     HloInstruction* instruction_ = nullptr;
     ComputationKind kind_ = ComputationKind::kInvalid;
+    int index_ = -1;
   };
 
   // Represents a channel and the instructions that form the channel.
@@ -166,12 +174,13 @@ class HloModuleGroupMetadata {
   // Returns the number of modules for devices (excluding the host module).
   int64 GetDeviceModulesCount() const;
 
-  // Returns the companion instructions for the given instruction.
+  // Returns the companion set for the given instruction, including the
+  // instruction itself.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
   const std::vector<HloInstruction*>& Companions(
       const HloInstruction* instruction) const {
-    CHECK_EQ(companion_set_index_.count(instruction), 1);
+    CHECK(companion_set_index_.contains(instruction));
     return companion_set(companion_set_index_.at(instruction));
   }
 
@@ -215,11 +224,8 @@ class HloModuleGroupMetadata {
   // * Each channel has all 4 instructions (Send, Recv, SendDone, RecvDone).
   // * The shape of channel instructions match.
   // * The nest level of channel instructions match.
-  // * Channel instructions are used in allowed computations; i.e., in the
+  // * Channel instructions are used in allowed computations, i.e., in the
   //   entry computation of the module or condition/body of While computations.
-  //
-  // TODO(b/62064342): Currently, HloModuleGroupScheduler checks if there is a
-  // cycle in the graph, but it would be good to verify here.
   Status VerifyChannelInstructions();
 
   // Adds metadata that the given two instructions are companions.
@@ -231,8 +237,8 @@ class HloModuleGroupMetadata {
   Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
 
   // Performs a consistency check on the companion sets built for the input
-  // modules. Check that a companion set does not include instructions from the
-  // same module/device.
+  // modules. Checks that each instruction in a companion set is in a different
+  // module/device.
   Status VerifyCompanionSets() const;
 
   // Retrieves a pointer to the stored TrackedInstruction associated with a

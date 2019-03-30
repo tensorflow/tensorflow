@@ -17,172 +17,70 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import numpy as np
 
-from tensorflow.python.client import session
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
-from tensorflow.python.platform import test
 
 
 # TODO(b/119837791): Add eager benchmarks.
-class FromTensorSlicesBenchmark(test.Benchmark):
+class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.from_tensor_slices()`."""
 
-  def benchmarkSliceRepeatBatch(self):
+  def benchmark_slice_repeat_batch(self):
     input_size = 10000
     batch_size = 100
     num_epochs = 100
+    num_elements = input_size * num_epochs // batch_size
 
     input_data = np.random.randn(input_size)
 
     dataset = (
-        dataset_ops.Dataset.from_tensor_slices(input_data)
-        .repeat(num_epochs + 1).batch(batch_size))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
+        dataset_ops.Dataset.from_tensor_slices(input_data).repeat(
+            num_epochs).batch(batch_size))
 
-    with session.Session() as sess:
-      sess.run(iterator.initializer)
-      # Run one whole epoch to burn in the computation.
-      for _ in range(input_size // batch_size):
-        sess.run(next_element)
-      deltas = []
-      try:
-        while True:
-          start = time.time()
-          sess.run(next_element)
-          deltas.append(time.time() - start)
-      except errors.OutOfRangeError:
-        pass
-
-    median_wall_time = np.median(deltas)
-    print("Slice/repeat/batch with sess.run() input size: %d batch size: %d "
-          "Median wall time per element: %f" % (input_size, batch_size,
-                                                median_wall_time))
-    self.report_benchmark(
-        iters=len(deltas),
-        wall_time=median_wall_time,
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=num_elements,
         name="slice_repeat_batch_input_%d_batch_%d" % (input_size, batch_size))
 
-  def benchmarkSliceRepeatBatchCallable(self):
+  def benchmark_reshape_slice_repeat(self):
     input_size = 10000
-    batch_size = 100
+    reshape_dim = [100, 100]
     num_epochs = 100
+
+    num_elements = num_epochs * reshape_dim[0]
 
     input_data = np.random.randn(input_size)
 
     dataset = (
-        dataset_ops.Dataset.from_tensor_slices(input_data)
-        .repeat(num_epochs + 1).batch(batch_size))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
+        dataset_ops.Dataset.from_tensor_slices(
+            input_data.reshape(*reshape_dim)).repeat(num_epochs))
 
-    with session.Session() as sess:
-      sess.run(iterator.initializer)
-      get_next_element = sess.make_callable(next_element)
-      # Run one whole epoch to burn in the computation.
-      for _ in range(input_size // batch_size):
-        get_next_element()
-      deltas = []
-      try:
-        while True:
-          start = time.time()
-          get_next_element()
-          deltas.append(time.time() - start)
-      except errors.OutOfRangeError:
-        pass
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=num_elements,
+        name="reshape_slice_repeat_input_%d" % input_size,
+    )
 
-    median_wall_time = np.median(deltas)
-    print(
-        "Slice/repeat/batch with callable input size: %d batch size: %d Median"
-        " wall time per element: %f" % (input_size, batch_size,
-                                        median_wall_time))
-    self.report_benchmark(
-        iters=len(deltas),
-        wall_time=median_wall_time,
-        name="slice_repeat_batch_callable_input_%d_batch_%d" %
-        (input_size, batch_size))
-
-  def benchmarkReshapeSliceRepeatCallable(self):
+  def benchmark_slice_batch_cache_repeat(self):
     input_size = 10000
     batch_size = 100
     num_epochs = 100
+    num_elements = input_size * num_epochs // batch_size
 
     input_data = np.random.randn(input_size)
 
     dataset = (
-        dataset_ops.Dataset.from_tensor_slices(input_data.reshape(100, 100))
-        .repeat(num_epochs + 1))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
+        dataset_ops.Dataset.from_tensor_slices(input_data).batch(
+            batch_size).cache().repeat(num_epochs))
 
-    with session.Session() as sess:
-      sess.run(iterator.initializer)
-      get_next_element = sess.make_callable(next_element)
-      # Run one whole epoch to burn in the computation.
-      for _ in range(input_size // batch_size):
-        get_next_element()
-      deltas = []
-      try:
-        while True:
-          start = time.time()
-          get_next_element()
-          deltas.append(time.time() - start)
-      except errors.OutOfRangeError:
-        pass
-
-    median_wall_time = np.median(deltas)
-    print("Reshape/slice/repeat with callable input size: %d batch size: %d "
-          "Median wall time per element: %f" % (input_size, batch_size,
-                                                median_wall_time))
-    self.report_benchmark(
-        iters=len(deltas),
-        wall_time=median_wall_time,
-        name="reshape_slice_repeat_callable_input_%d_batch_%d" %
-        (input_size, batch_size))
-
-  def benchmarkSliceBatchCacheRepeatCallable(self):
-    input_size = 10000
-    batch_size = 100
-    num_epochs = 100
-
-    input_data = np.random.randn(input_size)
-
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(input_data).batch(batch_size)
-        .cache().repeat(num_epochs + 1))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
-
-    with session.Session() as sess:
-      sess.run(iterator.initializer)
-      get_next_element = sess.make_callable(next_element)
-      # Run one whole epoch to burn in the computation.
-      for _ in range(input_size // batch_size):
-        get_next_element()
-      deltas = []
-      try:
-        while True:
-          start = time.time()
-          get_next_element()
-          deltas.append(time.time() - start)
-      except errors.OutOfRangeError:
-        pass
-
-    median_wall_time = np.median(deltas)
-    print(
-        "Slice/batch/cache/repeat with callable input size: %d batch size: %d "
-        "Median wall time per element: %f"
-        % (input_size, batch_size, median_wall_time))
-    self.report_benchmark(
-        iters=len(deltas),
-        wall_time=median_wall_time,
-        name="slice_batch_cache_repeat_callable_input_%d_batch_%d" %
-        (input_size, batch_size))
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=num_elements,
+        name="slice_batch_cache_repeat_input_%d_batch_%d" % (input_size,
+                                                             batch_size))
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

@@ -44,6 +44,7 @@ BenchmarkParams CreateParams() {
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   return params;
 }
@@ -54,7 +55,10 @@ class TestBenchmark : public BenchmarkTfLiteModel {
       : BenchmarkTfLiteModel(std::move(params)) {}
   const tflite::Interpreter* GetInterpreter() { return interpreter.get(); }
 
-  void Prepare() { PrepareInputsAndOutputs(); }
+  void Prepare() {
+    PrepareInputData();
+    ResetInputsAndOutputs();
+  }
 };
 
 TEST(BenchmarkTest, DoesntCrash) {
@@ -76,10 +80,10 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   ASSERT_GE(inputs.size(), 1);
   auto input_tensor = interpreter->tensor(inputs[0]);
 
-  std::vector<uint8_t> input_bytes;
+  std::vector<char> input_bytes;
   input_bytes.reserve(input_tensor->bytes);
   for (size_t i = 0; i < input_tensor->bytes; i++) {
-    input_bytes.push_back(input_tensor->data.b[i]);
+    input_bytes.push_back(input_tensor->data.raw_const[i]);
   }
   benchmark.Prepare();
 
@@ -87,7 +91,7 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
   bool is_same = true;
   for (size_t i = 0; i < input_tensor->bytes; i++) {
-    if (input_bytes[i] != input_tensor->data.b[i]) {
+    if (input_bytes[i] != input_tensor->data.raw_const[i]) {
       is_same = false;
       break;
     }

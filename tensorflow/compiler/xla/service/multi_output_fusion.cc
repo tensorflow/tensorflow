@@ -198,7 +198,7 @@ void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
     if (instr == fusion || is_fused(instr) || is_connected(fusion, instr)) {
       continue;
     }
-    if (in_list.count(instr) > 0) {
+    if (in_list.contains(instr)) {
       continue;
     }
     int64 profit = GetProfit(instr, fusion);

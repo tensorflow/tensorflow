@@ -32,12 +32,12 @@ class SquareRootOpTest(test.TestCase):
 
   def _verifySquareRoot(self, matrix, np_type):
     matrix = matrix.astype(np_type)
-    with test_util.use_gpu():
-      # Verify that matmul(sqrtm(A), sqrtm(A)) = A
-      sqrt = gen_linalg_ops.matrix_square_root(matrix)
-      square = math_ops.matmul(sqrt, sqrt)
-      self.assertShapeEqual(matrix, square)
-      self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
+
+    # Verify that matmul(sqrtm(A), sqrtm(A)) = A
+    sqrt = gen_linalg_ops.matrix_square_root(matrix)
+    square = math_ops.matmul(sqrt, sqrt)
+    self.assertShapeEqual(matrix, square)
+    self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
 
   def _verifySquareRootReal(self, x):
     for np_type in [np.float32, np.float64]:
@@ -90,17 +90,20 @@ class SquareRootOpTest(test.TestCase):
     self._verifySquareRootReal(np.empty([0, 2, 2]))
     self._verifySquareRootReal(np.empty([2, 0, 0]))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to the square root should be at least a 2-dimensional tensor.
     tensor = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       gen_linalg_ops.matrix_square_root(tensor)
 
+  @test_util.run_v1_only("b/120545219")
   def testNotSquare(self):
     with self.assertRaises(ValueError):
       tensor = constant_op.constant([[1., 0., -1.], [-1., 1., 0.]])
       self.evaluate(gen_linalg_ops.matrix_square_root(tensor))
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
     with test_util.use_gpu():
       matrix1 = random_ops.random_normal([5, 5], seed=42)
@@ -111,7 +114,7 @@ class SquareRootOpTest(test.TestCase):
       sqrt2 = gen_linalg_ops.matrix_square_root(square2)
       all_ops = [sqrt1, sqrt2]
       sqrt = self.evaluate(all_ops)
-      self.assertAllEqual(sqrt[0], sqrt[1])
+      self.assertAllClose(sqrt[0], sqrt[1])
 
 
 if __name__ == "__main__":

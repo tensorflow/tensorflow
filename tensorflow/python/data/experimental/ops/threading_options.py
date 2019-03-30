@@ -26,11 +26,12 @@ from tensorflow.python.util.tf_export import tf_export
 class ThreadingOptions(options.OptionsBase):
   """Represents options for dataset threading.
 
-  To apply `ThreadingOptions` to a `dataset` object, use the following pattern:
+  You can set the threading options of a dataset through the
+  `experimental_threading` property of `tf.data.Options`; the property is
+  an instance of `tf.data.experimental.ThreadingOptions`.
 
   ```python
   options = tf.data.Options()
-  options.experimental_threading = tf.data.experimental.ThreadingOptions()
   options.experimental_threading.private_threadpool_size = 10
   dataset = dataset.with_options(options)
   ```
@@ -46,5 +47,4 @@ class ThreadingOptions(options.OptionsBase):
       name="private_threadpool_size",
       ty=int,
       docstring=
-      "If set, the dataset will use a private threadpool of the given size.",
-      default=None)
+      "If set, the dataset will use a private threadpool of the given size.")

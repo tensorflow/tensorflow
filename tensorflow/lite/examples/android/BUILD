@@ -34,13 +34,13 @@ android_binary(
     # to reduce APK size.
     assets = [
         "//tensorflow/lite/examples/android/app/src/main/assets:labels_mobilenet_quant_v1_224.txt",
-        "@tflite_mobilenet//:mobilenet_quant_v1_224.tflite",
+        "@tflite_mobilenet_quant//:mobilenet_v1_1.0_224_quant.tflite",
         "@tflite_conv_actions_frozen//:conv_actions_frozen.tflite",
         "//tensorflow/lite/examples/android/app/src/main/assets:conv_actions_labels.txt",
         "@tflite_mobilenet_ssd//:mobilenet_ssd.tflite",
         "@tflite_mobilenet_ssd_quant//:detect.tflite",
         "//tensorflow/lite/examples/android/app/src/main/assets:box_priors.txt",
-        "//tensorflow/lite/examples/android/app/src/main/assets:coco_labels_list.txt",
+        "//tensorflow/lite/examples/android/app/src/main/assets:labelmap.txt",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.lite.demo",

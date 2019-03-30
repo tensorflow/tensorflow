@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #define EIGEN_USE_THREADS
 
 #include <limits>
@@ -499,7 +500,7 @@ void TestAvoidBias() {
   const float step_size = (max - min) / 255.0f;
   const float tolerance = step_size / 1000.0f;
   // This is the smallest perfectly representable float in the range.
-  float first_float = ceil(min / step_size) * step_size;
+  float first_float = std::ceil(min / step_size) * step_size;
   for (float f = first_float; f <= max; f += step_size) {
     const int as_int = FloatToQuantized<quint8>(f, min, max);
     const float back_to_float = QuantizedToFloat<quint8>(as_int, min, max);

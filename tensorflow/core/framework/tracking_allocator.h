@@ -66,7 +66,7 @@ class TrackingAllocator : public Allocator {
   size_t RequestedSize(const void* ptr) override;
   size_t AllocatedSize(const void* ptr) override;
   int64 AllocationId(const void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  absl::optional<AllocatorStats> GetStats() override;
   void ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns

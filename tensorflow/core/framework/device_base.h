@@ -82,6 +82,13 @@ class DeviceContext : public core::RefCounted {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 
+  // Copies a tensor in this device.
+  virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
+                                      Device* device, Tensor* output_tensor,
+                                      StatusCallback done) const {
+    done(errors::Unimplemented("Copy in same device not implemented."));
+  }
+
   // "device_tensor" is a tensor on a non-CPU device.  Copies
   // device_tensor into "cpu_tensor".  "cpu_tensor" must be allocated
   // to be of the same size as "device_tensor".
@@ -238,6 +245,15 @@ class DeviceBase {
                                      Tensor* tensor) {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
+
+  // Some devices (i.e. GPUs) may free device memory prior to its actual use
+  // being completed on the assumption that subsequent allocations can only be
+  // used serially with respect to pending uses.  If this function returns a
+  // non-zero value it is the value of a device-specific counter such that any
+  // device memory tagged with an earlier freed-at count is really unencumbered
+  // by pending uses.  For this to be useful the device memory allocator must
+  // be tagging deallocated memory chunks using the same counter.
+  virtual uint64 SafeAllocFrontier() { return 0; }
 
  protected:
   // Does not take ownership.

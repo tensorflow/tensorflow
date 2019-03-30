@@ -537,8 +537,9 @@ py_library(
 
 py_test(
     name = "random_forest_test",
-    size = "large",
+    size = "medium",
     srcs = ["client/random_forest_test.py"],
+    shard_count = 6,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",

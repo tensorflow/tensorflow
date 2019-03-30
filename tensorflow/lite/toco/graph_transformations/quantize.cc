@@ -64,8 +64,13 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kRelu1 || type == OperatorType::kRelu6 ||
          type == OperatorType::kShape || type == OperatorType::kExpandDims ||
          type == OperatorType::kPack || type == OperatorType::kTopK_V2 ||
+         type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
-         type == OperatorType::kPRelu;
+         type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
+         type == OperatorType::kReduceMin ||
+         type == OperatorType::kTransposeConv ||
+         type == OperatorType::kMatrixSetDiag ||
+         type == OperatorType::kMatrixDiag;
 }
 
 // The quantized op allows output arrays of type float using
@@ -104,7 +109,7 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     // We always want [min, max] to contain 0.
     float min = 0.f;
     float max = 0.f;
-    for (auto val : data) {
+    for (const auto& val : data) {
       min = std::min(min, val);
       max = std::max(max, val);
     }
@@ -119,7 +124,7 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     // weights arrays for which fake-quantization would make sense, rather
     // they tend to be hardcoded arrays of zeros or ones used in some graphs.
     bool is_quantization_trivially_exact = true;
-    for (auto val : data) {
+    for (const auto& val : data) {
       is_quantization_trivially_exact &= (val == min || val == max);
     }
     if (!is_quantization_trivially_exact) {
@@ -487,20 +492,20 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
     }
   }
   if (!SupportsQuantization(op)) {
-    LOG(FATAL) << "Unimplemented: this graph contains an operator of type "
-               << HelpfulOperatorTypeName(op)
-               << " for which the quantized form is not yet implemented. "
-                  "Sorry, and patches welcome (that's a relatively fun patch "
-                  "to write, mostly providing the actual quantized arithmetic "
-                  "code for this op).";
+    return tensorflow::errors::InvalidArgument(
+        "Unimplemented: this graph contains an operator of type ",
+        HelpfulOperatorTypeName(op),
+        " for which the quantized form is not yet implemented. Sorry, and "
+        "patches welcome (that's a relatively fun patch to write, mostly "
+        "providing the actual quantized arithmetic code for this op).");
   }
 
   for (const auto& input : op.inputs) {
     const auto& array = model->GetArray(input);
     if (array.data_type == ArrayDataType::kFloat) {
       if (!array.minmax && !array.buffer) {
-        LOG(ERROR) << "Can't quantize input array " << input
-                   << " because it lacks min/max info";
+        LOG(WARNING) << "Can't quantize input array " << input
+                     << " because it lacks min/max info";
         return ::tensorflow::Status::OK();
       }
       const auto* other_op = GetOpWithOutput(*model, input);

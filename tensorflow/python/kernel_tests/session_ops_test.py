@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import session_ops
@@ -30,6 +31,7 @@ from tensorflow.python.platform import test
 
 class SessionOpsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testHandleBasic(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -44,6 +46,7 @@ class SessionOpsTest(test.TestCase):
       y = math_ops.multiply(x, 10)
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
+  @test_util.run_deprecated_v1
   def testHandleEval(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -56,6 +59,7 @@ class SessionOpsTest(test.TestCase):
       # Get the tensor from its handle.
       self.assertEqual(50, h.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleAndValue(self):
     with self.cached_session() as sess:
       # Return a handle and a value.
@@ -69,6 +73,7 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(50, h.eval())
       self.assertEqual(500, v)
 
+  @test_util.run_deprecated_v1
   def testHandleCond(self):
     with self.cached_session() as sess:
       # Return a handle and a value
@@ -89,6 +94,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertEqual(5000, result)
 
+  @test_util.run_deprecated_v1
   def testHandleForLoop(self):
     with self.cached_session() as sess:
       # Initialize a handle.
@@ -106,6 +112,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertEqual(100, h.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleWhileLoop(self):
     with self.cached_session() as sess:
       # Initialize a handle.
@@ -126,6 +133,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertEqual(101, h.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleMover(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -147,6 +155,7 @@ class SessionOpsTest(test.TestCase):
         h = self.evaluate(h)
         self.assertEqual(100, sess.run(y, feed_dict={f: h.handle}))
 
+  @test_util.run_deprecated_v1
   def testHandleDelete(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -156,6 +165,7 @@ class SessionOpsTest(test.TestCase):
       h = session_ops.get_session_handle(c)
       self.evaluate(h).delete()
 
+  @test_util.run_deprecated_v1
   def testHandleDeleteRaw(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -170,6 +180,7 @@ class SessionOpsTest(test.TestCase):
       f, x = session_ops.delete_session_tensor(raw_h)
       sess.run(x, feed_dict={f: raw_h})
 
+  @test_util.run_deprecated_v1
   def testMultiDevices(self):
     with self.cached_session() as sess:
       with ops.device(test.gpu_device_name()):
@@ -188,6 +199,7 @@ class SessionOpsTest(test.TestCase):
                      b_p: b_handle.handle})
       self.assertEqual(3.0, c_handle.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleGC(self):
     with self.cached_session() as sess:
       # initial values live on CPU
@@ -212,6 +224,7 @@ class SessionOpsTest(test.TestCase):
             feed_dict={add_h1: one_handle.handle,
                        add_h2: x_handle.handle})
 
+  @test_util.run_deprecated_v1
   def testHandlePlacement(self):
     with self.cached_session() as sess:
       a = constant_op.constant(1.0)
@@ -232,6 +245,7 @@ class SessionOpsTest(test.TestCase):
                      b_p: b_handle.handle})
       self.assertEqual(3.0, c_handle.eval())
 
+  @test_util.run_deprecated_v1
   def testFeedOneHandleDirectly(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -243,6 +257,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertAllClose(2500.0, sess.run(d, feed_dict={c: h_c}))
 
+  @test_util.run_deprecated_v1
   def testDirectHandleFeedOverlappingWithFetches(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -269,6 +284,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(50.0, c_val)
       self.assertAllClose(50.0, d_val)
 
+  @test_util.run_deprecated_v1
   def testFeedTwoHandlesDirectly(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -283,6 +299,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(48.0, sess.run(e, feed_dict={c: h_c, d: h_d}))
       self.assertAllClose(-48.0, sess.run(e, feed_dict={c: h_d, d: h_c}))
 
+  @test_util.run_deprecated_v1
   def testFeedHandleToVariableDirectly(self):
     with self.cached_session() as sess:
       a = variables.Variable(12.0)

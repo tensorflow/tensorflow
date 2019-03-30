@@ -51,7 +51,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
         self.assertEqual(
             tuple([c.shape[1:] for c in components]),
-            shuffle_dataset.output_shapes)
+            dataset_ops.get_legacy_output_shapes(shuffle_dataset))
         return shuffle_dataset
       else:
         return repeat_dataset

@@ -8,9 +8,9 @@ for both training and inference. There are two aspects to this:
 
 For efficient inference, TensorFlow combines batch normalization with the preceding
 convolutional and fully-connected layers prior to quantization by
-[folding batch norm layers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/python/fold_batch_norms.py){:.external}. 
+[folding batch norm layers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/python/fold_batch_norms.py){:.external}.
 
-The quantization error is modeled using [fake quantization](../api_guides/python/array_ops.md#Fake_quantization)
+The quantization error is modeled using [fake quantization](../../api_guides/python/array_ops.md#Fake_quantization)
 nodes to simulate the effect of quantization in the forward and backward passes. The
 forward-pass models quantization, while the backward-pass models quantization as a
 straight-through estimator. Both the forward- and backward-pass simulate the quantization
@@ -105,12 +105,12 @@ toco \
   --std_value=127.5 --mean_value=127.5
 ```
 
-See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../lite/).
+See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../../lite/).
 
 
 ## Quantized accuracy results
 
-The following are results of trainiing some popular CNN models (Mobilenet-v1,
+The following are results of training some popular CNN models (Mobilenet-v1,
 Mobilenet-v2, and Inception-v3) using this tool:
 
 <figure>

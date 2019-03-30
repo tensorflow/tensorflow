@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -135,6 +136,7 @@ class BatchMatmulOpTest(test.TestCase):
 
 def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     np.random.seed(42)
     self._testNonEmpty(dtype, adjoint_a, adjoint_b, use_static_shape)
@@ -184,6 +186,7 @@ class BatchMatmulGradientTest(test.TestCase):
 
 def _GetBatchMatmulGradientTest(dtype, adjoint_a, adjoint_b):
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     self._compare(1, 2, 3, 5, dtype, adjoint_a, adjoint_b)
     self._compare(3, 4, 7, 10, dtype, adjoint_a, adjoint_b)
@@ -198,6 +201,7 @@ if __name__ == "__main__":
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:
         name = "%s_%s_%s" % (dtype_.__name__, adjoint_a_, adjoint_b_)
+        # TF2 does not support placeholders under eager so we skip it
         for use_static_shape_ in set([True, tf2.enabled()]):
           setattr(BatchMatmulOpTest,
                   "testBatchMatmulOp_" + name + ("_%s" % use_static_shape_),

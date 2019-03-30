@@ -1,6 +1,6 @@
 path: "tensorflow.AggregationMethod"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.gradients_impl.AggregationMethod\'>"
+  is_instance: "<class \'tensorflow.python.ops.gradients_util.AggregationMethod\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "ADD_N"

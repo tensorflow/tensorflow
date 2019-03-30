@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -40,7 +40,7 @@ namespace {
 
 // Return whether the given shape is rank 2 excluding the batch dimensions.
 bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
-  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2;
+  return shape.rank() == batch_dimensions_size + 2;
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
@@ -54,7 +54,8 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   PrimitiveType output_primitive_type = output_shape.element_type();
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64);
+       output_primitive_type == F64 || output_primitive_type == C64 ||
+       output_primitive_type == C128);
   return type_is_allowed && IsRank2(lhs_shape, batch_dimensions_size) &&
          IsRank2(rhs_shape, batch_dimensions_size) &&
          IsRank2(output_shape, batch_dimensions_size) &&
@@ -89,8 +90,7 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
     return DotImplementedAsGemm(hlo);
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
+  if (hlo.IsOutputFusion() &&
       (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
        hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
@@ -142,6 +142,16 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
          target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
+const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
+
+bool IsCustomCallToCusolver(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCusolverCholeskyCallTarget;
+}
+
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
   return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);
@@ -154,20 +164,12 @@ bool IsReductionToVector(const HloInstruction& reduce) {
   const HloInstruction* input = reduce.operand(0);
   std::vector<int64> dims_to_keep;
   for (int64 dim = 0; dim < input->shape().dimensions().size(); ++dim) {
-    if (!std::count(reduce.dimensions().begin(), reduce.dimensions().end(),
-                    dim)) {
+    if (!absl::c_linear_search(reduce.dimensions(), dim)) {
       dims_to_keep.push_back(dim);
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                              dims_to_keep) &&
-         ShapeUtil::Equal(reduce.shape(), ShapeUtil::FilterDimensions(
-                                              [&dims_to_keep](int64 dim) {
-                                                return std::count(
-                                                    dims_to_keep.begin(),
-                                                    dims_to_keep.end(), dim);
-                                              },
-                                              input->shape()));
+                                              dims_to_keep);
 }
 
 // This emits a device-side call to
@@ -206,8 +208,8 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    return llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::nvvm_shfl_sync_down_f32,
+    return EmitCallToTargetIntrinsic(
+        TargetIntrinsicID::kShflDownF32,
         {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
         builder);
   }
@@ -223,8 +225,8 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        llvm_ir::EmitCallToIntrinsic(
-            llvm::Intrinsic::nvvm_shfl_sync_down_i32,
+        EmitCallToTargetIntrinsic(
+            TargetIntrinsicID::kShflDownI32,
             {all_warps_mask, builder->CreateExtractElement(x, i), offset,
              builder->getInt32(kWarpSize - 1)},
             {}, builder),
@@ -272,12 +274,10 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(
       b->CreateICmpEQ(
           b->getInt32(0),
-          llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b)),
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
 }
 
 }  // namespace gpu

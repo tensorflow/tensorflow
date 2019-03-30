@@ -93,7 +93,7 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
 
   op_missing_shape = 0
   logged_ops = {}
-  string_to_id = dict()
+  string_to_id = {}
   string_to_id['none'] = len(string_to_id)
   # TODO(xpan): Work with Profiler more efficiently.
   for op in graph.get_operations():
@@ -169,7 +169,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   if not op_log:
     tmp_op_log.log_entries.extend(logged_ops.values())
   else:
-    all_ops = dict()
+    all_ops = {}
     for entry in op_log.log_entries:
       all_ops[entry.name] = entry
     for op_name, entry in six.iteritems(logged_ops):

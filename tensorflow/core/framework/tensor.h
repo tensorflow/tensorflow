@@ -45,6 +45,7 @@ class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
+class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
@@ -525,7 +526,16 @@ class Tensor {
   string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
-  string DebugString() const;
+  // `num_values` is the number of actual data values in the tensor
+  // included in the message. If the tensor might be resident in
+  // GPU/TPU memory use DeviceSafeDebugString instead.
+  string DebugString(int num_values) const;
+  string DebugString() const { return DebugString(3); }
+
+  // Variant of DebugString() that should be used for possibly non-CPU tensors.
+  // If the tensor is not resident on CPU, we can't read its values as
+  // DebugString() does.
+  string DeviceSafeDebugString() const;
 
   /// Fill in the `TensorDescription` proto with metadata about the
   /// tensor that is useful for monitoring and debugging.
@@ -544,12 +554,37 @@ class Tensor {
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
 
-  /// Copy the other tensor into this tensor and reshape it and reinterpret the
-  /// buffer's datatype.
+  /// Copy the other tensor into this tensor, reshape it and reinterpret the
+  /// buffer's datatype. If Status::OK() is returned, the two tensors now share
+  /// the same underlying storage.
   ///
-  /// This tensor shares other's underlying storage.
-  void UnsafeCopyFromInternal(const Tensor&, DataType dtype,
-                              const TensorShape&);
+  /// This call requires that the `other` tensor and the given type and shape
+  /// are "compatible" (i.e. they occupy the same number of bytes).
+  ///
+  /// Specifically:
+  ///
+  /// shape.num_elements() * DataTypeSize(type)
+  ///
+  /// must equal
+  ///
+  /// other.num_elements() * DataTypeSize(other.dtype())
+  ///
+  /// In addition, this function requires:
+  ///   * DataTypeSize(other.dtype()) != 0
+  ///   * DataTypeSize(type) != 0
+  ///
+  /// If any of the requirements are not met, errors::InvalidArgument is
+  /// returned.
+  Status BitcastFrom(const Tensor& other, DataType dtype,
+                     const TensorShape& shape);
+
+  /// Like BitcastFrom, but CHECK fails if any preconditions are not met.
+  ///
+  /// Deprecated. Use BitcastFrom instead and check the returned Status.
+  void UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
+                              const TensorShape& shape) {
+    TF_CHECK_OK(BitcastFrom(other, dtype, shape));
+  }
 
  private:
   // Returns true if the refcount on buf_ and any possible underlying root
@@ -581,14 +616,19 @@ class Tensor {
   friend class XlaTensor;             // For access to RefCountIsOne().
   friend class XlaTensorBuffer;  // For access to the private constructor taking
                                  // the buffer
+  friend class Var;
   template <typename Device, typename T>
   friend class AssignVariableOp;  // For access to RefCountIsOne().
   template <typename Device, typename T>
   friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
+      OpKernelContext* ctx, Tensor* tensor,
+      bool copy_on_read_mode);  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status EnsureSparseVariableAccess(
+      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);                // For access to RefCountIsOne().
+      int64 index);  // For access to RefCountIsOne().
   friend Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
       int64 index);  // For access to RefCountIsOne().

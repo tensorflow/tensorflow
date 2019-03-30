@@ -185,7 +185,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
     self.assertEqual(["file:///tmp/tfdbg_1", "file:///tmp/tfdbg_2"],
                      watch_0.debug_urls)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_allNodes(self):
     debug_utils.watch_graph(
         self._run_options,
@@ -217,7 +217,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
     self.assertTrue("p1" in node_names)
     self.assertTrue("s" in node_names)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_nodeNameWhitelist(self):
     debug_utils.watch_graph(
         self._run_options,
@@ -232,7 +232,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         sorted(["a1_init", "a1", "a1/Assign", "a1/read", "p1"]),
         sorted(node_names))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_opTypeWhitelist(self):
     debug_utils.watch_graph(
         self._run_options,
@@ -258,7 +258,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(["p1"], node_names)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_tensorDTypeWhitelist(self):
     debug_utils.watch_graph(
         self._run_options,
@@ -271,7 +271,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertItemsEqual(["a1", "a1/Assign", "b", "b/Assign"], node_names)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_nodeNameAndTensorDTypeWhitelists(self):
     debug_utils.watch_graph(
         self._run_options,
@@ -285,7 +285,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertItemsEqual(["a1", "a1/Assign"], node_names)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_nodeNameBlacklist(self):
     debug_utils.watch_graph_with_blacklists(
         self._run_options,
@@ -300,7 +300,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         sorted(["b_init", "b", "b/Assign", "b/read", "c", "s"]),
         sorted(node_names))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_opTypeBlacklist(self):
     debug_utils.watch_graph_with_blacklists(
         self._run_options,
@@ -313,7 +313,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(sorted(["p1", "s"]), sorted(node_names))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_nodeNameAndOpTypeBlacklists(self):
     debug_utils.watch_graph_with_blacklists(
         self._run_options,
@@ -327,7 +327,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(["s"], node_names)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_tensorDTypeBlacklists(self):
     debug_utils.watch_graph_with_blacklists(
         self._run_options,
@@ -344,7 +344,7 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
     self.assertNotIn("b/Assign", node_names)
     self.assertIn("s", node_names)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWatchGraph_nodeNameAndTensorDTypeBlacklists(self):
     debug_utils.watch_graph_with_blacklists(
         self._run_options,

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
+#include <functional>
 #include <queue>
 #include <random>
 #include <set>
@@ -113,7 +114,7 @@ Status ReplaceArgUsageWithConstNode(
   // Collect all _Arg nodes.
   std::unordered_map<int, Node*> arg_nodes;
   for (Node* n : g->op_nodes()) {
-    if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       arg_nodes[index] = n;
@@ -122,7 +123,12 @@ Status ReplaceArgUsageWithConstNode(
 
   for (const auto& iter : const_input_index_to_node) {
     int arg_index = iter.first;
-    Node* const_node = g->CopyNode(iter.second);
+    NodeDef const_def = iter.second->def();
+    const_def.set_name(g->NewName(const_def.name()));
+    Status s;
+    Node* const_node = g->AddNode(const_def, &s);
+    TF_RETURN_IF_ERROR(s);
+
     Node* arg_node = arg_nodes[arg_index];
 
     // Collect all usages of the _Arg node.
@@ -178,14 +184,9 @@ Status PropagateConstIntoFuncAttr(
     return errors::Internal("Cannot find function ", func_attr.name(),
                             " for node ", n->name());
   }
-  FunctionBody* fbody;
+  std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fdef, AttrSlice(&func_attr.attr()), lookup_fld,
-      [lookup_fld](const string& op, const OpDef** sig) {
-        return lookup_fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+      *fdef, AttrSlice(&func_attr.attr()), lookup_fld, &fbody));
 
   // Rewrite _Arg usages with Const node.
   Graph* func_graph = fbody->graph;
@@ -265,6 +266,13 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
     }
 
     // Check if i-th retval's input comes from i-th arg directly.
+    // For resource variable input of While nodes, TF2XLA convention is to place
+    // them at the end of all inputs (after all data inputs), and *not* return
+    // them. So number of While node inputs might be larger than number of its
+    // outputs.
+    if (i >= body_func->signature().output_arg_size()) {
+      continue;
+    }
     const OpDef_ArgDef& output_arg = body_func->signature().output_arg(i);
     auto output_arg_input = body_func->ret().find(output_arg.name());
     if (output_arg_input == body_func->ret().end()) {
@@ -364,6 +372,7 @@ Status AddPlaceholdersForFeeds(
       GraphDef gd;
       *gd.mutable_versions() = graph_def->versions();
       *gd.add_node() = *existing;
+      MergeDebugInfo(NodeDebugInfo(*existing), gd.mutable_node(0));
       TF_RETURN_IF_ERROR(
           AddDefaultAttrsToGraphDef(&gd, *op_registry, 0 /*node_offset*/));
 
@@ -390,6 +399,7 @@ Status AddPlaceholdersForFeeds(
   // in this code.
   for (auto it = placeholder_info.begin(); it != placeholder_info.end(); ++it) {
     const PlaceholderInfo& info = it->second;
+    // TODO(shikharagarwal): Add original node information.
     NodeDef* d = graph_def->add_node();
     d->set_name(info.placeholder_name);
     d->set_op("PlaceholderV2");
@@ -541,7 +551,9 @@ uint32 GetXLARandomSeed() {
   // after an overflow. When seeded with zero, some XLA backends
   // can return all zeros instead of random numbers.
   static std::atomic<uint32> counter(InitialRandomSeed());
-  return counter.fetch_add(2);
+  uint32 seed = counter.fetch_add(2);
+  std::srand(seed);
+  return std::rand() | 1;
 }
 
 // TODO(b/77601805): add tests for associated function related stuff.
@@ -555,6 +567,12 @@ bool HasAssociatedFunction(const NodeDef& node_def,
     // Gradient op has "f" attr, which is set to the function we are getting
     // gradient for. We need to functionalize the gradient function.
     return true;
+  }
+
+  if (node_def.op() == "XlaHostCompute") {
+    // XlaHostCompute has "shape_inference_graph" func attr, but that's not
+    // related to graph execution.
+    return false;
   }
 
   for (const auto& iter : node_def.attr()) {
@@ -578,6 +596,9 @@ std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
     // This is a SymbolicGradient op.
     AttrValueMap attrs(node.attrs().begin(), node.attrs().end());
     results.emplace_back(AssociatedFunctionInfo::SymbolicGradient(op, attrs));
+  } else if (node.type_string() == "XlaHostCompute") {
+    // XlaHostCompute has "shape_inference_graph" func attr, but that's not
+    // related to graph execution.
   } else {
     // Collect all function attrs for the node.
     for (auto& iter : node.attrs()) {
@@ -599,7 +620,9 @@ Status RewriteAssociatedFunction(
   switch (associated_function.type()) {
     case AssociatedFunctionInfo::kFunctionCallNode: {
       // Change this node to call the new function.
-      NodeDefBuilder builder(node->name(), rewritten_function_name, fld);
+      NodeDebugInfo debug_info(*node);
+      NodeDefBuilder builder(node->name(), rewritten_function_name, fld,
+                             &debug_info);
       for (auto attr : node->attrs()) {
         builder.Attr(attr.first, attr.second);
       }

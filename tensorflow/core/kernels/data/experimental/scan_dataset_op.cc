@@ -50,8 +50,9 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                                       initial_state_inputs.end());
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     *output = new Dataset(ctx, input, func_, std::move(initial_state),
                           std::move(captured_func), state_types_, output_types_,
@@ -84,8 +85,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Scan")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Scan")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -103,7 +104,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       std::vector<Node*> initial_state_nodes;
@@ -114,15 +114,9 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         initial_state_nodes.emplace_back(node);
       }
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
       DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue state_types;
@@ -180,6 +174,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         Status s = instantiated_captured_func_->Run(ctx, std::move(args),
                                                     &state_and_output);
+        DCHECK(state_and_output.size() <=
+               dataset()->state_types_.size() + output_dtypes().size());
         if (s.ok()) {
           state_.clear();
           size_t i = 0;

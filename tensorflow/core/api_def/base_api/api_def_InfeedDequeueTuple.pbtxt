@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "InfeedDequeueTuple"
+  visibility: HIDDEN
+  out_arg {
+    name: "outputs"
+    description: <<END
+A list of tensors that will be provided using the infeed mechanism.
+END
+  }
+  attr {
+    name: "dtypes"
+    description: <<END
+The element types of each element in `outputs`.
+END
+  }
+  attr {
+    name: "shapes"
+    description: <<END
+The shapes of each tensor in `outputs`.
+END
+  }
+  summary: "Fetches multiple values from infeed as an XLA tuple."
+}

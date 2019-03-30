@@ -79,7 +79,7 @@ void SparseIndexArray::Resize(int64 num_indices) {
 }
 
 bool SparseIndexArray::Validate(const Shape& shape) const {
-  if (rank_ == 0 || rank_ != ShapeUtil::Rank(shape)) {
+  if (rank_ == 0 || rank_ != shape.rank()) {
     return false;
   }
   int64 num_indices = index_count();

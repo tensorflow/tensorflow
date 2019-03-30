@@ -19,9 +19,9 @@ limitations under the License.
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

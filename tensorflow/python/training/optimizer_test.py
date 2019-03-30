@@ -24,7 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -75,7 +75,7 @@ class OptimizerTest(test.TestCase):
         opt_op = sgd_op.minimize(
             cost,
             global_step, [var0, var1],
-            aggregation_method=gradients_impl.AggregationMethod.
+            aggregation_method=gradients_util.AggregationMethod.
             EXPERIMENTAL_ACCUMULATE_N)
 
         variables.global_variables_initializer().run()

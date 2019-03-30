@@ -57,7 +57,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     self.assertEqual(len(graph.node), 1)
     self.assertItemsEqual([node.name for node in graph.node], ['d'])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
@@ -86,7 +86,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     self.assertEqual(len(optimized_graph_nodes), len(expected_nodes))
     self.assertAllInSet(optimized_graph_nodes, expected_nodes)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testLoops(self):
     g = ops.Graph()
     with g.as_default():

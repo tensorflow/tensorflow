@@ -28,8 +28,20 @@ REGISTER_OP("CollectiveReduce")
     .Attr("merge_op: {'Min', 'Max', 'Mul', 'Add'}")
     .Attr("final_op: {'Id', 'Div'}")
     .Attr("subdiv_offsets: list(int)")
+    .Attr("wait_for: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CollectiveGather")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("T: {float, float16, float64, int32, int64}")
+    .Attr("group_size: int")
+    .Attr("group_key: int")
+    .Attr("instance_key: int")
+    .Attr("shape: shape")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ExplicitShape);
 
 REGISTER_OP("CollectiveBcastSend")
     .Input("input: T")

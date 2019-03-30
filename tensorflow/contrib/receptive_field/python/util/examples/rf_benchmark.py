@@ -16,8 +16,6 @@
 
 The receptive field (and related parameters) for the different models are
 printed to stdout, and may also optionally be written to a CSV file.
-
-For an example of usage, see rf_benchmark.sh
 """
 
 from __future__ import absolute_import
@@ -262,11 +260,11 @@ def _model_rf(graphdef,
       information will be computed.
     model_type: Type of model to be used, used only for printing purposes.
     csv_writer: A CSV writer for RF parameters, which is used if it is not None.
-    input_resolution: Input resolution to use when computing RF
-      parameters. This is important for the case where padding can only be
-      defined if the input resolution is known, which may happen if using SAME
-      padding. This is assumed the resolution for both height and width. If
-      None, we consider the resolution is unknown.
+    input_resolution: Input resolution to use when computing RF parameters. This
+      is important for the case where padding can only be defined if the input
+      resolution is known, which may happen if using SAME padding. This is
+      assumed the resolution for both height and width. If None, we consider the
+      resolution is unknown.
   """
   for desired_end_point_key in desired_end_point_keys:
     print('- %s:' % desired_end_point_key)
@@ -283,10 +281,10 @@ def _model_rf(graphdef,
       if (receptive_field_x == receptive_field_y) and (
           effective_stride_x == effective_stride_y) and (
               effective_padding_x == effective_padding_y):
-        print('Receptive field size = %5s, effective stride = %5s, effective '
-              'padding = %5s' % (str(receptive_field_x),
-                                 str(effective_stride_x),
-                                 str(effective_padding_x)))
+        print(
+            'Receptive field size = %5s, effective stride = %5s, effective '
+            'padding = %5s' % (str(receptive_field_x), str(effective_stride_x),
+                               str(effective_padding_x)))
       else:
         print('Receptive field size: horizontal = %5s, vertical = %5s. '
               'Effective stride: horizontal = %5s, vertical = %5s. Effective '
@@ -362,9 +360,8 @@ def _process_model_rf(model_type='resnet_v1_50',
       defined if the input resolution is known, which may happen if using SAME
       padding. The entries in the list are assumed the resolution for both
       height and width. If one of the elements in the list is None, we consider
-      it to mean that the resolution is unknown. If the list itself is None,
-      we use the default list [None, 224, 321].
-
+      it to mean that the resolution is unknown. If the list itself is None, we
+      use the default list [None, 224, 321].
   """
   # Process default value for this list.
   if input_resolutions is None:
@@ -477,8 +474,8 @@ def _mobilenet_v1_rf(csv_writer=None):
     csv_writer: A CSV writer for RF parameters, which is used if it is not None.
   """
   for model_type in _SUPPORTED_MOBILENETV1_VARIANTS:
-    with slim.arg_scope(
-        [slim.batch_norm, slim.dropout], is_training=False) as arg_sc:
+    with slim.arg_scope([slim.batch_norm, slim.dropout],
+                        is_training=False) as arg_sc:
       _process_model_rf(model_type, csv_writer, arg_sc)
 
 

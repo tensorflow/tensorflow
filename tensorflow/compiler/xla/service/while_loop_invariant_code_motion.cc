@@ -89,7 +89,7 @@ static void CreateLoopInvariantCopy(
 
     HloInstruction* next_operand =
         frame->instruction->mutable_operand(frame->operand_index++);
-    if (hoisted_instructions->count(next_operand) ||
+    if (hoisted_instructions->contains(next_operand) ||
         next_operand == while_body_param) {
       continue;
     }
@@ -127,7 +127,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
-  if (!ShapeUtil::IsTuple(while_instr->shape())) {
+  if (!while_instr->shape().IsTuple()) {
     // This restriction leaves one interesting pattern on the table:
     //
     //  while_body(f32[1024, 1024] %param) {
@@ -168,7 +168,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   // is no benefit to hoisting them unless something that uses it is also
   // hoisted.
   for (auto* instr : WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
-    if (ShapeUtil::IsArray(instr->shape())) {
+    if (instr->shape().IsArray()) {
       // TODO(b/79147885): We should try to generalize this to tuples for
       // uniformity's sake, if nothing else.
       InsertOrDie(&unhoisted_invariant_instructions, instr);
@@ -221,7 +221,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         ShapeUtil::ForEachSubshape(
             operand->shape(),
             [&input_size](const Shape& subshape, const ShapeIndex& /*index*/) {
-              if (ShapeUtil::IsArray(subshape)) {
+              if (subshape.IsArray()) {
                 input_size += ShapeUtil::ByteSizeOfElements(subshape);
               }
             });
@@ -229,7 +229,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       ShapeUtil::ForEachSubshape(
           instruction->shape(),
           [&output_size](const Shape& subshape, const ShapeIndex& /*index*/) {
-            if (ShapeUtil::IsArray(subshape)) {
+            if (subshape.IsArray()) {
               output_size += ShapeUtil::ByteSizeOfElements(subshape);
             }
           });
@@ -241,7 +241,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
     auto is_invariant = [&](HloInstruction* op) {
       return hoisted_instructions.find(op) != hoisted_instructions.end() ||
-             unhoisted_invariant_instructions.count(op) ||
+             unhoisted_invariant_instructions.contains(op) ||
              op->opcode() == HloOpcode::kConstant;
     };
 

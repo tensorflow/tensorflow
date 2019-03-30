@@ -1,0 +1,23 @@
+path: "tensorflow.ragged"
+tf_module {
+  member_method {
+    name: "constant"
+    argspec: "args=[\'pylist\', \'dtype\', \'ragged_rank\', \'inner_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "map_flat_values"
+    argspec: "args=[\'op\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "range"
+    argspec: "args=[\'starts\', \'limits\', \'deltas\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "row_splits_to_segment_ids"
+    argspec: "args=[\'splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "segment_ids_to_row_splits"
+    argspec: "args=[\'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

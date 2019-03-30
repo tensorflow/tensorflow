@@ -43,13 +43,33 @@ bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
 bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
-  return node.op() == "RealDiv" || node.op() == "Div" ||
+  return node.op() == "RealDiv" || node.op() == "Div" || node.op() == "Xdivy" ||
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
+}
+
+bool IsAnyMax(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
+}
+
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
+bool IsAnyMin(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
 }
 
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
+
+bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
+
+bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
@@ -157,6 +177,8 @@ bool IsDequeueOp(const NodeDef& node) {
 
 bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 
+bool IsDivNoNan(const NodeDef& node) { return node.op() == "DivNoNan"; }
+
 // Returns true if node represents a unary elementwise function that is
 // monotonic. If *is_non_decreasing is true, the function is non-decreasing,
 // e.g. sqrt, exp. *is_non_decreasing is false, the function is non-increasing,
@@ -164,18 +186,13 @@ bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Asinh", "Atanh",   "Ceil",  "Elu",  "Erf",  "Exp",   "Expm1",
-          "Floor", "Log",     "Log1p", "Relu", "Relu", "Relu6", "Rint",
-          "Selu",  "Sigmoid", "Sign",  "Sinh", "Sqrt", "Tanh",
+          "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
+          "Elu",   "Erf",  "Exp",      "Expm1",    "Floor", "Log",
+          "Log1p", "Relu", "Relu6",    "Rint",     "Selu",  "Sigmoid",
+          "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
   static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Inv",
-          "Reciprocal",
-          "Erfc",
-          "Rsqrt",
-          "Neg",
-      }));
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
   if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;
@@ -228,6 +245,8 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
+
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
 }
@@ -245,6 +264,11 @@ bool IsIdentityN(const NodeDef& node) {
 bool IsIdentityNSingleInput(const NodeDef& node) {
   return IsIdentityN(node) && node.attr().count("T") != 0 &&
          node.attr().at("T").list().type_size() == 1;
+}
+
+bool IsIf(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "If" || op == "StatelessIf";
 }
 
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
@@ -273,8 +297,8 @@ bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
 bool IsMatMul(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
-         op == "SparseMatMul";
+  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
+         IsQuantizedMatMul(node);
 }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
@@ -303,6 +327,8 @@ bool IsMirrorPadGrad(const NodeDef& node) {
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
+bool IsMulNoNan(const NodeDef& node) { return node.op() == "MulNoNan"; }
+bool IsAnyMul(const NodeDef& node) { return IsMul(node) || IsMulNoNan(node); }
 
 bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
 
@@ -314,6 +340,8 @@ bool IsNextIteration(const NodeDef& node) {
   const auto& op = node.op();
   return op == "NextIteration" || op == "RefNextIteration";
 }
+
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
 
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
@@ -336,9 +364,15 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
-bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+bool IsPrint(const NodeDef& node) {
+  return node.op() == "Print" || node.op() == "PrintV2";
+}
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsQuantizedMatMul(const NodeDef& node) {
+  return node.op() == "QuantizedMatMul" || node.op() == "QuantizedMatMulV2";
+}
 
 bool IsQueue(const NodeDef& node) {
   return str_util::EndsWith(node.op(), "QueueV2");
@@ -349,6 +383,10 @@ bool IsRandomShuffle(const NodeDef& node) {
 }
 
 bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
+
+bool IsReadVariableOp(const NodeDef& node) {
+  return node.op() == "ReadVariableOp";
+}
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
@@ -412,6 +450,8 @@ bool IsSize(const NodeDef& node) { return node.op() == "Size"; }
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
 bool IsSnapshot(const NodeDef& node) { return node.op() == "Snapshot"; }
+
+bool IsSoftmax(const NodeDef& node) { return node.op() == "Softmax"; }
 
 bool IsSoftplusGrad(const NodeDef& node) { return node.op() == "SoftplusGrad"; }
 
@@ -524,6 +564,15 @@ bool IsVariable(const NodeDef& node) {
          op == "VarHandleOp" || op == "ReadVariableOp";
 }
 
+bool IsWhile(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "While" || op == "StatelessWhile";
+}
+
+bool IsXdivy(const NodeDef& node) { return node.op() == "Xdivy"; }
+
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
+
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
 namespace {
@@ -533,14 +582,14 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
-bool MaybeHasRefInput(const NodeDef& node) {
+bool HasRefInput(const NodeDef& node) {
   const OpDef* op_def;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
-    return true;
+    return false;
   }
   // Nodes such as Assign or AssignAdd modify one of their inputs.
   for (const auto& input : op_def->input_arg()) {
@@ -549,6 +598,29 @@ bool MaybeHasRefInput(const NodeDef& node) {
     }
   }
   return false;
+}
+
+bool IsDataset(const NodeDef& node) {
+  const string& op = node.op();
+  // See `GetNodeClassForOp` in core/graph/graph.cc.
+  return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
+         op == "DatasetToSingleElement" || op == "ReduceDataset";
+}
+
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+  const OpDef* op_def = nullptr;
+  const string& op_name = node.op();
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to lookup OpDef for " << op_name
+                 << ". Error: " << status.error_message();
+    return false;
+  }
+  return op_def->is_stateful();
+}
+
+bool IsStateful(const NodeDef node) {
+  return IsStateful(node, OpRegistry::Global());
 }
 
 bool IsFreeOfSideEffect(const NodeDef& node,
@@ -696,7 +768,6 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Asin",
           "Asinh",
           "Atan",
-          "Atan2",
           "Atanh",
           "Ceil",
           "ComplexAbs",
@@ -750,6 +821,115 @@ bool HasOpDef(const NodeDef& node) {
 bool IsIdempotent(const NodeDef& node) {
   return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node) &&
          !ModifiesFrameInfo(node);
+}
+
+bool NeverForwardsInputs(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kNonForwardingOps = CHECK_NOTNULL(
+      (new gtl::FlatSet<string>{"ArgMax",
+                                "ArgMin",
+                                "AudioSpectrogram",
+                                "BatchMatMul",
+                                "BatchToSpace",
+                                "BatchToSpaceND",
+                                "Bincount",
+                                "BroadcastArgs",
+                                "BroadcastGradientArgs",
+                                "CTCBeamSearchDecoder",
+                                "CTCGreedyDecoder",
+                                "CTCLoss",
+                                "ComplexAbs",
+                                "Concat",
+                                "ConcatOffset",
+                                "ConcatV2",
+                                "Copy",
+                                "CopyHost",
+                                "Cross",
+                                "CudnnRNN",
+                                "CudnnRNNBackprop",
+                                "CudnnRNNBackpropV2",
+                                "CudnnRNNBackpropV3",
+                                "CudnnRNNCanonicalToParams",
+                                "CudnnRNNParamsSize",
+                                "CudnnRNNParamsToCanonical",
+                                "CudnnRNNV2",
+                                "CudnnRNNV3",
+                                "CumSum",
+                                "CumProd",
+                                "DebugNanCount",
+                                "DebugNumericSummary",
+                                "DecodeProtoV2",
+                                "DecodeWav",
+                                "DeepCopy",
+                                "DepthToSpace",
+                                "Dequantize",
+                                "Diag",
+                                "DiagPart",
+                                "EditDistance",
+                                "Empty",
+                                "EncodeProtoV2",
+                                "EncodeWav",
+                                "ExtractImagePatches",
+                                "ExtractVolumePatches",
+                                "Fill",
+                                "Gather",
+                                "GatherNd",
+                                "GatherV2",
+                                "HistogramFixedWidth",
+                                "InvertPermutation",
+                                "IsInf",
+                                "IsNan",
+                                "Isfinite",
+                                "LinSpace",
+                                "LowerBound",
+                                "MatMul",
+                                "MatrixDiag",
+                                "MatrixDiagPart",
+                                "Mfcc",
+                                "OneHot",
+                                "Pack",
+                                "PopulationCount",
+                                "Range",
+                                "Rank",
+                                "ReverseSequence",
+                                "Shape",
+                                "ShapeN",
+                                "Size",
+                                "SpaceToBatch",
+                                "SpaceToBatchND",
+                                "SpaceToDepth",
+                                "SparseMatMul",
+                                "Split",
+                                "SplitV",
+                                "Unique",
+                                "UniqueV2",
+                                "UniqueWithCounts",
+                                "UniqueWithCountsV2",
+                                "Unpack",
+                                "UnravelIndex",
+                                "UpperBound",
+                                "Where",
+                                "CompareAndBitpack",
+                                "Requantize",
+                                "RequantizationRange",
+                                "Bucketize",
+                                "AvgPool",
+                                "BatchNormWithGlobalNormalization",
+                                "FusedBatchNorm",
+                                "FusedBatchNormV2",
+                                "Conv2D",
+                                "RandomUniform",
+                                "RandomUniformInt",
+                                "RandomStandardNormal",
+                                "ParameterizedTruncatedNormal",
+                                "TruncatedNormal",
+                                "Multinomial",
+                                "RandomGamma",
+                                "RandomPoisson",
+                                "RandomPoissonV2"}));
+  const string& op_name = node.op();
+  return kNonForwardingOps->count(op_name) > 0 ||
+         str_util::StrContains(op_name, "Segment") ||
+         str_util::StartsWith(op_name, "Quantize");
 }
 
 }  // namespace grappler

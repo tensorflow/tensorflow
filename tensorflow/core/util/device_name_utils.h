@@ -110,6 +110,11 @@ class DeviceNameUtils {
   static bool IsSpecification(const ParsedName& less_specific,
                               const ParsedName& more_specific);
 
+  // Makes minimal changes to more_specific so that it becomes a
+  // specification of less_specific.
+  static void EnsureSpecification(ParsedName* more_specific,
+                                  const ParsedName& less_specific);
+
   // Like IsSpecification, but the second argument "name" must have a
   // non-wildcard value for all of its components.
   static bool IsCompleteSpecification(const ParsedName& pattern,

@@ -25,7 +25,6 @@ py_library(
         "conditional_expressions.py",
         "continue_statements.py",
         "control_flow.py",
-        "decorators.py",
         "directives.py",
         "error_handlers.py",
         "function_scopes.py",
@@ -132,21 +131,6 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
-    name = "decorators_test",
-    srcs = ["decorators_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

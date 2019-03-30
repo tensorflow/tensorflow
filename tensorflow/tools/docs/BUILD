@@ -81,7 +81,7 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
-py_binary(
+py_library(
     name = "generate_lib",
     srcs = ["generate_lib.py"],
     srcs_version = "PY2AND3",
@@ -155,7 +155,7 @@ py_test(
         "optonly",
     ],
     deps = [
-        ":generate2",
+        ":generate2_lib",
     ],
 )
 
@@ -163,7 +163,17 @@ py_binary(
     name = "generate2",
     srcs = ["generate2.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [":generate2_lib"],
+)
+
+py_library(
+    name = "generate2_lib",
+    srcs = ["generate2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_library(

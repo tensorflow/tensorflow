@@ -67,12 +67,18 @@ class ExecutableBuildOptions {
   // debugging.
   string ToString() const;
 
+  // The number of replicas of this computation that are to be executed.
+  // Defaults to 1.
+  int num_replicas() const { return num_replicas_; }
+  ExecutableBuildOptions& set_num_replicas(int num_replicas);
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
   absl::optional<DebugOptions> debug_options_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
+  int num_replicas_ = 1;
 };
 
 }  // namespace xla

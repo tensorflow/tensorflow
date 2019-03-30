@@ -104,8 +104,8 @@ class _Mapping(collections.namedtuple(
 
   def _merge_dicts(self, old=None, new=None):
     """Helper to merge two dictionaries."""
-    old = dict() if old is None else old
-    new = dict() if new is None else new
+    old = {} if old is None else old
+    new = {} if new is None else new
     for k, v in six.iteritems(new):
       val = old.get(k, None)
       if val is not None and val != v:
@@ -462,7 +462,7 @@ class Bijector(object):
 
 
   ```python
-  abs = tf.contrib.distributions.bijectors.AbsoluteValue()
+  abs = tfp.distributions.bijectors.AbsoluteValue()
 
   abs.forward(-1.)
   ==> 1.

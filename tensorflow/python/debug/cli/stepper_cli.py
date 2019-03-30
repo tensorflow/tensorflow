@@ -251,6 +251,9 @@ class NodeStepperCLI(object):
       lines.extend(
           ["Topologically-sorted transitive input(s) and fetch(es):", ""])
 
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
+    self._add_deprecation_warning(output)
+
     for i, element_name in enumerate(self._sorted_nodes):
       if i < index_range[0] or i >= index_range[1]:
         continue
@@ -269,14 +272,35 @@ class NodeStepperCLI(object):
           override_names,
           dirty_variable_names)
 
-      lines.append(node_prefix + "] " + element_name)
-
-    output = debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
+      output.append_rich_line(node_prefix + "] " + element_name)
 
     if verbose:
       output.extend(self._node_status_label_legend())
 
     return output
+
+  def _add_deprecation_warning(self, message):
+    """Add deprecation warning as RichTextLines."""
+    color = "yellow"
+    message.append_rich_line(
+        debugger_cli_common.RichLine(
+            "WARNING: the invoke_stepper feature of tfdbg has been deprecated ",
+            color))
+    message.append_rich_line(
+        debugger_cli_common.RichLine(
+            "and will be removed in the next release of TensorFlow.",
+            color))
+    message.append_rich_line(debugger_cli_common.RichLine("", color))
+    message.append_rich_line(
+        debugger_cli_common.RichLine(
+            "There now exist better alternatives of stepping debugging, "
+            "including:",
+            color))
+    message.append_rich_line(
+        debugger_cli_common.RichLine("- TensorBoard Debugger Plugin", color))
+    message.append_rich_line(
+        debugger_cli_common.RichLine("- Eager Execution", color))
+    message.append_rich_line(debugger_cli_common.RichLine("", color))
 
   def _get_status_labels(self,
                          element_name,

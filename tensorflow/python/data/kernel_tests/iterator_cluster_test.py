@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib import lookup as lookup_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
@@ -31,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -39,6 +39,7 @@ from tensorflow.python.platform import test
 
 class IteratorClusterTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testRemoteIteratorWithoutRemoteCallFail(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -52,7 +53,8 @@ class IteratorClusterTest(test.TestCase):
 
     with ops.device("/job:worker/replica:0/task:0/cpu:0"):
       remote_it = iterator_ops.Iterator.from_string_handle(
-          iterator_3_handle, dataset_3.output_types, dataset_3.output_shapes)
+          iterator_3_handle, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       get_next_op = remote_it.get_next()
 
     with session.Session(worker[0].target) as sess:
@@ -68,7 +70,8 @@ class IteratorClusterTest(test.TestCase):
     @function.Defun(dtypes.string)
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
-          h, dataset_3.output_types, dataset_3.output_shapes)
+          h, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       return remote_iterator.get_next()
 
     with ops.device(device0):
@@ -92,6 +95,7 @@ class IteratorClusterTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(remote_op, feed_dict={target_placeholder: device1})
 
+  @test_util.run_v1_only("b/120545219")
   def testRemoteIteratorUsingRemoteCallOp(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -102,6 +106,7 @@ class IteratorClusterTest(test.TestCase):
                                    "/job:worker/replica:0/task:0/cpu:1",
                                    worker[0].target)
 
+  @test_util.run_v1_only("b/120545219")
   def testRemoteIteratorUsingRemoteCallOpCrossProcess(self):
     workers, _ = test_util.create_local_cluster(2, 1)
 
@@ -109,6 +114,7 @@ class IteratorClusterTest(test.TestCase):
                                    "/job:worker/replica:0/task:1/cpu:0",
                                    workers[0].target)
 
+  @test_util.run_v1_only("b/120545219")
   def testCaptureHashTableInSharedIterator(self):
     worker, _ = test_util.create_local_cluster(1, 1)
 
@@ -143,6 +149,7 @@ class IteratorClusterTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @test_util.run_v1_only("b/120545219")
   def testImplicitDisposeParallelMapDataset(self):
     # Tests whether a parallel map dataset will be cleaned up correctly when
     # the pipeline does not run it until exhaustion.

@@ -66,6 +66,13 @@ enum ConvolutionMode {
   CONVOLUTION = 1;
 }
 
+enum ConvolutionKind {
+  INVALID = 0;
+  FORWARD = 1;
+  BACKWARD_FILTER = 2;
+  BACKWARD_DATA = 3;
+}
+
 // Generic tensor representation.
 message TensorDescriptorProto {
   repeated int64 dimensions = 1;

@@ -156,6 +156,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(padded_dataset)
     self.evaluate(next_element())
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerPaddedBatchDatasetShapeSpecifications(self):
     int_placeholder = array_ops.placeholder(dtypes.int32)
@@ -184,9 +185,10 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         dynamic_padding_from_tensor_shapes, dynamic_padding_from_lists,
         dynamic_padding_from_lists_with_minus_one, dynamic_padding_from_tensors
     ]:
-      self.assertEqual([None, None], dataset.output_shapes[0].as_list())
-      self.assertEqual([None, None, None], dataset.output_shapes[1].as_list())
-      self.assertEqual([None, 37], dataset.output_shapes[2].as_list())
+      dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+      self.assertEqual([None, None], dataset_output_shapes[0].as_list())
+      self.assertEqual([None, None, None], dataset_output_shapes[1].as_list())
+      self.assertEqual([None, 37], dataset_output_shapes[2].as_list())
 
   def testPaddedBatchSparseError(self):
 
@@ -228,6 +230,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       _ = dataset_ops.Dataset.range(10).padded_batch(
           5, padded_shapes=shape_as_tensor)
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerPaddedBatchShapeError(self):
     with self.assertRaisesRegexp(

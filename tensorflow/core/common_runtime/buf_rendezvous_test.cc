@@ -109,7 +109,7 @@ TEST_F(BufRendezvousTest, CorrectUseConsumerFirst) {
 TEST_F(BufRendezvousTest, ErrorDuplicatePut) {
   bool prod_callback_called = false;
   br_->ProvideBuf("key0", fake_dev_ptr_, fake_dev_ctx_, &a_, aa_,
-                  [this, &prod_callback_called](const Status& s) {
+                  [&prod_callback_called](const Status& s) {
                     prod_callback_called = true;
                   });
   Status bad_status;
@@ -129,11 +129,11 @@ TEST_F(BufRendezvousTest, ErrorDuplicatePut) {
 
 TEST_F(BufRendezvousTest, ErrorDeleteNonEmpty) {
   Status cons_status;
-  br_->ConsumeBuf(
-      "key0", [this, &cons_status](const Status& s, BufRendezvous::Hook* h) {
-        cons_status = s;
-        EXPECT_EQ(h, nullptr);
-      });
+  br_->ConsumeBuf("key0",
+                  [&cons_status](const Status& s, BufRendezvous::Hook* h) {
+                    cons_status = s;
+                    EXPECT_EQ(h, nullptr);
+                  });
   EXPECT_TRUE(cons_status.ok());
   br_.reset();
   EXPECT_FALSE(cons_status.ok());
@@ -146,13 +146,13 @@ TEST_F(BufRendezvousTest, AbortNonEmpty) {
   Status prod_status;
   Notification prod_note;
   Notification cons_note;
-  br_->ConsumeBuf("key0", [this, &cons_note, &cons_status](
-                              const Status& s, BufRendezvous::Hook* h) {
+  br_->ConsumeBuf("key0", [&cons_note, &cons_status](const Status& s,
+                                                     BufRendezvous::Hook* h) {
     cons_status = s;
     cons_note.Notify();
   });
   br_->ProvideBuf("key1", fake_dev_ptr_, fake_dev_ctx_, &a_, aa_,
-                  [this, &prod_note, &prod_status](const Status& s) {
+                  [&prod_note, &prod_status](const Status& s) {
                     prod_status = s;
                     prod_note.Notify();
                   });
@@ -175,13 +175,13 @@ TEST_F(BufRendezvousTest, UseAfterAbort) {
   Status prod_status;
   Notification prod_note;
   Notification cons_note;
-  br_->ConsumeBuf("key0", [this, &cons_note, &cons_status](
-                              const Status& s, BufRendezvous::Hook* h) {
+  br_->ConsumeBuf("key0", [&cons_note, &cons_status](const Status& s,
+                                                     BufRendezvous::Hook* h) {
     cons_status = s;
     cons_note.Notify();
   });
   br_->ProvideBuf("key1", fake_dev_ptr_, fake_dev_ctx_, &a_, aa_,
-                  [this, &prod_note, &prod_status](const Status& s) {
+                  [&prod_note, &prod_status](const Status& s) {
                     prod_status = s;
                     prod_note.Notify();
                   });

@@ -228,7 +228,7 @@ def extract_features(features, feature_columns, use_core_columns):
       indices = array_ops.concat([
           array_ops.slice(categorical_tensor.indices, [0, 0], [-1, 1]),
           array_ops.expand_dims(
-              math_ops.to_int64(categorical_tensor.values), -1)
+              math_ops.cast(categorical_tensor.values, dtypes.int64), -1)
       ], 1)
       tensor = sparse_tensor.SparseTensor(
           indices=indices, values=weight_tensor.values, dense_shape=shape)
@@ -566,9 +566,10 @@ class GradientBoostedDecisionTreeModel(object):
     # Determine if ensemble is colocated with the inputs.
     if self._ensemble_handle.device != input_deps[0].device:
       # Create a local ensemble and get its local stamp.
-      with ops.name_scope("local_ensemble", "TreeEnsembleVariable") as name:
+      with ops.name_scope("local_ensemble", "TreeEnsembleVariable"):
         local_ensemble_handle = (
-            gen_model_ops.decision_tree_ensemble_resource_handle_op(name=name))
+            gen_model_ops.decision_tree_ensemble_resource_handle_op(
+                self._ensemble_handle.op.name + "/local_ensemble"))
         create_op = gen_model_ops.create_tree_ensemble_variable(
             local_ensemble_handle, stamp_token=-1, tree_ensemble_config="")
         with ops.control_dependencies([create_op]):
@@ -610,17 +611,24 @@ class GradientBoostedDecisionTreeModel(object):
         learner_pb2.LearnerConfig.TREE_PER_CLASS and
         self._logits_dimension != 1):
       # Choose the class for which the tree is built (one vs rest).
-      return math_ops.to_int32(
-          predictions_dict[NUM_TREES_ATTEMPTED] % self._logits_dimension)
+      return math_ops.cast(
+          predictions_dict[NUM_TREES_ATTEMPTED] % self._logits_dimension,
+          dtypes.int32)
     return constant_op.constant(-1, dtype=dtypes.int32)
 
-  def update_stats(self, loss, predictions_dict):
+  def update_stats(self, loss, predictions_dict, gradients=None, hessians=None):
     """Update the accumulators with stats from this batch.
 
     Args:
       loss: A scalar tensor representing average loss of examples.
       predictions_dict: Dictionary of Rank 2 `Tensor` representing information
           about predictions per example.
+      gradients: A tensor with the gradients with the respect to logits from
+        predictions_dict. If not provided, tensorflow will do
+        autodifferentiation.
+      hessians: A tensor with the hessians with the respect to logits from
+        predictions_dict. If not provided, tensorflow will do
+        autodifferentiation.
 
     Returns:
       Three values:
@@ -642,13 +650,14 @@ class GradientBoostedDecisionTreeModel(object):
     predictions = predictions_dict[PREDICTIONS]
     partition_ids = predictions_dict[PARTITION_IDS]
     ensemble_stamp = predictions_dict[ENSEMBLE_STAMP]
-    gradients = gradients_impl.gradients(
-        loss,
-        predictions,
-        name="Gradients",
-        colocate_gradients_with_ops=False,
-        gate_gradients=0,
-        aggregation_method=None)[0]
+    if gradients is None:
+      gradients = gradients_impl.gradients(
+          loss,
+          predictions,
+          name="Gradients",
+          colocate_gradients_with_ops=False,
+          gate_gradients=0,
+          aggregation_method=None)[0]
     strategy = self._learner_config.multi_class_strategy
 
     class_id = self._get_class_id(predictions_dict)
@@ -657,17 +666,20 @@ class GradientBoostedDecisionTreeModel(object):
       # We build one vs rest trees.
       if self._logits_dimension == 1:
         # We have only 1 score, gradients is of shape [batch, 1].
-        hessians = gradients_impl.gradients(
-            gradients,
-            predictions,
-            name="Hessian",
-            colocate_gradients_with_ops=False,
-            gate_gradients=0,
-            aggregation_method=None)[0]
+        if hessians is None:
+          hessians = gradients_impl.gradients(
+              gradients,
+              predictions,
+              name="Hessian",
+              colocate_gradients_with_ops=False,
+              gate_gradients=0,
+              aggregation_method=None)[0]
 
         squeezed_gradients = array_ops.squeeze(gradients, axis=[1])
         squeezed_hessians = array_ops.squeeze(hessians, axis=[1])
       else:
+        if hessians is not None:
+          raise ValueError("Providing hessians is not yet supported here.")
         hessian_list = self._diagonal_hessian(gradients, predictions)
         # Assemble hessian list into a tensor.
         hessians = array_ops.stack(hessian_list, axis=1)
@@ -678,6 +690,8 @@ class GradientBoostedDecisionTreeModel(object):
         squeezed_hessians = array_ops.squeeze(
             _get_column_by_index(hessians, class_id))
     else:
+      if hessians is not None:
+        raise ValueError("Providing hessians is not yet supported here.")
       # Other multiclass strategies.
       if strategy == learner_pb2.LearnerConfig.FULL_HESSIAN:
         hessian_list = self._full_hessian(gradients, predictions)
@@ -835,9 +849,9 @@ class GradientBoostedDecisionTreeModel(object):
     stats_update_ops.append(
         control_flow_ops.cond(
             continue_centering,
-            self._make_update_bias_stats_fn(
-                ensemble_stamp, predictions, gradients,
-                bias_stats_accumulator), control_flow_ops.no_op))
+            self._make_update_bias_stats_fn(ensemble_stamp, predictions,
+                                            gradients, bias_stats_accumulator,
+                                            hessians), control_flow_ops.no_op))
 
     # Update handler stats.
     handler_reads = collections.OrderedDict()
@@ -1162,7 +1176,8 @@ class GradientBoostedDecisionTreeModel(object):
   def get_max_tree_depth(self):
     return self._max_tree_depth
 
-  def train(self, loss, predictions_dict, labels):
+  def train(self, loss, predictions_dict, labels, gradients=None,
+            hessians=None):
     """Updates the accumalator stats and grows the ensemble.
 
     Args:
@@ -1171,6 +1186,12 @@ class GradientBoostedDecisionTreeModel(object):
           about predictions per example.
       labels: Rank 2 `Tensor` representing labels per example. Has no effect
           on the training and is only kept for backward compatibility.
+      gradients: A tensor with the gradients with the respect to logits from
+        predictions_dict. If not provided, tensorflow will do
+        autodifferentiation.
+      hessians: A tensor with the hessians with the respect to logits from
+        predictions_dict. If not provided, tensorflow will do
+        autodifferentiation.
 
     Returns:
       An op that adds a new tree to the ensemble.
@@ -1179,7 +1200,8 @@ class GradientBoostedDecisionTreeModel(object):
       ValueError: if inputs are not valid.
     """
     del labels  # unused; kept for backward compatibility.
-    update_op, _, training_state = self.update_stats(loss, predictions_dict)
+    update_op, _, training_state = self.update_stats(loss, predictions_dict,
+                                                     gradients, hessians)
     with ops.control_dependencies(update_op):
       return self.increment_step_counter_and_maybe_update_ensemble(
           predictions_dict, training_state)
@@ -1271,21 +1293,28 @@ class GradientBoostedDecisionTreeModel(object):
         ps_ops=ps_ops,
         ps_strategy=ps_strategy)
 
-  def _make_update_bias_stats_fn(self, ensemble_stamp, predictions, gradients,
-                                 bias_stats_accumulator):
+  def _make_update_bias_stats_fn(self,
+                                 ensemble_stamp,
+                                 predictions,
+                                 gradients,
+                                 bias_stats_accumulator,
+                                 hessians=None):
     """A method to create the function which updates the bias stats."""
 
     def _update_bias_stats():
       """A method to update the bias stats."""
       # Get reduced gradients and hessians.
       grads_sum = math_ops.reduce_sum(gradients, 0)
-      hess = gradients_impl.gradients(
-          grads_sum,
-          predictions,
-          name="Hessians",
-          colocate_gradients_with_ops=False,
-          gate_gradients=0,
-          aggregation_method=None)[0]
+      if hessians is not None:
+        hess = hessians
+      else:
+        hess = gradients_impl.gradients(
+            grads_sum,
+            predictions,
+            name="Hessians",
+            colocate_gradients_with_ops=False,
+            gate_gradients=0,
+            aggregation_method=None)[0]
       hess_sum = math_ops.reduce_sum(hess, 0)
 
       # Accumulate gradients and hessians.

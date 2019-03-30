@@ -605,6 +605,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
   @test_util.enable_control_flow_v2
+  @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
     @eager_function.defun
     def test():
@@ -614,9 +615,14 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertEqual(while_op.type, "While")
       orig_num_inputs = len(while_op.inputs)
 
+      # Make sure we can handle the while op having a control input.
+      while_op._add_control_input(constant_op.constant(0).op)
+
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 
+      # Clear output shapes to bypass shape checking.
+      while_op._set_shape_list_attr("output_shapes", [])
       while_op._set_type_list_attr("T",
                                    [t.dtype for t in while_op.inputs] +
                                    [new_input1.dtype, new_input2.dtype])
@@ -780,7 +786,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op3.name, "myop_2")
     self.assertEqual(op4.name, "myop_1_1")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCond(self):
     g = ops.Graph()
     with g.as_default():
@@ -810,7 +816,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                      "cond/cond_text")
     # pylint: enable=protected-access
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileLoop(self):
     g = ops.Graph()
     with g.as_default():
@@ -840,7 +846,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                      "myloop/while_context")
     # pylint: enable=protected-access
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileLoopWithInternalControlDep(self):
     g = ops.Graph()
     with g.as_default():
@@ -864,7 +870,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     # Internal control dep is preserved
     self.assertEqual(op.control_inputs, [c])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileLoopWithExternalControlDep(self):
     g = ops.Graph()
     with g.as_default():
@@ -1291,6 +1297,22 @@ class DeviceTest(test_util.TensorFlowTestCase):
              device: "/device:CPU:5" }
     """, gd)
 
+  def testNestingErrorGraph(self):
+    g = ops.Graph()
+    scope = g.device("/device:GPU:8")
+    scope.__enter__()
+    with g.device("/device:GPU:9"):
+      with self.assertRaises(RuntimeError):
+        scope.__exit__(None, None, None)
+
+  def testNestingErrorEager(self):
+    with context.eager_mode():
+      scope = ops.device("/device:CPU:0")
+      scope.__enter__()
+      with ops.device(None):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+
   def testNoneClearsDefault(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2/device:CPU:1"):
@@ -1583,6 +1605,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
     self.assertSequenceEqual(g.collections, ["key"])
     g.add_to_collection("other", "foo")
     self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
+    self.assertSequenceEqual(
+        sorted(g.get_all_collection_keys()), ["key", "other"])
 
   def test_add_to_collection(self):
     g = ops.Graph()
@@ -2048,6 +2072,9 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope(None, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % default_scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
+    with self.assertRaises(TypeError):
+      with ops.name_scope(scope_name, [a, b]):
+        pass
 
   def _testGraphElements(self, graph_elements):
     scope_name = "my_scope"
@@ -2146,13 +2173,19 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with g0.as_default(), ops.device("CPU:0"):
       g1 = ops.Graph()
       g1._building_function = True  # pylint: disable=protected-access
-      with g1.as_default(), ops.device("GPU:0"):
+      with g1.as_default():
+        with ops.device("GPU:0"):
+          with ops.init_scope():
+            # init_scope should preserve device set under `g1`.
+            on_gpu = constant_op.constant(1.0)
+            self.assertEqual(on_gpu.device, "/device:GPU:0")
+          still_on_gpu = constant_op.constant(1.0)
+          self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+        blank = constant_op.constant(1.0)
+        self.assertEqual(blank.device, "")
         with ops.init_scope():
-          # init_scope should preserve device set under `g1`.
-          on_gpu = constant_op.constant(1.0)
-          self.assertEqual(on_gpu.device, "/device:GPU:0")
-        still_on_gpu = constant_op.constant(1.0)
-        self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+          now_on_cpu = constant_op.constant(1.0)
+          self.assertEqual(now_on_cpu.device, "/device:CPU:0")
       on_cpu = constant_op.constant(1.0)
       self.assertEqual(on_cpu.device, "/device:CPU:0")
 
@@ -2283,7 +2316,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testFallsBackToGlobalGraphWhenAllGraphsAreBuildingFunctions(self):
     with context.graph_mode():
       ops.reset_default_graph()
@@ -2341,7 +2374,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           math_ops.add(c, c)
         c2 = constant_op.constant(2.0)
       with self.assertRaisesRegexp(
-          TypeError, "contains objects other than 'EagerTensor'"):
+          TypeError, "Graph tensors"):
         math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):
@@ -2401,17 +2434,22 @@ class GraphTest(test_util.TensorFlowTestCase):
 
   def testDefaultGraph(self):
     orig = ops.get_default_graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     g0 = ops.Graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     context_manager_0 = g0.as_default()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     with context_manager_0 as g0:
       self._AssertDefault(g0)
       with ops.Graph().as_default() as g1:
+        self.assertTrue(ops.has_default_graph())
         self._AssertDefault(g1)
       self._AssertDefault(g0)
     self._AssertDefault(orig)
+    self.assertFalse(ops.has_default_graph())
 
   def testPreventFeeding(self):
     g = ops.Graph()
@@ -2994,7 +3032,7 @@ class TracebackTest(test_util.TensorFlowTestCase):
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testBadArgumentsToEnableEagerExecution(self):
     with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):
       ops.enable_eager_execution(context.DEVICE_PLACEMENT_SILENT)

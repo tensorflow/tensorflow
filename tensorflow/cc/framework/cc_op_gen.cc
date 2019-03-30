@@ -321,6 +321,7 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
           {"tensor", {"TensorProto", true}},
           {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
           {"func", {"NameAttrList", true}},
+          {"list(func)", {"gtl::ArraySlice<NameAttrList>", true}},
       };
 
   auto entry = attr_type_map->find(attr_type);

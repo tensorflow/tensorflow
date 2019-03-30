@@ -64,9 +64,9 @@ class VerifyTensorAllFiniteTest(test.TestCase):
         self.evaluate(t_verified)
 
 
+@test_util.run_v1_only("b/120545219")
 class NumericsTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def testInf(self):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant(1.0)
@@ -77,7 +77,6 @@ class NumericsTest(test.TestCase):
       with self.assertRaisesOpError("Inf"):
         self.evaluate(a)
 
-  @test_util.run_deprecated_v1
   def testNaN(self):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant(0.0)
@@ -88,7 +87,6 @@ class NumericsTest(test.TestCase):
       with self.assertRaisesOpError("NaN"):
         self.evaluate(a)
 
-  @test_util.run_deprecated_v1
   def testBoth(self):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([1.0, 0.0])
@@ -107,7 +105,6 @@ class NumericsTest(test.TestCase):
       self.assertAllEqual(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), value)
       self.assertEqual([2, 3], checked.get_shape())
 
-  @test_util.run_deprecated_v1
   def testControlFlowCond(self):
     predicate = array_ops.placeholder(dtypes.bool, shape=[])
     _ = control_flow_ops.cond(predicate,
@@ -120,7 +117,6 @@ class NumericsTest(test.TestCase):
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
 
-  @test_util.run_deprecated_v1
   def testControlFlowWhile(self):
     predicate = array_ops.placeholder(dtypes.bool, shape=[])
     _ = control_flow_ops.while_loop(lambda _: predicate,

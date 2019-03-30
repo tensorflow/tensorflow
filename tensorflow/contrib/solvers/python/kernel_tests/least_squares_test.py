@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.contrib.solvers.python.ops import least_squares
 from tensorflow.contrib.solvers.python.ops import util
 from tensorflow.python.framework import constant_op
@@ -76,7 +77,8 @@ def _get_least_squares_tests(dtype_, use_static_shape_, shape_):
 if __name__ == "__main__":
   for dtype in np.float32, np.float64:
     for shape in [[4, 4], [8, 5], [3, 7]]:
-      for use_static_shape in True, False:
+      # TF2 does not support placeholders under eager so we skip it
+      for use_static_shape in set([True, tf2.enabled()]):
         arg_string = "%s_%s_staticshape_%s" % (dtype.__name__,
                                                "_".join(map(str, shape)),
                                                use_static_shape)

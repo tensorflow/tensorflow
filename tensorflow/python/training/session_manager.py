@@ -21,6 +21,7 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -181,8 +182,16 @@ class SessionManager(object):
         set.
     """
     self._target = master
-    sess = session.Session(self._target, graph=self._graph, config=config)
 
+    # This is required to so that we initialize the TPU device before
+    # restoring from checkpoint since we'll be placing variables on the device
+    # and TPUInitialize wipes out the memory of the device.
+    strategy = distribution_strategy_context.get_strategy()
+    if strategy and hasattr(strategy.extended,
+                            "_experimental_initialize_system"):
+      strategy.extended._experimental_initialize_system()  # pylint: disable=protected-access
+
+    sess = session.Session(self._target, graph=self._graph, config=config)
     if checkpoint_dir and checkpoint_filename_with_path:
       raise ValueError("Can not provide both checkpoint_dir and "
                        "checkpoint_filename_with_path.")

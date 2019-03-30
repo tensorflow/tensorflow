@@ -29,9 +29,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     tf.enable_eager_execution()
 
   def testRenames(self):
-    with self.cached_session():
-      self.assertAllClose(1.04719755, tf.acos(0.5))
-      self.assertAllClose(0.5, tf.rsqrt(4.0))
+    self.assertAllClose(1.04719755, tf.acos(0.5))
+    self.assertAllClose(0.5, tf.rsqrt(4.0))
 
   def testSerializeSparseTensor(self):
     sp_input = tf.SparseTensor(
@@ -65,6 +64,38 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertAllClose(
         [0],
         tf.argmin([[1, 3, 2]], name='abc', dimension=1))
+
+  def testSoftmaxCrossEntropyWithLogits(self):
+    out = tf.nn.softmax_cross_entropy_with_logits(
+        logits=[0.1, 0.8], labels=[0, 1])
+    self.assertAllClose(out, 0.40318608)
+    out = tf.nn.softmax_cross_entropy_with_logits_v2(
+        logits=[0.1, 0.8], labels=[0, 1])
+    self.assertAllClose(out, 0.40318608)
+
+  def testLinearClassifier(self):
+    feature_column = tf.feature_column.numeric_column(
+        'feature', shape=(1,))
+
+    classifier = tf.estimator.LinearClassifier(
+        n_classes=2, feature_columns=[feature_column])
+
+    data = {'feature': [1, 20, 3]}
+    target = [0, 1, 0]
+    classifier.train(
+        input_fn=lambda: (data, target),
+        steps=100)
+    scores = classifier.evaluate(
+        input_fn=lambda: (data, target),
+        steps=100)
+    self.assertGreater(scores['accuracy'], 0.99)
+
+  def testUniformUnitScalingInitializer(self):
+    init = tf.initializers.uniform_unit_scaling(0.5, seed=1)
+    self.assertArrayNear(
+        [-0.45200047, 0.72815341],
+        init((2,)).numpy(),
+        err=1e-6)
 
 
 if __name__ == "__main__":

@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -1235,6 +1237,7 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
+  string session_handle_;
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
@@ -1265,6 +1268,11 @@ class ExecutorState {
   Executor::DoneCallback done_cb_;
 
   std::atomic_int_fast32_t num_outstanding_ops_;
+
+  // Available via OpKernelContext to every OpKernel invocation.
+  mutex num_deferred_ops_mu_;
+  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
+  bool finish_when_deferred_ops_done_ GUARDED_BY(num_deferred_ops_mu_) = false;
 
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
@@ -1343,6 +1351,7 @@ class ExecutorState {
 
   // Clean up when this executor is done.
   void Finish();
+  void ScheduleFinish();
 
   // A standalone routine for this expression so that we can express
   // that we don't want thread safety analysis on this reference (it's
@@ -1362,6 +1371,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
+      session_handle_(args.session_handle),
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
@@ -1606,6 +1616,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
+  params.session_handle = session_handle_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.call_frame = call_frame_;
@@ -1618,6 +1629,24 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    bool finish_when_deferred_ops_done = false;
+    {
+      mutex_lock lock(num_deferred_ops_mu_);
+      num_deferred_ops_--;
+      if (num_deferred_ops_ == 0) {
+        finish_when_deferred_ops_done = finish_when_deferred_ops_done_;
+      }
+    }
+    // Invoke Finish if the graph processing has completed. Finish is always
+    // called exactly once per ExecutorState, either here if there are any
+    // deferred ops, or in ScheduleFinish if there aren't any deferred ops.
+    if (finish_when_deferred_ops_done) Finish();
+  };
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;
@@ -1751,7 +1780,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           const bool completed =
               NodeDone(s, state->item->node, ready, stats, nullptr);
           delete state;
-          if (completed) Finish();
+          if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
         device->ComputeAsync(async, &state->ctx, done);
@@ -1832,7 +1861,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   }  // while !inline_ready.empty()
 
   // This thread of computation is done if completed = true.
-  if (completed) Finish();
+  if (completed) ScheduleFinish();
 }
 
 Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
@@ -1883,7 +1912,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
       inp->tensor = entry->val.get();
     } else {
       {
-        mutex_lock ml(*entry->ref_mu);
+        tf_shared_lock ml(*entry->ref_mu);
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
@@ -1899,7 +1928,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         // tensor but is given a ref to a tensor.  Need to deref it
         // under the mutex.
         {
-          mutex_lock l(*(entry->ref_mu));
+          tf_shared_lock l(*(entry->ref_mu));
           DCHECK(!entry->val_field_is_set);
           entry->val.Init(*entry->ref);
           entry->val_field_is_set = true;
@@ -1988,7 +2017,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Sanity check of output tensor types.
       DataType dtype;
       if (val.is_ref()) {
-        mutex_lock ml(*val.mutex_if_ref);
+        tf_shared_lock ml(*val.mutex_if_ref);
         dtype = MakeRefType(val->dtype());
       } else {
         dtype = val->dtype();
@@ -2005,7 +2034,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             Tensor to_log;
             {
               // Dereference the tensor under the lock.
-              mutex_lock l(*out->ref_mu);
+              tf_shared_lock l(*out->ref_mu);
               to_log = *out->ref;
             }
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
@@ -2386,6 +2415,25 @@ void ExecutorState::DumpState() {
   }
 }
 
+void ExecutorState::ScheduleFinish() {
+  // Checks condition to decide if needs to invoke Finish(). If there are
+  // in-flight deffered ops, wait for `num_deferred_ops_` reaches 0 to invoke
+  // Finish(). Otherwise, invoke Finish() directly.
+  // Note that it is critical that the ScheduleFinish / Finish codepath does not
+  // block, otherwise we might deadlock.  See b/124523000 for details.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    if (num_deferred_ops_ > 0) {
+      finish_when_deferred_ops_done_ = true;
+      return;
+    }
+  }
+  // Finish is always called exactly once per ExecutorState, either here if
+  // there aren't any deferred ops, or in the dec_num_deferred_ops_function if
+  // there are deferred ops.
+  Finish();
+}
+
 void ExecutorState::Finish() {
   mu_.lock();
   auto status = status_;
@@ -2395,7 +2443,48 @@ void ExecutorState::Finish() {
   CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
 
-  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
+  // There are several potential race conditions below. To name a few:
+  // 1. Even if the device's status is OK at the precise moment when
+  // num_deferred_ops_ reaches 0, it could go bad before device->RefreshStatus()
+  // is called below, caused by work enqueued onto the same device by other
+  // concurrent ExecutorState objects.
+  // 2. Some implementations of Device::RefreshStatus, such as
+  // XlaDevice::RefreshStatus, may be inherently racy because it releases the
+  // device mutex after a stream pointer is acquired and before the stream is
+  // queried for status.
+  // 3. It's the same for some implementations of Device::Sync, such as
+  // XlaDevice::Sync.
+  //
+  // However, these race conditions are acceptable because a stream (and
+  // therefore an XlaDevice) can only go from OK to not-OK, never the opposite,
+  // which means we will at worst report errors when there isn't any, never the
+  // opposite.
+
+  // An early exit for devices don't allow sync on completion. Ops that run on
+  // these devices should have used num_deferred_ops correctly to ensure the
+  // device has finished all relevant work at this point.
+  if (!device->AllowsSyncOnCompletion()) {
+    status.Update(device->RefreshStatus());
+    if (!status.ok()) {
+      // In device async execution mode, it's possible for device execution to
+      // lag behind ExecutorState scheduling so much that this is the first
+      // place a device execution error surfaces.
+      // If so, all ExecutorState::NodeDone calls have already happened with OK
+      // status. This is the last defense where StartCancel must be called to
+      // abort all computation still running on any device.
+      // TODO(b/124523000): Always call Finish in a separate thread, so even if
+      // StartCancel blocks the current thread's execution, we won't encounter
+      // deadlocks caused by inter-op thread exhaustion.
+      if (cancellation_manager_) {
+        cancellation_manager_->StartCancel();
+      }
+    }
+    delete this;
+    runner([=]() { done_cb(status); });
+    return;
+  }
+
+  if (sync_on_finish_ && status.ok()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to

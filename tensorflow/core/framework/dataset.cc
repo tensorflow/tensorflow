@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -74,6 +76,113 @@ class DatasetVariantWrapper {
   DatasetBase* const dataset_;  // Owns one reference.
 };
 
+const char kWrappedDatasetVariantTypeName[] =
+    "tensorflow::data::WrappedDatasetVariant";
+
+class WrappedDatasetVariantWrapper {
+ public:
+  WrappedDatasetVariantWrapper() {}
+
+  explicit WrappedDatasetVariantWrapper(const Tensor& ds_tensor)
+      : ds_tensor_(ds_tensor) {}
+
+  Tensor get() const { return ds_tensor_; }
+
+  string TypeName() const { return "tensorflow::WrappedDatasetVariantWrapper"; }
+
+  string DebugString() const {
+    return "tensorflow::WrappedDatasetVariantWrapper::DebugString";
+  }
+
+  void Encode(VariantTensorData* data) const {
+    *(data->add_tensors()) = ds_tensor_;
+  }
+
+  bool Decode(const VariantTensorData& data) {
+    ds_tensor_ = data.tensors(0);
+    return true;
+  }
+
+ private:
+  Tensor ds_tensor_;
+};
+
+class WrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit WrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    DatasetBase* unused;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(tensor, &unused));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<Variant>()() = WrappedDatasetVariantWrapper(tensor);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant").Device(DEVICE_CPU),
+                        WrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        WrapDatasetVariantOp);
+
+class UnwrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit UnwrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    Variant variant = tensor.scalar<Variant>()();
+    const WrappedDatasetVariantWrapper* wrapper =
+        variant.get<WrappedDatasetVariantWrapper>();
+    OP_REQUIRES(ctx, wrapper != nullptr,
+                errors::InvalidArgument(
+                    "Tensor must be a WrappedDataset variant object."));
+    Tensor ds_tensor = wrapper->get();
+    OP_REQUIRES_OK(ctx, ctx->set_output("output_handle", ds_tensor));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant").Device(DEVICE_CPU),
+                        UnwrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        UnwrapDatasetVariantOp);
+
+static Status WrappedDatasetVariantDeviceCopy(
+    const WrappedDatasetVariantWrapper& from, WrappedDatasetVariantWrapper* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  *to = WrappedDatasetVariantWrapper(from);
+  return Status::OK();
+}
+
+#define REGISTER_OPTIONAL_COPY(DIRECTION)               \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      WrappedDatasetVariantWrapper, DIRECTION,          \
+      WrappedDatasetVariantDeviceCopy)
+
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(WrappedDatasetVariantWrapper,
+                                       kWrappedDatasetVariantTypeName);
+
 }  // namespace
 
 Status GraphDefBuilderWrapper::AddDataset(
@@ -82,13 +191,13 @@ Status GraphDefBuilderWrapper::AddDataset(
     const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
-  const string& name = dataset->name();
+  const string& type_string = dataset->type_string();
   std::unique_ptr<const GraphDefBuilder::Options> opts(
       new GraphDefBuilder::Options(b_->opts()));
   // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
   // attributes defined. It will be nice to have a consistent pattern.
-  bool has_output_types_attr = HasAttr(name, "output_types");
-  bool has_output_shapes_attr = HasAttr(name, "output_shapes");
+  bool has_output_types_attr = HasAttr(type_string, "output_types");
+  bool has_output_shapes_attr = HasAttr(type_string, "output_shapes");
   if (has_output_shapes_attr) {
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_shapes", dataset->output_shapes())));
@@ -105,7 +214,8 @@ Status GraphDefBuilderWrapper::AddDataset(
     return errors::Internal("AddDataset: Failed to build Options with error ",
                             opts->StatusToString());
   }
-  NodeBuilder node_builder(opts->GetNameForOp(name), name, opts->op_registry());
+  NodeBuilder node_builder(opts->GetNameForOp(type_string), type_string,
+                           opts->op_registry());
   {
     size_t total_size = inputs.size() + list_inputs.size();
     auto inputs_iter = inputs.begin();
@@ -130,31 +240,31 @@ Status GraphDefBuilderWrapper::AddDataset(
   }
   *output = opts->FinalizeBuilder(&node_builder);
   if (*output == nullptr) {
-    return errors::Internal("AddDataset: Failed to build ", name,
+    return errors::Internal("AddDataset: Failed to build ", type_string,
                             " op with error ", opts->StatusToString());
   }
   return Status::OK();
 }
 
-Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
-                                           const string& function_name) {
+Status GraphDefBuilderWrapper::AddFunction(
+    SerializationContext* ctx, const string& function_name,
+    const FunctionLibraryDefinition& lib_def) {
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
             << " the graph. It will not be added again.";
     return Status::OK();
   }
   if (!ctx->optimization_only()) {
-    TF_RETURN_IF_ERROR(
-        EnsureFunctionIsStateless(ctx->flib_def(), function_name));
+    TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(function_name, lib_def));
   }
-  const FunctionDef* f_def = ctx->flib_def().Find(function_name);
+  const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
                                    function_name, " in the registry.");
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
-  const string gradient_func = ctx->flib_def().FindGradient(function_name);
+  const string gradient_func = lib_def.FindGradient(function_name);
   if (!gradient_func.empty()) {
     GradientDef* g_def = def.add_gradient();
     g_def->set_function_name(function_name);
@@ -165,19 +275,19 @@ Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
   // Recursively add functions in inputs of function_name.
   for (const NodeDef& node_def : f_def->node_def()) {
     const OpRegistrationData* op_reg_data = nullptr;
-    TF_RETURN_IF_ERROR(ctx->flib_def().LookUp(node_def.op(), &op_reg_data));
+    TF_RETURN_IF_ERROR(lib_def.LookUp(node_def.op(), &op_reg_data));
     if (op_reg_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name(), lib_def));
     }
     // Recursively add functions in attrs of this NodeDef.
     for (const auto& pair : node_def.attr()) {
-      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second));
+      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second, lib_def));
     }
   }
 
   // Recursively add functions in attrs of function_name.
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
-    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second));
+    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second, lib_def));
   }
   return Status::OK();
 }
@@ -240,7 +350,7 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 }
 
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
-  if (!(tensor->dtype() == DT_VARIANT ||
+  if (!(tensor->dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor->shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");

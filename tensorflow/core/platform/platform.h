@@ -40,7 +40,7 @@ limitations under the License.
 #elif defined(_WIN32)
 #define PLATFORM_WINDOWS
 
-#elif defined(__arm__)
+#elif defined(__arm__) || defined(__EMSCRIPTEN__)
 #define PLATFORM_POSIX
 
 // Require an outside macro to tell us if we're building for Raspberry Pi or

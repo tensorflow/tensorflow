@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -106,7 +105,7 @@ class MaterializedDatasetResource : public ResourceBase {
       const std::vector<PartialTensorShape>& output_shapes)
       : output_dtypes_(output_dtypes), output_shapes_(output_shapes) {}
 
-  string DebugString() override {
+  string DebugString() const override {
     return "Materialized IndexedDataset resource";
   }
 
@@ -150,7 +149,7 @@ class MaterializedDatasetResource : public ResourceBase {
 
 // A wrapper class for storing an `IndexedDataset` instance in a DT_VARIANT
 // tensor. Objects of the wrapper class own a reference on an instance of an
-// `IndexedTensor` and the wrapper's copy constructor and desctructor take care
+// `IndexedTensor` and the wrapper's copy constructor and destructor take care
 // of managing the reference count.
 //
 // NOTE: This is not a feature-complete implementation of the DT_VARIANT
@@ -424,7 +423,7 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
 
     Status MaterializeDataset(
         std::shared_ptr<MaterializedIndexedDataset>* materialized) override {
-      materialized->reset(new Materialized(this));
+      (*materialized) = std::make_shared<Materialized>(this);
       return Status::OK();
     }
 
@@ -441,8 +440,8 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::IdentityIndexedDataset")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::IdentityIndexedDataset")});
     }
 
     string DebugString() const override {

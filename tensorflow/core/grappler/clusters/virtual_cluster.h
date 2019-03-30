@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -50,9 +51,8 @@ class VirtualCluster : public Cluster {
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
  private:
-  std::unique_ptr<OpLevelCostEstimator> node_estimator_;
-  std::unique_ptr<ReadyNodeManager> node_manager_;
-  const DeviceSet* device_set_ = nullptr;  // Not owned
+  std::unique_ptr<AnalyticalCostEstimator> estimator_;
+  const DeviceSet* device_set_ = nullptr;
 };
 
 }  // end namespace grappler

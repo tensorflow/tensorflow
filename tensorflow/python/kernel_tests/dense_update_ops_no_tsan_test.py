@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -33,8 +33,10 @@ class AssignOpTest(test.TestCase):
   # NOTE(mrry): We exclude thess tests from the TSAN TAP target, because they
   #   contain benign and deliberate data races when multiple threads update
   #   the same parameters without a lock.
-  @test_util.run_deprecated_v1
   def testParallelUpdateWithoutLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], 1.0)
       p = variables.Variable(array_ops.zeros([1024, 1024]))
@@ -42,7 +44,7 @@ class AssignOpTest(test.TestCase):
           state_ops.assign_add(
               p, ones_t, use_locking=False) for _ in range(20)
       ]
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       def run_add(add_op):
         self.evaluate(add_op)
@@ -61,8 +63,10 @@ class AssignOpTest(test.TestCase):
       self.assertTrue((vals >= ones).all())
       self.assertTrue((vals <= ones * 20).all())
 
-  @test_util.run_deprecated_v1
   def testParallelAssignWithoutLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], float(1))
       p = variables.Variable(array_ops.zeros([1024, 1024]))
@@ -70,7 +74,7 @@ class AssignOpTest(test.TestCase):
           state_ops.assign(p, math_ops.multiply(ones_t, float(i)), False)
           for i in range(1, 21)
       ]
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       def run_assign(assign_op):
         self.evaluate(assign_op)
@@ -94,8 +98,10 @@ class AssignOpTest(test.TestCase):
   # contain non-benign but known data races between the variable assignment and
   # returning the output tensors. This issue will be resolved with the new
   # resource variables.
-  @test_util.run_deprecated_v1
   def testParallelUpdateWithLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
       ones_t = array_ops.fill([1024, 1024], 1.0)
@@ -104,7 +110,7 @@ class AssignOpTest(test.TestCase):
           state_ops.assign_add(
               p, ones_t, use_locking=True) for _ in range(20)
       ]
-      p.initializer.run()
+      self.evaluate(p.initializer)
 
       def run_add(add_op):
         self.evaluate(add_op)
@@ -122,8 +128,10 @@ class AssignOpTest(test.TestCase):
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertAllEqual(vals, ones * 20)
 
-  @test_util.run_deprecated_v1
   def testParallelAssignWithLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       zeros_t = array_ops.fill([1024, 1024], 0.0)
       ones_t = array_ops.fill([1024, 1024], 1.0)
@@ -133,7 +141,7 @@ class AssignOpTest(test.TestCase):
               p, math_ops.multiply(ones_t, float(i)), use_locking=True)
           for i in range(1, 21)
       ]
-      p.initializer.run()
+      self.evaluate(p.initializer)
 
       def run_assign(assign_op):
         self.evaluate(assign_op)

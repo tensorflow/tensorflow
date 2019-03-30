@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_TOOLS_ACCURACY_INCEPTION_PREPROCESSING_H_
-#define TENSORFLOW_LITE_TOOLS_ACCURACY_INCEPTION_PREPROCESSING_H_
+#ifndef TENSORFLOW_LITE_TOOLS_ACCURACY_ILSVRC_INCEPTION_PREPROCESSING_H_
+#define TENSORFLOW_LITE_TOOLS_ACCURACY_ILSVRC_INCEPTION_PREPROCESSING_H_
 
 #include <utility>
 
-#include "tensorflow/lite/tools/accuracy/stage.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/lite/tools/accuracy/stage.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -31,28 +31,53 @@ namespace metrics {
 // shape {1, image_height, image_width, 3}, where 3 is the number of channels.
 class InceptionPreprocessingStage : public Stage {
  public:
+  // Preprocessing params that govern scaling and normalization of channels of
+  // the image.
   struct Params {
+    // Input means are subtracted from each channel.
+    // In case of an empty vector this is skipped.
     std::vector<float> input_means;
+    // Scale is used to divide the input.
+    // A scale of 0 means divison is skipped.
     float scale;
     double cropping_fraction;
   };
 
-  static Params DefaultParams() {
-    return {.input_means = {127.5, 127.5, 127.5},
-            .scale = 127.5,
-            .cropping_fraction = 0.875};
+  // Default preprocessing for inception stage based on |output_type|
+  static Params DefaultParamsForType(DataType output_type) {
+    const float kCroppingFraction = 0.875;
+    Params params = {};
+    params.cropping_fraction = kCroppingFraction;
+    if (output_type == DT_UINT8) {
+    } else if (output_type == DT_INT8) {
+      params.input_means = {128.0, 128.0, 128.0};
+    } else {
+      // Assume floating point preprocessing.
+      params.input_means = {127.5, 127.5, 127.5};
+      params.scale = 127.5;
+    }
+    return params;
   }
 
   // Creates a new preprocessing stage object with provided |image_width|
   // |image_height| as the size of output image.
-  // If |is_quantized| is set to true then |params| is ignored since quantized
-  // images don't go through any preprocessing.
+  // |output_datatype| is the datatype of output of the stage.
   InceptionPreprocessingStage(int image_width, int image_height,
-                              bool is_quantized,
-                              Params params = DefaultParams())
-      : image_width_(image_width),
+                              DataType output_datatype)
+      : output_datatype_(output_datatype),
+        image_width_(image_width),
+        image_height_(image_height) {
+    params_ = DefaultParamsForType(output_datatype);
+  }
+
+  // Creates a new preprocessing stage object with provided |image_width|
+  // |image_height| as the size of output image.
+  // |output_datatype| is the datatype of output of the stage.
+  InceptionPreprocessingStage(int image_width, int image_height,
+                              DataType output_datatype, Params params)
+      : output_datatype_(output_datatype),
+        image_width_(image_width),
         image_height_(image_height),
-        is_quantized_(is_quantized),
         params_(std::move(params)) {}
 
   string name() const override { return "stage_inception_preprocess"; }
@@ -63,6 +88,7 @@ class InceptionPreprocessingStage : public Stage {
   void AddToGraph(const Scope& scope, const Input& input) override;
 
  private:
+  DataType output_datatype_;
   int image_width_;
   int image_height_;
   bool is_quantized_;

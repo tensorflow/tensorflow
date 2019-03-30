@@ -24,11 +24,12 @@ to build TFLite.
 Running
 
 ```bash
-tensorflow/lite/build_ios_universal_lib.sh
+tensorflow/lite/tools/make/build_ios_universal_lib.sh
 ```
-will also build `tensorflow/lite/gen/lib/benchmark-lib.a` .
 
-- Now copy the downloaded model file to `benchmark_data` directory. 
+will also build `tensorflow/lite/tools/make/gen/lib/benchmark-lib.a` .
+
+- Now copy the downloaded model file to `benchmark_data` directory.
 
 - Modify `benchmark_params.json` change the `input_layer`, `input_layer_shape`
 and other benchmark parameters.
@@ -36,8 +37,8 @@ and other benchmark parameters.
 - Change `Build Phases -> Copy Bundle Resources` and add the model file to the
 resources that need to be copied.
 
-- Ensure that `Build Phases -> Link Binary With Library` contains the 
-`Accelerate framework` and `tensorflow/lite/gen/lib/benchmark-lib.a`.
+- Ensure that `Build Phases -> Link Binary With Library` contains the
+`Accelerate framework` and `tensorflow/lite/tools/make/gen/lib/benchmark-lib.a`.
 
 - Now try running the app. The app has a single button that runs the benchmark
   on the model and displays results in a text view below.
@@ -47,7 +48,7 @@ resources that need to be copied.
 If you want detailed profiling, use the following command:
 
 ```bash
-tensorflow/lite/build_ios_universal_lib.sh -p
+tensorflow/lite/tools/make/build_ios_universal_lib.sh -p
 ```
 
 Then following the same steps above and run the benchmark app. You will see the

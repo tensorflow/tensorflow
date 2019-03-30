@@ -66,6 +66,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_unknown_shapes(self):
     # This test uses placeholders and does not work in eager mode.
     if context.executing_eagerly():
@@ -85,6 +86,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_unknown_rank(self):
     # This test uses placeholders and does not work in eager mode.
     if context.executing_eagerly():
@@ -104,6 +106,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.
     if context.executing_eagerly():
@@ -229,7 +232,8 @@ class ReconstructionOpsTest(test.TestCase):
       # overlap, the gradient for this batch item will be 0-99 shaped as (10,
       # 10).
       reconstruction *= array_ops.stack(
-          [array_ops.zeros((100,)), math_ops.to_float(math_ops.range(100))])
+          [array_ops.zeros((100,)),
+           math_ops.cast(math_ops.range(100), dtypes.float32)])
       loss = math_ops.reduce_sum(reconstruction)
 
       # Verify that only the second batch item receives gradient.

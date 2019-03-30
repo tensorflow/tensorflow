@@ -18,12 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import weakref
+
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -272,9 +274,9 @@ class OpsTest(test_util.TensorFlowTestCase):
     # Temporarily replace the context
     # pylint: disable=protected-access
     del context._context
+    context._context = context.Context()
     try:
-      context._context = context.Context(
-          device_policy=context.DEVICE_PLACEMENT_SILENT)
+      config.set_device_policy('silent')
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
@@ -289,10 +291,10 @@ class OpsTest(test_util.TensorFlowTestCase):
     # Temporarily replace the context
     # pylint: disable=protected-access
     del context._context
+    context._context = context.Context()
     try:
-      context._context = context.Context(
-          device_policy=context.DEVICE_PLACEMENT_SILENT,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+      config.set_device_policy('silent')
+      config.set_soft_device_placement(True)
       cpu_tensor = constant_op.constant(1.0)
       result = cpu_tensor + cpu_tensor
       self.assertEqual(result.device,
@@ -396,6 +398,32 @@ class OpsTest(test_util.TensorFlowTestCase):
     t1 = threading.Thread(target=init_fn)
     t1.start()
     t1.join()
+
+  def testWeakrefEagerTensor(self):
+    x = constant_op.constant([[1.]])
+    x.at1 = constant_op.constant([[2.]])
+    x.at2 = 3.
+    weak_x = weakref.ref(x)
+    weak_xat1 = weakref.ref(x.at1)
+    del x
+    self.assertIs(weak_x(), None)
+    self.assertIs(weak_xat1(), None)
+
+  def testWeakKeyDictionaryTensor(self):
+    weak_key_dict = weakref.WeakKeyDictionary()
+    strong_x = constant_op.constant([[1.]])
+    strong_y = constant_op.constant([[2.]])
+    weak_key_dict[strong_x] = constant_op.constant([[3.]])
+    weak_key_dict[strong_y] = constant_op.constant([[4.]])
+    strong_y.a = constant_op.constant([[5.]])
+    weak_x = weakref.ref(strong_x)
+    del strong_x
+    self.assertIs(weak_x(), None)
+    self.assertEqual([strong_y], list(weak_key_dict))
+    self.assertEqual(1, len(list(weak_key_dict)))
+    self.assertEqual(1, len(weak_key_dict))
+    del strong_y
+    self.assertEqual([], list(weak_key_dict))
 
 
 if __name__ == '__main__':

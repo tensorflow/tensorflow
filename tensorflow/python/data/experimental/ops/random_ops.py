@@ -33,14 +33,10 @@ class RandomDatasetV2(dataset_ops.DatasetSource):
 
   def __init__(self, seed=None):
     """A `Dataset` of pseudorandom values."""
-    super(RandomDatasetV2, self).__init__()
     self._seed, self._seed2 = random_seed.get_seed(seed)
-
-  def _as_variant_tensor(self):
-    return gen_experimental_dataset_ops.experimental_random_dataset(
-        seed=self._seed,
-        seed2=self._seed2,
-        **dataset_ops.flat_structure(self))
+    variant_tensor = gen_experimental_dataset_ops.experimental_random_dataset(
+        seed=self._seed, seed2=self._seed2, **dataset_ops.flat_structure(self))
+    super(RandomDatasetV2, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):

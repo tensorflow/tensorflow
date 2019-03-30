@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_PLACER_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_PLACER_H_
 
-#include <unordered_map>
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 

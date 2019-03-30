@@ -16,16 +16,16 @@ limitations under the License.
 // Native XLA implementations of indexing ops.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 namespace {
@@ -74,7 +74,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     // shape isn't supported.
     if (!ctx->compiler()->options().allow_cpu_custom_calls ||
         (input_dims != 1 && input_dims != 2)) {
-      xla::XlaOp output = XlaHelpers::ArgMax(ctx->Input(0), output_type, axis);
+      xla::XlaOp output = xla::ArgMax(ctx->Input(0), output_type, axis);
       ctx->SetOutput(0, output);
       return;
     }
@@ -110,8 +110,8 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
       auto shape_status = b.GetShape(arg);
       OP_REQUIRES_OK(ctx, shape_status.status());
       xla::Shape arg_shape = shape_status.ConsumeValueOrDie();
-      *arg_shape.mutable_layout() = xla::LayoutUtil::MakeDescendingLayout(
-          xla::ShapeUtil::Rank(arg_shape));
+      *arg_shape.mutable_layout() =
+          xla::LayoutUtil::MakeDescendingLayout(arg_shape.rank());
       arg_shapes.push_back(std::move(arg_shape));
     }
 

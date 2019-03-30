@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -157,5 +158,60 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   EXPECT_FALSE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
 }
 
+TEST_F(ConditionalSimplifierTest, TrivalOperandsRemoved) {
+  absl::string_view hlo_string =
+      R"(
+HloModule UnusedTupleOperands
+on_false {
+  t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=0
+  rhs = f32[40,40] get-tuple-element(t), index=1
+  dot = f32[20,40] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = (f32[20,40]) tuple(dot)
+}
+
+on_true {
+  t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=2
+  rhs = f32[40,40] get-tuple-element(t), index=3
+  dot = f32[20,40] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = (f32[20,40]) tuple(dot)
+}
+
+ENTRY main {
+  c0_0 = f32[20,40] parameter(0)
+  c0_1 = f32[40,40] parameter(1)
+  c1_0 = f32[20,40] parameter(2)
+  c1_1 = f32[40,40] parameter(3)
+  p = pred[] parameter(4)
+  t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) tuple(c0_0, c0_1, c1_0, c1_1)
+  ROOT result = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
+}
+)";
+  auto status = ParseHloString(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(false, false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_EQ(status.ValueOrDie()
+                ->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->shape()
+                .tuple_shapes()
+                .size(),
+            2);
+  EXPECT_EQ(status.ValueOrDie()
+                ->entry_computation()
+                ->root_instruction()
+                ->operand(2)
+                ->shape()
+                .tuple_shapes()
+                .size(),
+            2);
+}
 }  // namespace
+
 }  // namespace xla

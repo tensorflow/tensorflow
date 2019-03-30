@@ -62,7 +62,7 @@ int HierarchicalTreeBroadcaster::GetDeviceTask(
     int device_rank, const std::vector<int>& dev_per_task) {
   int num_tasks = static_cast<int>(dev_per_task.size());
   int task_lo = 0;
-  int task_hi;
+  int task_hi = -1;
   for (int ti = 0; ti < num_tasks; ti++) {
     task_hi = task_lo + dev_per_task[ti];
     if (task_lo <= device_rank && device_rank < task_hi) return ti;

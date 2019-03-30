@@ -136,7 +136,7 @@ comment: 9
       profile.ParseFromString(profile_contents)
       self.assertEquals(expected_proto, str(profile))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testProfileWithWhileLoop(self):
     options = config_pb2.RunOptions()
     options.trace_level = config_pb2.RunOptions.FULL_TRACE

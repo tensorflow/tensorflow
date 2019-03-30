@@ -65,7 +65,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // --input_binary=true
   private static final int INPUT_SIZE = 224;
 
-  private static final String MODEL_FILE = "mobilenet_quant_v1_224.tflite";
+  private static final String MODEL_FILE = "mobilenet_v1_1.0_224_quant.tflite";
   private static final String LABEL_FILE = "labels_mobilenet_quant_v1_224.txt";
 
   private static final boolean MAINTAIN_ASPECT = true;

@@ -499,6 +499,52 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   EXPECT_THAT(add_4->operand(0), op::Broadcast(param));
 }
 
+TEST_F(HloRematerializationTest, CopyNotRematerialized) {
+  // Test that copies are not rematerialized.
+  auto module = CreateNewVerifiedModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, vec1024_shape_, "param"));
+
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kCopy, param));
+
+  auto negate_a_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kNegate, copy));
+
+  auto negate_a_2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      vec1024_shape_, HloOpcode::kNegate, negate_a_1));
+
+  auto negate_b_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kNegate, copy));
+
+  auto negate_b_2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      vec1024_shape_, HloOpcode::kNegate, negate_b_1));
+
+  builder.AddInstruction(HloInstruction::CreateTuple({negate_a_2, negate_b_2}));
+
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/1 * 1024, module.get()));
+
+  auto count_copies = [](const HloComputation* computation) {
+    int64 copy_count = 0;
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopy) {
+        copy_count++;
+      }
+    }
+    return copy_count;
+  };
+  EXPECT_TRUE(changed);
+
+  EXPECT_EQ(count_copies(entry_computation), 1);
+}
+
 class IndirectUseTest : public HloRematerializationTest,
                         public ::testing::WithParamInterface<bool> {};
 
@@ -588,8 +634,8 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(IndirectUseTestInstantiation, IndirectUseTest,
-                        ::testing::Values(true, false));
+INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
+                         ::testing::Values(true, false));
 
 }  // namespace
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -34,7 +35,7 @@ class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of
 // shared resources.
-class ProcessState {
+class ProcessState : public ProcessStateInterface {
  public:
   static ProcessState* singleton();
 
@@ -82,7 +83,7 @@ class ProcessState {
 
   // If these flags need to be runtime configurable consider adding
   // them to ConfigProto.
-  static const bool FLAGS_brain_mem_reg_cuda_dma = true;
+  static const bool FLAGS_brain_mem_reg_gpu_dma = true;
   static const bool FLAGS_brain_gpu_record_mem_types = false;
 
   // Helper method for unit tests to reset the ProcessState singleton by
@@ -129,7 +130,7 @@ class RecordingAllocator : public Allocator {
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
   size_t RequestedSize(const void* p) override { return a_->RequestedSize(p); }
   size_t AllocatedSize(const void* p) override { return a_->AllocatedSize(p); }
-  void GetStats(AllocatorStats* stats) override { a_->GetStats(stats); }
+  absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
   void ClearStats() override { a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned

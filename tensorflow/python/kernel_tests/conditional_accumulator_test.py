@@ -199,7 +199,7 @@ class ConditionalAccumulatorTest(test.TestCase):
           is_all_equal &= (val[i][j] == elems_ave[i][j])
       self.assertTrue(is_all_equal)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAccumulatorWrongDynamicShape(self):
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
@@ -321,7 +321,7 @@ class ConditionalAccumulatorTest(test.TestCase):
           shape=tensor_shape.TensorShape([1]),
           reduction_type="Invalid")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAccumulatorInvalidTakeGrad(self):
     with self.cached_session():
       q = data_flow_ops.ConditionalAccumulator(
@@ -408,7 +408,7 @@ class ConditionalAccumulatorTest(test.TestCase):
 
       set_global_step_op = q.set_global_step(new_global_step)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(3):
         set_global_step_op.run()
         self.evaluate(inc_global_step)
@@ -435,8 +435,11 @@ class ConditionalAccumulatorTest(test.TestCase):
                                    if x >= ls) / sum(1 for x in local_steps
                                                      if x >= ls), val)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testParallelApplyGrad(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))
@@ -461,8 +464,11 @@ class ConditionalAccumulatorTest(test.TestCase):
 
       self.assertEqual(val, sum(elems) / len(elems))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testParallelTakeGrad(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))
@@ -494,8 +500,11 @@ class ConditionalAccumulatorTest(test.TestCase):
 
       self.assertItemsEqual(elems, results)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAccumulatorApplyAndBlockingTake(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([1]))
@@ -528,7 +537,7 @@ class ConditionalAccumulatorTest(test.TestCase):
     with self.assertRaisesOpError("was cancelled"):
       self.evaluate(takeg_op)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAccumulatorCancel(self):
     with self.cached_session() as sess:
       q = data_flow_ops.ConditionalAccumulator(

@@ -114,21 +114,27 @@ class MapVectorizationBenchmark(test.Benchmark):
 
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
     num_elems = int(np.sum([np.prod(x) for x in input_size]))
-    name_template = "{}__batch_size_{}_input_element_size_{}_{}"
-    unoptimized = input_dataset.map(map_fn).batch(batch_size)
-    unoptimized_op = dataset_ops.make_one_shot_iterator(unoptimized).get_next()
+    name_template = "{}_batch_size_{}_input_element_size_{}_{}"
 
-    optimized = input_dataset.map(map_fn).batch(batch_size)
+    unoptimized_dataset = input_dataset.map(map_fn).batch(batch_size)
+
     options = dataset_ops.Options()
-    options.experimental_map_vectorization = True
-    optimized = optimized.with_options(options)
-    optimized_op = dataset_ops.make_one_shot_iterator(optimized).get_next()
+    options.experimental_optimization.apply_default_optimizations = False
+    unoptimized_dataset = unoptimized_dataset.with_options(options)
+    unoptimized_next = dataset_ops.make_one_shot_iterator(
+        unoptimized_dataset).get_next()
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization.enabled = True
+    optimized_dataset = unoptimized_dataset.with_options(options)
+    optimized_next = dataset_ops.make_one_shot_iterator(
+        optimized_dataset).get_next()
 
     unoptimized_time = self._run(
-        unoptimized_op,
+        unoptimized_next,
         name=name_template.format(str_id, batch_size, num_elems, "unoptimized"))
     optimized_time = self._run(
-        optimized_op,
+        optimized_next,
         name=name_template.format(str_id, batch_size, num_elems, "optimized"))
 
     print("Batch size: {}\n"
@@ -153,7 +159,7 @@ class MapVectorizationBenchmark(test.Benchmark):
 
   def benchmarkCast(self):
     self._benchmark_helper(
-        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
+        lambda *args: [math_ops.cast(x, dtypes.float32) for x in args], "cast")
 
   def benchmarkReshape(self):
     self._benchmark_helper(
@@ -185,7 +191,8 @@ class MapVectorizationBenchmark(test.Benchmark):
       base_dataset = base_dataset.repeat()
       input_size = [
           tuple(shape.as_list())
-          for shape in nest.flatten(base_dataset.output_shapes)
+          for shape in nest.flatten(
+              dataset_ops.get_legacy_output_shapes(base_dataset))
       ]
       self._compare(base_dataset, map_fn, batch_size, input_size, str_id)
 

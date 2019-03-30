@@ -15,21 +15,30 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
 
-#include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/lite/delegates/flex/buffer_map.h"
 
 namespace tflite {
 namespace flex {
 
 // Data kept by the Flex delegate for the lifetime of an Interpreter.
+//
+// Note: This class is *not* thread-safe; any dependent delegates should not be
+// used concurrently.
 class DelegateData {
  public:
-  // Create a new DelegateData, initialized with a newly-created EagerContext.
-  static tensorflow::Status Create(std::unique_ptr<DelegateData>* data);
-
+  DelegateData();
   ~DelegateData();
 
+  // Prepare the necessary EagerContext and data for execution.
+  // This must be called at least once before execution. After preparation
+  // succeeds, redundant calls will be ignored (even if the session_options
+  // differ).
+  tensorflow::Status Prepare(const tensorflow::SessionOptions& session_options);
+
   // The EagerContext that is required for execution of Flex Ops.
+  // Note: The context is lazily created after the first call to |Prepare()|.
   tensorflow::EagerContext* GetEagerContext() { return eager_context_.get(); }
 
   // Map from TF Lite tensor index to TensorFlow tensor for a given context.
@@ -38,8 +47,7 @@ class DelegateData {
   }
 
  private:
-  explicit DelegateData(tensorflow::EagerContext* eager_context);
-
+  // Will be null until Prepare() is called and completes successfully.
   std::unique_ptr<tensorflow::EagerContext> eager_context_;
   // TODO(b/112439500): Clean up stale BufferMap instances after adding the
   // necessary cleanup hook from a TfLiteContext to a TfLiteDelegate.

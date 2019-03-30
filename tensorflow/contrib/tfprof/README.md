@@ -1,7 +1,5 @@
 # tfprof: TensorFlow Profiler and Beyond
 
-<h1>Please use `tf.profiler.xxx` instead of `tf.contrib.tfprof.xxx`</h1>
-
 <h1>Full Document in
 <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/README.md">tensorflow/core/profiler/README.md</a><h1>
 

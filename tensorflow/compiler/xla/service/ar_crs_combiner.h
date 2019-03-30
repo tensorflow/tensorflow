@@ -25,14 +25,52 @@ limitations under the License.
 
 namespace xla {
 
-// Combine an AllReduce and a CrossReplicaSum when they are close to each other
-// in the graph, to use an efficient CrossReplicaSum implementation that
-// fully utilizes the interconnect bandwidth.
+// When the HLO graph contains a cross-module AllReduce, followed by some simple
+// linear operations, followed by a cross-replica AllReduce (also known as
+// cross-replica sum, or CRS), we can combine the CMAR and the CRAR, to use an
+// efficient AllReduce implementation that fully utilizes the interconnect
+// bandwidth.
+// Such sequences appear in spatially partitioned models.
+// This pass must run right after spatial partitioning, when the code is still
+// in a single HLO module.
+//
+// The steps are:
+// 1) Find CMARs followed by simple ops followed by CRARs.
+// 2) Group CMARs by all_reduce_id. They must all be rewritten.
+// 3) Prove that the CMAR patterns in each core produce the same result.
+// 4) Eliminate the CMAR, and if it feeds an addition/subtraction, divide the
+//    other operand by the number of spatial partitions.
+// 5) Turn the CRAR into an all-core AllReduce.
+//
+// The pass also handles the case where multiple CMARs lead to the same CRAR,
+// and eliminates all CMARs. This graph:
+//
+//        Y
+//        |
+//  X   CMAR_2   Z
+//  |      \    /
+// CMAR_1     +
+//    \     /
+//       +
+//       |
+//     CRAR
+//
+// gets rewritten to:
+//
+//           Z   num_partitions
+//            \  /
+//       Y    div
+//        \   /
+//    X     +
+//     \   /
+//       +
+//       |
+//  all-core AR
+//
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions, int num_replicas)
-      : num_spatial_partitions_(num_spatial_partitions),
-        num_replicas_(num_replicas) {}
+  ArCrsCombiner(int num_spatial_partitions)
+      : num_spatial_partitions_(num_spatial_partitions) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -41,6 +79,41 @@ class ArCrsCombiner : public HloModulePass {
                                                HloInstruction* i2);
 
  private:
+  // We used this struct because multiple ARs could be paired with the same CRS.
+  // In this case, we want to select the AR that is furthest from the CRS,
+  // because it makes it easier to eliminate all ARs during RewriteGraph.
+  struct ArCrsPair {
+    HloInstruction* ar;
+    HloInstruction* crs;
+    // The length of the path from AR to CRS in the HLO graph.
+    int64 distance;
+
+    ArCrsPair(HloInstruction* all_reduce, HloInstruction* cross_replica_sum,
+              int64 dist)
+        : ar(all_reduce), crs(cross_replica_sum), distance(dist) {}
+
+    string ToString() {
+      std::vector<string> pieces;
+      pieces.push_back("(");
+      HloInstruction* instruction = ar;
+      while (instruction != crs) {
+        pieces.push_back(instruction->name());
+        pieces.push_back(",");
+        instruction = instruction->users()[0];
+      }
+      pieces.push_back(instruction->name());
+      pieces.push_back(")[id:");
+      pieces.push_back(std::to_string(*(ar->all_reduce_id())));
+      pieces.push_back(",dist:");
+      pieces.push_back(std::to_string(distance));
+      pieces.push_back("]");
+      return absl::StrJoin(pieces, "");
+    }
+  };
+
+  absl::optional<ArCrsCombiner::ArCrsPair> MatchesArCrsPattern(
+      HloInstruction* instruction);
+
   // If the passed instruction is a while parameter, and the while body is only
   // called by a single while instruction, return the while instruction.
   absl::optional<HloInstruction*> WhileFromBodyParameter(
@@ -77,10 +150,14 @@ class ArCrsCombiner : public HloModulePass {
   StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
-  int num_replicas_;
 
-  // Map from all-reduce ids to the all reduce instructions.
-  absl::flat_hash_map<int64, std::vector<HloInstruction*>> all_reduce_map_;
+  // Map from all-reduce ids to the AR/CRS pairs.
+  absl::flat_hash_map<int64, std::vector<ArCrsPair>> all_reduce_map_;
+
+  // Map from a CRS instruction to the all-reduce ID of the AR paired with the
+  // CRS. Sometimes, several ARs in the code could be paired with the same CRS.
+  // We use this map to pick a single AR/CRS path to rewrite.
+  absl::flat_hash_map<HloInstruction*, int64> crs_reserved_map_;
 
   std::unique_ptr<CallGraph> call_graph_;
 };

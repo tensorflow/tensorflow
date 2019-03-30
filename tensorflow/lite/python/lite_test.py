@@ -27,12 +27,16 @@ from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
@@ -80,6 +84,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
     self.assertTrue(converter._has_valid_tensors())
 
 
+@test_util.run_v1_only('b/120545219')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -111,6 +116,35 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testString(self):
+    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
+    out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.string_, input_details[0]['dtype'])
+    self.assertTrue(([4] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('Reshape', output_details[0]['name'])
+    self.assertEqual(np.string_, output_details[0]['dtype'])
+    self.assertTrue(([2, 2] == output_details[0]['shape']).all())
+    # TODO(b/122659643): Test setting/getting string data via the python
+    # interpreter API after support has been added.
 
   def testQuantization(self):
     in_tensor_1 = array_ops.placeholder(
@@ -222,18 +256,42 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
                      str(error.exception))
 
-  def testSizeEmptyInvalid(self):
+  def testScalarValid(self):
+    # Construct a graph using a scalar (empty shape) input.
     in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
-    # Test empty shape.
+    # Test conversion with the scalar input shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    with self.assertRaises(ValueError) as error:
-      converter.convert()
-    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
-                     str(error.exception))
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([] == input_details[0]['shape']).all())
+
+    # Validate inference using the scalar inputs/outputs.
+    test_input = np.array(4.0, dtype=np.float32)
+    expected_output = np.array(8.0, dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
 
   def testSizeInvalid(self):
     in_tensor = array_ops.placeholder(
@@ -427,6 +485,29 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
+  def testPostTrainingQuantizeDeprecatedAttribute(self):
+    in_tensor_1 = array_ops.placeholder(
+        shape=[33, 33], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = constant_op.constant(
+        np.random.uniform(low=-10., high=10., size=(33, 33)),
+        shape=[33, 33],
+        dtype=dtypes.float32,
+        name='inputB')
+    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    self.assertFalse(quantized_converter.post_training_quantize)
+
+    quantized_converter.post_training_quantize = True
+    self.assertTrue(quantized_converter.post_training_quantize)
+    self.assertEqual(quantized_converter.optimizations,
+                     [lite.Optimize.OPTIMIZE_FOR_SIZE])
+
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
   def testPostTrainingQuantize(self):
     np.random.seed(0)
     # We need the tensor to have more than 1024 elements for quantize_weights
@@ -450,35 +531,58 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert quantized weights model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
-    quantized_converter.post_training_quantize = True
+    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
-  def testFlexMode(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
+  def testPostTrainingCalibrateAndQuantize(self):
+    np.random.seed(0)
+    # Create a mobilenet like model.
+    output_channel = 16
+    depth_multiplier = 1
+    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3))
+    conv = nn_ops.conv2d(
+        inp,
+        filter=array_ops.zeros([3, 3, 3, output_channel]),
+        strides=[1, 1, 1, 1],
+        padding='SAME')
+    dconv = nn_ops.depthwise_conv2d_native(
+        conv,
+        filter=array_ops.zeros(
+            [16, 16, output_channel, output_channel * depth_multiplier]),
+        strides=[1, 1, 1, 1],
+        padding='SAME')
+    pool = nn_ops.pool(
+        dconv, window_shape=[2, 2], pooling_type='AVG', padding='SAME')
+    max_pool = nn_ops.pool(
+        pool, window_shape=[2, 2], pooling_type='MAX', padding='SAME')
+    output = nn_ops.softmax(max_pool)
+
+    def calibration_gen():
+      for _ in range(10):
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
+
     sess = session.Session()
 
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    converter.target_ops = set([lite.OpsSet.SELECT_TF_OPS])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
 
-    # Ensures the model contains TensorFlow ops.
-    # TODO(nupurgarg): Check values once there is a Python delegate interface.
-    interpreter = Interpreter(model_content=tflite_model)
-    with self.assertRaises(RuntimeError) as error:
-      interpreter.allocate_tensors()
-    self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
-        str(error.exception))
+    # Convert quantized weights model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
+    quantized_converter.representative_dataset = lite.RepresentativeDataset(
+        calibration_gen)
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
@@ -496,7 +600,80 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  def testMultipleOutputNodeNames(self):
+    """Tests converting a graph with an op that have multiple outputs."""
+    input_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
+    out0, out1, out2, out3 = array_ops.split(input_tensor, [1, 1, 1, 1], axis=0)
+    sess = session.Session()
 
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [input_tensor],
+                                                  [out0, out1, out2, out3])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    interpreter.set_tensor(input_details[0]['index'],
+                           np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32))
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(4, len(output_details))
+    self.assertEqual(1.0, interpreter.get_tensor(output_details[0]['index']))
+    self.assertEqual(2.0, interpreter.get_tensor(output_details[1]['index']))
+    self.assertEqual(3.0, interpreter.get_tensor(output_details[2]['index']))
+    self.assertEqual(4.0, interpreter.get_tensor(output_details[3]['index']))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFunctions(self):
+    """Tests tf.function in 1.X."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = variables.Variable(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      output_node = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+      sess.run(variables.variables_initializer([variable_node]))
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [placeholder],
+                                                  [output_node])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('input', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output_node', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+
+@test_util.run_v1_only('b/120545219')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -639,7 +816,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
   # TODO(nupurgarg): Test model loading in open source.
   def _initObjectDetectionArgs(self):
     # Initializes the arguments required for the object detection model.
-    # Looks for the model file which is saved in a different location interally
+    # Looks for the model file which is saved in a different location internally
     # and externally.
     filename = resource_loader.get_path_to_datafile('testdata/tflite_graph.pb')
     if not os.path.exists(filename):
@@ -744,6 +921,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSavedModel(self, shape):
@@ -888,6 +1066,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):

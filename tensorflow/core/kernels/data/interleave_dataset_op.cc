@@ -58,8 +58,9 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("block_length must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     *output =
         new Dataset(ctx, input, func_, std::move(captured_func), cycle_length,
@@ -89,8 +90,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Interleave")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Interleave")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -108,23 +109,16 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* cycle_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
       Node* block_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;

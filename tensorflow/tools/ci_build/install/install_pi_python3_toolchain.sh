@@ -25,5 +25,4 @@ apt-get install -y libpython3-all-dev:armhf
 echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
 curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
 apt-get update
-rm -rf /usr/local/bin/bazel
-apt-get install -y bazel python3 python3-numpy python3-dev python3-pip
+apt-get install -y python3 python3-numpy python3-dev python3-pip

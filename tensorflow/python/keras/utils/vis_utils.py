@@ -20,7 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from tensorflow.python.util.tf_export import tf_export
+import sys
+from tensorflow.python.util.tf_export import keras_export
 
 
 try:
@@ -43,11 +44,11 @@ def _check_pydot():
     # Attempt to create an image of a blank graph
     # to check the pydot/graphviz installation.
     pydot.Dot.create(pydot.Dot())
-  except Exception:
+    return True
+  except Exception:  # pylint: disable=broad-except
     # pydot raises a generic Exception here,
     # so no specific class can be caught.
-    raise ImportError('Failed to import pydot. You must install pydot'
-                      ' and graphviz for `pydotprint` to work.')
+    return False
 
 
 def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
@@ -63,12 +64,28 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
           'LR' creates a horizontal plot.
 
   Returns:
-      A `pydot.Dot` instance representing the Keras model.
+      A `pydot.Dot` instance representing the Keras model (or None if the Dot
+      file could not be generated).
+
+  Raises:
+    ImportError: if graphviz or pydot are not available.
   """
   from tensorflow.python.keras.layers.wrappers import Wrapper
   from tensorflow.python.keras.models import Sequential
+  from tensorflow.python.util import nest
 
-  _check_pydot()
+  check = _check_pydot()
+  if not check:
+    if 'IPython.core.magics.namespace' in sys.modules:
+      # We don't raise an exception here in order to avoid crashing notebook
+      # tests where graphviz is not available.
+      print('Failed to import pydot. You must install pydot'
+            ' and graphviz for `pydotprint` to work.')
+      return
+    else:
+      raise ImportError('Failed to import pydot. You must install pydot'
+                        ' and graphviz for `pydotprint` to work.')
+
   dot = pydot.Dot()
   dot.set('rankdir', rankdir)
   dot.set('concentrate', True)
@@ -77,7 +94,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   if isinstance(model, Sequential):
     if not model.built:
       model.build()
-  layers = model.layers
+  layers = model._layers
 
   # Create graph nodes.
   for layer in layers:
@@ -120,14 +137,14 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
     for i, node in enumerate(layer._inbound_nodes):
       node_key = layer.name + '_ib-' + str(i)
       if node_key in model._network_nodes:  # pylint: disable=protected-access
-        for inbound_layer in node.inbound_layers:
+        for inbound_layer in nest.flatten(node.inbound_layers):
           inbound_layer_id = str(id(inbound_layer))
           layer_id = str(id(layer))
           dot.add_edge(pydot.Edge(inbound_layer_id, layer_id))
   return dot
 
 
-@tf_export('keras.utils.plot_model')
+@keras_export('keras.utils.plot_model')
 def plot_model(model,
                to_file='model.png',
                show_shapes=False,
@@ -144,11 +161,26 @@ def plot_model(model,
           a string specifying the format of the plot:
           'TB' creates a vertical plot;
           'LR' creates a horizontal plot.
+
+  Returns:
+      A Jupyter notebook Image object if Jupyter is installed.
+      This enables in-line display of the model plots in notebooks.
   """
   dot = model_to_dot(model, show_shapes, show_layer_names, rankdir)
+  if dot is None:
+    return
   _, extension = os.path.splitext(to_file)
   if not extension:
     extension = 'png'
   else:
     extension = extension[1:]
+  # Save image to disk.
   dot.write(to_file, format=extension)
+  # Return the image as a Jupyter Image object, to be displayed in-line.
+  # Note that we cannot easily detect whether the code is running in a
+  # notebook, and thus we always return the Image if Jupyter is available.
+  try:
+    from IPython import display
+    return display.Image(filename=to_file)
+  except ImportError:
+    pass

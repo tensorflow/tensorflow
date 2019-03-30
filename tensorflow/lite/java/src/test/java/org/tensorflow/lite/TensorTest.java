@@ -50,6 +50,7 @@ public final class TensorTest {
     outputs.put(0, new float[2][8][8][3]);
     wrapper.run(inputs, outputs);
     tensor = wrapper.getOutputTensor(0);
+    assertThat(tensor.index()).isGreaterThan(-1);
   }
 
   @After
@@ -75,6 +76,16 @@ public final class TensorTest {
     float[] outputOneD = parsedOutputs[0][0][0];
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testCopyToNull() {
+    try {
+      tensor.copyTo(null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Success.
+    }
   }
 
   @Test
@@ -147,6 +158,16 @@ public final class TensorTest {
     tensor.setTo(inputByteBuffer);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(3.0f);
+  }
+
+  @Test
+  public void testSetToNull() {
+    try {
+      tensor.setTo(null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Success.
+    }
   }
 
   @Test

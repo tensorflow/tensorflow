@@ -23,22 +23,12 @@ namespace tensorflow {
 namespace {
 
 BuildXlaOpsPassFlags* build_ops_flags;
-DumpGraphFlags* dump_graph_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 
 std::vector<Flag>* flag_list;
 std::once_flag flags_init;
-
-void AppendDumpGraphFlagsInternal(std::vector<Flag>* flag_list) {
-  std::vector<Flag> new_flags = {
-      Flag("tf_dump_graph_prefix", &dump_graph_flags->tf_dump_graph_prefix,
-           "Path prefix to which graphs dumped during debugging should be "
-           "written."),
-  };
-  flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
-}
 
 void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   std::vector<Flag> new_flags = {
@@ -65,30 +55,30 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags->tf_xla_clustering_fuel,
            "Places an artificial limit on the number of ops marked as "
            "eligible for clustering."),
-      Flag("tf_xla_fusion_only",
-           &mark_for_compilation_flags->tf_xla_fusion_only,
-           "enable fusion of element-wise operations only using XLA when "
-           "global_jit_level is ON*.")};
+      Flag("tf_xla_disable_deadness_safety_checks_for_debugging",
+           &mark_for_compilation_flags
+                ->tf_xla_disable_deadness_safety_checks_for_debugging,
+           "Disable deadness related safety checks when clustering (this is "
+           "unsound).")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
 void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
-
-  dump_graph_flags = new DumpGraphFlags;
-  dump_graph_flags->tf_dump_graph_prefix = "/tmp/";
+  build_ops_flags->tf_xla_print_cluster_outputs = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->tf_xla_auto_jit = 0;
-  mark_for_compilation_flags->tf_xla_min_cluster_size = 2;
+  mark_for_compilation_flags->tf_xla_min_cluster_size = 4;
   mark_for_compilation_flags->tf_xla_max_cluster_size =
       std::numeric_limits<int32>::max();
   mark_for_compilation_flags->tf_xla_clustering_debug = false;
   mark_for_compilation_flags->tf_xla_cpu_global_jit = false;
   mark_for_compilation_flags->tf_xla_clustering_fuel =
       std::numeric_limits<int64>::max();
-  mark_for_compilation_flags->tf_xla_fusion_only = false;
+  mark_for_compilation_flags
+      ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
@@ -99,6 +89,10 @@ void AllocateAndParseFlags() {
   flag_list = new std::vector<Flag>({
       Flag("tf_xla_enable_lazy_compilation",
            &build_ops_flags->tf_xla_enable_lazy_compilation, ""),
+      Flag("tf_xla_print_cluster_outputs",
+           &build_ops_flags->tf_xla_print_cluster_outputs,
+           "If true then insert Print nodes to print out values produced by "
+           "XLA clusters."),
 
       Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
            "Switch a device into 'on-demand' mode, where instead of "
@@ -107,7 +101,6 @@ void AllocateAndParseFlags() {
       Flag("tf_xla_always_defer_compilation",
            &ops_flags->tf_xla_always_defer_compilation, ""),
   });
-  AppendDumpGraphFlagsInternal(flag_list);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
 }
@@ -117,11 +110,6 @@ void AllocateAndParseFlags() {
 const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
   return *build_ops_flags;
-}
-
-DumpGraphFlags* GetDumpGraphFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
-  return dump_graph_flags;
 }
 
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
@@ -142,11 +130,6 @@ const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   std::call_once(flags_init, &AllocateAndParseFlags);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
-}
-
-void AppendDumpGraphFlags(std::vector<Flag>* flag_list) {
-  std::call_once(flags_init, &AllocateAndParseFlags);
-  AppendDumpGraphFlagsInternal(flag_list);
 }
 
 }  // namespace tensorflow

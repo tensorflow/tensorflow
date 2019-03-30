@@ -101,7 +101,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), 0.001, 1e-6)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testPiecewiseConstantEdgeCases(self):
     x_int = resource_variable_ops.ResourceVariable(
         0, dtype=variables.dtypes.int32)

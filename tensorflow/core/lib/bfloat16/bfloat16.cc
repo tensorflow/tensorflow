@@ -19,6 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+const uint16_t bfloat16::NAN_VALUE;
+const uint16_t bfloat16::ZERO_VALUE;
+
 B16_DEVICE_FUNC bfloat16::operator Eigen::half() const {
   return static_cast<Eigen::half>(float(*this));
 }

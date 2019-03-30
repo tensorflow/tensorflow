@@ -1086,7 +1086,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
       // The tensor must be copied from GPU to CPU, because either:
       // 1. The tensor is located on a non GDR compatible GPU.
       // 2. The tensor's meta-data has changed.
-      Allocator* alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
+      Allocator* alloc = GPUProcessState::singleton()->GetGpuHostAllocator(0);
       copy = Tensor(alloc, in.dtype(), in.shape());
       CountCopies(rm_.name_, (void*)DMAHelper::base(&in),
                   (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
@@ -1543,7 +1543,7 @@ bool RdmaTensorRequest::AllocateTensors() {
     if (mr_ == nullptr) {
       // Can't RDMA directly to result. Use a proxy.
       proxy_tensor_ =
-          new Tensor(GPUProcessState::singleton()->GetCUDAHostAllocator(0),
+          new Tensor(GPUProcessState::singleton()->GetGpuHostAllocator(0),
                      result_tensor_->dtype(), result_tensor_->shape());
       rdma_addr_ = DMAHelper::base(proxy_tensor_);
       mr_ =

@@ -220,6 +220,14 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
       return nullptr;
     }
   }
+  tensorflow::Safe_PyObjectPtr value_decrefer;
+  if (PyArray_IsScalar(value, Generic)) {
+    // Convert numpy scalars to numpy arrays.
+    value = PyArray_FromScalar(value, nullptr);
+    // The returned value needs to be DECREF'd, but the original value was
+    // created in python code, and doesn't need to be DECREF'd.
+    value_decrefer.reset(value);
+  }
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
     if (desired_dtype >= 0) {
@@ -491,11 +499,13 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 
 // tp_dealloc for EagerTensor.
 void EagerTensor_dealloc(EagerTensor* self) {
+  // Unhook the object from python's GC so that the weakref deleter doesn't
+  // try to re-delete this.
+  PyObject_GC_UnTrack((PyObject*)self);
+
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
-  if (self->weakreflist != nullptr) {
-    PyObject_ClearWeakRefs((PyObject*)self);
-  }
+  PyObject_ClearWeakRefs((PyObject*)self);
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);

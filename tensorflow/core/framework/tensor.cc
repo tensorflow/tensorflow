@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -650,14 +651,21 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 }
 
-void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
-                                    const TensorShape& shape) {
+Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
+                           const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
   int out_size = DataTypeSize(dtype);
-  CHECK_NE(in_size, 0);
-  CHECK_NE(out_size, 0);
-  CHECK_EQ(shape.num_elements() * out_size,
-           other.shape().num_elements() * in_size);
+  if (in_size == 0) {
+    return errors::InvalidArgument("other tensor has zero-sized data type");
+  }
+  if (out_size == 0) {
+    return errors::InvalidArgument("specified output type is zero-sized");
+  }
+  if (shape.num_elements() * out_size !=
+      other.shape().num_elements() * in_size) {
+    return errors::InvalidArgument(
+        "input and output shapes/data type sizes are not compatible");
+  }
   shape_ = shape;
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
@@ -665,6 +673,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
+  return Status::OK();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -932,10 +941,18 @@ namespace {
 // logic is so simple we can just replicate it here, where it is close to its
 // usage and easy to change later. And there's the extra benefit of not
 // accessing an 'internal' namespace.
-inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a) {
+inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
+                                                bool print_v2) {
   return a;
 }
-inline float PrintOneElement(const Eigen::half& h) {
+inline string PrintOneElement(const string& a, bool print_v2) {
+  if (print_v2) {
+    return "\"" + str_util::CEscape(a) + "\"";
+  } else {
+    return str_util::CEscape(a);
+  }
+}
+inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
   return static_cast<float>(h);
 }
 
@@ -957,7 +974,7 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
         return;
       }
       if (i > 0) strings::StrAppend(result, " ");
-      strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
+      strings::StrAppend(result, PrintOneElement(data[(*data_index)++], false));
     }
     return;
   }
@@ -1000,7 +1017,7 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
   // We have recursed beyond all the dimensions into a single element
   // of the tensor.
   if (dim_index == num_dims) {
-    strings::StrAppend(result, PrintOneElement(data[data_index]));
+    strings::StrAppend(result, PrintOneElement(data[data_index], true));
     return;
   }
 
@@ -1048,7 +1065,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
   if (shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
-      strings::StrAppend(&ret, PrintOneElement(array[i]));
+      strings::StrAppend(&ret, PrintOneElement(array[i], print_v2));
     }
     if (num_elts > limit) strings::StrAppend(&ret, "...");
     return ret;
@@ -1123,6 +1140,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
       // will emit "1 0..." which is more compact.
       return SummarizeArray<bool>(limit, num_elts, shape_, data, print_v2);
       break;
+    case DT_STRING:
+      return SummarizeArray<string>(limit, num_elts, shape_, data, print_v2);
+      break;
     default: {
       // All irregular cases
       string ret;
@@ -1134,9 +1154,6 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
       for (size_t i = 0; i < limit; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
         switch (dtype()) {
-          case DT_STRING:
-            strings::StrAppend(&ret, str_util::CEscape(flat<string>()(i)));
-            break;
           case DT_VARIANT: {
             const Variant& v = flat<Variant>()(i);
             strings::StrAppend(&ret, v.DebugString());
@@ -1166,10 +1183,15 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
          buf_->root_buffer() == b.buf_->root_buffer();
 }
 
-string Tensor::DebugString() const {
+string Tensor::DebugString(int num_values) const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
                          " shape: ", shape().DebugString(),
-                         " values: ", SummarizeValue(3), ">");
+                         " values: ", SummarizeValue(num_values), ">");
+}
+
+string Tensor::DeviceSafeDebugString() const {
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                         " shape: ", shape().DebugString(), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

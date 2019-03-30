@@ -80,17 +80,20 @@ def make_attr(attr_type, value):
     return tensor_shape.as_shape(value).as_proto()
   elif attr_type == [pywrap_tensorflow.TF_ATTR_SHAPE]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
+  elif isinstance(value, str):
+    return value.encode()
   return value
 
 
 class _MockOp(object):
   """Pretends to be a tf.Operation for the gradient functions."""
 
-  def __init__(self, attrs, inputs, outputs, typ):
+  def __init__(self, attrs, inputs, outputs, typ, skip_input_indices):
     self.attrs = attrs
     self.inputs = inputs
     self.outputs = outputs
     self.type = typ
+    self.skip_input_indices = skip_input_indices
 
   def get_attr(self, attr):
     typ = op_attr_type(self.type, attr)
@@ -109,7 +112,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads):
+                       out_grads, skip_input_indices):
   """Calls the gradient function of the op.
 
   Args:
@@ -119,11 +122,13 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     inputs: inputs to the original operation.
     outputs: outputs to the original operation.
     out_grads: gradients of the operation wrt its outputs.
+    skip_input_indices: a tuple that is passed to the gradient function,
+      indicating which inputs to skip calculating the gradient for
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
   """
-  mock_op = _MockOp(attr_tuple, inputs, outputs, op_name)
+  mock_op = _MockOp(attr_tuple, inputs, outputs, op_name, skip_input_indices)
   grad_fn = ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
   if grad_fn is None:
     return [None] * num_inputs
@@ -465,14 +470,16 @@ def val_and_grad_function(f, params=None):
 
 
 def make_vjp(f, params=None, persistent=True):
-  """Returns a function that computes f and is vjp w.r.t. params.
+  """Returns a function that computes f and its vjp w.r.t.
+
+  params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
 
   Args:
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
-       A value of None will differentiate with respect to all parameters.
+      A value of None will differentiate with respect to all parameters.
     persistent: Boolean controlling whether the VJP function can be re-used.
       Must be True or False.
 
@@ -595,7 +602,9 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if dtype == dtypes.variant:
+  if (dtype == dtypes.variant
+      or dtype == dtypes.string
+      or dtype == dtypes.resource):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
@@ -618,10 +627,14 @@ def _zeros(shape, dtype):
 
 
 def _ones(shape, dtype):
+  as_dtype = dtypes.as_dtype(dtype)
+  if as_dtype == dtypes.string:
+    return None
+
   if not context.context().executing_eagerly():
     return array_ops.ones(shape, dtype)
 
-  if dtypes.as_dtype(dtype).is_bool:
+  if as_dtype.is_bool:
     value = True
   else:
     value = 1
@@ -914,24 +927,26 @@ class GradientTape(object):
       if not self._persistent:
         self._pop_tape()
       else:
-        logging.log_first_n(logging.WARN,
-                            "Calling GradientTape.gradient on a persistent "
-                            "tape inside it's context is significantly less "
-                            "efficient than calling it outside the context (it "
-                            "causes the gradient ops to be recorded on the "
-                            "tape, leading to increased CPU and memory usage). "
-                            "Only call GradientTape.gradient inside the "
-                            "context if you actually want to trace the "
-                            "gradient in order to compute higher order "
-                            "derrivatives.", 1)
+        logging.log_first_n(
+            logging.WARN, "Calling GradientTape.gradient on a persistent "
+            "tape inside its context is significantly less "
+            "efficient than calling it outside the context (it "
+            "causes the gradient ops to be recorded on the "
+            "tape, leading to increased CPU and memory usage). "
+            "Only call GradientTape.gradient inside the "
+            "context if you actually want to trace the "
+            "gradient in order to compute higher order "
+            "derivatives.", 1)
 
-    flat_targets = nest.flatten(target)
-    for t in flat_targets:
+    flat_targets = []
+    for t in nest.flatten(target):
       if resource_variable_ops.is_resource_variable(t):
-        raise ValueError("GradientTape.gradient is not supported for variable "
-                         "targets.")
+        with self:
+          t = ops.convert_to_tensor(t)
+      flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
+    flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 
     if output_gradients is not None:
@@ -943,6 +958,7 @@ class GradientTape(object):
         flat_targets,
         flat_sources,
         output_gradients=output_gradients,
+        sources_raw=flat_sources_raw,
         unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:
@@ -964,12 +980,14 @@ class GradientTape(object):
 
     Example usage:
 
+    ```python
     with tf.GradientTape() as g:
       x  = tf.constant([1.0, 2.0])
       g.watch(x)
       y = x * x
     jacobian = g.jacobian(y, x)
     # jacobian value is [[2., 0.], [0., 4.]]
+    ```
 
     Args:
       target: Tensor to be differentiated.
@@ -1072,12 +1090,14 @@ class GradientTape(object):
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+    ```python
     with tf.GradientTape() as g:
       x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
       g.watch(x)
       y = x * x
     batch_jacobian = g.batch_jacobian(y, x)
     # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
+    ```
 
     Args:
       target: A tensor with rank 2 or higher and with shape [b, y1, ..., y_n].
@@ -1104,8 +1124,13 @@ class GradientTape(object):
         dimension of `target` and `source` do not match.
     """
     target_shape = target.shape
-    if not target_shape.with_rank_at_least(2)[0].is_compatible_with(
-        source.shape.with_rank_at_least(2)[0]):
+    if target_shape.rank is None:
+      dim = tensor_shape.Dimension(None)
+    else:
+      dim = target_shape.dims[0]
+    if not (target_shape.with_rank_at_least(2) and
+            source.shape.with_rank_at_least(2) and
+            dim.is_compatible_with(source.shape[0])):
       raise ValueError(
           "Need first dimension of target shape (%s) and "
           "source shape (%s) to match." % (target.shape, source.shape))

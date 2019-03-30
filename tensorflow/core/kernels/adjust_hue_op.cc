@@ -82,7 +82,7 @@ class AdjustHueOpBase : public OpKernel {
   }
 };
 
-template <class Device>
+template <class Device, typename T>
 class AdjustHueOp;
 
 namespace internal {
@@ -196,7 +196,7 @@ static void hv_range_to_rgb(float h, float v_min, float v_max, float* r,
 }  // namespace internal
 
 template <>
-class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
+class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
  public:
   explicit AdjustHueOp(OpKernelConstruction* context)
       : AdjustHueOpBase(context) {}
@@ -245,12 +245,13 @@ class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_CPU),
-                        AdjustHueOp<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("AdjustHue").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    AdjustHueOp<CPUDevice, float>);
 
 #if GOOGLE_CUDA
-template <>
-class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
+template <typename T>
+class AdjustHueOp<GPUDevice, T> : public AdjustHueOpBase {
  public:
   explicit AdjustHueOp(OpKernelConstruction* context)
       : AdjustHueOpBase(context) {}
@@ -265,17 +266,24 @@ class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
     const auto stream = device.stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     if (number_of_elements > 0) {
-      const float* input_data = input->flat<float>().data();
+      const T* input_data = input->flat<T>().data();
       const float* delta_h = delta->flat<float>().data();
-      float* const output_data = output->flat<float>().data();
-      functor::AdjustHueGPU()(&device, number_of_elements, input_data, delta_h,
-                              output_data);
+      T* const output_data = output->flat<T>().data();
+      functor::AdjustHueGPU<T>()(&device, number_of_elements, input_data,
+                                 delta_h, output_data);
     }
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_GPU),
-                        AdjustHueOp<GPUDevice>);
+#define REGISTER_GPU(T)                                            \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("AdjustHue").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      AdjustHueOp<GPUDevice, T>);
+
+REGISTER_GPU(float)
+REGISTER_GPU(Eigen::half)
+
+#undef REGISTER_GPU
 
 #endif
 

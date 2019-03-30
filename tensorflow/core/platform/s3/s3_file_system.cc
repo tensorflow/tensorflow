@@ -170,6 +170,10 @@ class S3RandomAccessFile : public RandomAccessFile {
                      std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket), object_(object), s3_client_(s3_client) {}
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("S3RandomAccessFile does not support Name()");
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Aws::S3::Model::GetObjectRequest getObjectRequest;
@@ -234,6 +238,10 @@ class S3WritableFile : public WritableFile {
   }
 
   Status Flush() override { return Sync(); }
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("S3WritableFile does not support Name()");
+  }
 
   Status Sync() override {
     if (!outfile_) {

@@ -25,12 +25,14 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 # For background on "segments" and "segment ids", see:
-# https://www.tensorflow.org/api_guides/python/math_ops#Segmentation
+# https://www.tensorflow.org/api_docs/python/tf/math#Segmentation
+@tf_export("ragged.row_splits_to_segment_ids")
 def row_splits_to_segment_ids(splits, name=None):
-  """Generates the segmentation corresponding to a RaggedTensor `splits` vector.
+  """Generates the segmentation corresponding to a RaggedTensor `row_splits`.
 
   Returns an integer vector `segment_ids`, where `segment_ids[i] == j` if
   `splits[j] <= i < splits[j+1]`.  Example:
@@ -62,9 +64,10 @@ def row_splits_to_segment_ids(splits, name=None):
 
 
 # For background on "segments" and "segment ids", see:
-# https://www.tensorflow.org/api_guides/python/math_ops#Segmentation
+# https://www.tensorflow.org/api_docs/python/tf/math#Segmentation
+@tf_export("ragged.segment_ids_to_row_splits")
 def segment_ids_to_row_splits(segment_ids, num_segments=None, name=None):
-  """Generates the RaggedTensor `splits` vector corresponding to a segmentation.
+  """Generates the RaggedTensor `row_splits` corresponding to a segmentation.
 
   Returns an integer vector `splits`, where `splits[0] = 0` and
   `splits[i] = splits[i-1] + count(segment_ids==i)`.  Example:

@@ -148,7 +148,6 @@ class TestMultiGPUModel(test.TestCase):
       input_shape = (num_samples,) + shape
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))
-      keras.backend.set_learning_phase(True)
 
       y_train = keras.utils.to_categorical(y_train, num_classes)
 

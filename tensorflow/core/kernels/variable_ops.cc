@@ -35,7 +35,7 @@ class LegacyVar : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
                            tensor_.shape().DebugString());
   }
@@ -116,7 +116,7 @@ class TemporaryVariableOp : public OpKernel {
     mutex mu;
     Tensor val;
     string name;
-    string DebugString() override { return name; }
+    string DebugString() const override { return name; }
     ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
   };
 

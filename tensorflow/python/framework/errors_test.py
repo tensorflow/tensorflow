@@ -70,6 +70,10 @@ class ErrorsTest(test.TestCase):
           isinstance(
               errors_impl._make_specific_exception(None, None, None,
                                                    error_code), exc_type))
+      # error_code_from_exception_type and exception_type_from_error_code should
+      # be consistent with operation result.
+      self.assertEqual(error_code,
+                       errors_impl.error_code_from_exception_type(exc_type))
       # pylint: enable=protected-access
 
   def testKnownErrorClassForEachErrorCodeInProto(self):
@@ -96,6 +100,14 @@ class ErrorsTest(test.TestCase):
       # pylint: enable=protected-access
     self.assertEqual(1, len(w))
     self.assertTrue("Unknown error code: 37" in str(w[0].message))
+    self.assertTrue(isinstance(exc, errors_impl.OpError))
+
+    with warnings.catch_warnings(record=True) as w:
+      # pylint: disable=protected-access
+      exc = errors_impl.error_code_from_exception_type("Unknown")
+      # pylint: enable=protected-access
+    self.assertEqual(1, len(w))
+    self.assertTrue("Unknown class exception" in str(w[0].message))
     self.assertTrue(isinstance(exc, errors_impl.OpError))
 
   def testStatusDoesNotLeak(self):

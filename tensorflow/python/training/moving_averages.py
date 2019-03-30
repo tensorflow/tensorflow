@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -26,7 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -98,12 +98,12 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       def merge_fn(strategy, v, value):
         value = strategy.extended.reduce_to(
             ds_reduce_util.ReduceOp.MEAN, value, v)
-        return strategy.update(v, update_fn, value)
+        return strategy.extended.update(v, update_fn, args=(value,))
 
       return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
       strategy = distribution_strategy_context.get_cross_replica_context()
-      return strategy.update(variable, update_fn, value)
+      return strategy.extended.update(variable, update_fn, args=(value,))
 
 
 def weighted_moving_average(value,
@@ -203,7 +203,8 @@ def _zero_debias(unbiased_var, value, decay):
     tensor will also update the shadow variables appropriately.
   """
   with variable_scope.variable_scope(
-      unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
+      unbiased_var.name[:-len(":0")], values=[unbiased_var,
+                                              value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
       with ops.init_scope():
         biased_initializer = init_ops.zeros_initializer(
@@ -397,6 +398,11 @@ class ExponentialMovingAverage(object):
     # TODO(touts): op_scope
     if var_list is None:
       var_list = variables.trainable_variables()
+    for v in var_list:
+      if isinstance(v, ops.EagerTensor):
+        raise TypeError(
+            "tf.train.ExponentialMovingAverage does not support non-Variable"
+            " tensors when eager execution is enabled.")
     zero_debias_true = set()  # set of vars to set `zero_debias=True`
     for var in var_list:
       if var.dtype.base_dtype not in [
@@ -505,13 +511,13 @@ class ExponentialMovingAverage(object):
     ```
     Args:
       moving_avg_variables: a list of variables that require to use of the
-        moving variable name to be restored. If None, it will default to
+        moving average variable name to be restored. If None, it will default to
         variables.moving_average_variables() + variables.trainable_variables()
 
     Returns:
-      A map from restore_names to variables. The restore_name can be the
-      moving_average version of the variable name if it exist, or the original
-      variable name.
+      A map from restore_names to variables. The restore_name is either the
+      original or the moving average version of the variable name, depending
+      on whether the variable name is in the `moving_avg_variables`.
     """
     name_map = {}
     if moving_avg_variables is None:

@@ -23,4 +23,11 @@
     <string name="toggle">Use NNAPI</string>
     <string name="tflite">tflite</string>
     <string name="nnapi">NNAPI</string>
+    <string name="gpu">GPU</string>
+    <string name="cpu">CPU</string>
+    <string name="modelLabel">Model</string>
+    <string name="deviceLabel">Device</string>
+    <string name="mobilenetV1Quant">mobilenet v1 quant</string>;
+    <string name="mobilenetV1Float">mobilenet v1 float</string>;;
+
 </resources>

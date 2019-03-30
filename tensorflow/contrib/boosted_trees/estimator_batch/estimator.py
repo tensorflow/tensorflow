@@ -84,12 +84,10 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
         dict by the key 'leaf_index'. It is a Tensor of rank 2 and its shape is
-        [batch_size, num_trees].
-        For example,
-        result_iter = classifier.predict(...)
-        for result_dict in result_iter:
-          # access leaf index list by result_dict["leaf_index"]
-          # which contains one leaf index per tree
+        [batch_size, num_trees]. For example, result_iter =
+        classifier.predict(...)
+        for result_dict in result_iter: # access leaf index list by
+          result_dict["leaf_index"] # which contains one leaf index per tree
       override_global_step_value: If after the training is done, global step
         value must be reset to this value. This should be used to reset global
         step to a number > number of steps used to train the current ensemble.
@@ -179,8 +177,8 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
         `[batch_size, label_dimension]`).
       num_trees: An int, number of trees to build.
       feature_columns: A list of feature columns.
-      label_name: String, name of the key in label dict. Can be null if label
-          is a tensor (single headed models).
+      label_name: String, name of the key in label dict. Can be null if label is
+        a tensor (single headed models).
       weight_column_name: Name of the column for weights, or None if not
         weighted.
       model_dir: Directory for model exports, etc.
@@ -195,11 +193,11 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
         opposed to contrib) version of tensorflow.
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
-        dict by the key 'leaf_index'. For example,
-        result_dict = classifier.predict(...)
-        for example_prediction_result in result_dict:
-          # access leaf index list by example_prediction_result["leaf_index"]
-          # which contains one leaf index per tree
+        dict by the key 'leaf_index'. For example, result_dict =
+        classifier.predict(...)
+        for example_prediction_result in result_dict: # access leaf index list
+          by example_prediction_result["leaf_index"] # which contains one leaf
+          index per tree
       override_global_step_value: If after the training is done, global step
         value must be reset to this value. This should be used to reset global
         step to a number > number of steps used to train the current ensemble.
@@ -286,11 +284,11 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
         opposed to contrib) version of tensorflow.
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
-        dict by the key 'leaf_index'. For example,
-        result_dict = classifier.predict(...)
-        for example_prediction_result in result_dict:
-          # access leaf index list by example_prediction_result["leaf_index"]
-          # which contains one leaf index per tree
+        dict by the key 'leaf_index'. For example, result_dict =
+        classifier.predict(...)
+        for example_prediction_result in result_dict: # access leaf index list
+          by example_prediction_result["leaf_index"] # which contains one leaf
+          index per tree
       override_global_step_value: If after the training is done, global step
         value must be reset to this value. This should be used to reset global
         step to a number > number of steps used to train the current ensemble.
@@ -353,10 +351,9 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
         layer. It can also be a function that computes the number of examples
         based on the depth of the layer that's being built.
       head: `Head` instance.
-      ranking_model_pair_keys: Keys to distinguish between features
-        for left and right part of the training pairs for ranking. For example,
-        for an Example with features "a.f1" and "b.f1", the keys would be
-        ("a", "b").
+      ranking_model_pair_keys: Keys to distinguish between features for left and
+        right part of the training pairs for ranking. For example, for an
+        Example with features "a.f1" and "b.f1", the keys would be ("a", "b").
       num_trees: An int, number of trees to build.
       feature_columns: A list of feature columns.
       weight_column_name: Name of the column for weights, or None if not
@@ -376,12 +373,10 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
         dict by the key 'leaf_index'. It is a Tensor of rank 2 and its shape is
-        [batch_size, num_trees].
-        For example,
-        result_iter = classifier.predict(...)
-        for result_dict in result_iter:
-          # access leaf index list by result_dict["leaf_index"]
-          # which contains one leaf index per tree
+        [batch_size, num_trees]. For example, result_iter =
+        classifier.predict(...)
+        for result_dict in result_iter: # access leaf index list by
+          result_dict["leaf_index"] # which contains one leaf index per tree
       override_global_step_value: If after the training is done, global step
         value must be reset to this value. This should be used to reset global
         step to a number > number of steps used to train the current ensemble.
@@ -417,12 +412,12 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
         config=config,
         feature_engineering_fn=feature_engineering_fn)
 
+
 # When using this estimator, make sure to regularize the hessian (at least l2,
 # min_node_weight)!
 # TODO(nponomareva): extend to take multiple quantiles in one go.
 class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
-  """An estimator that does quantile regression and returns quantile estimates.
-  """
+  """An estimator that does quantile regression and returns quantile estimates."""
 
   def __init__(self,
                learner_config,
@@ -449,8 +444,8 @@ class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
         layer. It can also be a function that computes the number of examples
         based on the depth of the layer that's being built.
       quantiles: a list of quantiles for the loss, each between 0 and 1.
-      label_dimension: Dimension of regression label. This is the size
-        of the last dimension of the labels `Tensor` (typically, this has shape
+      label_dimension: Dimension of regression label. This is the size of the
+        last dimension of the labels `Tensor` (typically, this has shape
         `[batch_size, label_dimension]`). When label_dimension>1, it is
         recommended to use multiclass strategy diagonal hessian or full hessian.
       num_trees: An int, number of trees to build.
@@ -469,11 +464,11 @@ class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
         opposed to contrib) version of tensorflow.
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
-        dict by the key 'leaf_index'. For example,
-        result_dict = classifier.predict(...)
-        for example_prediction_result in result_dict:
-          # access leaf index list by example_prediction_result["leaf_index"]
-          # which contains one leaf index per tree
+        dict by the key 'leaf_index'. For example, result_dict =
+        classifier.predict(...)
+        for example_prediction_result in result_dict: # access leaf index list
+          by example_prediction_result["leaf_index"] # which contains one leaf
+          index per tree
       override_global_step_value: If after the training is done, global step
         value must be reset to this value. This should be used to reset global
         step to a number > number of steps used to train the current ensemble.
@@ -519,6 +514,7 @@ class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
         config=config,
         feature_engineering_fn=feature_engineering_fn)
 
+
 # ================== New Estimator interface===================================
 # The estimators below use new core Estimator interface and must be used with
 # new feature columns and heads.
@@ -534,10 +530,8 @@ def core_multiclass_head(
 
   def loss_fn(labels, logits):
     result = losses.per_example_maxent_loss(
-        labels=labels,
-        logits=logits,
-        weights=weight_column,
-        num_classes=n_classes)
+        # Don't pass the weights: head already multiplies by them.
+        labels=labels, logits=logits, weights=None, num_classes=n_classes)
     return result[0]
 
   # pylint:disable=protected-access
@@ -564,7 +558,8 @@ def core_quantile_regression_head(
     result = losses.per_example_quantile_regression_loss(
         labels=labels,
         predictions=logits,
-        weights=weight_column,
+        # Don't pass the weights: head already multiplies by them.
+        weights=None,
         quantile=quantiles)
     return result[0]
 
@@ -623,11 +618,11 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
         the bias.
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
-        dict by the key 'leaf_index'. For example,
-        result_dict = classifier.predict(...)
-        for example_prediction_result in result_dict:
-          # access leaf index list by example_prediction_result["leaf_index"]
-          # which contains one leaf index per tree
+        dict by the key 'leaf_index'. For example, result_dict =
+        classifier.predict(...)
+        for example_prediction_result in result_dict: # access leaf index list
+          by example_prediction_result["leaf_index"] # which contains one leaf
+          index per tree
       num_quantiles: Number of quantiles to build for numeric feature values.
     """
 
@@ -685,10 +680,9 @@ class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
         layer. It can also be a function that computes the number of examples
         based on the depth of the layer that's being built.
       head: `Head` instance.
-      ranking_model_pair_keys: Keys to distinguish between features
-        for left and right part of the training pairs for ranking. For example,
-        for an Example with features "a.f1" and "b.f1", the keys would be
-        ("a", "b").
+      ranking_model_pair_keys: Keys to distinguish between features for left and
+        right part of the training pairs for ranking. For example, for an
+        Example with features "a.f1" and "b.f1", the keys would be ("a", "b").
       num_trees: An int, number of trees to build.
       feature_columns: A list of feature columns.
       weight_column_name: Name of the column for weights, or None if not
@@ -703,12 +697,10 @@ class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
         dict by the key 'leaf_index'. It is a Tensor of rank 2 and its shape is
-        [batch_size, num_trees].
-        For example,
-        result_iter = classifier.predict(...)
-        for result_dict in result_iter:
-          # access leaf index list by result_dict["leaf_index"]
-          # which contains one leaf index per tree
+        [batch_size, num_trees]. For example, result_iter =
+        classifier.predict(...)
+        for result_dict in result_iter: # access leaf index list by
+          result_dict["leaf_index"] # which contains one leaf index per tree
       num_quantiles: Number of quantiles to build for numeric feature values.
 
     Raises:
@@ -748,8 +740,7 @@ class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
 # TODO(nponomareva): extend to take multiple quantiles in one go.
 class CoreGradientBoostedDecisionTreeQuantileRegressor(
     core_estimator.Estimator):
-  """An estimator that does quantile regression and returns quantile estimates.
-  """
+  """An estimator that does quantile regression and returns quantile estimates."""
 
   def __init__(self,
                learner_config,
@@ -775,8 +766,8 @@ class CoreGradientBoostedDecisionTreeQuantileRegressor(
         layer. It can also be a function that computes the number of examples
         based on the depth of the layer that's being built.
       quantiles: a list of quantiles for the loss, each between 0 and 1.
-      label_dimension: Dimension of regression label. This is the size
-        of the last dimension of the labels `Tensor` (typically, this has shape
+      label_dimension: Dimension of regression label. This is the size of the
+        last dimension of the labels `Tensor` (typically, this has shape
         `[batch_size, label_dimension]`). When label_dimension>1, it is
         recommended to use multiclass strategy diagonal hessian or full hessian.
       num_trees: An int, number of trees to build.
@@ -795,11 +786,11 @@ class CoreGradientBoostedDecisionTreeQuantileRegressor(
         the bias.
       output_leaf_index: whether to output leaf indices along with predictions
         during inference. The leaf node indexes are available in predictions
-        dict by the key 'leaf_index'. For example,
-        result_dict = classifier.predict(...)
-        for example_prediction_result in result_dict:
-          # access leaf index list by example_prediction_result["leaf_index"]
-          # which contains one leaf index per tree
+        dict by the key 'leaf_index'. For example, result_dict =
+        classifier.predict(...)
+        for example_prediction_result in result_dict: # access leaf index list
+          by example_prediction_result["leaf_index"] # which contains one leaf
+          index per tree
       num_quantiles: Number of quantiles to build for numeric feature values.
     """
     if len(quantiles) > 1:
@@ -814,7 +805,9 @@ class CoreGradientBoostedDecisionTreeQuantileRegressor(
           params={
               'head':
                   core_quantile_regression_head(
-                      quantiles[0], label_dimension=label_dimension),
+                      quantiles[0],
+                      label_dimension=label_dimension,
+                      weight_column=weight_column_name),
               'feature_columns':
                   feature_columns,
               'learner_config':

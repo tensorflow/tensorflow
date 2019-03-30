@@ -102,7 +102,7 @@ class PruningTest(test.TestCase):
       weights = variables.VariableV1(
           math_ops.linspace(1.0, 100.0, 100), name="weights")
       masked_weights = pruning.apply_mask(weights)
-      sparsity = variables.VariableV1(0.5, name="sparsity")
+      sparsity = variables.VariableV1(0.95, name="sparsity")
       p = pruning.Pruning(sparsity=sparsity)
       p._spec.threshold_decay = 0.0
       mask_update_op = p.mask_update_op()
@@ -111,7 +111,7 @@ class PruningTest(test.TestCase):
       self.assertAllEqual(np.count_nonzero(masked_weights_val), 100)
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
-      self.assertAllEqual(np.count_nonzero(masked_weights_val), 50)
+      self.assertAllEqual(np.count_nonzero(masked_weights_val), 5)
 
   def _blockMasking(self, hparams, weights, expected_mask):
 

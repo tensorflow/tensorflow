@@ -167,11 +167,24 @@ class Env {
   Status DeleteFile(const string& fname);
 
   /// \brief Deletes the specified directory and all subdirectories and files
-  /// underneath it. undeleted_files and undeleted_dirs stores the number of
-  /// files and directories that weren't deleted (unspecified if the return
-  /// status is not OK).
+  /// underneath it. This is accomplished by traversing the directory tree
+  /// rooted at dirname and deleting entries as they are encountered.
+  ///
+  /// If dirname itself is not readable or does not exist, *undeleted_dir_count
+  /// is set to 1, *undeleted_file_count is set to 0 and an appropriate status
+  /// (e.g. NOT_FOUND) is returned.
+  ///
+  /// If dirname and all its descendants were successfully deleted, TF_OK is
+  /// returned and both error counters are set to zero.
+  ///
+  /// Otherwise, while traversing the tree, undeleted_file_count and
+  /// undeleted_dir_count are updated if an entry of the corresponding type
+  /// could not be deleted. The returned error status represents the reason that
+  /// any one of these entries could not be deleted.
+  ///
   /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
-  /// Typical return codes
+  ///
+  /// Typical return codes:
   ///  * OK - dirname exists and we were able to delete everything underneath.
   ///  * NOT_FOUND - dirname doesn't exist
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
@@ -257,6 +270,15 @@ class Env {
   virtual Thread* StartThread(const ThreadOptions& thread_options,
                               const string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
+
+  // Returns the thread id of calling thread.
+  // Posix: Returns pthread id which is only guaranteed to be unique within a
+  //        process.
+  // Windows: Returns thread id which is unique.
+  virtual int32 GetCurrentThreadId() = 0;
+
+  // Copies current thread name to "name". Returns true if success.
+  virtual bool GetCurrentThreadName(string* name) = 0;
 
   // \brief Schedules the given closure on a thread-pool.
   //
@@ -346,6 +368,10 @@ class EnvWrapper : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
+  }
+  int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
+  bool GetCurrentThreadName(string* name) override {
+    return target_->GetCurrentThreadName(name);
   }
   void SchedClosure(std::function<void()> closure) override {
     target_->SchedClosure(closure);

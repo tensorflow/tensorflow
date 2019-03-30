@@ -18,7 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
-#if !defined(__APPLE__)
+#if defined(__linux__)
 #include <sys/sendfile.h>
 #endif
 #include <sys/stat.h>
@@ -51,6 +51,11 @@ class PosixRandomAccessFile : public RandomAccessFile {
   PosixRandomAccessFile(const string& fname, int fd)
       : filename_(fname), fd_(fd) {}
   ~PosixRandomAccessFile() override { close(fd_); }
+
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -115,11 +120,27 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Sync() override {
     Status s;
     if (fflush(file_) != 0) {
       s = IOError(filename_, errno);
     }
+    return s;
+  }
+
+  Status Tell(int64* position) override {
+    Status s;
+    *position = ftell(file_);
+
+    if (*position == -1) {
+      s = IOError(filename_, errno);
+    }
+
     return s;
   }
 };

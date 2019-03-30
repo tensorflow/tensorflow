@@ -111,7 +111,7 @@ class GrpcSession : public Session {
       LOCKS_EXCLUDED(mu_);
 
  private:
-  SessionOptions options_;
+  const SessionOptions options_;
   std::unique_ptr<MasterInterface> master_;
   mutex mu_;
 

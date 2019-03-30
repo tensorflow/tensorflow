@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -47,16 +48,10 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  struct AutotuneResult {
-    int64 algorithm;
-    bool tensor_ops_enabled;
-    int64 scratch_bytes;
-    absl::Duration runtime;
-  };
-
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  StatusOr<AutotuneResult> PickBestAlgorithm(HloCustomCallInstruction* instr);
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null

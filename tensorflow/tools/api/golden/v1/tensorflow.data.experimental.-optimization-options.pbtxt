@@ -4,6 +4,18 @@ tf_class {
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "apply_default_optimizations"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune_cpu_budget"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "filter_fusion"
     mtype: "<type \'property\'>"
   }

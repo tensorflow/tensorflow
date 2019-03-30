@@ -115,9 +115,9 @@ py_library(
 
 py_test(
     name = "inception_v1_test",
-    size = "large",
+    size = "medium",
     srcs = ["inception_v1_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     deps = [
         ":inception_v1",
@@ -135,9 +135,9 @@ py_test(
 
 py_test(
     name = "inception_v2_test",
-    size = "large",
+    size = "medium",
     srcs = ["inception_v2_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     deps = [
         ":inception_v2",
@@ -155,9 +155,9 @@ py_test(
 
 py_test(
     name = "inception_v3_test",
-    size = "large",
+    size = "medium",
     srcs = ["inception_v3_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     deps = [
         ":inception_v3",
@@ -233,8 +233,9 @@ py_library(
 
 py_test(
     name = "resnet_v1_test",
-    size = "large",
+    size = "medium",
     srcs = ["resnet_v1_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":resnet_utils",
@@ -268,8 +269,9 @@ py_library(
 
 py_test(
     name = "resnet_v2_test",
-    size = "large",
+    size = "medium",
     srcs = ["resnet_v2_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":resnet_utils",

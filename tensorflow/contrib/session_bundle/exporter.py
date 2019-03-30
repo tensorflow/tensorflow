@@ -304,10 +304,10 @@ class Exporter(object):
       def parser(path):
         if os.name == "nt":
           match = re.match(
-              "^" + export_dir_base.replace("\\", "/") + "/(\\d{8})$",
+              r"^" + export_dir_base.replace("\\", "/") + r"/(\d{8})$",
               path.path.replace("\\", "/"))
         else:
-          match = re.match("^" + export_dir_base + "/(\\d{8})$", path.path)
+          match = re.match(r"^" + export_dir_base + r"/(\d{8})$", path.path)
         if not match:
           return None
         return path._replace(export_version=int(match.group(1)))

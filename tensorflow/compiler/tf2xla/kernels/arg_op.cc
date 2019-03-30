@@ -53,7 +53,11 @@ class XlaArgOp : public XlaOpKernel {
     const XlaExpression& arg = ctx->xla_context()->args()[index_];
     OP_REQUIRES(ctx, arg.kind() != XlaExpression::Kind::kInvalid,
                 errors::InvalidArgument("Invalid/missing argument expression"));
-    ctx->SetOutputExpression(0, arg);
+    if (ctx->expected_output_dtype(0) == DT_VARIANT) {
+      ctx->SetTensorListOutput(0, arg.handle());
+    } else {
+      ctx->SetOutputExpression(0, arg);
+    }
   }
 
  private:
@@ -63,6 +67,8 @@ class XlaArgOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaArgOp);
 };
 
-REGISTER_XLA_OP(Name("_Arg").AllowResourceTypes().CompilationOnly(), XlaArgOp);
+REGISTER_XLA_OP(
+    Name("_Arg").AllowResourceTypes().AllowVariantTypes().CompilationOnly(),
+    XlaArgOp);
 
 }  // namespace tensorflow

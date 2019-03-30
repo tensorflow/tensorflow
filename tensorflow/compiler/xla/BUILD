@@ -58,6 +58,24 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "comparison_util",
+    srcs = [
+        "comparison_util.cc",
+    ],
+    hdrs = [
+        "comparison_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":statusor",
+        ":types",
+        ":util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "execution_options_util",
     srcs = [
         "execution_options_util.cc",
@@ -109,7 +127,7 @@ cc_library(
     name = "status_macros",
     srcs = ["status_macros.cc"],
     hdrs = ["status_macros.h"],
-    visibility = [":friends"],
+    visibility = ["//visibility:public"],
     deps = [
         ":statusor",
         ":types",
@@ -150,9 +168,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -194,7 +210,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -224,6 +240,7 @@ cc_library(
     name = "shape_util",
     srcs = [
         "index_util.cc",
+        "layout.cc",
         "layout_util.cc",
         "primitive_util.cc",
         "shape.cc",
@@ -231,6 +248,7 @@ cc_library(
     ],
     hdrs = [
         "index_util.h",
+        "layout.h",
         "layout_util.h",
         "primitive_util.h",
         "shape.h",
@@ -291,6 +309,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "primitive_util_test",
+    srcs = ["primitive_util_test.cc"],
+    deps = [
+        ":shape_util",
+        ":status_macros",
+        ":test",
+        ":test_helpers",
+        ":types",
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "layout_util_test",
     srcs = ["layout_util_test.cc"],
     deps = [
@@ -298,6 +332,22 @@ tf_cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "layout_test",
+    srcs = ["layout_test.cc"],
+    deps = [
+        ":shape_util",
+        ":status_macros",
+        ":test",
+        ":test_helpers",
+        ":types",
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -575,6 +625,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",
@@ -682,6 +733,7 @@ cc_library(
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -705,8 +757,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/compiler/xla/service:shape_inference",
-        "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -790,13 +842,14 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    visibility = [":friends"],
     deps =
         [
             ":parse_flags_from_env",
+            ":status",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
             "@com_google_absl//absl/strings",
         ],
 )

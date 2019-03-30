@@ -49,5 +49,10 @@ int main(int argc, char** argv) {
   }
   toco::port::InitGoogle(argv[0], effective_argc, &effective_argv, true);
   auto status = toco::Convert(parsed_toco_flags, parsed_model_flags);
-  return status.ok() ? 0 : -1;
+  if (!status.ok()) {
+    fprintf(stderr, "%s\n", status.error_message().c_str());
+    fflush(stderr);
+    return 1;
+  }
+  return 0;
 }

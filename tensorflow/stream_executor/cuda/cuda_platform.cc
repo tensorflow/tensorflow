@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 namespace {
 
 // Synchronize with spinlocks.
@@ -129,16 +129,16 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
       port::Printf("Executor for bus %d not found.", bus_ordinal));
 }
 
-Platform::Id CudaPlatform::id() const { return kCudaPlatformId; }
+Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
   // Throw away the result - it logs internally, and this [containing] function
   // isn't in the path of user control. It's safe to call this > 1x.
-  if (!cuda::CUDADriver::Init().ok()) {
+  if (!gpu::GpuDriver::Init().ok()) {
     return -1;
   }
 
-  return CUDADriver::GetDeviceCount();
+  return GpuDriver::GetDeviceCount();
 }
 
 const string& CudaPlatform::Name() const { return name_; }
@@ -169,7 +169,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = MakeUnique<StreamExecutor>(
-      this, MakeUnique<CUDAExecutor>(config.plugin_config));
+      this, MakeUnique<GpuExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status(
@@ -191,13 +191,13 @@ void CudaPlatform::UnregisterTraceListener(TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister CUDA trace listener";
 }
 
-}  // namespace cuda
+}  // namespace gpu
 
 static void InitializeCudaPlatform() {
   // Disabling leak checking, MultiPlatformManager does not destroy its
   // registered platforms.
 
-  std::unique_ptr<cuda::CudaPlatform> platform(new cuda::CudaPlatform);
+  std::unique_ptr<gpu::CudaPlatform> platform(new gpu::CudaPlatform);
   SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 

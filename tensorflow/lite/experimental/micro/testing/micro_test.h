@@ -107,13 +107,13 @@ extern tflite::ErrorReporter* reporter;
     }                                                                          \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_EQ(x, y)                                         \
-  do {                                                                        \
-    if ((x) != (y)) {                                                         \
-      micro_test::reporter->Report(#x " == " #y " failed at %s:%d", __FILE__, \
-                                   __LINE__);                                 \
-      micro_test::did_test_fail = true;                                       \
-    }                                                                         \
+#define TF_LITE_MICRO_EXPECT_EQ(x, y)                                          \
+  do {                                                                         \
+    if ((x) != (y)) {                                                          \
+      micro_test::reporter->Report(#x " == " #y " failed at %s:%d (%d vs %d)", \
+                                   __FILE__, __LINE__, (x), (y));              \
+      micro_test::did_test_fail = true;                                        \
+    }                                                                          \
   } while (false)
 
 #define TF_LITE_MICRO_EXPECT_NE(x, y)                                         \

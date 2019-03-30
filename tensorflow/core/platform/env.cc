@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
+#include <fcntl.h>
+#include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
@@ -314,7 +317,31 @@ string Env::GetExecutablePath() {
   string file_path = WideCharToUtf8(wc_file_path);
   std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
-  CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  char buf[PATH_MAX] = {0};
+  int path_length = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  CHECK_NE(-1, path_length);
+
+  if (strstr(buf, "python") != nullptr) {
+    // Discard the path of the python binary, and any flags.
+    int fd = open("/proc/self/cmdline", O_RDONLY);
+    int cmd_length = read(fd, buf, PATH_MAX - 1);
+    CHECK_NE(-1, cmd_length);
+    int token_pos = 0;
+    for (bool token_is_first_or_flag = true; token_is_first_or_flag;) {
+      // Get token length, including null
+      int token_len = strlen(&buf[token_pos]) + 1;
+      token_is_first_or_flag = false;
+      // Check if we can skip without overshooting
+      if (token_pos + token_len < cmd_length) {
+        token_pos += token_len;
+        token_is_first_or_flag = (buf[token_pos] == '-');  // token is a flag
+      }
+    }
+    snprintf(exe_path, sizeof(exe_path), "%s", &buf[token_pos]);
+  } else {
+    snprintf(exe_path, sizeof(exe_path), "%s", buf);
+  }
+
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -338,22 +365,10 @@ bool Env::LocalTempFilename(string* filename) {
 }
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
-#ifdef __APPLE__
-  uint64_t tid64;
-  pthread_threadid_np(nullptr, &tid64);
-  int32 tid = static_cast<int32>(tid64);
-  int32 pid = static_cast<int32>(getpid());
-#elif defined(__FreeBSD__)
-  // Has to be casted to long first, else this error appears:
-  // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
-  // is not allowed
-  int32 tid = static_cast<int32>(static_cast<int64>(pthread_self()));
-  int32 pid = static_cast<int32>(getpid());
-#elif defined(PLATFORM_WINDOWS)
-  int32 tid = static_cast<int32>(GetCurrentThreadId());
+  int32 tid = GetCurrentThreadId();
+#ifdef PLATFORM_WINDOWS
   int32 pid = static_cast<int32>(GetCurrentProcessId());
 #else
-  int32 tid = static_cast<int32>(pthread_self());
   int32 pid = static_cast<int32>(getpid());
 #endif
   uint64 now_microsec = NowMicros();

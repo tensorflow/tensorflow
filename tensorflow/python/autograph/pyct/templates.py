@@ -91,6 +91,18 @@ class ContextAdjuster(gast.NodeTransformer):
     self._ctx_override = None
     return self.generic_visit(node)
 
+  def visit_comprehension(self, node):
+    # We may be able to override some of these, but for now it's simpler
+    # to just assert that they're set.
+    self._ctx_override = None
+    return self.generic_visit(node)
+
+  def visit_Lambda(self, node):
+    # We may be able to override some of these, but for now it's simpler
+    # to just assert that they're set.
+    self._ctx_override = None
+    return self.generic_visit(node)
+
 
 class ReplaceTransformer(gast.NodeTransformer):
   """Replace AST nodes."""
@@ -108,6 +120,7 @@ class ReplaceTransformer(gast.NodeTransformer):
         anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
         anno.Static.ORIG_DEFINITIONS,
+        'extra_test',
     }
 
   def _prepare_replacement(self, replaced, key):
@@ -184,6 +197,9 @@ class ReplaceTransformer(gast.NodeTransformer):
 
     new_nodes = self._prepare_replacement(node, node.id)
 
+    if not new_nodes:
+      return new_nodes
+
     # Preserve the target context.
     adjuster = ContextAdjuster(type(node.ctx))
     for n in new_nodes:
@@ -238,13 +254,22 @@ def replace(template, **replacements):
   """
   if not isinstance(template, str):
     raise ValueError('Expected string template, got %s' % type(template))
-  tree = parser.parse_str(textwrap.dedent(template))
   for k in replacements:
     replacements[k] = _convert_to_ast(replacements[k])
-  results = ReplaceTransformer(replacements).visit(tree).body
-  if isinstance(results, list):
-    return [qual_names.resolve(r) for r in results]
-  return qual_names.resolve(results)
+  template_str = parser.STANDARD_PREAMBLE + textwrap.dedent(template)
+  nodes = parser.parse_str(
+      template_str,
+      preamble_len=parser.STANDARD_PREAMBLE_LEN,
+      single_node=False)
+  results = []
+  for node in nodes:
+    node = ReplaceTransformer(replacements).visit(node)
+    if isinstance(node, (list, tuple)):
+      results.extend(node)
+    else:
+      results.append(node)
+  results = [qual_names.resolve(r) for r in results]
+  return results
 
 
 def replace_as_expression(template, **replacements):
@@ -253,8 +278,7 @@ def replace_as_expression(template, **replacements):
   if len(replacement) != 1:
     raise ValueError(
         'single expression expected; for more general templates use replace')
-  node = replacement[0]
-  node = qual_names.resolve(node)
+  node, = replacement
 
   if isinstance(node, gast.Expr):
     return node.value

@@ -44,8 +44,9 @@ bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
   se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
   int64 tmp[MASK_WORDS];
 
-  if (!exec->SynchronousMemcpy(&tmp, gpu_ptr, MASK_BYTES)) {
-    LOG(FATAL) << "Could not copy debug mask";
+  Status result = exec->SynchronousMemcpyD2H(gpu_ptr, MASK_BYTES, tmp);
+  if (!result.ok()) {
+    LOG(FATAL) << "Could not copy debug mask, " << result;
   }
 
   bool ok = true;
@@ -63,8 +64,9 @@ bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
 
 void InitMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
   se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
-  if (!exec->SynchronousMemcpy(&gpu_ptr, mask, MASK_BYTES)) {
-    LOG(FATAL) << "Could not copy debug mask";
+  Status result = exec->SynchronousMemcpyH2D(mask, MASK_BYTES, &gpu_ptr);
+  if (!result.ok()) {
+    LOG(FATAL) << "Could not copy debug mask, " << result;
   }
 }
 
@@ -130,8 +132,8 @@ int64 GPUDebugAllocator::AllocationId(const void* ptr) {
                                        MASK_BYTES);
 }
 
-void GPUDebugAllocator::GetStats(AllocatorStats* stats) {
-  base_allocator_->GetStats(stats);
+absl::optional<AllocatorStats> GPUDebugAllocator::GetStats() {
+  return base_allocator_->GetStats();
 }
 
 void GPUDebugAllocator::ClearStats() { base_allocator_->ClearStats(); }
@@ -171,8 +173,10 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   se::DeviceMemory<float> nan_ptr{
       se::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
 
-  if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
-    LOG(ERROR) << "Could not initialize to NaNs";
+  Status result =
+      stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size, &nan_ptr);
+  if (!result.ok()) {
+    LOG(ERROR) << "Could not initialize to NaNs, " << result;
   }
 
   return allocated_ptr;
@@ -185,8 +189,10 @@ void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
                             std::nanf(""));
     se::DeviceMemory<float> nan_ptr{
         se::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
-    if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {
-      LOG(ERROR) << "Could not initialize to NaNs";
+    Status result =
+        stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size, &nan_ptr);
+    if (!result.ok()) {
+      LOG(ERROR) << "Could not initialize to NaNs, " << result;
     }
   }
 
@@ -202,8 +208,8 @@ size_t GPUNanResetAllocator::AllocatedSize(const void* ptr) {
   return base_allocator_->AllocatedSize(ptr);
 }
 
-void GPUNanResetAllocator::GetStats(AllocatorStats* stats) {
-  base_allocator_->GetStats(stats);
+absl::optional<AllocatorStats> GPUNanResetAllocator::GetStats() {
+  return base_allocator_->GetStats();
 }
 
 void GPUNanResetAllocator::ClearStats() { base_allocator_->ClearStats(); }

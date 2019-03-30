@@ -96,7 +96,7 @@ class StackOpTest(test.TestCase):
           c1, b1, [r, v], [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, self.evaluate(ry))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testStackWhileSwap(self):
     self._testStackWhileSwap(use_gpu=False)
     self._testStackWhileSwap(use_gpu=True)
@@ -248,7 +248,7 @@ class StackOpRefTest(test.TestCase):
           c1, b1, [r, v], [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, self.evaluate(ry))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testStackWhileSwap(self):
     self._testStackWhileSwap(use_gpu=False)
     self._testStackWhileSwap(use_gpu=True)

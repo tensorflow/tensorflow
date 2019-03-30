@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -78,7 +77,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      &captured_func));
+                                      /*params=*/{}, &captured_func));
 
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
@@ -113,8 +112,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::ParallelInterleave")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::ParallelInterleave")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -133,7 +132,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, interleave_func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* cycle_length_node;
@@ -148,16 +146,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       Node* prefetch_input_elements_node;
       TF_RETURN_IF_ERROR(b->AddScalar(prefetch_input_elements_,
                                       &prefetch_input_elements_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(interleave_func_, &f);
       AttrValue other_arguments_types_attr;
@@ -488,8 +480,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           worker_threads_.reserve(dataset()->num_threads());
           for (size_t i = 0; i < dataset()->num_threads(); ++i) {
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
+            worker_threads_.emplace_back(ctx->StartThread(
+                strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           }
         }
@@ -587,8 +579,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             }
             workers_[i].SetInputs(s, std::move(args));
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
+            worker_threads_.push_back(ctx->StartThread(
+                strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
             if (i < dataset()->cycle_length_) {
               interleave_indices_.push_back(i);

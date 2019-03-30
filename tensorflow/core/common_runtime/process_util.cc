@@ -34,14 +34,23 @@ namespace tensorflow {
 
 namespace {
 
+int32 DefaultNumInterOpThreads() {
+  // Use environment setting if specified (init once)
+  static int env_num_threads = NumInterOpThreadsFromEnvironment();
+  if (env_num_threads > 0) {
+    return env_num_threads;
+  }
+
+  // Default to using the number of cores available in the process.
+  return port::NumSchedulableCPUs();
+}
+
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   int32 inter_op_parallelism_threads =
       options.config.inter_op_parallelism_threads();
   if (inter_op_parallelism_threads == 0) {
-    // Default to using the number of cores available in the process.
-    inter_op_parallelism_threads = port::NumSchedulableCPUs();
+    inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
-
   return new thread::ThreadPool(Env::Default(), "Compute",
                                 inter_op_parallelism_threads);
 }
@@ -51,6 +60,18 @@ static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
 thread::ThreadPool* ComputePool(const SessionOptions& options) {
   static thread::ThreadPool* compute_pool = InitComputePool(options);
   return compute_pool;
+}
+
+int32 NumInterOpThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("TF_NUM_INTEROP_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
+int32 NumIntraOpThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
 }
 
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
@@ -67,7 +88,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 #endif  // _OPENMP
     DCHECK_GE(mkl_intra_op, 1);
     const int32 mkl_inter_op = std::max(
-        (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
+        (DefaultNumInterOpThreads() + mkl_intra_op - 1) / mkl_intra_op, 2);
     VLOG(0)
         << "Creating new thread pool with default inter op setting: "
         << mkl_inter_op
@@ -75,8 +96,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
     return mkl_inter_op;
   }
 #endif  // INTEL_MKL
-  // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
+  return DefaultNumInterOpThreads();
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(

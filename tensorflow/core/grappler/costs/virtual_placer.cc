@@ -87,6 +87,7 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
       default_device_name_ = devices_.begin()->first;  // Any device.
     }
   }
+  VLOG(3) << "default device name: " << default_device_name_;
 
   // Scan the device names from the cluster, and if there is one job name used,
   // use it for canonical device name.
@@ -102,14 +103,15 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
       }
     }
   }
-  // If there is only  type of job name in all the devices in the cluster, use
-  // that one as default job name; otherwise, use localhost.
+  // If there is only one type of job name in all the devices in the cluster,
+  // use that one as default job name; otherwise, use localhost.
   // TODO(dyoon): this should be improved, especially when the cluster is
   // composed of multiple worker, PS, and other types of jobs.
   if (job_names_from_cluster.size() == 1) {
     auto it = job_names_from_cluster.begin();
     default_job_name_lowercase_ = *it;
   }
+  VLOG(3) << "default job name: " << default_job_name_lowercase_;
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {

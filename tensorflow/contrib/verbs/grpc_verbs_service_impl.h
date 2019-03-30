@@ -27,14 +27,6 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 
-namespace grpc {
-class CompletionQueue;
-class Channel;
-class RpcService;
-class ServerCompletionQueue;
-class ServerContext;
-}  // namespace grpc
-
 namespace tensorflow {
 
 namespace grpc {

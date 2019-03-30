@@ -3,14 +3,6 @@ minor_version: ""
 default_target_cpu: "same_as_host"
 
 default_toolchain {
-  cpu: "k8"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
-  cpu: "piii"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
   cpu: "darwin"
   toolchain_identifier: "local_darwin"
 }
@@ -19,24 +11,12 @@ default_toolchain {
   toolchain_identifier: "local_freebsd"
 }
 default_toolchain {
-  cpu: "armeabi"
-  toolchain_identifier: "arm-linux-gnueabihf"
-}
-default_toolchain {
-  cpu: "arm"
-  toolchain_identifier: "local_linux"
-}
-default_toolchain {
   cpu: "x64_windows"
   toolchain_identifier: "local_windows_msys64"
 }
 default_toolchain {
   cpu: "x64_windows_msvc"
   toolchain_identifier: "vc_14_0_x64"
-}
-default_toolchain {
-  cpu: "s390x"
-  toolchain_identifier: "local_linux"
 }
 
 toolchain {

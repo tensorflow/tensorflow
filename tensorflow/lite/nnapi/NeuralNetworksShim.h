@@ -20,6 +20,13 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+
+// This interface is now deprecated. You should use instead
+// nnapi_implementation.
+
+// TODO(b/123017568): Update all current usages of this file.
+
 // helpers
 
 #define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
@@ -44,8 +51,6 @@ inline void* loadLibrary(const char* name) {
   return handle;
 }
 
-typedef int (*ASharedMemory_create_fn)(const char* name, size_t size);
-
 // ASharedMemory_create was added in Android 8.0, so safe to use with NNAPI
 // which was added in 8.1.
 inline int ASharedMemory_create(const char* name, size_t size) {
@@ -54,7 +59,8 @@ inline int ASharedMemory_create(const char* name, size_t size) {
       handle != nullptr ? reinterpret_cast<ASharedMemory_create_fn>(
                               dlsym(handle, "ASharedMemory_create"))
                         : nullptr;
-  return fn(name, size);
+  int fd = fn != nullptr ? fn(name, size) : -1;
+  return fd;
 }
 
 inline void* getLibraryHandle() {
@@ -80,332 +86,6 @@ inline bool NNAPIExists() {
 
 // NN api types based on NNAPI header file
 // https://developer.android.com/ndk/reference/group/neural-networks
-
-/**
- * Operand types.
- *
- * The type of operands that can be added to a model.
- *
- * Although we define many types, most operators accept just a few
- * types.  Most used are ANEURALNETWORKS_TENSOR_FLOAT32,
- * ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, and ANEURALNETWORKS_INT32.
- */
-enum {
-  ANEURALNETWORKS_FLOAT32 = 0,
-  ANEURALNETWORKS_INT32 = 1,
-  ANEURALNETWORKS_UINT32 = 2,
-  ANEURALNETWORKS_TENSOR_FLOAT32 = 3,
-  ANEURALNETWORKS_TENSOR_INT32 = 4,
-  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM = 5,
-};
-
-/**
- * Operation types.
- *
- * The type of operations that can be added to a model.
- */
-enum {
-  ANEURALNETWORKS_ADD = 0,
-  ANEURALNETWORKS_AVERAGE_POOL_2D = 1,
-  ANEURALNETWORKS_CONCATENATION = 2,
-  ANEURALNETWORKS_CONV_2D = 3,
-  ANEURALNETWORKS_DEPTHWISE_CONV_2D = 4,
-  ANEURALNETWORKS_DEPTH_TO_SPACE = 5,
-  ANEURALNETWORKS_DEQUANTIZE = 6,
-  ANEURALNETWORKS_EMBEDDING_LOOKUP = 7,
-  ANEURALNETWORKS_FLOOR = 8,
-  ANEURALNETWORKS_FULLY_CONNECTED = 9,
-  ANEURALNETWORKS_HASHTABLE_LOOKUP = 10,
-  ANEURALNETWORKS_L2_NORMALIZATION = 11,
-  ANEURALNETWORKS_L2_POOL_2D = 12,
-  ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION = 13,
-  ANEURALNETWORKS_LOGISTIC = 14,
-  ANEURALNETWORKS_LSH_PROJECTION = 15,
-  ANEURALNETWORKS_LSTM = 16,
-  ANEURALNETWORKS_MAX_POOL_2D = 17,
-  ANEURALNETWORKS_MUL = 18,
-  ANEURALNETWORKS_RELU = 19,
-  ANEURALNETWORKS_RELU1 = 20,
-  ANEURALNETWORKS_RELU6 = 21,
-  ANEURALNETWORKS_RESHAPE = 22,
-  ANEURALNETWORKS_RESIZE_BILINEAR = 23,
-  ANEURALNETWORKS_RNN = 24,
-  ANEURALNETWORKS_SOFTMAX = 25,
-  ANEURALNETWORKS_SPACE_TO_DEPTH = 26,
-  ANEURALNETWORKS_SVDF = 27,
-  ANEURALNETWORKS_TANH = 28,
-  ANEURALNETWORKS_BATCH_TO_SPACE_ND = 29,
-  ANEURALNETWORKS_DIV = 30,
-  ANEURALNETWORKS_MEAN = 31,
-  ANEURALNETWORKS_PAD = 32,
-  ANEURALNETWORKS_SPACE_TO_BATCH_ND = 33,
-  ANEURALNETWORKS_SQUEEZE = 34,
-  ANEURALNETWORKS_STRIDED_SLICE = 35,
-  ANEURALNETWORKS_SUB = 36,
-  ANEURALNETWORKS_TRANSPOSE = 37,
-};
-
-/**
- * Fused activation function types.
- *
- */
-enum {
-  ANEURALNETWORKS_FUSED_NONE = 0,
-  ANEURALNETWORKS_FUSED_RELU = 1,
-  ANEURALNETWORKS_FUSED_RELU1 = 2,
-  ANEURALNETWORKS_FUSED_RELU6 = 3,
-};
-
-/**
- * Execution preferences.
- */
-enum {
-  ANEURALNETWORKS_PREFER_LOW_POWER = 0,
-  ANEURALNETWORKS_PREFER_FAST_SINGLE_ANSWER = 1,
-  ANEURALNETWORKS_PREFER_SUSTAINED_SPEED = 2,
-};
-
-/**
- * Result codes.
- */
-enum {
-  ANEURALNETWORKS_NO_ERROR = 0,
-  ANEURALNETWORKS_OUT_OF_MEMORY = 1,
-  ANEURALNETWORKS_INCOMPLETE = 2,
-  ANEURALNETWORKS_UNEXPECTED_NULL = 3,
-  ANEURALNETWORKS_BAD_DATA = 4,
-  ANEURALNETWORKS_OP_FAILED = 5,
-  ANEURALNETWORKS_UNMAPPABLE = 5,
-  ANEURALNETWORKS_BAD_STATE = 6,
-};
-
-/**
- * Implicit padding algorithms.
- */
-enum {
-  ANEURALNETWORKS_PADDING_SAME = 1,
-  ANEURALNETWORKS_PADDING_VALID = 2,
-};
-
-/**
- * ANeuralNetworksMemory is an opaque type that represents memory.
- *
- * This type is used to represent shared memory, memory mapped files,
- * and similar memories.
- *
- * By using shared memory, a program can efficiently communicate to the
- * runtime and drivers the tensors that define a model. See
- * {@link ANeuralNetworksModel_setOperandValueFromMemory}. An application
- * should typically create one shared memory object that contains every tensor
- * needed to define a model. {@link ANeuralNetworksMemory_createFromFd} can be
- * used to create shared memory from a file handle. {@link
- * ANeuralNetworksMemory_createShared} can be used to directly created shared
- * memory.
- *
- * Memory objects can also be used to specify the input and output arguments of
- * an execution. See {@link ANeuralNetworksExecution_setInputFromMemory}
- * and {@link ANeuralNetworksExecution_setOutputFromMemory}.
- */
-typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
-
-/**
- * ANeuralNetworksModel is an opaque type that contains a description of the
- * mathematical operations that constitute the model.
- *
- * <p>The model will be built by calling<ul>
- * <li>{@link ANeuralNetworksModel_create},</li>
- * <li>{@link ANeuralNetworksModel_addOperation},</li>
- * <li>{@link ANeuralNetworksModel_addOperand},</li>
- * </ul>
- *
- * A model is completed by calling {@link ANeuralNetworksModel_finish}.
- * A model is destroyed by calling {@link ANeuralNetworksModel_free}.
- *
- * <p>It is the application's responsibility to make sure that only one thread
- * modifies a model at a given time. It is however safe for more than one
- * thread to use the model once {@link ANeuralNetworksModel_finish} has
- * returned.</p>
- *
- * <p>It is also the application's responsibility to ensure that there are no
- * other uses of the model after calling {@link ANeuralNetworksModel_free}. This
- * includes any compilation or execution object created using the model.</p>
- */
-typedef struct ANeuralNetworksModel ANeuralNetworksModel;
-
-/**
- * ANeuralNetworksCompilation is an opaque type that can be used to compile
- * a machine learning model.
- *
- * <p>To use:<ul>
- *    <li>Create a new compilation instance by calling the
- *        {@link ANeuralNetworksCompilation_create} function.</li>
- *    <li>Perform the compilation with {@link
- * ANeuralNetworksCompilation_start}.</li> <li>Wait for the compilation to
- * complete with {@link ANeuralNetworksCompilation_wait}.</li> <li>Use the
- * compilation as many times as needed with {@link
- * ANeuralNetworksExecution_create}.</li> <li>Destroy the compilation with
- * {@link ANeuralNetworksCompilation_free} once all executions using the
- * compilation have completed.</li></ul></p>
- *
- * <p>A compilation cannot be modified once {@link
- * ANeuralNetworksCompilation_start} has been called on it.</p>
- *
- * <p>It is the application's responsibility to make sure that only one thread
- * modifies a compilation at a given time. It is however safe for more than one
- * thread to use {@link ANeuralNetworksCompilation_wait} at the same time.
- * It is also safe for multiple threads to use a compilation object once
- * {@link ANeuralNetworksCompilation_wait} has completed.</p>
- *
- * <p>It is also the application's responsibility to ensure that there are no
- * other uses of the compilation after calling {@link
- * ANeuralNetworksCompilation_free}. This includes any execution object created
- * using the compilation.</p>
- */
-typedef struct ANeuralNetworksCompilation ANeuralNetworksCompilation;
-
-/**
- * ANeuralNetworksExecution is an opaque type that can be used to apply a
- * machine learning model to a set of inputs.
- *
- * <p>To use:<ul>
- *    <li>Create a new execution instance by calling the
- *        {@link ANeuralNetworksExecution_create} function.</li>
- *    <li>Associate data to the model inputs with
- *        {@link ANeuralNetworksExecution_setInput} or
- *        {@link ANeuralNetworksExecution_setInputFromMemory}.</li>
- *    <li>Associate output buffers to the model outputs with
- *        {@link ANeuralNetworksExecution_setOutput} or
- *        {@link ANeuralNetworksExecution_setOutputFromMemory}.</li>
- *    <li>Apply the model with {@link
- * ANeuralNetworksExecution_startCompute}.</li> <li>Wait for the execution to
- * complete with {@link ANeuralNetworksExecution_wait}.</li> <li>Destroy the
- * execution with
- *        {@link ANeuralNetworksExecution_free}.</li></ul></p>
- *
- * <p>An execution cannot be modified once {@link
- * ANeuralNetworksExecution_start} has been called on it.</p>
- *
- * <p>An execution can be applied to a model with
- * {@link ANeuralNetworksExecution_startCompute} only once. Create new
- * executions to do new evaluations of the model.</p>
- *
- * <p>It is the application's responsibility to make sure that only one thread
- * modifies an execution at a given time. It is however safe for more than one
- * thread to use {@link ANeuralNetworksExecution_wait} at the same time.</p>
- *
- * <p>It is also the application's responsibility to ensure that there are no
- * other uses of the request after calling {@link
- * ANeuralNetworksRequest_free}.</p>
- */
-typedef struct ANeuralNetworksExecution ANeuralNetworksExecution;
-
-/**
- * ANeuralNetworksOperandType describes the type of an operand.
- * This structure is used to describe both scalars and tensors.
- */
-typedef struct ANeuralNetworksOperandType {
-  /** The data type, e.g ANEURALNETWORKS_INT8. */
-  int32_t type;
-  /** The number of dimensions. It should be 0 for scalars. */
-  uint32_t dimensionCount;
-  /** The dimensions of the tensor. It should be nullptr for scalars. */
-  const uint32_t* dimensions;
-  /** These two fields are only used for quantized tensors.
-   * They should be zero for scalars and non-fixed point tensors.
-   * The dequantized value of each entry is (value - offset) * scale.
-   */
-  float scale;
-  int32_t zeroPoint;
-} ANeuralNetworksOperandType;
-
-/**
- * ANeuralNetworksEvent is an opaque type that represents an event
- * that will be signaled once an execution completes.
- */
-typedef struct ANeuralNetworksEvent ANeuralNetworksEvent;
-
-typedef int32_t ANeuralNetworksOperationType;
-
-// nn api function types
-
-typedef int (*ANeuralNetworksMemory_createFromFd_fn)(
-    size_t size, int protect, int fd, size_t offset,
-    ANeuralNetworksMemory** memory);
-
-typedef void (*ANeuralNetworksMemory_free_fn)(ANeuralNetworksMemory* memory);
-
-typedef int (*ANeuralNetworksModel_create_fn)(ANeuralNetworksModel** model);
-
-typedef int (*ANeuralNetworksModel_finish_fn)(ANeuralNetworksModel* model);
-
-typedef void (*ANeuralNetworksModel_free_fn)(ANeuralNetworksModel* model);
-
-typedef int (*ANeuralNetworksCompilation_create_fn)(
-    ANeuralNetworksModel* model, ANeuralNetworksCompilation** compilation);
-
-typedef void (*ANeuralNetworksCompilation_free_fn)(
-    ANeuralNetworksCompilation* compilation);
-
-typedef int (*ANeuralNetworksCompilation_setPreference_fn)(
-    ANeuralNetworksCompilation* compilation, int32_t preference);
-
-typedef int (*ANeuralNetworksCompilation_finish_fn)(
-    ANeuralNetworksCompilation* compilation);
-
-typedef int (*ANeuralNetworksModel_addOperand_fn)(
-    ANeuralNetworksModel* model, const ANeuralNetworksOperandType* type);
-
-typedef int (*ANeuralNetworksModel_setOperandValue_fn)(
-    ANeuralNetworksModel* model, int32_t index, const void* buffer,
-    size_t length);
-
-typedef int (*ANeuralNetworksModel_setOperandValueFromMemory_fn)(
-    ANeuralNetworksModel* model, int32_t index,
-    const ANeuralNetworksMemory* memory, size_t offset, size_t length);
-
-typedef int (*ANeuralNetworksModel_addOperation_fn)(
-    ANeuralNetworksModel* model, ANeuralNetworksOperationType type,
-    uint32_t inputCount, const uint32_t* inputs, uint32_t outputCount,
-    const uint32_t* outputs);
-
-typedef int (*ANeuralNetworksModel_identifyInputsAndOutputs_fn)(
-    ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs,
-    uint32_t outputCount, const uint32_t* outputs);
-
-typedef int (*ANeuralNetworksModel_relaxComputationFloat32toFloat16_fn)(
-    ANeuralNetworksModel* model, bool allow);
-
-typedef int (*ANeuralNetworksExecution_create_fn)(
-    ANeuralNetworksCompilation* compilation,
-    ANeuralNetworksExecution** execution);
-
-typedef void (*ANeuralNetworksExecution_free_fn)(
-    ANeuralNetworksExecution* execution);
-
-typedef int (*ANeuralNetworksExecution_setInput_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, const void* buffer, size_t length);
-
-typedef int (*ANeuralNetworksExecution_setInputFromMemory_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory,
-    size_t offset, size_t length);
-
-typedef int (*ANeuralNetworksExecution_setOutput_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, void* buffer, size_t length);
-
-typedef int (*ANeuralNetworksExecution_setOutputFromMemory_fn)(
-    ANeuralNetworksExecution* execution, int32_t index,
-    const ANeuralNetworksOperandType* type, const ANeuralNetworksMemory* memory,
-    size_t offset, size_t length);
-
-typedef int (*ANeuralNetworksExecution_startCompute_fn)(
-    ANeuralNetworksExecution* execution, ANeuralNetworksEvent** event);
-
-typedef int (*ANeuralNetworksEvent_wait_fn)(ANeuralNetworksEvent* event);
-
-typedef void (*ANeuralNetworksEvent_free_fn)(ANeuralNetworksEvent* event);
 
 /**
  * Creates a shared memory object from a file descriptor.
@@ -574,6 +254,32 @@ inline int ANeuralNetworksModel_setOperandValue(ANeuralNetworksModel* model,
                                                 size_t length) {
   LOAD_FUNCTION(ANeuralNetworksModel_setOperandValue);
   EXECUTE_FUNCTION_RETURN(model, index, buffer, length);
+}
+
+/**
+ * Sets an operand's per channel quantization parameters.
+ *
+ * Sets parameters required by a tensor of type
+ * {@link ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL}.
+ * This function must be called for every tensor of type
+ * {@link ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL} before
+ * calling {@link ANeuralNetworksModel_finish}.
+ *
+ * Available since API level 29.
+ *
+ * @param model The model to be modified.
+ * @param index The index of the model operand we're setting.
+ * @param channelQuant The per channel quantization parameters for the operand.
+ *                    No memory in this struct needs to outlive the call to
+ *                    this function.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ */
+inline int ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
+    ANeuralNetworksModel* model, int32_t index,
+    const ANeuralNetworksSymmPerChannelQuantParams* channelQuant) {
+  LOAD_FUNCTION(ANeuralNetworksModel_setOperandSymmPerChannelQuantParams);
+  EXECUTE_FUNCTION_RETURN(model, index, channelQuant);
 }
 
 /**
@@ -1005,6 +711,445 @@ inline int ANeuralNetworksEvent_wait(ANeuralNetworksEvent* event) {
 inline void ANeuralNetworksEvent_free(ANeuralNetworksEvent* event) {
   LOAD_FUNCTION(ANeuralNetworksEvent_free);
   EXECUTE_FUNCTION(event);
+}
+
+/**
+ * Get the number of available devices.
+ *
+ * @param numDevices Used to return the number of devices.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworks_getDeviceCount(uint32_t* numDevices) {
+  LOAD_FUNCTION(ANeuralNetworks_getDeviceCount);
+  EXECUTE_FUNCTION_RETURN(numDevices);
+}
+
+/**
+ * Get the representation of the specified device.
+ *
+ * @param devIndex The index of the specified device. Must be less than the
+ *                 number of available devices.
+ * @param device The representation of the specified device.
+ *               The same representation will always be returned for the
+ *               specified device.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+
+inline int ANeuralNetworks_getDevice(uint32_t devIndex,
+                                     ANeuralNetworksDevice** device) {
+  LOAD_FUNCTION(ANeuralNetworks_getDevice);
+  EXECUTE_FUNCTION_RETURN(devIndex, device);
+}
+
+/**
+ * Get the name of the specified device.
+ *
+ * @param device The representation of the specified device.
+ * @param name   The returned name of the specified device. The name will be in
+ *               UTF-8 and will be null-terminated. It will be recognizable as a
+ *               known device name rather than a cryptic string. For devices
+ *               with API level 29 and above, the format of the name is
+ *               {VENDOR}-{DEVICE}, e.g. “google-ipu”. For devices with feature
+ *               level 28 or lower, the name will always be “unknown-device”.
+ *               The name will remain valid for the duration of the application.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksDevice_getName(const ANeuralNetworksDevice* device,
+                                         const char** name) {
+  LOAD_FUNCTION(ANeuralNetworksDevice_getName);
+  EXECUTE_FUNCTION_RETURN(device, name);
+}
+
+/**
+ * Get the version of the driver implementation of the specified device.
+ *
+ * It’s the responsibility of the driver implementor to insure that this version
+ * string uniquely distinguishes this implementation from all previous
+ * implementations.
+ *
+ * This version string must not be confused with the feature level which is
+ * solely defined by {@link ANeuralNetworksDevice_getFeatureLevel}. There is no
+ * implicit ordering of the versions. For example, it is not possible to filter
+ * all drivers older than a certain version.
+ *
+ * Application developers may use this version string to avoid or prefer
+ * specific driver implementations. For example, an application may want to do
+ * so because:
+ *     - A specific version of the driver does not provide the required
+ * performance, perhaps because of a performance regression.
+ *     - A specific version of the driver has a bug or returns results that
+ * don’t match the minimum precision requirement for the application.
+ *
+ * @param device  The representation of the specified device.
+ * @param version The returned version string of the driver for the specified
+ *                device. The string will be in UTF-8 and will be
+ *                null-terminated. For devices with feature level 28 or lower,
+ *                "UNKNOWN" will be returned. The version string will remain
+ *                valid for the duration of the application.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksDevice_getVersion(const ANeuralNetworksDevice* device,
+                                            const char** version) {
+  LOAD_FUNCTION(ANeuralNetworksDevice_getVersion);
+  EXECUTE_FUNCTION_RETURN(device, version);
+}
+
+/**
+ * Get the supported NNAPI version of the specified device.
+ *
+ * Each device has a supported feature level, which is the most advanced feature
+ * this driver implements. For example, if the driver implements the features
+ * introduced in Android P, but does not implement the features introduced after
+ * Android P, the value would be 28. Developers could decide whether or not the
+ * specified device should be used for a Model that has certain feature
+ * requirements.
+ *
+ * @param device       The representation of the specified device.
+ * @param featureLevel The API level of the most advanced feature this driver
+ *                     implements.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksDevice_getFeatureLevel(
+    const ANeuralNetworksDevice* device, int64_t* featureLevel) {
+  LOAD_FUNCTION(ANeuralNetworksDevice_getFeatureLevel);
+  EXECUTE_FUNCTION_RETURN(device, featureLevel);
+}
+
+/**
+ * Get the supported operations for a specified set of devices. If multiple
+ * devices are selected, the supported operation list is a union of supported
+ * operations of all selected devices.
+ *
+ * @param model        The model to be queried.
+ * @param devices      The set of devices. Must not contain duplicates.
+ * @param numDevices   The number of devices in the set.
+ * @param supportedOps The boolean array to be filled. True means supported. The
+ *                     size of the boolean array must be at least as large as
+ *                     the number of operations in the model. The order of
+ *                     elements in the supportedOps array matches the order in
+ *                     which the corresponding operations were added to the
+ *                     model.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksModel_getSupportedOperationsForDevices(
+    const ANeuralNetworksModel* model,
+    const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+    bool* supportedOps) {
+  LOAD_FUNCTION(ANeuralNetworksModel_getSupportedOperationsForDevices);
+  EXECUTE_FUNCTION_RETURN(model, devices, numDevices, supportedOps);
+}
+
+/**
+ * Create a {@link ANeuralNetworksCompilation} to compile the given model for a
+ * specified set of devices. If more than one device is specified, the
+ * compilation will distribute the workload automatically across the devices.
+ * The model must be fully supported by the specified set of devices. This means
+ * that ANeuralNetworksModel_getSupportedOperationsForDevices() must have
+ * returned true for every operation for that model/devices pair.
+ *
+ * @param model       The {@link ANeuralNetworksModel} to be compiled.
+ * @param devices     The set of devices. Must not contain duplicates.
+ * @param numDevices  The number of devices in the set.
+ * @param compilation The newly created object or NULL if unsuccessful.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful, ANEURALNETWORKS_BAD_DATA
+ *         if the model is invalid.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksCompilation_createForDevices(
+    ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices,
+    uint32_t numDevices, ANeuralNetworksCompilation** compilation) {
+  LOAD_FUNCTION(ANeuralNetworksCompilation_createForDevices);
+  EXECUTE_FUNCTION_RETURN(model, devices, numDevices, compilation);
+}
+
+/**
+ * Sets the compilation caching signature and the cache directory.
+ *
+ * Provides optional caching information to the runtime for faster repeated
+ * compilation.
+ *
+ * See {@link ANeuralNetworksCompilation} for information on multithreaded
+ * usage.
+ *
+ * @param compilation The compilation to be modified.
+ * @param cacheDir The cache directory to store and retrieve caching data. It is
+ *                 recommended to use the code_cache provided by the Android
+ *                 runtime. If not using the code_cache, the user should choose
+ *                 a directory local to the application, and is responsible to
+ *                 manage and clean the cache entries.
+ * @param token The token provided by the user to specify a model, must be of
+ *              length ANEURALNETWORKS_BYTE_SIZE_OF_CACHE_TOKEN. The user should
+ *              ensure that the token is unique to a model within the
+ *              application. The NNAPI runtime will not detected token
+ *              collisions. If there is a collision, the compilation outcome may
+ *              be incorrect without notifying with error.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksCompilation_setCaching(
+    ANeuralNetworksCompilation* compilation, const char* cacheDir,
+    const uint8_t* token) {
+  LOAD_FUNCTION(ANeuralNetworksCompilation_setCaching);
+  EXECUTE_FUNCTION_RETURN(compilation, cacheDir, token);
+}
+
+/**
+ * Schedule synchronous evaluation of the execution.
+ *
+ * <p>Schedules synchronous evaluation of the execution. Returns once the
+ * execution has completed and the outputs are ready to be consumed.
+ * </p>
+ *
+ * See {@link ANeuralNetworksExecution} for information on multithreaded usage.
+ *
+ * See {@link ANeuralNetworksExecution_startCompute} for asynchronous execution.
+ * Synchronous execution incurs lower overhead than asynchronous execution.
+ *
+ * Available since API level 29.
+ *
+ * @param execution The execution to be scheduled and executed.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if the execution completed normally.
+ *         ANEURALNETWORKS_UNMAPPABLE if the execution input or output memory
+ *         cannot be properly mapped.
+ */
+inline int ANeuralNetworksExecution_compute(
+    ANeuralNetworksExecution* execution) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_compute);
+  EXECUTE_FUNCTION_RETURN(execution);
+}
+
+/**
+ * Get the dimensional information of the specified output operand of the model
+ * of the
+ * {@link ANeuralNetworksExecution}.
+ *
+ * On asynchronous execution initiated by {@link
+ * ANeuralNetworksExecution_startCompute},
+ * {@link ANeuralNetworksEvent_wait} must be called prior to this function to
+ * recuperate the resources used by the execution.
+ *
+ * @param execution The execution to be queried.
+ * @param index The index of the output argument we are querying. It is
+ *              an index into the lists passed to
+ *              {@link ANeuralNetworksModel_identifyInputsAndOutputs}. It is not
+ *              the index associated with {@link
+ * ANeuralNetworksModel_addOperand}.
+ * @param rank The rank of the output operand.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful,
+ * ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE if the target output is provided an
+ * insufficient buffer at execution time, ANEURALNETWORKS_BAD_DATA if the index
+ * is invalid.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksExecution_getOutputOperandRank(
+    ANeuralNetworksExecution* execution, int32_t index, uint32_t* rank) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_getOutputOperandRank);
+  EXECUTE_FUNCTION_RETURN(execution, index, rank);
+}
+
+/**
+ * Get the dimensional information of the specified output operand of the model
+ * of the
+ * {@link ANeuralNetworksExecution}. The target output operand cannot be a
+ * scalar.
+ *
+ * On asynchronous execution initiated by
+ * {@link ANeuralNetworksExecution_startCompute},
+ * {@link ANeuralNetworksEvent_wait} must be called prior to this function to
+ * recuperate the resources used by the execution.
+ *
+ * @param execution The execution to be queried.
+ * @param index The index of the output argument we are querying. It is an index
+ *              into the lists passed to
+ *              {@link ANeuralNetworksModel_identifyInputsAndOutputs}. It is not
+ *              the index associated with
+ *              {@link ANeuralNetworksModel_addOperand}.
+ * @param dimensions The dimension array to be filled. The size of the array
+ *                   must be exactly as large as the rank of the output operand
+ *                   to be queried in the model.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful,
+ * ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE if the target output is provided an
+ * insufficient buffer at execution time, ANEURALNETWORKS_BAD_DATA if the index
+ * is invalid or if the target is a scalar.
+ *
+ * Available since API level 29.
+ */
+inline int ANeuralNetworksExecution_getOutputOperandDimensions(
+    ANeuralNetworksExecution* execution, int32_t index, uint32_t* dimensions) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_getOutputOperandDimensions);
+  EXECUTE_FUNCTION_RETURN(execution, index, dimensions);
+}
+
+/**
+ * Create a {@link ANeuralNetworksBurst} to apply the given compilation.
+ * This only creates the burst object. Computation is only performed once
+ * {@link ANeuralNetworksExecution_burstCompute} is invoked with a valid
+ * {@link ANeuralNetworksExecution} and {@link ANeuralNetworksBurst}.
+ *
+ * <p>The provided compilation must outlive the burst object.</p>
+ *
+ * Available since API level 29.
+ *
+ * @param compilation The {@link ANeuralNetworksCompilation} to be evaluated.
+ * @param burst The newly created object or NULL if unsuccessful.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful, ANEURALNETWORKS_BAD_DATA
+ *         if the compilation is invalid.
+ */
+inline int ANeuralNetworksBurst_create(ANeuralNetworksCompilation* compilation,
+                                       ANeuralNetworksBurst** burst) {
+  LOAD_FUNCTION(ANeuralNetworksBurst_create);
+  EXECUTE_FUNCTION_RETURN(compilation, burst);
+}
+
+/**
+ * Destroys the burst object.
+ *
+ * Available since API level 29.
+ *
+ * @param burst The burst object to be destroyed. Passing NULL is acceptable and
+ *              results in no operation.
+ */
+inline void ANeuralNetworksBurst_free(ANeuralNetworksBurst* burst) {
+  LOAD_FUNCTION(ANeuralNetworksBurst_free);
+  EXECUTE_FUNCTION(burst);
+}
+
+/**
+ * Schedule synchronous evaluation of the execution on a burst object.
+ *
+ * <p>Schedules synchronous evaluation of the execution. Returns once the
+ * execution has completed and the outputs are ready to be consumed.</p>
+ *
+ * <p>There must be at most one {@link ANeuralNetworksExecution} processing at
+ * any given time for any given burst object. Any
+ * {@link ANeuralNetworksExecution} launched before the previous has finished
+ * will result in ANEURALNETWORKS_BAD_STATE.</p>
+ *
+ * Available since API level 29.
+ *
+ * @param burst The burst object to execute on.
+ * @param execution The execution to be scheduled and executed. The execution
+ *                  must be created from the same {@link
+ *                  ANeuralNetworksCompilation} as the burst object.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if the execution completed normally.
+ */
+inline int ANeuralNetworksExecution_burstCompute(
+    ANeuralNetworksExecution* execution, ANeuralNetworksBurst* burst) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_burstCompute);
+  EXECUTE_FUNCTION_RETURN(execution, burst);
+}
+
+/**
+ * Creates a shared memory object from an AHardwareBuffer handle.
+ *
+ * If the shared memory is backed by an AHardwareBuffer of
+ * AHARDWAREBUFFER_FORMAT_BLOB format, it can be used the same way as shared
+ * memory created from a file handle. See
+ * {@link ANeuralNetworksMemory} for a description on how to use this shared
+ * memory.
+ *
+ * If the shared memory is backed by an AHardwareBuffer of a format other than
+ * AHARDWAREBUFFER_FORMAT_BLOB, it can only be used for Model inputs and
+ * outputs. When calling {@link ANeuralNetworksExecution_setInputFromMemory} or
+ * {@link ANeuralNetworksExecution_setOutputFromMemory} with the shared memory,
+ * both offset and length must be set to zero and the entire memory region will
+ * be associated with the specified input or output operand. There is no
+ * guarantee that an arbitrary AHardwareBuffer_Format and
+ * AHardwareBuffer_UsageFlags combination can be used by arbitrary devices. The
+ * execution will fail if selected set of devices cannot consume the buffer.
+ *
+ * Calling {@link ANeuralNetworksModel_setOperandValueFromMemory} with shared
+ * memory backed by an AHardwareBuffer of a format other than
+ * AHARDWAREBUFFER_FORMAT_BLOB is disallowed.
+ *
+ * TODO(miaowang): add documentation about intended usage with introspection
+ * API.
+ *
+ * Available since API level 29.
+ *
+ * @param ahwb The AHardwareBuffer handle.
+ * @param memory The memory object to be created.
+ *               Set to NULL if unsuccessful.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if the request completed normally.
+ *
+ * @see AHardwareBuffer
+ */
+inline int ANeuralNetworksMemory_createFromAHardwareBuffer(
+    const AHardwareBuffer* ahwb, ANeuralNetworksMemory** memory) {
+  LOAD_FUNCTION(ANeuralNetworksMemory_createFromAHardwareBuffer);
+  EXECUTE_FUNCTION_RETURN(ahwb, memory);
+}
+
+/**
+ * Specifies whether duration of the {@link ANeuralNetworksExecution} is to be
+ * measured. By default, duration is not measured.
+ *
+ * The {@link ANeuralNetworksExecution} must have been created with
+ * {@link ANeuralNetworksCompilation_createForDevices} with numDevices = 1.
+ *
+ * See {@link ANeuralNetworksExecution} for information on multithreaded usage.
+ *
+ * Available since API level 29.
+ *
+ * @param execution The execution to be modified.
+ * @param measure 'true' if duration is to be measured, 'false' if not.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ */
+inline int ANeuralNetworksExecution_setMeasureTiming(
+    ANeuralNetworksExecution* execution, bool measure) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_setMeasureTiming);
+  EXECUTE_FUNCTION_RETURN(execution, measure);
+}
+
+/**
+ * Get the time spent in the specified {@link ANeuralNetworksExecution}, in
+ * nanoseconds. The execution must have completed.
+ *
+ * @param execution The execution to be queried.
+ * @param durationCode The measurement to be queried, specified by {@link
+ * DurationCode}.
+ * @param duration The returned duration. If no measurement was requested by
+ *                 {@link ANeuralNetworksExecution_setMeasureTiming}, or for
+ * some other reason the duration is not available, UINT64_MAX will be returned.
+ *                 A particular device need not support any given measurement.
+ *
+ * @return ANEURALNETWORKS_NO_ERROR if successful.
+ */
+inline int ANeuralNetworksExecution_getDuration(
+    const ANeuralNetworksExecution* execution, int32_t durationCode,
+    uint64_t* duration) {
+  LOAD_FUNCTION(ANeuralNetworksExecution_getDuration);
+  EXECUTE_FUNCTION_RETURN(execution, durationCode, duration);
 }
 
 /**/

@@ -22,49 +22,49 @@ limitations under the License.
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 
 namespace xla {
-namespace {
 
-DebugOptions* flag_values;
-std::vector<tensorflow::Flag>* flag_objects;
-std::once_flag flags_init;
-
-void SetDebugOptionsDefaults(DebugOptions* flags) {
-  flags->set_xla_llvm_enable_alias_scope_metadata(true);
-  flags->set_xla_llvm_enable_noalias_metadata(true);
-  flags->set_xla_llvm_enable_invariant_load_metadata(true);
-  flags->set_xla_llvm_disable_expensive_passes(false);
-  flags->set_xla_backend_optimization_level(3);
-  flags->set_xla_cpu_multi_thread_eigen(true);
-  flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
-  flags->set_xla_eliminate_hlo_implicit_broadcast(true);
+DebugOptions DefaultDebugOptionsIgnoringFlags() {
+  DebugOptions opts;
+  opts.set_xla_llvm_enable_alias_scope_metadata(true);
+  opts.set_xla_llvm_enable_noalias_metadata(true);
+  opts.set_xla_llvm_enable_invariant_load_metadata(true);
+  opts.set_xla_llvm_disable_expensive_passes(false);
+  opts.set_xla_backend_optimization_level(3);
+  opts.set_xla_cpu_multi_thread_eigen(true);
+  opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
+  opts.set_xla_eliminate_hlo_implicit_broadcast(true);
+  opts.set_xla_dump_hlo_as_html(false);
 #ifdef INTEL_MKL
-  flags->set_xla_cpu_use_mkl_dnn(true);
+  opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
-  flags->set_xla_gpu_max_kernel_unroll_factor(4);
+  opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
-  flags->set_xla_gpu_use_cudnn_batchnorm(false);
+  opts.set_xla_gpu_use_cudnn_batchnorm(false);
 
   // Run all GPU work on one stream by default.  Using multiple streams
   // increases memory usage and we lack strong motivating benchmarks for tuning
   // the heuristics needed to decide when to run on multiple streams.  See
   // b/77879207.
-  flags->set_xla_gpu_disable_multi_streaming(true);
+  opts.set_xla_gpu_disable_multi_streaming(true);
 
   // TODO(jlebar): Disable fastmath once doing so is not a performance
   // regression.
-  flags->set_xla_cpu_enable_fast_math(true);
-  flags->set_xla_gpu_enable_fast_min_max(true);
+  opts.set_xla_cpu_enable_fast_math(true);
+  opts.set_xla_gpu_enable_fast_min_max(true);
 
-  flags->set_xla_force_host_platform_device_count(1);
+  opts.set_xla_force_host_platform_device_count(1);
+  return opts;
 }
+
+static DebugOptions* flag_values;
+static std::vector<tensorflow::Flag>* flag_objects;
+static std::once_flag flags_init;
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.
-void AllocateFlags() {
-  flag_values = new DebugOptions;
-
-  SetDebugOptionsDefaults(flag_values);
+static void AllocateFlags() {
+  flag_values = new DebugOptions(DefaultDebugOptionsIgnoringFlags());
 
   // Returns a lambda that calls "member_setter" on "flag_values" with the
   // argument passed in to the lambda.
@@ -83,6 +83,14 @@ void AllocateFlags() {
       return true;
     };
   };
+
+  auto string_setter_for =
+      [](void (DebugOptions::*member_setter)(const string& value)) {
+        return [member_setter](const string& value) {
+          (flag_values->*member_setter)(value);
+          return true;
+        };
+      };
 
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
@@ -115,50 +123,25 @@ void AllocateFlags() {
 
   flag_objects = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
-          "xla_generate_hlo_graph",
-          flag_values->mutable_xla_generate_hlo_graph(),
-          "HLO modules matching this regex will be dumped to a .dot file "
-          "throughout various stages in compilation."),
-      tensorflow::Flag(
-          "xla_hlo_graph_addresses",
-          bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
-          flag_values->xla_hlo_graph_addresses(),
-          "With xla_generate_hlo_graph, show addresses of HLO ops in "
-          "graph dump."),
-      tensorflow::Flag(
-          "xla_hlo_graph_path", flag_values->mutable_xla_hlo_graph_path(),
-          "With xla_generate_hlo_graph, dump the graphs into this path."),
-      tensorflow::Flag(
-          "xla_hlo_dump_as_graphdef",
-          bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_graphdef),
-          flag_values->xla_hlo_dump_as_graphdef(),
-          "Dump HLO graphs as TensorFlow GraphDefs."),
-      tensorflow::Flag(
-          "xla_hlo_graph_sharding_color",
-          bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
-          flag_values->xla_hlo_graph_sharding_color(),
-          "Assign colors based on sharding assignments when generating the "
-          "HLO graphs."),
-      tensorflow::Flag(
-          "xla_hlo_tfgraph_device_scopes",
-          bool_setter_for(&DebugOptions::set_xla_hlo_tfgraph_device_scopes),
-          flag_values->xla_hlo_tfgraph_device_scopes(),
-          "When generating TensorFlow HLO graphs, if the HLO instructions "
-          "are assigned to a specific device, prefix the name scope with "
-          "\"devX\" with X being the device ordinal."),
-      tensorflow::Flag(
-          "xla_log_hlo_text", flag_values->mutable_xla_log_hlo_text(),
-          "HLO modules matching this regex will be dumped to LOG(INFO)."),
-      tensorflow::Flag(
-          "xla_generate_hlo_text_to",
-          flag_values->mutable_xla_generate_hlo_text_to(),
-          "Dump all HLO modules as text into the provided directory path."),
-      tensorflow::Flag(
           "xla_cpu_enable_fast_math",
           bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
           flag_values->xla_cpu_enable_fast_math(),
           "Enable unsafe fast-math optimizations in the CPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
+      tensorflow::Flag(
+          "xla_cpu_fast_math_honor_nans",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_nans),
+          flag_values->xla_cpu_fast_math_honor_nans(),
+          "When xla_cpu_enable_fast_math is true then this controls whether we "
+          "allow operations to produce NaNs.  Ignored when "
+          "xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
+          "xla_cpu_fast_math_honor_infs",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_infs),
+          flag_values->xla_cpu_fast_math_honor_infs(),
+          "When xla_cpu_enable_fast_math is true then this controls whether we "
+          "allow operations to produce infinites.  Ignored when "
+          "xla_cpu_enable_fast_math is false."),
       tensorflow::Flag(
           "xla_gpu_enable_fast_min_max",
           bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
@@ -203,13 +186,20 @@ void AllocateFlags() {
           "must exactly match the passes' names; no whitespace around "
           "commas."),
       tensorflow::Flag(
+          "xla_disable_all_hlo_passes",
+          bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
+          "Disables all HLO passes.  Notes that some passes are necessary for "
+          "correctness and the invariants that must be satisfied by 'fully "
+          "optimized' HLO are different for different devices and may change "
+          "over time.  The only 'guarantee', such as it is, is that if you "
+          "compile XLA and dump the optimized HLO for some graph, you should "
+          "be able to run it again on the same device with the same build of "
+          "XLA."),
+      tensorflow::Flag(
           "xla_embed_ir_in_executable",
           bool_setter_for(&DebugOptions::set_xla_embed_ir_in_executable),
           flag_values->xla_embed_ir_in_executable(),
           "Embed the compiler IR as a string in the executable."),
-      tensorflow::Flag(
-          "xla_dump_ir_to", flag_values->mutable_xla_dump_ir_to(),
-          "Dump the compiler IR into this directory as individual files."),
       tensorflow::Flag(
           "xla_eliminate_hlo_implicit_broadcast",
           bool_setter_for(
@@ -245,20 +235,6 @@ void AllocateFlags() {
           flag_values->xla_gpu_max_kernel_unroll_factor(),
           "Specify the maximum kernel unroll factor for the GPU backend."),
       tensorflow::Flag(
-          "xla_dump_optimized_hlo_proto_to",
-          flag_values->mutable_xla_dump_optimized_hlo_proto_to(),
-          "Dump Hlo after all hlo passes are executed as proto binary into "
-          "this directory."),
-      tensorflow::Flag(
-          "xla_dump_unoptimized_hlo_proto_to",
-          flag_values->mutable_xla_dump_unoptimized_hlo_proto_to(),
-          "Dump HLO before any hlo passes are executed as proto binary into "
-          "this directory."),
-      tensorflow::Flag("xla_dump_per_pass_hlo_proto_to",
-                       flag_values->mutable_xla_dump_per_pass_hlo_proto_to(),
-                       "Dump HLO after each pass as an HloProto in binary file "
-                       "format into this directory."),
-      tensorflow::Flag(
           "xla_test_all_output_layouts",
           bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
           flag_values->xla_test_all_output_layouts(),
@@ -280,14 +256,6 @@ void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_hlo_profile),
           flag_values->xla_hlo_profile(),
           "Instrument the computation to collect per-HLO cycle counts"),
-      tensorflow::Flag("xla_dump_computations_to",
-                       flag_values->mutable_xla_dump_computations_to(),
-                       "Dump computations that XLA executes into the provided "
-                       "directory path"),
-      tensorflow::Flag("xla_dump_executions_to",
-                       flag_values->mutable_xla_dump_executions_to(),
-                       "Dump parameters and results of computations that XLA "
-                       "executes into the provided directory path"),
       tensorflow::Flag("xla_backend_extra_options",
                        setter_for_xla_backend_extra_options, "",
                        "Extra options to pass to a backend; "
@@ -334,11 +302,88 @@ void AllocateFlags() {
           "overhead from context switching but we let the user override this "
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
+      tensorflow::Flag(
+          "xla_gpu_disable_ptxas_optimizations",
+          bool_setter_for(
+              &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
+          flag_values->xla_gpu_disable_ptxas_optimizations(),
+          "In XLA:GPU run ptxas in -O0 (default is -O3)."),
+
+      tensorflow::Flag(
+          "xla_dump_to", string_setter_for(&DebugOptions::set_xla_dump_to),
+          flag_values->xla_dump_to(),
+          "Directory into which debugging data is written.  If not specified "
+          "but another dumping flag is passed, data will be written to stdout. "
+          " To explicitly write to stdout, set this to \"-\".  The values "
+          "\"sponge\" and \"test_undeclared_outputs_dir\" have a special "
+          "meaning: They cause us to dump into the directory specified by the "
+          "environment variable TEST_UNDECLARED_OUTPUTS_DIR."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_text",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_text),
+          flag_values->xla_dump_hlo_as_text(),
+          "Dumps HLO modules as text before and after optimizations.  Results "
+          "are written to the --xla_dump_to dir, or, if no dir is specified, "
+          "to stdout."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_proto",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_proto),
+          flag_values->xla_dump_hlo_as_proto(),
+          "Dumps HLO modules as HloProtos to the directory specified by "
+          "--xla_dump_to."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_dot",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_dot),
+          flag_values->xla_dump_hlo_as_dot(),
+          "Dumps HLO modules rendered as dot files to the directory "
+          "specified by --xla_dump_to."),
+      tensorflow::Flag("xla_dump_hlo_as_html",
+                       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_html),
+                       flag_values->xla_dump_hlo_as_html(),
+                       "Dumps HLO modules rendered as HTML files to the "
+                       "directory specified by --xla_dump_to."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_url",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_url),
+          flag_values->xla_dump_hlo_as_url(),
+          "Tries to dump HLO modules rendered as URLs to stdout (and also to "
+          "the directory specified by --xla_dump_to). This is not implemented "
+          "by default; you need to add a plugin which calls "
+          "RegisterGraphToURLRenderer()."),
+      tensorflow::Flag(
+          "xla_dump_hlo_snapshots",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),
+          flag_values->xla_dump_hlo_snapshots(),
+          "Every time an HLO module is run, dumps an HloSnapshot to the "
+          "directory specified by --xla_dump_to."),
+      tensorflow::Flag(
+          "xla_dump_hlo_module_re",
+          string_setter_for(&DebugOptions::set_xla_dump_hlo_module_re),
+          flag_values->xla_dump_hlo_module_re(),
+          "Limits dumping only to modules which match this regular expression. "
+          " Default is to dump all modules."),
+      tensorflow::Flag(
+          "xla_dump_hlo_pass_re",
+          string_setter_for(&DebugOptions::set_xla_dump_hlo_pass_re),
+          flag_values->xla_dump_hlo_pass_re(),
+          "If specified, dumps HLO before and after optimization passes which "
+          "match this regular expression, in addition to dumping at the very "
+          "beginning and end of compilation."),
+      tensorflow::Flag(
+          "xla_hlo_graph_addresses",
+          bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
+          flag_values->xla_hlo_graph_addresses(),
+          "When rendering graphs (--xla_dump_hlo_as_{dot,html,url}), displays "
+          "the address in memory of each HloInstruction object."),
+      tensorflow::Flag(
+          "xla_hlo_graph_sharding_color",
+          bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
+          flag_values->xla_hlo_graph_sharding_color(),
+          "Assign colors based on sharding assignments when generating the "
+          "HLO graphs."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
-
-}  // namespace
 
 void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list) {
   std::call_once(flags_init, &AllocateFlags);

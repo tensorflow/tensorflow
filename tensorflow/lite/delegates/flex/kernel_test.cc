@@ -25,6 +25,7 @@ namespace {
 
 using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
                             const std::vector<int>& supported_nodes) {
@@ -36,23 +37,41 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
   return kTfLiteOk;
 }
 
+// There is no easy way to pass a parameter into the TfLiteDelegate's
+// 'prepare' function, so we keep a global map for testing purpused.
+// To avoid collisions use: GetPrepareFunction<__LINE__>().
+std::map<int, std::vector<int>>* GetGlobalOpLists() {
+  static auto* op_list = new std::map<int, std::vector<int>>;
+  return op_list;
+}
+
 class KernelTest : public testing::FlexModelTest {
  public:
+  static constexpr int kOnes = 1;  // This is the index of a tensor of 1's.
+  static constexpr int kTwos = 2;  // This is the index of a tensor of 2's.
+  static constexpr int kMaxTensors = 30;
+
+  static void SetUpTestSuite() { GetGlobalOpLists()->clear(); }
+
   KernelTest() {
-    CHECK(DelegateData::Create(&delegate_data_).ok());
+    CHECK(delegate_data_.Prepare(tensorflow::SessionOptions{}).ok());
     interpreter_.reset(new Interpreter(&error_reporter_));
   }
 
-  ~KernelTest() override {
-    // The data needs to be released before the interpreter because the
-    // interpreter references the data.
-    delegate_data_.reset();
-    interpreter_.reset();
+  typedef TfLiteStatus (*PrepareFunction)(TfLiteContext* context,
+                                          TfLiteDelegate* delegate);
+
+  template <int KEY>
+  PrepareFunction GetPrepareFunction() {
+    GetGlobalOpLists()->insert({KEY, tf_ops_});
+    return [](TfLiteContext* context, TfLiteDelegate* delegate) {
+      return GenericPrepare(context, delegate, GetGlobalOpLists()->at(KEY));
+    };
   }
 
   template <typename T>
   void ConfigureDelegate(T prepare_function) {
-    delegate_.data_ = delegate_data_.get();
+    delegate_.data_ = &delegate_data_;
     delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
     delegate_.FreeBufferHandle = nullptr;
     delegate_.Prepare = prepare_function;
@@ -61,9 +80,13 @@ class KernelTest : public testing::FlexModelTest {
                                         TfLiteBufferHandle buffer_handle,
                                         TfLiteTensor* output) {
       auto* delegate_data = reinterpret_cast<DelegateData*>(delegate->data_);
-      tensorflow::StringPiece values = delegate_data->GetBufferMap(context)
-                                           ->GetTensor(buffer_handle)
-                                           .tensor_data();
+      auto* buffer_map = delegate_data->GetBufferMap(context);
+      if (!buffer_map->HasTensor(buffer_handle)) {
+        context->ReportError(context, "Tensor '%d' not found", buffer_handle);
+        return kTfLiteError;
+      }
+      tensorflow::StringPiece values =
+          buffer_map->GetTensor(buffer_handle).tensor_data();
       memcpy(output->data.raw, values.data(), values.size());
       return kTfLiteOk;
     };
@@ -71,7 +94,7 @@ class KernelTest : public testing::FlexModelTest {
   }
 
  private:
-  std::unique_ptr<DelegateData> delegate_data_;
+  DelegateData delegate_data_;
   TfLiteDelegate delegate_;
 };
 
@@ -121,12 +144,9 @@ TEST_F(KernelTest, BadTensorFlowOp) {
     return GenericPrepare(context, delegate, {0});
   });
 
-  SetShape(0, {2, 2, 1});
-  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
-
-  ASSERT_FALSE(Invoke());
+  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("while processing attributes of 'NonExistentOp'"));
+              ContainsRegex("Op type not registered 'NonExistentOp'"));
 }
 
 TEST_F(KernelTest, BadNumberOfOutputs) {
@@ -173,10 +193,7 @@ TEST_F(KernelTest, WrongSetOfNodes) {
     return GenericPrepare(context, delegate, {0, 1});
   });
 
-  SetShape(0, {2, 2, 1});
-  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
-
-  ASSERT_FALSE(Invoke());
+  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
               ContainsRegex("Invalid NodeDef in Flex op"));
 }
@@ -235,7 +252,7 @@ TEST_F(KernelTest, SplitGraph) {
   AddTfOp(testing::kAdd, {9, 16}, {17});  // => 16
 
   ConfigureDelegate([](TfLiteContext* context, TfLiteDelegate* delegate) {
-    // All ops by #3 are TF ops, handled by the delegate. However, because #4
+    // All ops but #3 are TF ops, handled by the delegate. However, because #4
     // depends on the non-TF op, two subgraphs are necessary:
     //    TF subgraph 1: 0, 1, 2, 6, 7, 8, 9
     //    TF Lite Op: 3
@@ -268,6 +285,132 @@ TEST_F(KernelTest, SplitGraph) {
 
   ASSERT_THAT(GetShape(17), ElementsAre(1));
   ASSERT_THAT(GetValues(17), ElementsAre(18.0f));
+}
+
+class MultipleSubgraphsTest : public KernelTest {
+ public:
+  static constexpr int kInput = 0;
+
+  void PrepareInterpreter(PrepareFunction prepare,
+                          const std::vector<float>& input) {
+    ConfigureDelegate(prepare);
+
+    SetShape(kOnes, {3});
+    SetValues(kOnes, {1.0f, 1.0f, 1.0f});
+    SetShape(kTwos, {3});
+    SetValues(kTwos, {2.0f, 2.0f, 2.0f});
+
+    SetValues(kInput, input);
+  }
+
+  std::vector<float> Apply(const std::vector<float>& input,
+                           std::function<float(float)> function) {
+    std::vector<float> result;
+    for (float f : input) {
+      result.push_back(function(f));
+    }
+    return result;
+  }
+};
+
+TEST_F(MultipleSubgraphsTest, ForwardabilityIsLocal) {
+  AddTensors(kMaxTensors, {kInput, kOnes, kTwos}, {12}, kTfLiteFloat32, {3});
+
+  // Only TF tensors can be forwarded, so we build a small first graph
+  // to produce tensor #10. Here #10 is forwardable, because it is only
+  // used once, as an output.
+  AddTfOp(testing::kAdd, {0, kOnes}, {3});
+  AddTfOp(testing::kAdd, {0, kOnes}, {10});
+
+  // The second TF graph, separated from the former by a TF Lite
+  // multiplication, will consume tensor #10, which is not forwardable here
+  // since it is used by more than one op. The existing code will forward the
+  // tensor anyway, because it was deemed to be forwardable by the previous
+  // subgraph.
+  AddTfLiteMulOp({3, kTwos}, {4});
+  AddTfOp(testing::kAdd, {10, 4}, {11});
+  AddTfOp(testing::kAdd, {11, 10}, {7});
+
+  // And a simple TF Lite op trying to access tensor #10, which was removed
+  // from the buffer map. It will cause Invoke() to fail.
+  AddTfLiteMulOp({10, 7}, {12});
+
+  auto input = {3.0f, 4.0f, 5.0f};
+  PrepareInterpreter(GetPrepareFunction<__LINE__>(), input);
+
+  ASSERT_TRUE(Invoke());
+  ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
+                return (4 * in + 4) * (in + 1);
+              })));
+}
+
+// Subgraphs should not remove input tensors from the buffer_map, since
+// they could be necessary for downstream graphs.
+TEST_F(MultipleSubgraphsTest, DoNotRemoveInputTensors) {
+  AddTensors(kMaxTensors, {kInput, kOnes, kTwos}, {12}, kTfLiteFloat32, {3});
+
+  // Only TF tensors can be removed, so we build a small first graph
+  // to produce tensor #10. We make sure it is used by more than one
+  // op, so it is not forwardable here.
+  AddTfOp(testing::kAdd, {0, kOnes}, {3});
+  AddTfOp(testing::kAdd, {0, kOnes}, {10});
+  AddTfOp(testing::kAdd, {10, kOnes}, {15});
+  AddTfOp(testing::kAdd, {10, kOnes}, {16});
+
+  // The second TF graph, separated from the former by a TF Lite
+  // multiplication, will consume tensor #10. The existing code will remove
+  // from the buffer_map all tensors that are not outputs, so #10 will
+  // disappear. Note that we are using #10 in two ops, so it is not forwardable
+  // either.
+  AddTfLiteMulOp({3, kTwos}, {4});
+  AddTfOp(testing::kAdd, {10, 4}, {11});
+  AddTfOp(testing::kAdd, {10, 11}, {7});
+
+  // And a simple TF Lite op trying to access tensor #10, which was removed
+  // from the buffer map. It will cause Invoke() to fail.
+  AddTfLiteMulOp({10, 7}, {12});
+
+  auto input = {3.0f, 4.0f, 5.0f};
+  PrepareInterpreter(GetPrepareFunction<__LINE__>(), input);
+
+  ASSERT_TRUE(Invoke());
+  ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
+                return (4 * in + 4) * (in + 1);
+              })));
+}
+
+// A tensor is deemed forwardable but it happens to be the input to
+// more than one subgraph. It should not be forwarded, otherwise its
+// contents will be overwritten.
+TEST_F(MultipleSubgraphsTest, DoNotForwardInputTensors) {
+  AddTensors(kMaxTensors, {kInput, kOnes, kTwos}, {12}, kTfLiteFloat32, {3});
+
+  // Only TF tensors can be forwarded, so we build a small first graph
+  // to produce tensor #10.
+  AddTfOp(testing::kAdd, {0, kOnes}, {3});
+  AddTfOp(testing::kAdd, {0, kOnes}, {10});
+
+  // The second TF graph, separated from the former by a TF Lite
+  // multiplication, will consume tensor #10 and will think it is forwardable
+  // because it is used by a single op. However, the subgraph doesn't have
+  // enough information to make that judgment, as the input tensor could be
+  // used by another graph further downstream. The existing code will forward
+  // the tensor and remove it from the buffer_map, causing a failure later.
+  AddTfLiteMulOp({3, kTwos}, {4});
+  AddTfOp(testing::kAdd, {10, 4}, {11});
+  AddTfOp(testing::kAdd, {11, 4}, {7});
+
+  // And a simple TF Lite op trying to access tensor #10, which was removed
+  // from the buffer map. It will cause Invoke() to fail.
+  AddTfLiteMulOp({10, 7}, {12});
+
+  auto input = {3.0f, 4.0f, 5.0f};
+  PrepareInterpreter(GetPrepareFunction<__LINE__>(), input);
+
+  ASSERT_TRUE(Invoke());
+  ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
+                return (5 * in + 5) * (in + 1);
+              })));
 }
 
 }  // namespace

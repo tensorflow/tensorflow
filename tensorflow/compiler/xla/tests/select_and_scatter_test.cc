@@ -146,6 +146,12 @@ INSTANTIATE_TEST_CASE_P(
                                   Padding::kValid,
                                   {3, 3, 1, 1},
                                   {3, 3, 1, 1}},
+        // Uncovered by b/126212776.
+        SelectAndScatterTestParam{{15, 1, 1, 1},
+                                  {2, 1, 1, 1},
+                                  Padding::kValid,
+                                  {14, 1, 1, 1},
+                                  {1, 1, 1, 1}},
         SelectAndScatterTestParam{{7, 3, 4, 4},
                                   {3, 1, 4, 4},
                                   Padding::kValid,

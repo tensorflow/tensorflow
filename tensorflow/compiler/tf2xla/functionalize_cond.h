@@ -43,6 +43,33 @@ enum class BranchType {
   kNeither = 3,
 };
 
+// When we keep track of which switch/merge node's feed into a node, we record
+// 1) predicate for non-dead switch node,
+// 2) the switch node itself for dead switch node,
+// 3) the merge node itself for merge node.
+// Case 1) is an optimization. With this optimization, if there are nodes from
+// different switch nodes but those switch nodes have the same predicate, the
+// nodes will still have same AncestorState, and they will be clustered into a
+// single "If".
+struct AncestorNode {
+  enum class AncestorNodeType {
+    kPred = 0,
+    kSwitch = 1,
+    kMerge = 2,
+  };
+
+  OutputTensor output_tensor;
+  AncestorNodeType type;
+
+  // Compare two AncestorNodes by (node id, index, type).
+  bool operator<(const AncestorNode& other) const;
+  bool operator==(const AncestorNode& other) const;
+
+  struct Hash {
+    size_t operator()(const AncestorNode&) const;
+  };
+};
+
 // StateMap is responsible for mapping from each graph Node to
 // * a CondState, where each CondState is a map from predicate to branch (i,e.,
 //   what predicates have to hold or not hold).
@@ -68,7 +95,7 @@ class StateMap {
   using CondId = const CondState*;
 
   // Keep track of which switch/merge node's feed into a node's values.
-  using AncestorState = std::set<Node*>;
+  using AncestorState = std::set<AncestorNode>;
 
   // Every unique ID is mapped to a AncestorState.
   using AncestorId = const AncestorState*;
@@ -231,6 +258,9 @@ class FunctionalizeCond {
 
   // Mapping from merge nodes to predicate.
   std::unordered_map<Node*, OutputTensor> merge_to_predicate_;
+
+  // Mapping from merge nodes to corresponding If node outputs.
+  std::unordered_map<Node*, OutputTensor> merge_to_replacement_;
 
   FunctionLibraryDefinition* library_;
   Graph* graph_;

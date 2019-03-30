@@ -9,7 +9,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OpsSet"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "Optimize"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "RepresentativeDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TFLiteConverter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TargetSpec"
     mtype: "<type \'type\'>"
   }
   member {
@@ -18,6 +34,10 @@ tf_module {
   }
   member {
     name: "constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
     mtype: "<type \'module\'>"
   }
   member_method {

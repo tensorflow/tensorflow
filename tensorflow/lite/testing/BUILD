@@ -10,8 +10,10 @@ load(
     "generated_test_models_all",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
     "tf_cc_test",
     "py_test",
 )
@@ -68,6 +70,23 @@ test_suite(
     ],
 )
 
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
+    data = [
+        "//tensorflow/lite/toco",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_examples_report",
+        ":string_util_wrapper",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
@@ -76,9 +95,8 @@ py_binary(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":generate_examples_report",
+        ":generate_examples_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:graph_util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -158,6 +176,7 @@ cc_library(
     srcs = ["tflite_driver.cc"],
     hdrs = ["tflite_driver.h"],
     deps = [
+        ":join",
         ":split",
         ":test_runner",
         "//tensorflow/lite:builtin_op_data",
@@ -165,6 +184,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:reference_ops",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -229,13 +249,13 @@ cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "nnapi_example",
     srcs = ["nnapi_example.cc"],
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
-        "//tensorflow/lite/nnapi:nnapi_lib",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
     ],
 )
 
@@ -256,7 +276,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tf_driver_test",
     size = "small",
     srcs = ["tf_driver_test.cc"],
@@ -285,7 +305,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "generate_testspec_test",
     size = "small",
     srcs = ["generate_testspec_test.cc"],
@@ -379,13 +399,38 @@ tf_cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "tflite_diff",
     srcs = ["tflite_diff_example_test.cc"],
     deps = [
         ":init_tensorflow",
         ":tflite_diff_flags",
         ":tflite_diff_util",
+    ],
+)
+
+cc_library(
+    name = "string_util_lib",
+    srcs = ["string_util.cc"],
+    hdrs = ["string_util.h"],
+    deps = [
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_py_wrap_cc(
+    name = "string_util_wrapper",
+    srcs = [
+        "string_util.i",
+    ],
+    deps = [
+        ":string_util_lib",
+        "//third_party/python_runtime:headers",
     ],
 )
 

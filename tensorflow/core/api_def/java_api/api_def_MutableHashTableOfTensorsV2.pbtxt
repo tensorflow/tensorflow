@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "MutableHashTableOfTensorsV2"
+  endpoint {
+    name: "MutableHashTableOfTensors"
+  }
+}

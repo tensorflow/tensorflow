@@ -259,15 +259,26 @@ class LinearOperatorIdentityTest(
           is_non_singular=None,
       )
 
+  def test_identity_adjoint_type(self):
+    operator = linalg_lib.LinearOperatorIdentity(
+        num_rows=2, is_non_singular=True)
+    self.assertIsInstance(
+        operator.adjoint(), linalg_lib.LinearOperatorIdentity)
+
   def test_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorIdentity(
         num_rows=2,
         is_positive_definite=True,
         is_self_adjoint=True,
     )
-    self.assertTrue(isinstance(
-        operator.cholesky(),
-        linalg_lib.LinearOperatorIdentity))
+    self.assertIsInstance(
+        operator.cholesky(), linalg_lib.LinearOperatorIdentity)
+
+  def test_identity_inverse_type(self):
+    operator = linalg_lib.LinearOperatorIdentity(
+        num_rows=2, is_non_singular=True)
+    self.assertIsInstance(
+        operator.inverse(), linalg_lib.LinearOperatorIdentity)
 
 
 class LinearOperatorScaledIdentityTest(
@@ -458,7 +469,7 @@ class LinearOperatorScaledIdentityTest(
         is_positive_definite=False, is_non_singular=True)
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
-    self.assertTrue(operator.is_self_adjoint is None)
+    self.assertTrue(operator.is_self_adjoint)  # Auto-set due to real multiplier
 
   def test_identity_matmul(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
@@ -491,9 +502,19 @@ class LinearOperatorScaledIdentityTest(
         is_positive_definite=True,
         is_self_adjoint=True,
     )
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator.cholesky(),
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
+
+  def test_scaled_identity_inverse_type(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2,
+        multiplier=3.,
+        is_non_singular=True,
+    )
+    self.assertIsInstance(
+        operator.inverse(),
+        linalg_lib.LinearOperatorScaledIdentity)
 
 
 if __name__ == "__main__":

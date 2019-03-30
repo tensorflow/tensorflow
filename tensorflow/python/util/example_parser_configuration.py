@@ -101,7 +101,7 @@ def extract_example_parser_configuration(parse_example_op, sess):
     fixed_config.shape.CopyFrom(
         tensor_shape.TensorShape(dense_shapes[i]).as_proto())
 
-    fixed_config.dtype = int(dense_types[i])
+    fixed_config.dtype = dense_types[i].as_datatype_enum
     # Get the output tensor name.
     fixed_config.values_output_tensor_name = parse_example_op.outputs[
         dense_values_start + i].name
@@ -111,7 +111,7 @@ def extract_example_parser_configuration(parse_example_op, sess):
     key = fetched[sparse_keys_start + i]
     feature_config = config.feature_map[key]
     var_len_feature = feature_config.var_len_feature
-    var_len_feature.dtype = int(sparse_types[i])
+    var_len_feature.dtype = sparse_types[i].as_datatype_enum
     var_len_feature.indices_output_tensor_name = parse_example_op.outputs[
         sparse_indices_start + i].name
     var_len_feature.values_output_tensor_name = parse_example_op.outputs[

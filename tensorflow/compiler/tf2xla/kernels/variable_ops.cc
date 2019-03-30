@@ -291,5 +291,19 @@ class ResourceScatterNdAddOp : public ResourceScatterOp {
 };
 REGISTER_XLA_OP(Name("ResourceScatterNdAdd"), ResourceScatterNdAddOp);
 
+class ResourceScatterNdSubOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterNdSubOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/true,
+                          /*combiner=*/Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Sub(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterNdSub"), ResourceScatterNdSubOp);
+
 }  // namespace
 }  // namespace tensorflow

@@ -197,7 +197,8 @@ def sparse_concat(axis,
                   sp_inputs,
                   name=None,
                   expand_nonconcat_dim=False,
-                  concat_dim=None):
+                  concat_dim=None,
+                  expand_nonconcat_dims=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
@@ -286,6 +287,7 @@ def sparse_concat(axis,
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.
     concat_dim: The old (deprecated) name for axis.
+    expand_nonconcat_dims: alias for expand_nonconcat_dim
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -293,13 +295,18 @@ def sparse_concat(axis,
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
+  expand_nonconcat_dim = deprecation.deprecated_argument_lookup(
+      "expand_nonconcat_dims", expand_nonconcat_dims,
+      "expand_nonconcat_dim", expand_nonconcat_dim)
+  if expand_nonconcat_dims is not None:
+    expand_nonconcat_dim = expand_nonconcat_dims
   axis = deprecation.deprecated_argument_lookup("axis", axis, "concat_dim",
                                                 concat_dim)
   return sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim, name)
 
 
 @tf_export("sparse.concat", v1=[])
-def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False, name=None):  # pylint: disable=missing-docstring
+def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  # pylint: disable=missing-docstring
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
@@ -309,7 +316,7 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False, name=None):  #
   vals = [sp_input.values for sp_input in sp_inputs]
   shapes = [sp_input.dense_shape for sp_input in sp_inputs]
 
-  if expand_nonconcat_dim:
+  if expand_nonconcat_dims:
     max_shape = math_ops.reduce_max(
         array_ops.concat(
             [array_ops.reshape(shape, [1, -1]) for shape in shapes], 0), 0)
@@ -484,20 +491,22 @@ def sparse_cross(inputs, name=None):
   """Generates sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
-  * inputs[0]: SparseTensor with shape = [2, 2]
-    [0, 0]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
-  * inputs[1]: SparseTensor with shape = [2, 1]
-    [0, 0]: "d"
-    [1, 0]: "e"
-  * inputs[2]: Tensor [["f"], ["g"]]
+
+      * inputs[0]: SparseTensor with shape = [2, 2]
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+      * inputs[1]: SparseTensor with shape = [2, 1]
+        [0, 0]: "d"
+        [1, 0]: "e"
+      * inputs[2]: Tensor [["f"], ["g"]]
 
   then the output will be:
-    shape = [2, 2]
-    [0, 0]: "a_X_d_X_f"
-    [1, 0]: "b_X_e_X_g"
-    [1, 1]: "c_X_e_X_g"
+
+      shape = [2, 2]
+      [0, 0]: "a_X_d_X_f"
+      [1, 0]: "b_X_e_X_g"
+      [1, 1]: "c_X_e_X_g"
 
   Args:
     inputs: An iterable of `Tensor` or `SparseTensor`.
@@ -517,26 +526,28 @@ def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
   """Generates hashed sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
-  * inputs[0]: SparseTensor with shape = [2, 2]
-    [0, 0]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
-  * inputs[1]: SparseTensor with shape = [2, 1]
-    [0, 0]: "d"
-    [1, 0]: "e"
-  * inputs[2]: Tensor [["f"], ["g"]]
+
+      * inputs[0]: SparseTensor with shape = [2, 2]
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+      * inputs[1]: SparseTensor with shape = [2, 1]
+        [0, 0]: "d"
+        [1, 0]: "e"
+      * inputs[2]: Tensor [["f"], ["g"]]
 
   then the output will be:
-    shape = [2, 2]
-    [0, 0]: FingerprintCat64(
-                Fingerprint64("f"), FingerprintCat64(
-                    Fingerprint64("d"), Fingerprint64("a")))
-    [1, 0]: FingerprintCat64(
-                Fingerprint64("g"), FingerprintCat64(
-                    Fingerprint64("e"), Fingerprint64("b")))
-    [1, 1]: FingerprintCat64(
-                Fingerprint64("g"), FingerprintCat64(
-                    Fingerprint64("e"), Fingerprint64("c")))
+
+      shape = [2, 2]
+      [0, 0]: FingerprintCat64(
+                  Fingerprint64("f"), FingerprintCat64(
+                      Fingerprint64("d"), Fingerprint64("a")))
+      [1, 0]: FingerprintCat64(
+                  Fingerprint64("g"), FingerprintCat64(
+                      Fingerprint64("e"), Fingerprint64("b")))
+      [1, 1]: FingerprintCat64(
+                  Fingerprint64("g"), FingerprintCat64(
+                      Fingerprint64("e"), Fingerprint64("c")))
 
   Args:
     inputs: An iterable of `Tensor` or `SparseTensor`.
@@ -590,11 +601,11 @@ def _sparse_cross_internal(inputs,
   internal_type = dtypes.string
   for i in range(len(values)):
     if values[i].dtype != dtypes.string:
-      values[i] = math_ops.to_int64(values[i])
+      values[i] = math_ops.cast(values[i], dtypes.int64)
       internal_type = dtypes.int64
   for i in range(len(dense_inputs)):
     if dense_inputs[i].dtype != dtypes.string:
-      dense_inputs[i] = math_ops.to_int64(dense_inputs[i])
+      dense_inputs[i] = math_ops.cast(dense_inputs[i], dtypes.int64)
       internal_type = dtypes.int64
 
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross(
@@ -806,8 +817,8 @@ def sparse_split(keyword_required=KeywordRequired(),
   Graphically the output tensors are:
 
       output_tensor[0] =
-      [    a ]
-      [b c   ]
+      [    a   ]
+      [b c     ]
 
       output_tensor[1] =
       [ d e  ]
@@ -1093,6 +1104,9 @@ def sparse_reduce_max_v2(
 @deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_axes is deprecated, use axis instead",
+    "reduction_axes")
 def sparse_reduce_max(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
   """Computes the max of elements across dimensions of a SparseTensor.
@@ -1141,7 +1155,7 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
+    reduction_axes: Deprecated name of `axis`.
     keep_dims:  Deprecated alias for `keepdims`.
 
   Returns:
@@ -1279,6 +1293,9 @@ def sparse_reduce_sum_v2(
 @deprecation.deprecated_endpoints("sparse_reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+@deprecation.deprecated_args(
+    None, "reduction_axes is deprecated, use axis instead",
+    "reduction_axes")
 def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
                       reduction_axes=None, keep_dims=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
@@ -1314,7 +1331,7 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
+    reduction_axes: Deprecated name of `axis`.
     keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
@@ -1768,7 +1785,9 @@ def sparse_reset_shape(sp_input, new_shape=None):
     output_shape_tensor = math_ops.cast(output_shape_tensor, dtypes.int64)
     # For cases when shape is known during graph construction, this catches the
     # error before the sparse_tensor.SparseTensor catches it.
-    output_shape_tensor.get_shape()[0].merge_with(in_shape.get_shape()[0])
+    if output_shape_tensor.get_shape().rank is not None:
+      output_shape_tensor.get_shape().dims[0].merge_with(
+          in_shape.get_shape().dims[0])
 
     output_shape_tensor_const = tensor_util.constant_value(output_shape_tensor)
     # For cases where all shapes are known during graph construction

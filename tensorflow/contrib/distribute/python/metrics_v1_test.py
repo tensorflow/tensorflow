@@ -18,10 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
@@ -74,19 +74,22 @@ def _regression_dataset_fn():
 
 def all_combinations():
   return combinations.combine(
-      distribution=[combinations.default_strategy,
-                    combinations.one_device_strategy,
-                    combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus,
-                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-                    combinations.core_mirrored_strategy_with_two_gpus],
+      distribution=[
+          strategy_combinations.default_strategy,
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
+      ],
       mode=["graph"])
 
 
 def tpu_combinations():
-  return combinations.combine(distribution=[combinations.tpu_strategy_one_step,
-                                            combinations.tpu_strategy],
-                              mode=["graph"])
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.tpu_strategy_one_step,
+          strategy_combinations.tpu_strategy
+      ],
+      mode=["graph"])
 
 
 # TODO(josh11b): Test metrics.recall_at_top_k, metrics.average_precision_at_k,
@@ -95,16 +98,15 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
 
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_initializable_iterator()
+      iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
-          value, update = distribution.call_for_each_replica(
-              metric_fn, args=inputs)
+          value, update = distribution.extended.call_for_each_replica(
+              metric_fn, args=(inputs,))
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 
-        ctx = distribution.run_steps_on_dataset(
+        ctx = distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=distribution.extended.steps_per_run)
         update = ctx.run_op
         value = ctx.non_tensor_outputs["value"]
@@ -114,15 +116,14 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
             distribution.num_replicas_in_sync *
             distribution.extended.steps_per_run)
       else:
-        value, update = distribution.call_for_each_replica(
-            metric_fn, iterator.get_next())
+        value, update = distribution.extended.call_for_each_replica(
+            metric_fn, args=(iterator.get_next(),))
         update = distribution.group(update)
         # TODO(josh11b): Once we switch to using a global batch size for input,
         # replace "distribution.num_replicas_in_sync" with "1".
         batches_per_update = distribution.num_replicas_in_sync
 
-      self.evaluate(iterator.initializer)
-      self.evaluate(distribution.initialize())
+      self.evaluate(iterator.initialize())
       self.evaluate(variables.local_variables_initializer())
 
       batches_consumed = 0
@@ -135,8 +136,6 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
                             msg="After update #" + str(i+1))
         if batches_consumed >= 4:  # Consume 4 input batches in total.
           break
-
-      self.evaluate(distribution.finalize())
 
   @combinations.generate(all_combinations() + tpu_combinations())
   def testMean(self, distribution):

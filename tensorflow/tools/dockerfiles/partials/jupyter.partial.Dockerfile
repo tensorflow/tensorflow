@@ -1,4 +1,6 @@
 RUN ${PIP} install jupyter matplotlib
+RUN ${PIP} install jupyter_http_over_ws
+RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local

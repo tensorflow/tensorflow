@@ -22,7 +22,7 @@ namespace fuzzing {
 class FuzzDecodeCompressed : public FuzzStringInputOp {
   void BuildGraph(const Scope& scope) override {
     auto input =
-        tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_STRING);
+        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
     auto d1 = tensorflow::ops::DecodeCompressed(
         scope.WithOpName("d1"), input,
         tensorflow::ops::DecodeCompressed::CompressionType(""));

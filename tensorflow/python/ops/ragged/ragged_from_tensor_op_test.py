@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.from_tensor."""
+"""Tests for RaggedTensor.from_tensor."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,29 +24,33 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import googletest
 
 
-class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
-                             parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase,
+                                 parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def testDocStringExamples(self):
-    # The examples from ragged.from_tensor.__doc__.
+    # The examples from RaggedTensor.from_tensor.__doc__.
     dt = constant_op.constant([[5, 7, 0], [0, 3, 0], [6, 0, 0]])
-    with self.test_session():
-      self.assertEqual(
-          ragged.from_tensor(dt).eval().tolist(),
-          [[5, 7, 0], [0, 3, 0], [6, 0, 0]])
+    self.assertRaggedEqual(
+        RaggedTensor.from_tensor(dt), [[5, 7, 0], [0, 3, 0], [6, 0, 0]])
 
-      self.assertEqual(
-          ragged.from_tensor(dt, lengths=[1, 0, 3]).eval().tolist(),
-          [[5], [], [6, 0, 0]])
+    self.assertRaggedEqual(
+        RaggedTensor.from_tensor(dt, lengths=[1, 0, 3]), [[5], [], [6, 0, 0]])
 
-      self.assertEqual(
-          ragged.from_tensor(dt, padding=0).eval().tolist(),
-          [[5, 7], [0, 3], [6]])
+    self.assertRaggedEqual(
+        RaggedTensor.from_tensor(dt, padding=0), [[5, 7], [0, 3], [6]])
+
+    dt_3d = constant_op.constant([[[5, 0], [7, 0], [0, 0]],
+                                  [[0, 0], [3, 0], [0, 0]],
+                                  [[6, 0], [0, 0], [0, 0]]])
+    self.assertRaggedEqual(
+        RaggedTensor.from_tensor(dt_3d, lengths=([2, 0, 3], [1, 1, 2, 0, 1])),
+        [[[5], [7]], [], [[6, 0], [], [0]]])
 
   @parameterized.parameters(
       # 2D test cases, no length or padding.
@@ -257,44 +261,80 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
       {
           'tensor': [[[[1, 0], [2, 3]], [[0, 0], [4, 0]]],
                      [[[5, 6], [7, 0]], [[0, 8], [0, 0]]]],
+          'lengths': ([2, 2], [1, 2, 2, 1]),
+          'expected': [[[[1, 0]], [[0, 0], [4, 0]]],
+                       [[[5, 6], [7, 0]], [[0, 8]]]],
+          'ragged_rank': 2,
+          'use_ragged_rank': False
+      },
+      {
+          'tensor': [[[[1, 0], [2, 3]], [[0, 0], [4, 0]]],
+                     [[[5, 6], [7, 0]], [[0, 8], [0, 0]]]],
+          'lengths': [[2, 2], [1, 2, 2, 1]],
+          'expected': [[[[1, 0]], [[0, 0], [4, 0]]],
+                       [[[5, 6], [7, 0]], [[0, 8]]]],
+          'ragged_rank': 2,
+          'use_ragged_rank': False
+      },
+      {
+          'tensor': [[[[1, 0], [2, 3]], [[0, 0], [4, 0]]],
+                     [[[5, 6], [7, 0]], [[0, 8], [0, 0]]]],
           'ragged_rank': 3,
           'padding': 0,
           'expected': [[[[1], [2, 3]], [[], [4]]],
                        [[[5, 6], [7]], [[0, 8], []]]]
       },
+      {
+          'tensor': [[[[1, 0], [2, 3]], [[0, 0], [4, 0]]],
+                     [[[5, 6], [7, 0]], [[0, 8], [0, 0]]]],
+          'lengths': ([2, 2], [2, 2, 2, 2], [1, 2, 0, 1, 2, 1, 2, 0]),
+          'expected': [[[[1], [2, 3]], [[], [4]]],
+                       [[[5, 6], [7]], [[0, 8], []]]],
+          'ragged_rank': 3,
+          'use_ragged_rank': False
+      },
+      {
+          'tensor': [[[[1, 0], [2, 3]], [[0, 0], [4, 0]]],
+                     [[[5, 6], [7, 0]], [[0, 8], [0, 0]]]],
+          'lengths': [[2, 2], [2, 2, 2, 2], [1, 2, 0, 1, 2, 1, 2, 0]],
+          'expected': [[[[1], [2, 3]], [[], [4]]],
+                       [[[5, 6], [7]], [[0, 8], []]]],
+          'ragged_rank': 3,
+          'use_ragged_rank': False
+      },
   )  # pyformat: disable
-  @test_util.run_deprecated_v1
   def testRaggedFromTensor(self,
                            tensor,
                            expected,
                            lengths=None,
                            padding=None,
-                           ragged_rank=1):
+                           ragged_rank=1,
+                           use_ragged_rank=True):
     dt = constant_op.constant(tensor)
-    rt = ragged.from_tensor(dt, lengths, padding, ragged_rank)
-    self.assertEqual(type(rt), ragged.RaggedTensor)
+    if use_ragged_rank:
+      rt = RaggedTensor.from_tensor(dt, lengths, padding, ragged_rank)
+    else:
+      rt = RaggedTensor.from_tensor(dt, lengths, padding)
+    self.assertEqual(type(rt), RaggedTensor)
     self.assertEqual(rt.ragged_rank, ragged_rank)
     self.assertTrue(
         dt.shape.is_compatible_with(rt.shape),
         '%s is incompatible with %s' % (dt.shape, rt.shape))
-    with self.test_session():
-      self.assertEqual(rt.eval().tolist(), expected)
+    self.assertRaggedEqual(rt, expected)
 
-  @test_util.run_deprecated_v1
   def testHighDimensions(self):
     # Use distinct prime numbers for all dimension shapes in this test, so
     # we can see any errors that are caused by mixing up dimension sizes.
     dt = array_ops.reshape(
         math_ops.range(3 * 5 * 7 * 11 * 13 * 17), [3, 5, 7, 11, 13, 17])
     for ragged_rank in range(1, 4):
-      rt = ragged.from_tensor(dt, ragged_rank=ragged_rank)
-      self.assertEqual(type(rt), ragged.RaggedTensor)
+      rt = RaggedTensor.from_tensor(dt, ragged_rank=ragged_rank)
+      self.assertEqual(type(rt), RaggedTensor)
       self.assertEqual(rt.ragged_rank, ragged_rank)
       self.assertTrue(
           dt.shape.is_compatible_with(rt.shape),
           '%s is incompatible with %s' % (dt.shape, rt.shape))
-      with self.test_session():
-        self.assertEqual(rt.eval().tolist(), self.evaluate(dt).tolist())
+      self.assertRaggedEqual(rt, self.evaluate(dt).tolist())
 
   @parameterized.parameters(
       # With no padding or lengths
@@ -398,15 +438,13 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
           'expected': [[], []]
       },
   )
-  @test_util.run_deprecated_v1
   def testEmpty(self, dt_shape, expected, lengths=None, padding=None):
     dt = array_ops.zeros(dt_shape)
-    rt = ragged.from_tensor(dt, lengths, padding)
-    self.assertEqual(type(rt), ragged.RaggedTensor)
+    rt = RaggedTensor.from_tensor(dt, lengths, padding)
+    self.assertEqual(type(rt), RaggedTensor)
     self.assertEqual(rt.ragged_rank, 1)
     self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-    with self.test_session():
-      self.assertEqual(rt.eval().tolist(), expected)
+    self.assertRaggedEqual(rt, expected)
 
   @parameterized.parameters(
       {
@@ -421,9 +459,14 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
           'error': (TypeError, 'lengths must be an integer tensor')
       },
       {
+          'tensor': [[1, 2, 3]],
+          'lengths': [[1], [1]],
+          'error': (ValueError, r'Shape \(1, 3\) must have rank at least 3')
+      },
+      {
           'tensor': [[1]],
           'padding': 'a',
-          'error': (TypeError, "Expected int32, got 'a'.*")
+          'error': (TypeError, '.*')
       },
       {
           'tensor': [[1]],
@@ -451,7 +494,6 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
           'error': (ValueError, r'ragged_rank must be greater than 0; got -1')
       },
   )
-  @test_util.run_deprecated_v1
   def testErrors(self,
                  tensor,
                  lengths=None,
@@ -459,8 +501,8 @@ class RaggedFromTensorOpTest(test_util.TensorFlowTestCase,
                  ragged_rank=1,
                  error=None):
     dt = constant_op.constant(tensor)
-    self.assertRaisesRegexp(error[0], error[1], ragged.from_tensor, dt, lengths,
-                            padding, ragged_rank)
+    self.assertRaisesRegexp(error[0], error[1], RaggedTensor.from_tensor, dt,
+                            lengths, padding, ragged_rank)
 
 
 if __name__ == '__main__':

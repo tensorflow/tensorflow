@@ -22,11 +22,10 @@ import shutil
 import tempfile
 from absl.testing import parameterized
 import numpy as np
-import six
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.optimizer_v2 import adagrad
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import training
@@ -61,11 +60,9 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
       combinations.combine(
           mode=['graph'],
           distribution=[
-              combinations.one_device_strategy,
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.mirrored_strategy_with_two_gpus,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_two_gpus
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
           ],
           use_train_and_evaluate=[True, False]))
   def test_complete_flow_with_mode(self, distribution, use_train_and_evaluate):
@@ -117,7 +114,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
       scores = estimator.evaluate(eval_input_fn)
 
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
-    self.assertIn('loss', six.iterkeys(scores))
+    self.assertIn('loss', scores)
 
     predictions = np.array([
         x[prediction_keys.PredictionKeys.PREDICTIONS]

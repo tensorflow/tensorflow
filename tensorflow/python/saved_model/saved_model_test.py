@@ -328,7 +328,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertRaises(RuntimeError, loader.load, sess, ["foo", "baz"],
                         export_dir)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariables(self):
     export_dir = self._get_export_dir("test_variables")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -474,7 +474,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCollections(self):
     export_dir = self._get_export_dir("test_collections")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -819,6 +819,7 @@ class SavedModelTest(SavedModelTestBase):
       self._validate_assets(export_dir, foo_graph.asset_file_def, "hello42.txt",
                             "foo bar baz 0", "asset_file_tensor_0:0")
 
+  @test_util.run_v1_only("b/120545219")
   def testCustomInitOp(self):
     export_dir = self._get_export_dir("test_main_op")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -854,7 +855,7 @@ class SavedModelTest(SavedModelTestBase):
       # the main_op, following a restore.
       self.assertEqual(3, ops.get_collection("v")[2].eval())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTrainOp(self):
     export_dir = self._get_export_dir("test_train_op")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -882,7 +883,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertIsInstance(
           loader_impl.get_train_op(meta_graph_def), ops.Tensor)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTrainOpGroup(self):
     export_dir = self._get_export_dir("test_train_op_group")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -910,7 +911,7 @@ class SavedModelTest(SavedModelTestBase):
       self.assertIsInstance(
           loader_impl.get_train_op(meta_graph_def), ops.Operation)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTrainOpAfterVariables(self):
     export_dir = self._get_export_dir("test_train_op_after_variables")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1029,7 +1030,7 @@ class SavedModelTest(SavedModelTestBase):
       self._validate_assets(export_dir, bar_graph.asset_file_def, "foo.txt",
                             "content_foo", "asset_file_tensor:0")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testOp(self):
     export_dir = self._get_export_dir("test_op")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
@@ -1083,7 +1084,7 @@ class SavedModelTest(SavedModelTestBase):
       # CheckpointedOp is a key-value table that can be saved across sessions.
       # The table register itself in SAVEABLE_OBJECTS collection.
       v1 = saver_test_utils.CheckpointedOp(name="v1")
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       v1.insert("k1", 3.0).run()
       # Once the table is restored, we can access it through this reference.
       ops.add_to_collection("table_ref", v1.table_ref)
@@ -1492,7 +1493,7 @@ class SavedModelV1Test(SavedModelTestBase):
     self.assertIn("T", node_def.attr)
     self.assertIn("Tout", node_def.attr)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testLegacyInitOp(self):
     export_dir = self._get_export_dir("test_legacy_init_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)

@@ -70,11 +70,15 @@ struct NodeState {
   // Each output port uses up memory space from time_scheduled to its
   // time_no_references.
 
+  // How many times this node has been executed, e.g. in a while loop.
+  int execution_count;
+
   NodeState() {
     num_inputs_ready = 0;
     time_ready = Costs::Duration::max();
     time_scheduled = Costs::Duration::max();
     time_finished = Costs::Duration::max();
+    execution_count = 0;
     // Note that num_outputs_executed and time_no_references are not initialized
     // here, since we don't know the size (i.e., # outputs for this node).
   }
@@ -256,16 +260,9 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
-  // TODO(pcma): Modify power_analyzer.cc to use new API's.
-  // DEPRECATED
-  VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster,
-                   ReadyNodeManager* ready_nodes);
-  // DEPRECATED
-  Status Init();
-
   // Does not take ownership of cluster or ready_nodes.
-  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
+  VirtualScheduler(const bool use_static_shapes,
+                   const bool use_aggressive_shape_inference, Cluster* cluster,
                    ReadyNodeManager* ready_nodes);
   // Initializes the scheduler for the specific grappler item.
   // Should be called immediately after the c'tor or when the scheduler will be
@@ -291,10 +288,6 @@ class VirtualScheduler {
   // of the virtual execution of the graph.
   void GenerateRunMetadata(RunMetadata* metadata);
 
-  // DEPRECATED
-  static ReadyNodeManager* ReadyNodeManagerFactory(
-      const string& ready_node_manager);
-
   // Return per device peak memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
 
@@ -304,6 +297,8 @@ class VirtualScheduler {
   const std::unordered_map<const NodeDef*, NodeState>* GetNodeStates() const {
     return &node_map_;
   }
+
+  void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
 
  private:
   // Constants.
@@ -328,6 +323,8 @@ class VirtualScheduler {
                           std::map<string, Costs>* op_cost);
   float Round2(const float x) const;
   bool IsPersistentNode(const NodeDef* node) const;
+  void AddOutputNodesToReadyQueue(const NodeDef* node,
+                                  const Costs::Duration& curr_time);
 
   // Scheduler states:
   ReadyNodeManager* ready_nodes_;  // Not owned.
@@ -356,6 +353,8 @@ class VirtualScheduler {
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
+  bool track_mem_usage_snapshot_;
+  const bool use_aggressive_shape_inference_;
 
   VirtualPlacer placer_;  // owned.
 };

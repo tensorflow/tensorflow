@@ -46,7 +46,7 @@ namespace {
 // Describes a tensor with its operation Node and output position
 typedef std::pair<Node*, int> TensorDesc;
 
-const char* const kRetValOp = "_Retval";
+constexpr char kRetValOp[] = "_Retval";
 
 void ReplaceEdgeSources(const TensorDesc& old_src, const TensorDesc& new_src,
                         Graph* graph) {
@@ -377,22 +377,15 @@ Status Vectorization::Initialize(const FunctionDef& outer_scope,
                             " in function library.");
   }
 
-  auto get_func_sig = [this](const string& op, const OpDef** sig) {
-    return this->lib_def_.LookUpOpDef(op, sig);
-  };
-
-  FunctionBody* outer_fn;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(outer_scope, {}, &lib_def_,
-                                             get_func_sig, &outer_fn));
+  std::unique_ptr<FunctionBody> outer_fn;
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(outer_scope, {}, &lib_def_, &outer_fn));
   // We don't need outer_fn, just the graph
   outer_scope_.reset(outer_fn->graph);
   outer_fn->graph = nullptr;
-  delete outer_fn;
 
-  FunctionBody* tmp;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*map_defun_fn, {}, &lib_def_,
-                                             get_func_sig, &tmp));
-  map_defun_fn_.reset(tmp);
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(*map_defun_fn, {}, &lib_def_, &map_defun_fn_));
 
   // Find the MapDefun node in outer_scope_
   int node_id = graph_utils::GetFirstElementIndexWithPredicate(
@@ -415,6 +408,10 @@ Status Vectorization::Initialize(const FunctionDef& outer_scope,
 // NodeBuilder
 Status Vectorization::StackTensor(WrappedTensor* unstacked,
                                   TensorDesc* result) {
+  if (unstacked->node->output_type(unstacked->output_index) == DT_VARIANT) {
+    // TODO(b/124069171): "ExpandDims" doesn't work with Variant tensors.
+    return errors::Unimplemented("Cannot stack tensor with Variant type.");
+  }
   // Note that all these nodes are necessary as the size of the batch may not be
   // constant.
   if (unstacked->stacked) {
@@ -643,6 +640,6 @@ Status VectorizeMapDefun(const FunctionDef& outer_scope,
   return Vectorization(lib).Vectorize(outer_scope, map_defun_node, result);
 }
 
-}  // end namespace vectorization_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace vectorization_utils
+}  // namespace grappler
+}  // namespace tensorflow

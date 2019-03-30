@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_impl
@@ -185,6 +186,7 @@ class DepthwiseConv2DTest(test.TestCase):
     self.assertShapeEqual(native_result, conv_native)
     self.assertShapeEqual(native_result, conv_interface)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2D(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -428,6 +430,7 @@ class DepthwiseConv2DTest(test.TestCase):
           use_gpu, grouped_conv, err)
       self.assertLess(err, tolerance)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DInputGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):
@@ -477,6 +480,7 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=True,
             data_format="NCHW")
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DFilterGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):

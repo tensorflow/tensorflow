@@ -88,9 +88,10 @@ Status ExtractOutsideCompilationForFunction(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const NameAttrList& func_name_attrs, const string& new_func_name,
-    const std::map<string, int>& host_compute_core,
-    FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph,
-    std::vector<string>* shape_inference_graphs, bool* has_outside_compilation);
+    const string& host_graph_func_name,
+    const std::map<string, int>& host_compute_core, FunctionLibraryRuntime* flr,
+    FunctionLibraryDefinition* fld, std::vector<string>* shape_inference_graphs,
+    bool* has_outside_compilation);
 
 // Rewrites XLA computation in `clusters` to replace outside compilation nodes
 // with XlaHostCompute, and moves those outside compilations into `g`. If shapes
@@ -100,7 +101,7 @@ Status ExtractOutsideCompilation(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name,
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
-    FunctionLibraryDefinition* fld);
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld);
 
 }  // namespace tensorflow
 

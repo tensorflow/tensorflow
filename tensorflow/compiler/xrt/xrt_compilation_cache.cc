@@ -273,6 +273,8 @@ Status XRTCompilationCache::Lookup(
   return Status::OK();
 }
 
-string XRTCompilationCache::DebugString() { return "XRTCompilationCache"; }
+string XRTCompilationCache::DebugString() const {
+  return "XRTCompilationCache";
+}
 
 }  // namespace tensorflow

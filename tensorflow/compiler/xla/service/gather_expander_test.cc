@@ -89,7 +89,7 @@ ENTRY main {
   // an implementation detail from WhileUtil::MakeCountedLoop).
 
   const Shape& while_shape = while_instr->shape();
-  ASSERT_TRUE(ShapeUtil::IsTuple(while_shape));
+  ASSERT_TRUE(while_shape.IsTuple());
   ASSERT_EQ(ShapeUtil::TupleElementCount(while_shape), 4);
 
   EXPECT_TRUE(ShapeUtil::SameDimensions(

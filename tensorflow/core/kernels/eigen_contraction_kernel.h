@@ -33,22 +33,46 @@ limitations under the License.
 //   #endif
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
 #include "mkldnn.h"
+#endif
 
 namespace Eigen {
 namespace internal {
 
-// Enabled by build option: "--define tensorflow_mkldnn_contraction_kernel=1"
-#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+// Returns `true` iff we can use custom contraction kernels. This is a runtime
+// check, that uses environment variables.
+bool UseCustomContractionKernels();
 
+// Pack a 2D block of a Tensor expression into contiguous block of memory with
+// col-major storage order. We do not have access to the underlying Tensor
+// expression, we only have a DataMapper (TensorContractionInputMapper for
+// tensor contractions, or blas_data_mapper for plain tensors), that provides a
+// two-dimensional view into the Tensor expression.
+//
+// Default Eigen gemm_pack_rhs and gemm_pack_lhs pack blocks of tensor
+// expressions into the packed format described in "Anatomy of High-Performance
+// Matrix Multiplication" paper (1). Eigen::internal::gebp_kernel relies on this
+// packing format for efficient micro-panel multiplication.
+//
+// This simple packing can be used with any '?gemm' function from BLAS
+// libraries, that work with col-major matrices.
+//
+// (1) http://www.cs.utexas.edu/~flame/pubs/GotoTOMS_revision.pdf
+//
+// IMPORTANT: `gemm_pack_colmajor_block` always packs the block in column major
+// order, DataMapperStorageOrder specifies the storage order of the underlying
+// Tensor expression.
 template <typename Scalar, typename IndexType, typename DataMapper,
-          int StorageOrder>
-struct mkldnn_gemm_pack;
+          int DataMapperStorageOrder>
+struct gemm_pack_colmajor_block;
 
-// mkl_gemm_pack for ColMajor storage order.
+// gemm_pack_colmajor_block for ColMajor storage order.
 template <typename Scalar, typename IndexType, typename DataMapper>
-struct mkldnn_gemm_pack<Scalar, IndexType, DataMapper,
-                        /*StorageOrder*/ ColMajor> {
+struct gemm_pack_colmajor_block<Scalar, IndexType, DataMapper,
+                                /*DataMapperStorageOrder*/ ColMajor> {
   typedef typename internal::packet_traits<Scalar>::type Packet;
   typedef typename DataMapper::LinearMapper LinearMapper;
 
@@ -57,37 +81,40 @@ struct mkldnn_gemm_pack<Scalar, IndexType, DataMapper,
   EIGEN_DONT_INLINE
   void operator()(Scalar* block, const DataMapper& data_mapper, IndexType rows,
                   IndexType cols) {
-    const IndexType unrolled_rows =
-        (rows / (4 * PacketSize)) * (4 * PacketSize);
-    const IndexType vectorized_rows = (rows / PacketSize) * PacketSize;
+    const IndexType unrolled_rows = rows - 4 * PacketSize;
+    const IndexType vectorized_rows = rows - PacketSize;
 
     for (IndexType col = 0; col < cols; ++col) {
       LinearMapper lm = data_mapper.getLinearMapper(0, col);
 
+      IndexType row = 0;
       // Give compiler a strong possibility to unroll the loop.
-      for (IndexType i = 0; i < unrolled_rows; i += 4 * PacketSize) {
+      for (; row <= unrolled_rows; row += 4 * PacketSize) {
         for (IndexType j = 0; j < 4; ++j) {
-          const Packet p = lm.template loadPacket<Packet>(i + j * PacketSize);
+          const Packet p = lm.template loadPacket<Packet>(row + j * PacketSize);
           internal::pstoreu(block + j * PacketSize, p);
         }
         block += 4 * PacketSize;
       }
-
       // Process remaining rows with packets.
-      for (IndexType i = unrolled_rows; i < vectorized_rows; i += PacketSize) {
-        const Packet p = lm.template loadPacket<Packet>(i);
+      for (; row <= vectorized_rows; row += PacketSize) {
+        const Packet p = lm.template loadPacket<Packet>(row);
         internal::pstoreu(block, p);
         block += PacketSize;
       }
-
       // Finalize with coefficients.
-      for (IndexType i = vectorized_rows; i < rows; ++i) {
-        *block = lm(i);
+      for (; row < rows; ++row) {
+        *block = lm(row);
         ++block;
       }
     }
   }
 };
+
+#endif  // TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL
+
+// Enabled by build option: "--define tensorflow_mkldnn_contraction_kernel=1"
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
 
 template <typename Scalar, typename IndexType, typename OutputMapper,
           bool ConjugateLhs = false, bool ConjugateRhs = false>
@@ -98,6 +125,9 @@ template <typename IndexType, typename OutputMapper, bool ConjugateLhs,
           bool ConjugateRhs>
 struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
                           ConjugateLhs, ConjugateRhs> {
+  static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
+  static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
+
   EIGEN_DONT_INLINE
   void operator()(const OutputMapper& output, const float* blockA,
                   const float* blockB, const IndexType rows,
@@ -113,11 +143,11 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     const int n = static_cast<int>(cols);
     const int k = static_cast<int>(depth);
 
-    const char transposeA = ConjugateLhs ? 'Y' : 'N';
-    const char transposeB = ConjugateRhs ? 'Y' : 'N';
+    const char transposeA = 'N';
+    const char transposeB = 'N';
 
-    const int ldA = ConjugateLhs ? k : m;
-    const int ldB = ConjugateRhs ? n : k;
+    const int ldA = m;
+    const int ldB = k;
     const int ldC = static_cast<int>(output.stride());
 
     const float beta = 1.0;
@@ -170,6 +200,13 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
                                                      num_threads);
     }
 
+    // If dimensions do not pass basic sanity checks return immediately.
+    if (kc_ <= 0 || mc_ <= 0 || nc_ <= 0) return;
+
+    // If we are using default Eigen gebp kernel there is no need to adjust the
+    // block sizes for MKL-DNN.
+    if (!UseCustomContractionKernels()) return;
+
     // 2. And refine them to work well with mkldnn sgemm.
     mc_ = (std::min)(
         m, Eigen::divup(static_cast<StorageIndex>(mc_ * kScaleM), kUnrollM) *
@@ -181,7 +218,8 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
     // We split Kth dimensions in roughly equal slices.
     StorageIndex target_k_slices =
         (std::max)(StorageIndex(1), Eigen::divup(k, kc_));
-    StorageIndex packet_size = 8;
+    StorageIndex packet_size = internal::packet_traits<Scalar>::size;
+    if (packet_size < 8) packet_size = 8;
     StorageIndex target_bk =
         Eigen::divup(k / target_k_slices, packet_size) * packet_size;
     kc_ = (std::min)(k, target_bk);
@@ -205,29 +243,60 @@ struct TensorContractionKernel<float, float, float, StorageIndex, OutputMapper,
   using Scalar = float;
   using Traits = typename internal::gebp_traits<Scalar, Scalar>;
 
-  using LhsPacker = mkldnn_gemm_pack<Scalar, StorageIndex,
-                                     typename LhsMapper::SubMapper, ColMajor>;
-  using RhsPacker = mkldnn_gemm_pack<Scalar, StorageIndex,
-                                     typename RhsMapper::SubMapper, ColMajor>;
+  using LhsPacker =
+      gemm_pack_colmajor_block<Scalar, StorageIndex,
+                               typename LhsMapper::SubMapper, ColMajor>;
+  using RhsPacker =
+      gemm_pack_colmajor_block<Scalar, StorageIndex,
+                               typename RhsMapper::SubMapper, ColMajor>;
   using GemmKernel = mkldnn_gemm_kernel<Scalar, StorageIndex, OutputMapper>;
+
+  // Fallback on default Eigen pack and GEBP kernel if custom contraction
+  // kernels disabled at runtime.
+  using EigenLhsPacker =
+      gemm_pack_lhs<Scalar, StorageIndex, typename LhsMapper::SubMapper,
+                    Traits::mr, Traits::LhsProgress,
+                    typename Traits::LhsPacket4Packing, ColMajor>;
+  using EigenRhsPacker =
+      gemm_pack_rhs<Scalar, StorageIndex, typename RhsMapper::SubMapper,
+                    Traits::nr, ColMajor>;
+  using GebpKernel =
+      gebp_kernel<Scalar, Scalar, StorageIndex, OutputMapper, Traits::mr,
+                  Traits::nr,
+                  /*ConjugateLhs*/ false, /*ConjugateRhs*/ false>;
 
   EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void packLhs(
       Scalar* lhsBlock, const typename LhsMapper::SubMapper& data_mapper,
       const StorageIndex depth, const StorageIndex rows) {
-    LhsPacker()(lhsBlock, data_mapper, rows, depth);
+    if (UseCustomContractionKernels()) {
+      LhsPacker()(lhsBlock, data_mapper, rows, depth);
+    } else {
+      EigenLhsPacker()(lhsBlock, data_mapper, depth, rows, /*stride*/ 0,
+                       /*offset*/ 0);
+    }
   }
 
   EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void packRhs(
       Scalar* rhsBlock, const typename RhsMapper::SubMapper& data_mapper,
       const StorageIndex depth, const StorageIndex cols) {
-    RhsPacker()(rhsBlock, data_mapper, depth, cols);
+    if (UseCustomContractionKernels()) {
+      RhsPacker()(rhsBlock, data_mapper, depth, cols);
+    } else {
+      EigenRhsPacker()(rhsBlock, data_mapper, depth, cols);
+    }
   }
 
   EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void invoke(
       const OutputMapper& output_mapper, const Scalar* lhsBlock,
       const Scalar* rhsBlock, const StorageIndex rows, const StorageIndex depth,
       const StorageIndex cols, const Scalar alpha) {
-    GemmKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha);
+    if (UseCustomContractionKernels()) {
+      GemmKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha);
+    } else {
+      GebpKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha,
+                   /*strideA*/ -1, /*strideB*/ -1,
+                   /*offsetA*/ 0, /*offsetB*/ 0);
+    }
   }
 };
 

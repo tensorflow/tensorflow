@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -74,8 +73,8 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
 
     // Split the preheader to create an exit basic block. The exit basic block
     // will contain all instructions at or after insert_point.
-    exit_bb_ = preheader_bb_->splitBasicBlock(
-        insert_point, AsStringRef(GetQualifiedName("loop_exit")));
+    exit_bb_ = preheader_bb_->splitBasicBlock(insert_point,
+                                              GetQualifiedName("loop_exit"));
 
     // splitBasicBlock adds an unconditional branch between the split basic
     // blocks. Remove it. An unconditional branch will be added below from the
@@ -95,9 +94,8 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   llvm::Function* func = preheader_bb_->getParent();
   b->SetInsertPoint(&func->getEntryBlock(),
                     func->getEntryBlock().getFirstInsertionPt());
-  llvm::Value* indvar_address =
-      b->CreateAlloca(start_index_->getType(), nullptr,
-                      AsStringRef(GetQualifiedName("invar_address")));
+  llvm::Value* indvar_address = b->CreateAlloca(
+      start_index_->getType(), nullptr, GetQualifiedName("invar_address"));
 
   // Preheader basic block.
   // Initialize induction variable starting index. Create branch to the header.
@@ -111,8 +109,7 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   // Emit the loop conditional branch. Load and compare indvar with ending
   // index and jump to loop exit if equal. Jump to body otherwise.
   b->SetInsertPoint(header_bb_);
-  indvar_ =
-      b->CreateLoad(indvar_address, AsStringRef(GetQualifiedName("indvar")));
+  indvar_ = b->CreateLoad(indvar_address, GetQualifiedName("indvar"));
   llvm::Value* exit_cond = b->CreateICmpUGE(indvar_, end_index_);
   b->CreateCondBr(/*Cond=*/exit_cond,
                   /*True=*/exit_bb_, /*False=*/body_bb_);
@@ -235,27 +232,28 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
                                              absl::string_view suffix) {
-  std::vector<int64> dimensions(ShapeUtil::Rank(shape));
+  std::vector<int64> dimensions(shape.rank());
   std::iota(dimensions.begin(), dimensions.end(), 0);
-  return AddLoopsForShapeOnDimensions(shape, dimensions, suffix);
+  return IrArray::Index(AddLoopsForShapeOnDimensions(shape, dimensions, suffix),
+                        shape, index_type_);
 }
 
-IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
+std::vector<llvm::Value*> ForLoopNest::AddLoopsForShapeOnDimensions(
     const Shape& shape, absl::Span<const int64> dimensions,
     absl::string_view suffix) {
-  llvm_ir::IrArray::Index index(index_type_, shape.dimensions_size());
+  std::vector<llvm::Value*> multi_index(shape.dimensions_size());
   for (int64 dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape.dimensions(dimension),
         /*suffix=*/
         llvm_ir::IrName(suffix, absl::StrCat(dimension)));
-    index[dimension] = loop->GetIndVarValue();
+    multi_index[dimension] = loop->GetIndVarValue();
   }
-  return index;
+  return multi_index;
 }
 
-IrArray::Index ForLoopNest::EmitOperandArrayLoopNest(
+std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
     const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
     absl::string_view name_suffix) {
   // Prepares the dimension list we will use to emit the loop nest. Outermost
@@ -271,18 +269,18 @@ IrArray::Index ForLoopNest::EmitOperandArrayLoopNest(
 
   // Create loop nest with one for-loop for each dimension of the
   // output.
-  llvm_ir::IrArray::Index index =
+  std::vector<llvm::Value*> multi_index =
       AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the 'dimension_to_skip' dimension was set in
   // the index.
-  for (size_t dimension = 0; dimension < index.size(); ++dimension) {
+  for (size_t dimension = 0; dimension < multi_index.size(); ++dimension) {
     if (dimension == dimension_to_skip) {
-      DCHECK_EQ(nullptr, index[dimension]);
+      DCHECK_EQ(nullptr, multi_index[dimension]);
     } else {
-      DCHECK_NE(nullptr, index[dimension]);
+      DCHECK_NE(nullptr, multi_index[dimension]);
     }
   }
-  return index;
+  return multi_index;
 }
 
 }  // namespace llvm_ir

@@ -151,40 +151,6 @@ static void BM_Momentum(int iters, int params) {
 }
 BENCHMARK(BM_Momentum)->Arg(128 << 10)->Arg(256 << 10);
 
-static void KerasMomentum(int32 n, Graph** init_g, Graph** train_g) {
-  TensorShape shape({n});
-  {
-    Graph* g = new Graph(OpRegistry::Global());
-    auto var = Var(g, n);
-    auto accum = Var(g, n);
-    auto zero = Zeros(g, n);
-    test::graph::Assign(g, var, zero);
-    test::graph::Assign(g, accum, zero);
-    *init_g = g;
-  }
-  {
-    Graph* g = new Graph(OpRegistry::Global());
-    auto var = Var(g, n);
-    auto accum = Var(g, n);
-    auto lr = Scalar(g, 0.01);
-    auto grad = Random(g, n);
-    auto mom = Scalar(g, 0.01);
-    test::graph::Multi(g, "ApplyKerasMomentum", {var, accum, lr, grad, mom});
-    *train_g = g;
-  }
-}
-
-static void BM_KerasMomentum(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
-  Graph* init;
-  Graph* train;
-  KerasMomentum(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
-}
-BENCHMARK(BM_KerasMomentum)->Arg(128 << 10)->Arg(256 << 10);
-
 static void Adam(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
@@ -217,60 +183,22 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_Adam(int iters, int params) {
+static void BM_Adam(int iters, int params, int is_multi_threaded) {
   const int64 tot = static_cast<int64>(iters) * params;
   testing::ItemsProcessed(tot);
   testing::BytesProcessed(tot * sizeof(float));
   Graph* init;
   Graph* train;
   Adam(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
-}
-BENCHMARK(BM_Adam)->Arg(128 << 10)->Arg(256 << 10);
-
-static void AdamWithAmsgrad(int32 n, Graph** init_g, Graph** train_g) {
-  TensorShape shape({n});
-  {
-    Graph* g = new Graph(OpRegistry::Global());
-    auto var = Var(g, n);
-    auto m = Var(g, n);
-    auto v = Var(g, n);
-    auto zero = Zeros(g, n);
-    test::graph::Assign(g, var, zero);
-    test::graph::Assign(g, m, zero);
-    test::graph::Assign(g, v, zero);
-    *init_g = g;
-  }
-  {
-    Graph* g = new Graph(OpRegistry::Global());
-    auto var = Var(g, n);
-    auto m = Var(g, n);
-    auto v = Var(g, n);
-    auto vhat = Var(g, n);
-    auto beta1_power = Scalar(g, 0.9);
-    auto beta2_power = Scalar(g, 0.99);
-    auto lr = Scalar(g, 0.01);
-    auto beta1 = Scalar(g, 0.9);
-    auto beta2 = Scalar(g, 0.99);
-    auto epsilon = Scalar(g, 1e-8);
-    auto grad = Random(g, n);
-    test::graph::Multi(g, "ApplyAdamWithAmsgrad",
-                       {var, m, v, vhat, beta1_power, beta2_power, lr, beta1,
-                        beta2, epsilon, grad});
-    *train_g = g;
+  if (is_multi_threaded) {
+    // Use max thread number if test performance.
+    test::Benchmark("cpu", train, nullptr, init).Run(iters);
+  } else {
+    test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
   }
 }
-
-static void BM_AdamWithAmsgrad(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
-  Graph* init;
-  Graph* train;
-  AdamWithAmsgrad(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
-}
-BENCHMARK(BM_AdamWithAmsgrad)->Arg(128 << 10)->Arg(256 << 10);
+BENCHMARK(BM_Adam)->ArgPair(128 << 10, 0)->ArgPair(256 << 10, 0);
+BENCHMARK(BM_Adam)->ArgPair(256 << 5, 1)->ArgPair(256 << 16, 1);
 
 static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});

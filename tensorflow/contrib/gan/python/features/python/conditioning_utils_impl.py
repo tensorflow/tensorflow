@@ -64,6 +64,9 @@ def condition_tensor(tensor, conditioning):
   """
   tensor.shape[1:].assert_is_fully_defined()
   num_features = tensor.shape[1:].num_elements()
+  if conditioning.shape.ndims < 2:
+    raise ValueError('conditioning must be at least 2D, but saw shape: %s'
+                     % conditioning.shape)
 
   mapped_conditioning = layers.linear(
       layers.flatten(conditioning), num_features)
