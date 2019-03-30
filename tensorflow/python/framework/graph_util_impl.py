@@ -256,7 +256,7 @@ def convert_variables_to_constants(sess,
     control_ops = ["Enter", "Exit", "NextIteration", "Switch"]
 
     current_name = origin_name
-    while current_name not in variables_data_map:
+    while name_to_nodes[current_name].op != "VarHandleOp":
       nodes_in_path.add(current_name)
       current_node = name_to_nodes[current_name]
       op_name = current_node.op
