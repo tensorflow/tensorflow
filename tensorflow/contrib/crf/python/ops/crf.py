@@ -283,7 +283,7 @@ def crf_unary_score(tag_indices, sequence_lengths, inputs):
   offsets += array_ops.expand_dims(math_ops.range(max_seq_len) * num_tags, 0)
   # Use int32 or int64 based on tag_indices' dtype.
   if tag_indices.dtype == dtypes.int64:
-    offsets = math_ops.to_int64(offsets)
+    offsets = math_ops.cast(offsets, dtypes.int64)
   flattened_tag_indices = array_ops.reshape(offsets + tag_indices, [-1])
 
   unary_scores = array_ops.reshape(

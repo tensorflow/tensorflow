@@ -24,6 +24,7 @@ import re
 from tensorflow.core.framework import function_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -32,45 +33,119 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
   return isinstance(t, (ops.Tensor, resource_variable_ops.ResourceVariable))
 
 
-def _inputs_compatible(args, stored_inputs):
-  """Checks whether function arguments are compatible with parameters."""
-  if len(args) != len(stored_inputs):
+def _call_concrete_function(function, inputs):
+  """Calls a restored Function with structured inputs.
+
+  This differs from `function.__call__` in that inputs and outputs are
+  structured and that it casts inputs to tensors if needed.
+
+  Note: this does not checks that non-tensor inputs match. That should be
+  done before via `_concrete_function_callable_with`.
+
+  Args:
+    function: ConcreteFunction to call.
+    inputs: Structured inputs compatible with
+        `function.graph.structured_input_signature`.
+
+  Returns:
+    The structured function output.
+  """
+  expected_structure = function.graph.structured_input_signature
+  flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  tensor_inputs = []
+  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+    if isinstance(expected, tensor_spec.TensorSpec):
+      tensor_inputs.append(
+          ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
+  result = function._call_flat(tensor_inputs)  # pylint: disable=protected-access
+  if isinstance(result, ops.Operation):
+    return None
+  return result
+
+
+def _try_convert_to_tensor_spec(arg, dtype_hint):
+  """Returns None or TensorSpec obtained if `arg` is converted to tensor."""
+  try:
+    # Note: try conversion in a FuncGraph to avoid poluting current context.
+    with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
+      result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
+      return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
+  except (TypeError, ValueError):
+    return None
+
+
+def _concrete_function_callable_with(function, inputs, allow_conversion):
+  """Returns whether concrete `function` can be called with `inputs`."""
+  expected_structure = function.graph.structured_input_signature
+  try:
+    flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  except (TypeError, ValueError):
+    return False
+  try:
+    # Verify that no input elements were dropped during flattening.
+    repacked = nest.pack_sequence_as(expected_structure, flatten_inputs)
+    # TODO(b/129422719): Namedtuple subclasses re-created through
+    # saved_model.load don't compare equal in type to the original in
+    # assert_same_structure. Fix that and we can take out check_types=False
+    # here.
+    nest.assert_same_structure(inputs, repacked, check_types=False)
+  except (TypeError, ValueError):
     return False
 
-  for arg, stored_input in zip(args, stored_inputs):
-    if not function_lib.is_same_structure(arg, stored_input):
-      return False
-
-    flattened_arg = nest.flatten(arg)
-    flattened_stored_input = nest.flatten(stored_input)
-
-    for a, b in zip(flattened_arg, flattened_stored_input):
-      if _is_tensor(a):
-        if not isinstance(b, tensor_spec.TensorSpec):
-          return False
-        if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
-          return False
-      else:
-        if a != b:
-          return False
+  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+    if isinstance(expected, tensor_spec.TensorSpec):
+      if allow_conversion:
+        arg = _try_convert_to_tensor_spec(arg, dtype_hint=expected.dtype)
+      if not _is_tensor(arg) and not isinstance(arg, tensor_spec.TensorSpec):
+        return False
+      if arg.dtype != expected.dtype:
+        return False
+      if not expected.shape.is_compatible_with(arg.shape):
+        return False
+    else:
+      if arg != expected:
+        return False
   return True
 
 
-def _deserialize_function_spec(function_spec_proto, coder):
+def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
   """Deserialize a FunctionSpec object from its proto representation."""
-  fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
-  is_method = function_spec_proto.is_method
+  typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+
+  # Convert a method function into a non method.
+  if function_spec_proto.is_method:
+    if not typeless_fullargspec.args:
+      raise NotImplementedError(
+          "Missing support to deserialize a method function without a named "
+          "'self' argument.")
+    args = typeless_fullargspec.args[1:]
+  else:
+    args = typeless_fullargspec.args
+
+  fullargspec = tf_inspect.FullArgSpec(
+      args=args,
+      varargs=typeless_fullargspec.varargs,
+      varkw=typeless_fullargspec.varkw,
+      defaults=typeless_fullargspec.defaults,
+      kwonlyargs=typeless_fullargspec.kwonlyargs,
+      kwonlydefaults=typeless_fullargspec.kwonlydefaults,
+      annotations=typeless_fullargspec.annotations)
   args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
   kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
-  return function_lib.FunctionSpec(fullargspec, is_method, args_to_prepend,
-                                   kwargs_to_include, input_signature)
+  return function_lib.FunctionSpec(fullargspec=fullargspec,
+                                   is_method=False,
+                                   args_to_prepend=args_to_prepend,
+                                   kwargs_to_include=kwargs_to_include,
+                                   input_signature=input_signature)
 
 
 # TODO(allenl): The fact that we can't derive ConcreteFunction calling
@@ -105,10 +180,6 @@ class RestoredFunction(def_function.Function):
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
     self._concrete_functions = concrete_functions
-    # This does not propagate to stateful and stateless functions of the
-    # RestoredFunction, which will have seen only defunned
-    # restored_function_body(*args, **kwargs). That's why we have to
-    # canonicalize inputs inside restored_function_body.
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
@@ -131,51 +202,58 @@ def recreate_function(saved_function, concrete_functions):
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
-  function_spec = _deserialize_function_spec(saved_function.function_spec,
-                                             coder)
+
+  # Note: handling method functions is tricky since make_decorator does not
+  # allows control of "ismethod". Additionally since restored functions do
+  # not behave as methods i.e. they always use the same captured tensors
+  # independent of the object they are bound to, there is little value on
+  # propagating that correctly.
+  #
+  # Ideally this conversion should happen at serialization time. But since
+  # there are SavedModels which have "ismethod" populated and have an extra
+  # argument that they expect to be ignored, we do it at deserialization.
+  function_spec = _deserialize_function_spec_as_nonmethod(
+      saved_function.function_spec,
+      coder)
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function."""
-    # TODO(allenl): Functions saved with input_signatures should revive with
-    # input_signatures.
-    try:
-      canonicalized_inputs = function_spec.canonicalize_function_inputs(
-          *args, **kwargs)
-    except ValueError as e:
-      raise ValueError(
-          "Cannot canonicalize input args %r and kwargs %r. Error: %r." %
-          (args, kwargs, e))
+    # This is the format of function.graph.structured_input_signature. At this
+    # point, the args and kwargs have already been canonicalized.
+    inputs = (args, kwargs)
 
-    debug_considered_signatures = []
-    for concrete_function_name in saved_function.concrete_functions:
-      function_obj = concrete_functions[concrete_function_name]
-      canonicalized_original_inputs = (
-          function_obj.graph.structured_input_signature)
-      debug_considered_signatures.append(canonicalized_original_inputs)
+    # First try to find a concrete function that can be called without input
+    # conversions. This allows one to pick a more specific trace in case there
+    # was also a more expensive one that supported tensors.
+    for allow_conversion in [False, True]:
+      for function_name in saved_function.concrete_functions:
+        function = concrete_functions[function_name]
+        if _concrete_function_callable_with(function, inputs, allow_conversion):
+          return _call_concrete_function(function, inputs)
 
-      if _inputs_compatible(canonicalized_inputs,
-                            canonicalized_original_inputs):
-        flattened_inputs = nest.flatten(canonicalized_inputs)
-        filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
-
-        result = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
-        if isinstance(result, ops.Operation):
-          return None
-        return result
-
-    raise AssertionError(
-        "Could not find matching function to call for canonicalized inputs %r. "
+    available_signatures = [
+        concrete_functions[function_name].graph.structured_input_signature
+        for function_name in saved_function.concrete_functions
+    ]
+    raise ValueError(
+        "Could not find matching function to call for inputs %r. "
         "Only existing signatures are %r."
-        % (canonicalized_inputs, debug_considered_signatures))
+        % (inputs, available_signatures))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
     concrete_function_objects.append(concrete_functions[concrete_function_name])
 
-  return RestoredFunction(restored_function_body,
-                          restored_function_body.__name__,
-                          function_spec,
-                          concrete_function_objects)
+  restored_function = RestoredFunction(
+      restored_function_body,
+      restored_function_body.__name__,
+      function_spec,
+      concrete_function_objects)
+
+  return tf_decorator.make_decorator(
+      restored_function_body,
+      restored_function,
+      decorator_argspec=function_spec.fullargspec)
 
 
 def load_function_def_library(library):
@@ -196,8 +274,9 @@ def load_function_def_library(library):
   """
   functions = {}
 
+  load_shared_name_suffix = "_load_{}".format(ops.uid())
   for fdef in _sort_function_defs(library):
-    copy = _fix_fdef(fdef, functions)
+    copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
     func_graph = function_def_lib.function_def_to_graph(copy)
     for dep in _list_function_deps(fdef):
@@ -247,7 +326,7 @@ def _sort_function_defs(library):
   return [reverse[x] for x in output]
 
 
-def _fix_fdef(orig_fdef, functions):
+def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """Fixes a FunctionDef proto to be loaded in current context.
 
   In particular, when loading a function library into an eager context, one
@@ -256,6 +335,10 @@ def _fix_fdef(orig_fdef, functions):
   Args:
     orig_fdef: FunctionDef proto to fix. It is not modified.
     functions: map from function name to a ConcreteFunction instance.
+    shared_name_suffix: A unique string for this load which helps to avoid
+      `shared_name` collisions across loads. Two functions from the same load
+      using the same `shared_name` still need to share, but functions from
+      different loads with the same `shared_name` should not.
 
   Returns:
     A fixed copy of the original FunctionDef.
@@ -278,6 +361,12 @@ def _fix_fdef(orig_fdef, functions):
     for _, attr_value in node_def.attr.items():
       if attr_value.func.name:
         attr_value.func.name = functions[attr_value.func.name].name
+
+    # TODO(b/124205571): Avoid accidental sharing and destruction of restored
+    # resources. For now uniquify "shared_name" when loading functions to avoid
+    # sharing.
+    if "shared_name" in node_def.attr:
+      node_def.attr["shared_name"].s += compat.as_bytes(shared_name_suffix)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef

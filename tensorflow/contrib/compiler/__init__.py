@@ -19,3 +19,4 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.compiler import jit
+from tensorflow.contrib.compiler import xla

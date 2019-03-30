@@ -335,19 +335,20 @@ class RingReducerTest : public ::testing::Test {
           note.WaitForNotification();
         }
 
+        auto alias = actual.template unaligned_flat<T>();
         for (int i = 0; i < tensor_len; ++i) {
           switch (dtype) {
             case DT_FLOAT:
-              EXPECT_FLOAT_EQ(expected[i], actual.template flat<T>()(i))
+              EXPECT_FLOAT_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
               break;
             case DT_DOUBLE:
-              EXPECT_DOUBLE_EQ(expected[i], actual.template flat<T>()(i))
+              EXPECT_DOUBLE_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
               break;
             case DT_INT32:
             case DT_INT64:
-              EXPECT_EQ(expected[i], actual.template flat<T>()(i))
+              EXPECT_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
               break;
             default:

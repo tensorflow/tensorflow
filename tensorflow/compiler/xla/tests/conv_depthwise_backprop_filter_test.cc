@@ -37,6 +37,8 @@ struct BatchGroupedConvolution2DSpec {
   std::vector<int64> activation_dims;
   std::vector<int64> kernel_dims;
   std::vector<int64> output_dims;
+  std::vector<int64> activation_and_kernel_layout;
+  std::vector<int64> output_layout;
 };
 
 class BatchGroupedConvolution2DTest
@@ -47,8 +49,9 @@ class BatchGroupedConvolution2DTest
 static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases() {
   std::vector<BatchGroupedConvolution2DSpec> config_set;
   std::vector<std::vector<int64>> config_options = {
-      {8, 5, 3, 2},   {4, 5, 5, 2},   {8, 7, 4, 128},  {16, 20, 20, 256},
-      {256, 7, 5, 4}, {256, 6, 6, 4}, {256, 8, 8, 512}};
+      {8, 5, 3, 2},      {4, 5, 5, 2},    {8, 7, 4, 128},
+      {16, 20, 20, 256}, {256, 7, 5, 4},  {256, 6, 6, 4},
+      {256, 8, 8, 512},  {64, 7, 7, 960}, {64, 14, 14, 576}};
 
   for (auto option : config_options) {
     int64 feature = option[3];
@@ -68,7 +71,13 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases() {
     int64 output_space_size = 3 + activation_size - kernel_size;
     config.output_dims = {output_space_size, output_space_size, feature, 1};
 
+    config.activation_and_kernel_layout = {0, 3, 1, 2};
+    config.output_layout = {2, 3, 0, 1};
     config_set.push_back(config);
+
+    BatchGroupedConvolution2DSpec different_layout_config = config;
+    different_layout_config.activation_and_kernel_layout = {3, 0, 1, 2};
+    config_set.push_back(different_layout_config);
 
     // Add configurations for window dilation cases.
     if (activation_size % 2 == 0 && activation_size == kernel_size) {
@@ -79,11 +88,17 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases() {
       config.activation_dims = {batch, activation_size, activation_size,
                                 feature};
       config.kernel_dims = {batch, kernel_size / 2, kernel_size / 2, feature};
+      config.activation_and_kernel_layout = {0, 3, 1, 2};
+      config.output_layout = {2, 3, 0, 1};
 
       int64 output_space_size = 5;
       config.output_dims = {output_space_size, output_space_size, feature, 1};
 
       config_set.push_back(config);
+
+      BatchGroupedConvolution2DSpec different_layout_config = config;
+      different_layout_config.activation_and_kernel_layout = {3, 0, 1, 2};
+      config_set.push_back(different_layout_config);
     }
   }
 
@@ -97,8 +112,11 @@ string BatchGroupedConvolution2DTestDataToString(
   const string data_type = GetFloatDataType(::testing::get<1>(data.param));
   string str = absl::StrCat(
       "activation_dims_", absl::StrJoin(spec.activation_dims, "x"),
-      "_kernel_dims_", absl::StrJoin(spec.kernel_dims, "x"), "_output_dims_",
-      absl::StrJoin(spec.output_dims, "x"), data_type);
+      "_kernel_dims_", absl::StrJoin(spec.kernel_dims, "x"),
+      "_activation_layout_",
+      absl::StrJoin(spec.activation_and_kernel_layout, "_"), "_output_dims_",
+      absl::StrJoin(spec.output_dims, "x"), data_type, "_output_layout_",
+      absl::StrJoin(spec.output_layout, "_"));
 
   // Test names are not allowed to contain the '-' character.
   absl::c_replace(str, '-', 'n');
@@ -110,23 +128,28 @@ string BuildHloTextBatchGroupedConvolution2D(
   const string data_type = GetFloatDataType(use_bfloat16);
   return absl::StrFormat(
       R"(
-    HloModule TensorFlowDepthwiseConv
+    HloModule TensorFlowDepthwiseConv, is_scheduled=true
 
     ENTRY main {
-      activation = %s[%s] parameter(0)
-      kernel = %s[%s] parameter(1)
-      ROOT conv = %s[%s] convolution(%s[%s] activation, %s[%s] kernel),
+      activation = %s[%s]{%s} parameter(0)
+      kernel = %s[%s]{%s} parameter(1)
+      ROOT conv = %s[%s]{%s} convolution(%s[%s]{%s} activation, %s[%s]{%s} kernel),
           window={size=%dx%d pad=1_%dx1_%d rhs_dilate=%dx%d}, dim_labels=f01b_i01o->01fb,
           batch_group_count=%d
     }
     )",
-      data_type, absl::StrJoin(spec.activation_dims, ","), data_type,
-      absl::StrJoin(spec.kernel_dims, ","), data_type,
-      absl::StrJoin(spec.output_dims, ","), data_type,
-      absl::StrJoin(spec.activation_dims, ","), data_type,
-      absl::StrJoin(spec.kernel_dims, ","), spec.window, spec.window,
-      spec.window_dilation, spec.window_dilation, spec.window_dilation,
-      spec.window_dilation, spec.output_batch);
+      data_type, absl::StrJoin(spec.activation_dims, ","),
+      absl::StrJoin(spec.activation_and_kernel_layout, ","), data_type,
+      absl::StrJoin(spec.kernel_dims, ","),
+      absl::StrJoin(spec.activation_and_kernel_layout, ","), data_type,
+      absl::StrJoin(spec.output_dims, ","),
+      absl::StrJoin(spec.output_layout, ","), data_type,
+      absl::StrJoin(spec.activation_dims, ","),
+      absl::StrJoin(spec.activation_and_kernel_layout, ","), data_type,
+      absl::StrJoin(spec.kernel_dims, ","),
+      absl::StrJoin(spec.activation_and_kernel_layout, ","), spec.window,
+      spec.window, spec.window_dilation, spec.window_dilation,
+      spec.window_dilation, spec.window_dilation, spec.output_batch);
 }
 
 XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
@@ -135,13 +158,13 @@ XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   const string hlo_text =
       BuildHloTextBatchGroupedConvolution2D(spec, use_bfloat16);
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
-                            [](HloModule* module) -> Status {
-                              BFloat16MixedPrecisionRemoval remover;
-                              TF_RETURN_IF_ERROR(remover.Run(module).status());
-                              Despecializer despecializer;
-                              return despecializer.Run(module).status();
-                            }));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      hlo_text, ErrorSpec{0.01, 0.01}, [](HloModule* module) -> Status {
+        BFloat16MixedPrecisionRemoval remover;
+        TF_RETURN_IF_ERROR(remover.Run(module).status());
+        Despecializer despecializer;
+        return despecializer.Run(module).status();
+      }));
 }
 
 INSTANTIATE_TEST_CASE_P(

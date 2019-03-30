@@ -131,6 +131,28 @@ class HloFftInstruction : public HloInstruction {
   std::vector<int64> fft_length_;
 };
 
+class HloCompareInstruction : public HloInstruction {
+ public:
+  explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
+                                 HloInstruction* rhs,
+                                 ComparisonDirection direction);
+  ComparisonDirection direction() const { return direction_; }
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  ComparisonDirection direction_;
+};
+
 class HloTriangularSolveInstruction : public HloInstruction {
  public:
   explicit HloTriangularSolveInstruction(const Shape& shape, HloInstruction* a,
@@ -157,6 +179,31 @@ class HloTriangularSolveInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   TriangularSolveOptions triangular_solve_options_;
+};
+
+class HloCholeskyInstruction : public HloInstruction {
+ public:
+  explicit HloCholeskyInstruction(const Shape& shape, HloInstruction* a,
+                                  const CholeskyOptions& options);
+  const CholeskyOptions& cholesky_options() const { return cholesky_options_; }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  CholeskyOptions cholesky_options_;
 };
 
 class HloSendRecvInstruction : public HloInstruction {
@@ -446,11 +493,8 @@ class HloReduceInstruction : public HloInstruction {
 class HloSortInstruction : public HloInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64 dimension,
-                              HloInstruction* keys,
-                              absl::Span<HloInstruction* const> values = {});
-  explicit HloSortInstruction(const Shape& shape, int64 dimension,
                               absl::Span<HloInstruction* const> operands,
-                              HloComputation* compare);
+                              HloComputation* compare, bool is_stable);
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
@@ -463,6 +507,7 @@ class HloSortInstruction : public HloInstruction {
   HloInstruction* mutable_keys() { return mutable_operand(0); }
   // Returns the number of value operands.
   int64 values_count() const { return operand_count() - 1; }
+  bool is_stable() const { return is_stable_; }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -477,6 +522,7 @@ class HloSortInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::vector<int64> dimensions_;
+  bool is_stable_;
 };
 
 class HloTransposeInstruction : public HloInstruction {
@@ -604,6 +650,7 @@ class HloSliceInstruction : public HloInstruction {
 class HloConstantInstruction : public HloInstruction {
  public:
   explicit HloConstantInstruction(Literal literal);
+  explicit HloConstantInstruction(Literal literal, const Shape& shape);
   // Used when the literal is too large and dropped.
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
@@ -818,10 +865,28 @@ class HloParameterInstruction : public HloInstruction {
   explicit HloParameterInstruction(int64 parameter_number, const Shape& shape,
                                    const string& name);
   int64 parameter_number() const { return parameter_number_; }
+
+  // Sets and gets the whether all replicas will receive the same parameter data
+  // for each leaf buffer in data parallelism.
+  void set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool> parameter_replicated_at_leaf_buffers) {
+    CHECK_EQ(ShapeUtil::GetLeafCount(shape()),
+             parameter_replicated_at_leaf_buffers.size());
+    parameter_replicated_at_leaf_buffers_.emplace(
+        parameter_replicated_at_leaf_buffers.begin(),
+        parameter_replicated_at_leaf_buffers.end());
+  }
+  const absl::optional<std::vector<bool>>&
+  parameter_replicated_at_leaf_buffers() const {
+    return parameter_replicated_at_leaf_buffers_;
+  }
+
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -835,6 +900,10 @@ class HloParameterInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64 parameter_number_ = 0;
+
+  // Specifies whether each buffer has the same parameter value on all replicas
+  // in data parallelism.
+  absl::optional<std::vector<bool>> parameter_replicated_at_leaf_buffers_;
 };
 
 class HloGetTupleElementInstruction : public HloInstruction {
@@ -843,6 +912,10 @@ class HloGetTupleElementInstruction : public HloInstruction {
                                          HloInstruction* operand, int64 index);
   // Returns the tuple index associated with this instruction.
   int64 tuple_index() const { return tuple_index_; }
+  // Sets the tuple index associated with this instruction.
+  void set_tuple_index(int64 new_tuple_index) {
+    tuple_index_ = new_tuple_index;
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1302,8 +1375,6 @@ class HloGatherInstruction : public HloInstruction {
   absl::Span<const int64> gather_slice_sizes() const {
     return gather_slice_sizes_;
   }
-  // Returns the dump string of the gather dimension numbers.
-  string GatherDimensionNumbersToString() const;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1312,6 +1383,9 @@ class HloGatherInstruction : public HloInstruction {
       absl::Span<const int64> offset_dims,
       absl::Span<const int64> collapsed_slice_dims,
       absl::Span<const int64> start_index_map, int64 index_vector_dim);
+  // Returns the dump string of the given gather dimension numbers.
+  static string GatherDimensionNumbersToString(
+      const GatherDimensionNumbers& gather_dimension_numbers);
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1339,8 +1413,6 @@ class HloScatterInstruction : public HloInstruction {
     CHECK(scatter_dimension_numbers_ != nullptr);
     return *scatter_dimension_numbers_;
   }
-  // Returns the dump string of the scatter dimension numbers.
-  string ScatterDimensionNumbersToString() const;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1350,6 +1422,9 @@ class HloScatterInstruction : public HloInstruction {
       absl::Span<const int64> inserted_window_dims,
       absl::Span<const int64> scatter_dims_to_operand_dims,
       int64 index_vector_dim);
+  // Returns the dump string of the given scatter dimension numbers.
+  static string ScatterDimensionNumbersToString(
+      const ScatterDimensionNumbers& scatter_dimension_numbers);
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(

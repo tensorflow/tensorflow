@@ -60,6 +60,9 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",  # b/127001953
+    ],
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",

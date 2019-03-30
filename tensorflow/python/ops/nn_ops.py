@@ -65,7 +65,9 @@ def _get_sequence(value, n, channel_index, name):
     return value
   elif current_n == 1:
     value = list((value[0],) * n)
-  elif current_n != n:
+  elif current_n == n:
+    value = list(value)
+  else:
     raise ValueError("{} should be of length 1, {} or {} but was {}".format(
         name, n, n + 2, current_n))
 
@@ -528,7 +530,7 @@ class _WithSpaceToBatch(object):
     if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
       raise ValueError(
           "spatial_dims must be a montonically increasing sequence of positive "
-          "integers")  # pylint: disable=line-too-long
+          "integers")
 
     if data_format is not None and data_format.startswith("NC"):
       expected_input_rank = spatial_dims[-1]
@@ -765,7 +767,6 @@ def convolution(
     data_format=None,
     filters=None,
     dilations=None):
-  # pylint: disable=line-too-long
   """Computes sums of N-D convolutions (actually cross-correlation).
 
   This also supports either output striding via the optional `strides` parameter
@@ -851,6 +852,7 @@ def convolution(
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     filters: Alias of filter.
+    dilations: Alias of dilation_rate.
 
   Returns:
     A `Tensor` with the same type as `input` of shape
@@ -881,21 +883,14 @@ def convolution(
   filter = deprecated_argument_lookup("filters", filters, "filter", filter)
   dilation_rate = deprecated_argument_lookup(
       "dilations", dilations, "dilation_rate", dilation_rate)
-  # pylint: enable=line-too-long
-  with ops.name_scope(name, "convolution", [input, filter]) as name:
-    input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
-    input_shape = input.get_shape()
-    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
-    filter_shape = filter.get_shape()
-    op = Convolution(
-        input_shape,
-        filter_shape,
-        padding,
-        strides=strides,
-        dilation_rate=dilation_rate,
-        name=name,
-        data_format=data_format)
-    return op(input, filter)
+  return convolution_internal(
+      input,
+      filter,
+      strides=strides,
+      padding=padding,
+      data_format=data_format,
+      dilations=dilation_rate,
+      name=name)
 
 
 @tf_export("nn.convolution", v1=[])
@@ -907,19 +902,89 @@ def convolution_v2(
     data_format=None,
     dilations=None,
     name=None):
-  return convolution(
+  return convolution_internal(
       input,  # pylint: disable=redefined-builtin
       filters,
-      padding=padding,
       strides=strides,
-      dilation_rate=dilations,
-      name=name,
-      data_format=data_format)
+      padding=padding,
+      data_format=data_format,
+      dilations=dilations,
+      name=name)
+
 
 convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     deprecation.rewrite_argument_docstring(
         convolution.__doc__, "dilation_rate", "dilations"),
     "filter", "filters")
+
+
+def convolution_internal(
+    input,  # pylint: disable=redefined-builtin
+    filters,
+    strides=None,
+    padding="VALID",
+    data_format=None,
+    dilations=None,
+    name=None):
+  """Internal function which performs rank agnostic convolution."""
+  with ops.name_scope(name, "convolution", [input, filters]) as name:
+    if isinstance(input.shape, tensor_shape.TensorShape) and \
+        input.shape.rank is not None:
+      n = len(input.shape) - 2
+    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
+        input.shape is not None:
+      n = len(input.shape) - 2
+    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
+        filters.shape.rank is not None:
+      n = len(filters.shape) - 2
+    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
+        filters.shape is not None:
+      n = len(filters.shape) - 2
+    else:
+      raise ValueError("rank of input or filter must be known")
+
+    if not 1 <= n <= 3:
+      raise ValueError(
+          "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+
+    if data_format is None:
+      channel_index = n + 1
+    else:
+      channel_index = 1 if data_format.startswith("NC") else n + 1
+
+    strides = _get_sequence(strides, n, channel_index, "strides")
+    dilations = _get_sequence(dilations, n, channel_index, "dilations")
+
+    conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
+
+    if all(i == 1 for i in dilations):
+      # fast path if no dilation as gradient only supported on GPU for dilations
+      op = conv_ops[n]
+      return op(
+          input,
+          filters,
+          strides,
+          padding=padding,
+          data_format=data_format,
+          dilations=dilations,
+          name=name)
+    else:
+      if channel_index == 1:
+        strides = strides[2:]
+        dilations = dilations[2:]
+      else:
+        strides = strides[1:-1]
+        dilations = dilations[1:-1]
+
+      op = Convolution(
+          tensor_shape.as_shape(input.shape),
+          tensor_shape.as_shape(filters.shape),
+          padding,
+          strides=strides,
+          dilation_rate=dilations,
+          name=name,
+          data_format=data_format)
+      return op(input, filters)
 
 
 class Convolution(object):
@@ -1024,7 +1089,6 @@ def pool(
     name=None,
     data_format=None,
     dilations=None):
-  # pylint: disable=line-too-long
   """Performs an N-D pooling operation.
 
   In the case that `data_format` does not start with "NC", computes for
@@ -1462,6 +1526,251 @@ def _convert_padding(padding):
   return padding, explicit_paddings
 
 
+@tf_export(v1=["nn.conv1d"])
+@deprecation.deprecated_arg_values(
+    None,
+    "`NCHW` for data_format is deprecated, use `NCW` instead",
+    warn_once=True,
+    data_format="NCHW")
+@deprecation.deprecated_arg_values(
+    None,
+    "`NHWC` for data_format is deprecated, use `NWC` instead",
+    warn_once=True,
+    data_format="NHWC")
+def conv1d(
+    value=None,
+    filters=None,
+    stride=None,
+    padding=None,
+    use_cudnn_on_gpu=None,
+    data_format=None,
+    name=None,
+    input=None,  # pylint: disable=redefined-builtin
+    dilations=None):
+  r"""Computes a 1-D convolution given 3-D input and filter tensors.
+
+  Given an input tensor of shape
+    [batch, in_width, in_channels]
+  if data_format is "NWC", or
+    [batch, in_channels, in_width]
+  if data_format is "NCW",
+  and a filter / kernel tensor of shape
+  [filter_width, in_channels, out_channels], this op reshapes
+  the arguments to pass them to conv2d to perform the equivalent
+  convolution operation.
+
+  Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
+  For example, if `data_format` does not start with "NC", a tensor of shape
+    [batch, in_width, in_channels]
+  is reshaped to
+    [batch, 1, in_width, in_channels],
+  and the filter is reshaped to
+    [1, filter_width, in_channels, out_channels].
+  The result is then reshaped back to
+    [batch, out_width, out_channels]
+  \(where out_width is a function of the stride and padding as in conv2d\) and
+  returned to the caller.
+
+  Args:
+    value: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
+    filters: A 3D `Tensor`.  Must have the same type as `value`.
+    stride: An int or list of `ints` that has length `1` or `3`.  The number of
+      entries by which the filter is moved right at each step.
+    padding: 'SAME' or 'VALID'
+    use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
+    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
+      the data is stored in the order of [batch, in_width, in_channels].  The
+      `"NCW"` format stores data as [batch, in_channels, in_width].
+    name: A name for the operation (optional).
+    input: Alias for value.
+    dilations: An int or list of `ints` that has length `1` or `3` which
+      defaults to 1. The dilation factor for each dimension of input. If set to
+      k > 1, there will be k-1 skipped cells between each filter element on that
+      dimension. Dilations in the batch and depth dimensions must be 1.
+
+  Returns:
+    A `Tensor`.  Has the same type as input.
+
+  Raises:
+    ValueError: if `data_format` is invalid.
+  """
+  value = deprecation.deprecated_argument_lookup("input", input, "value", value)
+  with ops.name_scope(name, "conv1d", [value, filters]) as name:
+    # Reshape the input tensor to [batch, 1, in_width, in_channels]
+    if data_format is None or data_format == "NHWC" or data_format == "NWC":
+      data_format = "NHWC"
+      spatial_start_dim = 1
+      channel_index = 2
+    elif data_format == "NCHW" or data_format == "NCW":
+      data_format = "NCHW"
+      spatial_start_dim = 2
+      channel_index = 1
+    else:
+      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+    strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
+    dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
+
+    value = array_ops.expand_dims(value, spatial_start_dim)
+    filters = array_ops.expand_dims(filters, 0)
+    result = gen_nn_ops.conv2d(
+        value,
+        filters,
+        strides,
+        padding,
+        use_cudnn_on_gpu=use_cudnn_on_gpu,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
+    return array_ops.squeeze(result, [spatial_start_dim])
+
+
+@tf_export("nn.conv1d", v1=[])
+def conv1d_v2(
+    input,  # pylint: disable=redefined-builtin
+    filters,
+    stride,
+    padding,
+    data_format="NWC",
+    dilations=None,
+    name=None):
+  r"""Computes a 1-D convolution given 3-D input and filter tensors.
+
+  Given an input tensor of shape
+    [batch, in_width, in_channels]
+  if data_format is "NWC", or
+    [batch, in_channels, in_width]
+  if data_format is "NCW",
+  and a filter / kernel tensor of shape
+  [filter_width, in_channels, out_channels], this op reshapes
+  the arguments to pass them to conv2d to perform the equivalent
+  convolution operation.
+
+  Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
+  For example, if `data_format` does not start with "NC", a tensor of shape
+    [batch, in_width, in_channels]
+  is reshaped to
+    [batch, 1, in_width, in_channels],
+  and the filter is reshaped to
+    [1, filter_width, in_channels, out_channels].
+  The result is then reshaped back to
+    [batch, out_width, out_channels]
+  \(where out_width is a function of the stride and padding as in conv2d\) and
+  returned to the caller.
+
+  Args:
+    input: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
+    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    stride: An int or list of `ints` that has length `1` or `3`.  The number of
+      entries by which the filter is moved right at each step.
+    padding: 'SAME' or 'VALID'
+    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
+      the data is stored in the order of [batch, in_width, in_channels].  The
+      `"NCW"` format stores data as [batch, in_channels, in_width].
+    dilations: An int or list of `ints` that has length `1` or `3` which
+      defaults to 1. The dilation factor for each dimension of input. If set to
+      k > 1, there will be k-1 skipped cells between each filter element on that
+      dimension. Dilations in the batch and depth dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`.  Has the same type as input.
+
+  Raises:
+    ValueError: if `data_format` is invalid.
+  """
+  return conv1d(
+      input,  # pylint: disable=redefined-builtin
+      filters,
+      stride,
+      padding,
+      use_cudnn_on_gpu=True,
+      data_format=data_format,
+      name=name,
+      dilations=dilations)
+
+
+@tf_export("nn.conv1d_transpose")
+def conv1d_transpose(
+    input,  # pylint: disable=redefined-builtin
+    filters,
+    output_shape,
+    strides,
+    padding="SAME",
+    data_format="NWC",
+    dilations=None,
+    name=None):
+  """The transpose of `conv1d`.
+
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `conv1d` rather than an actual
+  deconvolution.
+
+  Args:
+    input: A 3-D `Tensor` of type `float` and shape
+      `[batch, in_width, in_channels]` for `NWC` data format or
+      `[batch, in_channels, in_width]` for `NCW` data format.
+    filters: A 3-D `Tensor` with the same type as `value` and shape
+      `[filter_width, output_channels, in_channels]`.  `filter`'s
+      `in_channels` dimension must match that of `value`.
+    output_shape: A 1-D `Tensor`, containing three elements, representing the
+      output shape of the deconvolution op.
+    strides: An int or list of `ints` that has length `1` or `3`.  The number of
+      entries by which the filter is moved right at each step.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. `'NWC'` and `'NCW'` are supported.
+    dilations: An int or list of `ints` that has length `1` or `3` which
+      defaults to 1. The dilation factor for each dimension of input. If set to
+      k > 1, there will be k-1 skipped cells between each filter element on that
+      dimension. Dilations in the batch and depth dimensions must be 1.
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError: If input/output depth does not match `filter`'s shape, if
+      `output_shape` is not at 3-element vector, if `padding` is other than
+      `'VALID'` or `'SAME'`, or if `data_format` is invalid.
+  """
+  with ops.name_scope(name, "conv1d_transpose",
+                      [input, filters, output_shape]) as name:
+    # The format could be either NWC or NCW, map to NHWC or NCHW
+    if data_format is None or data_format == "NWC":
+      data_format = "NHWC"
+      spatial_start_dim = 1
+      channel_index = 2
+    elif data_format == "NCW":
+      data_format = "NCHW"
+      spatial_start_dim = 2
+      channel_index = 1
+    else:
+      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+
+    # Reshape the input tensor to [batch, 1, in_width, in_channels]
+    strides = [1] + _get_sequence(strides, 1, channel_index, "stride")
+    dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
+
+    input = array_ops.expand_dims(input, spatial_start_dim)
+    filters = array_ops.expand_dims(filters, 0)
+    output_shape = list(output_shape) if not isinstance(
+        output_shape, ops.Tensor) else output_shape
+    output_shape = array_ops.concat([output_shape[: spatial_start_dim], [1],
+                                     output_shape[spatial_start_dim:]], 0)
+
+    result = gen_nn_ops.conv2d_backprop_input(
+        input_sizes=output_shape,
+        filter=filters,
+        out_backprop=input,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
+    return array_ops.squeeze(result, spatial_start_dim)
+
+
 @tf_export("nn.conv2d", v1=[])
 def conv2d_v2(input,  # pylint: disable=redefined-builtin
               filters,
@@ -1643,70 +1952,6 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
                            name=name)
 
 
-@tf_export("nn.conv2d_backprop_filter", v1=[])
-def conv2d_backprop_filter_v2(input,  # pylint: disable=redefined-builtin
-                              filter_sizes,
-                              out_backprop,
-                              strides,
-                              padding,
-                              data_format="NHWC",
-                              dilations=None,
-                              name=None):
-  r"""Computes the gradients of convolution with respect to the filter.
-
-  Args:
-    input: A `Tensor`. Must be one of the following types:
-      `half`, `bfloat16`, `float32`, `float64`.
-      4-D with shape `[batch, in_height, in_width, in_channels]`.
-    filter_sizes: A `Tensor` of type `int32`.
-      An integer vector representing the tensor shape of `filter`,
-      where `filter` is a 4-D
-      `[filter_height, filter_width, in_channels, out_channels]` tensor.
-    out_backprop: A `Tensor`. Must have the same type as `input`.
-      4-D with shape `[batch, out_height, out_width, out_channels]`.
-      Gradients w.r.t. the output of the convolution.
-    strides: A list of `ints`.
-      The stride of the sliding window for each dimension of the input
-      of the convolution. Must be in the same order as the dimension specified
-      with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`.
-    data_format: An optional `string` from: `"NHWC", "NCHW"`.
-      Defaults to `"NHWC"`.
-      Specify the data format of the input and output data. With the
-      default format "NHWC", the data is stored in the order of:
-          [batch, in_height, in_width, in_channels].
-      Alternatively, the format could be "NCHW", the data storage order of:
-          [batch, in_channels, in_height, in_width].
-    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
-      1-D tensor of length 4.  The dilation factor for each dimension of
-      `input`. If set to k > 1, there will be k-1 skipped cells between each
-      filter element on that dimension. The dimension order is determined by
-      the value of `data_format`, see above for details. Dilations in the batch
-      and depth dimensions must be 1.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor`. Has the same type as `input`.
-  """
-  if dilations is None:
-    dilations = [1, 1, 1, 1]
-  return conv2d_backprop_filter(input,  # pylint: disable=redefined-builtin
-                                filter_sizes,
-                                out_backprop,
-                                strides,
-                                padding,
-                                use_cudnn_on_gpu=True,
-                                data_format=data_format,
-                                dilations=dilations,
-                                name=name)
-
-
 @tf_export(v1=["nn.conv2d_backprop_filter"])
 def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-default-value
     input,
@@ -1765,70 +2010,6 @@ def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-defau
   return gen_nn_ops.conv2d_backprop_filter(
       input, filter_sizes, out_backprop, strides, padding, use_cudnn_on_gpu,
       explicit_paddings, data_format, dilations, name)
-
-
-@tf_export("nn.conv2d_backprop_input", v1=[])
-def conv2d_backprop_input_v2(input_sizes,
-                             filters,
-                             out_backprop,
-                             strides,
-                             padding,
-                             data_format="NHWC",
-                             dilations=None,
-                             name=None):
-  r"""Computes the gradients of convolution with respect to the input.
-
-  Args:
-    input_sizes: A `Tensor` of type `int32`.
-      An integer vector representing the shape of `input`,
-      where `input` is a 4-D `[batch, height, width, channels]` tensor.
-    filters: A `Tensor`. Must be one of the following types:
-      `half`, `bfloat16`, `float32`, `float64`.
-      4-D with shape
-      `[filter_height, filter_width, in_channels, out_channels]`.
-    out_backprop: A `Tensor`. Must have the same type as `filters`.
-      4-D with shape `[batch, out_height, out_width, out_channels]`.
-      Gradients w.r.t. the output of the convolution.
-    strides: A list of `ints`.
-      The stride of the sliding window for each dimension of the input
-      of the convolution. Must be in the same order as the dimension specified
-      with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`.
-    data_format: An optional `string` from: `"NHWC", "NCHW"`.
-      Defaults to `"NHWC"`.
-      Specify the data format of the input and output data. With the
-      default format "NHWC", the data is stored in the order of:
-          [batch, in_height, in_width, in_channels].
-      Alternatively, the format could be "NCHW", the data storage order of:
-          [batch, in_channels, in_height, in_width].
-    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
-      1-D tensor of length 4.  The dilation factor for each dimension of
-      `input`. If set to k > 1, there will be k-1 skipped cells between each
-      filter element on that dimension. The dimension order is determined by
-      the value of `data_format`, see above for details. Dilations in the batch
-      and depth dimensions must be 1.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor`. Has the same type as `filters`.
-  """
-  if dilations is None:
-    dilations = [1, 1, 1, 1]
-  return conv2d_backprop_input(input_sizes,
-                               filters,
-                               out_backprop,
-                               strides,
-                               padding,
-                               use_cudnn_on_gpu=True,
-                               data_format=data_format,
-                               dilations=dilations,
-                               name=name)
 
 
 @tf_export(v1=["nn.conv2d_backprop_input"])
@@ -1905,12 +2086,13 @@ def conv2d_transpose(
     data_format="NHWC",
     name=None,
     input=None,  # pylint: disable=redefined-builtin
-    filters=None):
+    filters=None,
+    dilations=None):
   """The transpose of `conv2d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv2d` rather than an actual
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `conv2d` rather than an actual
   deconvolution.
 
   Args:
@@ -1933,6 +2115,14 @@ def conv2d_transpose(
     name: Optional name for the returned tensor.
     input: Alias for value.
     filters: Alias for filter.
+    dilations: An int or list of `ints` that has length `1`, `2` or `4`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the `H` and `W` dimension. By
+      default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details. Dilations in the batch and depth dimensions if a 4-d tensor
+      must be 1.
 
   Returns:
     A `Tensor` with the same type as `value`.
@@ -1945,70 +2135,86 @@ def conv2d_transpose(
   filter = deprecated_argument_lookup("filters", filters, "filter", filter)
   with ops.name_scope(name, "conv2d_transpose",
                       [value, filter, output_shape]) as name:
-    if data_format not in ("NCHW", "NHWC"):
-      raise ValueError("data_format has to be either NCHW or NHWC.")
-    value = ops.convert_to_tensor(value, name="value")
-    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
-    axis = 3 if data_format == "NHWC" else 1
-    if not value.get_shape().dims[axis].is_compatible_with(
-        filter.get_shape()[3]):
-      raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[axis],
-                                         filter.get_shape()[3]))
-
-    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
-      raise ValueError("output_shape must have shape (4,), got {}".format(
-          output_shape_.get_shape()))
-
-    if isinstance(output_shape, (list, np.ndarray)):
-      # output_shape's shape should be == [4] if reached this point.
-      if not filter.get_shape().dims[2].is_compatible_with(
-          output_shape[axis]):
-        raise ValueError(
-            "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[axis],
-                              filter.get_shape()[2]))
-
-    if padding != "VALID" and padding != "SAME":
-      raise ValueError("padding must be either VALID or SAME:"
-                       " {}".format(padding))
-
-    strides = _get_sequence(strides, 2, axis, "strides")
-
-    return gen_nn_ops.conv2d_backprop_input(
-        input_sizes=output_shape_,
-        filter=filter,
-        out_backprop=value,
-        strides=strides,
+    return conv2d_transpose_v2(
+        value,
+        filter,
+        output_shape,
+        strides,
         padding=padding,
         data_format=data_format,
+        dilations=dilations,
         name=name)
 
 
-# pylint: disable=redefined-builtin
 @tf_export("nn.conv2d_transpose", v1=[])
 def conv2d_transpose_v2(
-    input,
+    input,  # pylint: disable=redefined-builtin
     filters,  # pylint: disable=redefined-builtin
     output_shape,
     strides,
     padding="SAME",
     data_format="NHWC",
+    dilations=None,
     name=None):
-  return conv2d_transpose(
-      input,
-      filters,
-      output_shape,
-      strides,
-      padding=padding,
-      data_format=data_format,
-      name=name)
-# pylint: enable=redefined-builtin
-conv2d_transpose_v2.__doc__ = deprecation.rewrite_argument_docstring(
-    deprecation.rewrite_argument_docstring(
-        conv2d_transpose.__doc__, "filter", "filters"),
-    "value", "input")
+  """The transpose of `conv2d`.
+
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+  actually the transpose (gradient) of `conv2d` rather than an actual
+  deconvolution.
+
+  Args:
+    input: A 4-D `Tensor` of type `float` and shape `[batch, height, width,
+      in_channels]` for `NHWC` data format or `[batch, in_channels, height,
+      width]` for `NCHW` data format.
+    filters: A 4-D `Tensor` with the same type as `value` and shape `[height,
+      width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
+      must match that of `value`.
+    output_shape: A 1-D `Tensor` representing the output shape of the
+      deconvolution op.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
+      stride of the sliding window for each dimension of `input`. If a single
+      value is given it is replicated in the `H` and `W` dimension. By default
+      the `N` and `C` dimensions are set to 0. The dimension order is determined
+      by the value of `data_format`, see below for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    dilations: An int or list of `ints` that has length `1`, `2` or `4`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the `H` and `W` dimension. By
+      default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details. Dilations in the batch and depth dimensions if a 4-d tensor
+      must be 1.
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError: If input/output depth does not match `filter`'s shape, or if
+      padding is other than `'VALID'` or `'SAME'`.
+  """
+  with ops.name_scope(name, "conv2d_transpose",
+                      [input, filter, output_shape]) as name:
+    if data_format is None:
+      data_format = "NHWC"
+    channel_index = 1 if data_format.startswith("NC") else 3
+
+    strides = _get_sequence(strides, 2, channel_index, "strides")
+    dilations = _get_sequence(dilations, 2, channel_index, "dilations")
+
+    return gen_nn_ops.conv2d_backprop_input(
+        input_sizes=output_shape,
+        filter=filters,
+        out_backprop=input,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
 
 
 @tf_export("nn.atrous_conv2d_transpose")
@@ -2021,9 +2227,9 @@ def atrous_conv2d_transpose(value,
   """The transpose of `atrous_conv2d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `atrous_conv2d` rather than an actual
-  deconvolution.
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `atrous_conv2d` rather than an
+  actual deconvolution.
 
   Args:
     value: A 4-D `Tensor` of type `float`. It needs to be in the default `NHWC`
@@ -2079,6 +2285,9 @@ def atrous_conv2d_transpose(value,
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
+
+    if isinstance(output_shape, tuple):
+      output_shape = list(output_shape)
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
@@ -2169,7 +2378,7 @@ def conv3d_v2(input,  # pylint: disable=redefined-builtin,missing-docstring
               name=None):
   if dilations is None:
     dilations = [1, 1, 1, 1, 1]
-  return gen_nn_ops.conv3d(input,  # pylint: disable=redefined-builtin
+  return gen_nn_ops.conv3d(input,
                            filters,
                            strides,
                            padding,
@@ -2208,12 +2417,13 @@ def conv3d_transpose(
     data_format="NDHWC",
     name=None,
     input=None,  # pylint: disable=redefined-builtin
-    filters=None):
+    filters=None,
+    dilations=None):
   """The transpose of `conv3d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv3d` rather than an actual
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `conv3d` rather than an actual
   deconvolution.
 
   Args:
@@ -2233,6 +2443,14 @@ def conv3d_transpose(
     name: Optional name for the returned tensor.
     input: Alias of value.
     filters: Alias of filter.
+    dilations: An int or list of `ints` that has length `1`, `3` or `5`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the `D`, `H` and `W` dimension.
+      By default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details. Dilations in the batch and depth dimensions if a 5-d tensor
+      must be 1.
 
   Returns:
     A `Tensor` with the same type as `value`.
@@ -2243,68 +2461,166 @@ def conv3d_transpose(
   """
   filter = deprecated_argument_lookup("filters", filters, "filter", filter)
   value = deprecated_argument_lookup("input", input, "value", value)
-  with ops.name_scope(name, "conv3d_transpose",
-                      [value, filter, output_shape]) as name:
-    value = ops.convert_to_tensor(value, name="value")
-    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
-    axis = 1 if data_format == "NCDHW" else 4
-    if not value.get_shape().dims[axis].is_compatible_with(
-        filter.get_shape()[4]):
-      raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[axis],
-                                         filter.get_shape()[4]))
-
-    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(5)):
-      raise ValueError("output_shape must have shape (5,), got {}".format(
-          output_shape_.get_shape()))
-
-    if isinstance(output_shape, (list, np.ndarray)):
-      # output_shape's shape should be == [5] if reached this point.
-      if not filter.get_shape().dims[3].is_compatible_with(
-          output_shape[axis]):
-        raise ValueError(
-            "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[axis],
-                              filter.get_shape()[3]))
-
-    if padding != "VALID" and padding != "SAME":
-      raise ValueError("padding must be either VALID or SAME:"
-                       " {}".format(padding))
-
-    return gen_nn_ops.conv3d_backprop_input_v2(
-        input_sizes=output_shape_,
-        filter=filter,
-        out_backprop=value,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        name=name)
-
-
-# pylint: disable=redefined-builtin
-@tf_export("nn.conv3d_transpose", v1=[])
-def conv3d_transpose_v2(
-    input,
-    filters,
-    output_shape,
-    strides,
-    padding="SAME",
-    data_format="NDHWC",
-    name=None):
-  return conv3d_transpose(
-      input,
-      filters,
+  return conv3d_transpose_v2(
+      value,
+      filter,
       output_shape,
       strides,
       padding=padding,
       data_format=data_format,
+      dilations=dilations,
       name=name)
-# pylint: enable=redefined-builtin
-conv3d_transpose_v2.__doc__ = deprecation.rewrite_argument_docstring(
-    deprecation.rewrite_argument_docstring(
-        conv3d_transpose.__doc__, "filter", "filters"),
-    "value", "input")
+
+
+@tf_export("nn.conv3d_transpose", v1=[])
+def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
+                        filters,
+                        output_shape,
+                        strides,
+                        padding="SAME",
+                        data_format="NDHWC",
+                        dilations=None,
+                        name=None):
+  """The transpose of `conv3d`.
+
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+  actually the transpose (gradient) of `conv2d` rather than an actual
+  deconvolution.
+
+  Args:
+    input: A 5-D `Tensor` of type `float` and shape `[batch, height, width,
+      in_channels]` for `NHWC` data format or `[batch, in_channels, height,
+      width]` for `NCHW` data format.
+    filters: A 5-D `Tensor` with the same type as `value` and shape `[height,
+      width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
+      must match that of `value`.
+    output_shape: A 1-D `Tensor` representing the output shape of the
+      deconvolution op.
+    strides: An int or list of `ints` that has length `1`, `3` or `5`.  The
+      stride of the sliding window for each dimension of `input`. If a single
+      value is given it is replicated in the `D`, `H` and `W` dimension. By
+      default the `N` and `C` dimensions are set to 0. The dimension order is
+      determined by the value of `data_format`, see below for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. 'NDHWC' and 'NCDHW' are supported.
+    dilations: An int or list of `ints` that has length `1`, `3` or `5`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the `D`, `H` and `W` dimension.
+      By default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details. Dilations in the batch and depth dimensions if a 5-d tensor
+      must be 1.
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+  """
+  with ops.name_scope(name, "conv3d_transpose",
+                      [input, filter, output_shape]) as name:
+    if data_format is None:
+      data_format = "NDHWC"
+    channel_index = 1 if data_format.startswith("NC") else 4
+
+    strides = _get_sequence(strides, 3, channel_index, "strides")
+    dilations = _get_sequence(dilations, 3, channel_index, "dilations")
+
+    return gen_nn_ops.conv3d_backprop_input_v2(
+        input_sizes=output_shape,
+        filter=filters,
+        out_backprop=input,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
+
+
+CONV_TRANSPOSE_OPS = (
+    conv1d_transpose,
+    conv2d_transpose_v2,
+    conv3d_transpose_v2,
+)
+
+
+@tf_export("nn.conv_transpose")
+def conv_transpose(input,  # pylint: disable=redefined-builtin
+                   filters,
+                   output_shape,
+                   strides,
+                   padding="SAME",
+                   data_format=None,
+                   dilations=None,
+                   name=None):
+  """The transpose of `convolution`.
+
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+  actually the transpose (gradient) of `convolution` rather than an actual
+  deconvolution.
+
+  Args:
+    input: An N+2 dimensional `Tensor` of shape
+      `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
+      not start with "NC" (default), or
+      `[batch_size, in_channels] + input_spatial_shape` if data_format starts
+      with "NC". It must be one of the following types:
+      `half`, `bfloat16`, `float32`, `float64`.
+    filters: An N+2 dimensional `Tensor` with the same type as `input` and
+      shape `spatial_filter_shape + [in_channels, out_channels]`.
+    output_shape: A 1-D `Tensor` representing the output shape of the
+      deconvolution op.
+    strides: An int or list of `ints` that has length `1`, `N` or `N+2`.  The
+      stride of the sliding window for each dimension of `input`. If a single
+      value is given it is replicated in the spatial dimensions. By default
+      the `N` and `C` dimensions are set to 0. The dimension order is determined
+      by the value of `data_format`, see below for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
+      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
+    dilations: An int or list of `ints` that has length `1`, `N` or `N+2`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the spatial dimensions. By
+      default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details.
+    name: A name for the operation (optional). If not specified "conv_transpose"
+      is used.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+  """
+  with ops.name_scope(name, "conv_transpose",
+                      [input, filter, output_shape]) as name:
+    if isinstance(output_shape, collections.Sized):
+      n = len(output_shape) - 2
+    elif isinstance(output_shape, ops.Tensor):
+      n = output_shape.shape[0] - 2
+    else:
+      raise ValueError("output_shape must be a tensor or sized collection.")
+
+    if not 1 <= n <= 3:
+      raise ValueError(
+          "output_shape must be of length 3, 4 or 5 but was {}.".format(n + 2))
+
+    op = CONV_TRANSPOSE_OPS[n-1]
+    return op(
+        input,
+        filters,
+        output_shape,
+        strides,
+        padding=padding,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
 
 
 @tf_export("nn.bias_add")
@@ -2322,13 +2638,21 @@ def bias_add(value, bias, data_format=None, name=None):
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
-    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    data_format: A string. 'N...C' and 'NC...' are supported.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `value`.
   """
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
+    if data_format is not None:
+      if data_format.startswith("NC"):
+        data_format = "NCHW"
+      elif data_format.startswith("N") and data_format.endswith("C"):
+        data_format = "NHWC"
+      else:
+        raise ValueError("data_format must be of the form `N...C` or `NC...`")
+
     if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
@@ -2434,7 +2758,7 @@ def leaky_relu(features, alpha=0.2, name=None):
   with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
-      features = math_ops.to_float(features)
+      features = math_ops.cast(features, dtypes.float32)
     if compat.forward_compatible(2018, 11, 1):
       if isinstance(alpha, np.ndarray):
         alpha = alpha.item()
@@ -2506,7 +2830,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # We need its original shape for shape inference.
   shape = logits.get_shape()
-  is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
+  is_last_dim = (dim == -1) or (dim == shape.ndims - 1)
 
   if is_last_dim:
     return compute_op(logits, name=name)
@@ -2514,7 +2838,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   dim_val = dim
   if isinstance(dim, ops.Tensor):
     dim_val = tensor_util.constant_value(dim)
-  if dim_val is not None and (dim_val < -shape.ndims or dim_val >= shape.ndims):
+  if dim_val is not None and not -shape.ndims <= dim_val < shape.ndims:
     raise errors_impl.InvalidArgumentError(
         None, None,
         "Dimension (%d) must be in the range [%d, %d) where %d is the number of"
@@ -2919,7 +3243,7 @@ def softmax_cross_entropy_with_logits(
       labels=labels, logits=logits, axis=dim, name=name)
 
 
-@tf_export("nn.sparse_softmax_cross_entropy_with_logits")
+@tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
 def sparse_softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
@@ -3043,8 +3367,123 @@ def sparse_softmax_cross_entropy_with_logits(
         return cost
 
 
-@tf_export("nn.avg_pool")
-def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
+@tf_export("nn.sparse_softmax_cross_entropy_with_logits", v1=[])
+def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
+  """Computes sparse softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**  For this operation, the probability of a given label is considered
+  exclusive.  That is, soft classes are not allowed, and the `labels` vector
+  must provide a single specific index for the true class for each row of
+  `logits` (each minibatch entry).  For soft softmax classification with
+  a probability distribution for each entry, see
+  `softmax_cross_entropy_with_logits_v2`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  A common use case is to have logits of shape
+  `[batch_size, num_classes]` and have labels of shape
+  `[batch_size]`, but higher dimensions are supported, in which
+  case the `dim`-th dimension is assumed to be of size `num_classes`.
+  `logits` must have the dtype of `float16`, `float32`, or `float64`, and
+  `labels` must have the dtype of `int32` or `int64`.
+
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
+  Args:
+    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+      `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
+      must be an index in `[0, num_classes)`. Other values will raise an
+      exception when this op is run on CPU, and return `NaN` for corresponding
+      loss and gradient rows on GPU.
+    logits: Unscaled log probabilities of shape `[d_0, d_1, ..., d_{r-1},
+      num_classes]` and dtype `float16`, `float32`, or `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same shape as `labels` and of the same type as `logits`
+    with the softmax cross entropy loss.
+
+  Raises:
+    ValueError: If logits are scalars (need to have rank >= 1) or if the rank
+      of the labels is not equal to the rank of the logits minus one.
+  """
+  return sparse_softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits, name=name)
+
+
+@tf_export("nn.avg_pool", v1=["nn.avg_pool_v2"])
+def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  # pylint: disable=redefined-builtin
+  """Performs the avg pooling on the input.
+
+  Each entry in `output` is the mean of the corresponding size `ksize`
+  window in `value`.
+
+  Args:
+    input:  Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
+      [num_channels]` if `data_format` does not start with "NC" (default), or
+      `[batch_size, num_channels] + input_spatial_shape` if data_format starts
+      with "NC". Pooling happens over the spatial dimensions only.
+    ksize: An int or list of `ints` that has length `1`, `N` or `N+2`. The size
+      of the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
+      stride of the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. Specifies the channel dimension. For N=1 it can be
+      either "NWC" (default) or "NCW", for N=2 it can be either "NHWC" (default)
+      or "NCHW" and for N=3 either "NDHWC" (default) or "NCDHW".
+    name: Optional name for the operation.
+
+  Returns:
+    A `Tensor` of format specified by `data_format`.
+    The average pooled output tensor.
+  """
+  if input.shape is not None:
+    n = len(input.shape) - 2
+  elif data_format is not None:
+    n = len(data_format) - 2
+  else:
+    raise ValueError(
+        "The input must have a rank or a data format must be given.")
+  if not 1 <= n <= 3:
+    raise ValueError(
+        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+
+  if data_format is None:
+    channel_index = n + 1
+  else:
+    channel_index = 1 if data_format.startswith("NC") else n + 1
+
+  ksize = _get_sequence(ksize, n, channel_index, "ksize")
+  strides = _get_sequence(strides, n, channel_index, "strides")
+
+  avg_pooling_ops = {
+      1: avg_pool1d,
+      2: gen_nn_ops.avg_pool,
+      3: gen_nn_ops.avg_pool3d
+  }
+
+  op = avg_pooling_ops[n]
+  return op(
+      input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      data_format=data_format,
+      name=name)
+
+
+@tf_export(v1=["nn.avg_pool", "nn.avg_pool2d"])
+def avg_pool(value, ksize, strides, padding, data_format="NHWC",
+             name=None, input=None):  # pylint: disable=redefined-builtin
   """Performs the average pooling on the input.
 
   Each entry in `output` is the mean of the corresponding size `ksize`
@@ -3053,10 +3492,53 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
       `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
-    ksize: A list or tuple of 4 ints. The size of the window for each dimension
-      of the input tensor.
-    strides: A list or tuple of 4 ints. The stride of the sliding window for
-      each dimension of the input tensor.
+    ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
+      the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`. The
+      stride of the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    name: Optional name for the operation.
+    input: Alias for value.
+
+  Returns:
+    A `Tensor` with the same type as `value`.  The average pooled output tensor.
+  """
+  with ops.name_scope(name, "AvgPool", [value]) as name:
+    value = deprecation.deprecated_argument_lookup(
+        "input", input, "value", value)
+
+    if data_format is None:
+      data_format = "NHWC"
+    channel_index = 1 if data_format.startswith("NC") else 3
+
+    ksize = _get_sequence(ksize, 2, channel_index, "ksize")
+    strides = _get_sequence(strides, 2, channel_index, "strides")
+
+    return gen_nn_ops.avg_pool(
+        value,
+        ksize=ksize,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
+
+
+@tf_export("nn.avg_pool2d", v1=[])
+def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  # pylint: disable=redefined-builtin
+  """Performs the average pooling on the input.
+
+  Each entry in `output` is the mean of the corresponding size `ksize`
+  window in `value`.
+
+  Args:
+    input: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
+      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+    ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
+      the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`. The
+      stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
@@ -3065,10 +3547,100 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` with the same type as `value`.  The average pooled output tensor.
   """
-  with ops.name_scope(name, "AvgPool", [value]) as name:
-    value = ops.convert_to_tensor(value, name="input")
+  with ops.name_scope(name, "AvgPool2D", [input]) as name:
+    if data_format is None:
+      data_format = "NHWC"
+    channel_index = 1 if data_format.startswith("NC") else 3
+
+    ksize = _get_sequence(ksize, 2, channel_index, "ksize")
+    strides = _get_sequence(strides, 2, channel_index, "strides")
+
     return gen_nn_ops.avg_pool(
-        value,
+        input,
+        ksize=ksize,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
+
+
+@tf_export("nn.avg_pool1d")
+def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  # pylint: disable=redefined-builtin
+  """Performs the average pooling on the input.
+
+  Each entry in `output` is the mean of the corresponding size `ksize`
+  window in `value`.
+
+  Note internally this op reshapes and uses the underlying 2d operation.
+
+  Args:
+    input: A 3-D `Tensor` of the format specified by `data_format`.
+    ksize: An int or list of `ints` that has length `1` or `3`. The size of the
+      window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1` or `3`. The stride of
+      the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of format specified by `data_format`.
+    The max pooled output tensor.
+  """
+  with ops.name_scope(name, "AvgPool1D", [input]) as name:
+    if data_format is None:
+      data_format = "NWC"
+    channel_index = 1 if data_format.startswith("NC") else 2
+    ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
+    strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
+
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
+    expanding_dim = 1 if data_format == "NWC" else 2
+
+    input = array_ops.expand_dims_v2(input, expanding_dim)
+    result = gen_nn_ops.avg_pool(
+        input,
+        ksize=ksize,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
+    return array_ops.squeeze(result, expanding_dim)
+
+
+@tf_export("nn.avg_pool3d")
+def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):  # pylint: disable=redefined-builtin
+  """Performs the average pooling on the input.
+
+  Each entry in `output` is the mean of the corresponding size `ksize`
+  window in `value`.
+
+  Args:
+    input: A 5-D `Tensor` of shape `[batch, height, width, channels]` and type
+      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+    ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
+      the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `3` or `5`. The
+      stride of the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. 'NDHWC' and 'NCDHW' are supported.
+    name: Optional name for the operation.
+
+  Returns:
+    A `Tensor` with the same type as `value`.  The average pooled output tensor.
+  """
+  with ops.name_scope(name, "AvgPool3D", [input]) as name:
+    if data_format is None:
+      data_format = "NDHWC"
+    channel_index = 1 if data_format.startswith("NC") else 3
+
+    ksize = _get_sequence(ksize, 3, channel_index, "ksize")
+    strides = _get_sequence(strides, 3, channel_index, "strides")
+
+    return gen_nn_ops.avg_pool3d(
+        input,
         ksize=ksize,
         strides=strides,
         padding=padding,
@@ -3108,7 +3680,7 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   else:
     raise ValueError(
         "The input must have a rank or a data format must be given.")
-  if n < 1 or n > 3:
+  if not 1 <= n <= 3:
     raise ValueError(
         "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
 
@@ -3126,7 +3698,7 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
       3: gen_nn_ops.max_pool3d
   }
 
-  op = max_pooling_ops.get(n)
+  op = max_pooling_ops[n]
   return op(
       input,
       ksize=ksize,
@@ -3134,8 +3706,6 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
       padding=padding,
       data_format=data_format,
       name=name)
-
-
 # pylint: enable=redefined-builtin
 
 
@@ -3308,20 +3878,23 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
 # pylint: enable=redefined-builtin
 
 
-# pylint: disable=redefined-builtin
 @tf_export("nn.max_pool_with_argmax", v1=[])
-def max_pool_with_argmax_v2(input,
-                            ksize,
-                            strides,
-                            padding,
-                            data_format="NHWC",
-                            output_dtype=dtypes.int64,
-                            name=None):
+def max_pool_with_argmax_v2(
+    input,  # pylint: disable=redefined-builtin
+    ksize,
+    strides,
+    padding,
+    data_format="NHWC",
+    output_dtype=dtypes.int64,
+    include_batch_in_index=False,
+    name=None):
   """Performs max pooling on the input and outputs both max values and indices.
 
   The indices in `argmax` are flattened, so that a maximum value at position
-  `[b, y, x, c]` becomes flattened index
-  `((b * height + y) * width + x) * channels + c`.
+  `[b, y, x, c]` becomes flattened index: `(y * width + x) * channels + c` if
+  `include_batch_in_index` is False;
+  `((b * height + y) * width + x) * channels + c`
+  if `include_batch_in_index` is True.
 
   The indices returned are always in `[0, height) x [0, width)` before
   flattening, even if padding is involved and the mathematically correct answer
@@ -3347,6 +3920,8 @@ def max_pool_with_argmax_v2(input,
     output_dtype: An optional `tf.DType` from: `tf.int32, tf.int64`.
       Defaults to `tf.int64`.
       The dtype of the returned argmax tensor.
+    include_batch_in_index: An optional `boolean`. Defaults to `False`.
+      Whether to include batch dimension in flattened index of `argmax`.
     name: A name for the operation (optional).
 
   Returns:
@@ -3362,23 +3937,27 @@ def max_pool_with_argmax_v2(input,
   ksize = _get_sequence(ksize, 2, 3, "ksize")
   strides = _get_sequence(strides, 2, 3, "strides")
 
-  return gen_nn_ops.max_pool_with_argmax(input=input,
-                                         ksize=ksize,
-                                         strides=strides,
-                                         padding=padding,
-                                         Targmax=output_dtype,
-                                         name=name)
+  return gen_nn_ops.max_pool_with_argmax(
+      input=input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      Targmax=output_dtype,
+      include_batch_in_index=include_batch_in_index,
+      name=name)
 
 
 @tf_export(v1=["nn.max_pool_with_argmax"])
-def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,invalid-name
-                            ksize,
-                            strides,
-                            padding,
-                            data_format="NHWC",
-                            Targmax=None,  # pylint: disable=invalid-name
-                            name=None,
-                            output_dtype=None):
+def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
+    input,  # pylint: disable=redefined-builtin
+    ksize,
+    strides,
+    padding,
+    data_format="NHWC",
+    Targmax=None,
+    name=None,
+    output_dtype=None,
+    include_batch_in_index=False):
   if data_format != "NHWC":
     raise ValueError("Data formats other than 'NHWC' are not yet supported")
 
@@ -3387,10 +3966,16 @@ def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,invalid-
   if Targmax is None:
     Targmax = dtypes.int64
   return gen_nn_ops.max_pool_with_argmax(
-      input, ksize, strides, padding, Targmax, name)
+      input=input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      Targmax=Targmax,
+      include_batch_in_index=include_batch_in_index,
+      name=name)
+
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
-# pylint: enable=redefined-builtin
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -3460,7 +4045,7 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     return bias_add(mm, biases, name=name)
 
 
-def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
+def xw_plus_b_v1(x, weights, biases, name=None):
   """Computes matmul(x, weights) + biases.
 
   This is a deprecated version of that will soon be removed.
@@ -3514,7 +4099,7 @@ def _get_noise_shape(x, noise_shape):
                              "Rate should be set to `rate = 1 - keep_prob`.",
                              "keep_prob")
 def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
-            rate=None):  # pylint: disable=invalid-name
+            rate=None):
   """Computes dropout.
 
   For each element of `x`, with probability `rate`, outputs `0`, and otherwise
@@ -3564,7 +4149,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 
 
 @tf_export("nn.dropout", v1=[])
-def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
+def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   """Computes dropout.
 
   With probability `rate`, drops elements of `x`. Input that are kept are
@@ -3673,7 +4258,9 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
 
 
 def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
-  r"""Finds values of the `n`-th order statistic for the last dmension.
+  r"""Finds values of the `n`-th smallest value for the last dimension.
+
+  Note that n is zero-indexed.
 
   If the input is a vector (rank-1), finds the entries which is the nth-smallest
   value in the vector and outputs their values as scalar tensor.
@@ -3986,271 +4573,6 @@ def fractional_avg_pool_v2(value,
     return gen_nn_ops.fractional_avg_pool(value, pooling_ratio, pseudo_random,
                                           overlapping, deterministic=True,
                                           seed=seed1, seed2=seed2, name=name)
-
-
-@tf_export(v1=["nn.conv1d"])
-@deprecation.deprecated_arg_values(
-    None,
-    "`NCHW` for data_format is deprecated, use `NCW` instead",
-    warn_once=True,
-    data_format="NCHW")
-@deprecation.deprecated_arg_values(
-    None,
-    "`NHWC` for data_format is deprecated, use `NWC` instead",
-    warn_once=True,
-    data_format="NHWC")
-def conv1d(
-    value,
-    filters,
-    stride,
-    padding,
-    use_cudnn_on_gpu=None,
-    data_format=None,
-    name=None,
-    input=None,  # pylint: disable=redefined-builtin
-    dilations=None):
-  r"""Computes a 1-D convolution given 3-D input and filter tensors.
-
-  Given an input tensor of shape
-    [batch, in_width, in_channels]
-  if data_format is "NWC", or
-    [batch, in_channels, in_width]
-  if data_format is "NCW",
-  and a filter / kernel tensor of shape
-  [filter_width, in_channels, out_channels], this op reshapes
-  the arguments to pass them to conv2d to perform the equivalent
-  convolution operation.
-
-  Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
-  For example, if `data_format` does not start with "NC", a tensor of shape
-    [batch, in_width, in_channels]
-  is reshaped to
-    [batch, 1, in_width, in_channels],
-  and the filter is reshaped to
-    [1, filter_width, in_channels, out_channels].
-  The result is then reshaped back to
-    [batch, out_width, out_channels]
-  \(where out_width is a function of the stride and padding as in conv2d\) and
-  returned to the caller.
-
-  Args:
-    value: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
-    filters: A 3D `Tensor`.  Must have the same type as `value`.
-    stride: An int or list of `ints` that has length `1` or `3`.  The number of
-      entries by which the filter is moved right at each step.
-    padding: 'SAME' or 'VALID'
-    use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
-    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults
-      to `"NWC"`, the data is stored in the order of
-      [batch, in_width, in_channels].  The `"NCW"` format stores
-      data as [batch, in_channels, in_width].
-    name: A name for the operation (optional).
-    input: Alias for value.
-    dilations: An int or list of `ints` that has length `1` or `3` which
-      defaults to 1. The dilation factor for each dimension of input. If set to
-      k > 1, there will be k-1 skipped cells between each filter element on that
-      dimension. Dilations in the batch and depth dimensions must be 1.
-
-  Returns:
-    A `Tensor`.  Has the same type as input.
-
-  Raises:
-    ValueError: if `data_format` is invalid.
-  """
-  value = deprecation.deprecated_argument_lookup("input", input, "value", value)
-  with ops.name_scope(name, "conv1d", [value, filters]) as name:
-    # Reshape the input tensor to [batch, 1, in_width, in_channels]
-    if data_format is None or data_format == "NHWC" or data_format == "NWC":
-      data_format = "NHWC"
-      spatial_start_dim = 1
-      channel_index = 2
-    elif data_format == "NCHW" or data_format == "NCW":
-      data_format = "NCHW"
-      spatial_start_dim = 2
-      channel_index = 1
-    else:
-      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
-    strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
-    dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
-
-    value = array_ops.expand_dims(value, spatial_start_dim)
-    filters = array_ops.expand_dims(filters, 0)
-    result = gen_nn_ops.conv2d(
-        value,
-        filters,
-        strides,
-        padding,
-        use_cudnn_on_gpu=use_cudnn_on_gpu,
-        data_format=data_format,
-        dilations=dilations,
-        name=name)
-    return array_ops.squeeze(result, [spatial_start_dim])
-
-
-@tf_export("nn.conv1d", v1=[])
-def conv1d_v2(
-    input,  # pylint: disable=redefined-builtin
-    filters,
-    stride,
-    padding,
-    data_format="NWC",
-    dilations=None,
-    name=None):
-  r"""Computes a 1-D convolution given 3-D input and filter tensors.
-
-  Given an input tensor of shape
-    [batch, in_width, in_channels]
-  if data_format is "NWC", or
-    [batch, in_channels, in_width]
-  if data_format is "NCW",
-  and a filter / kernel tensor of shape
-  [filter_width, in_channels, out_channels], this op reshapes
-  the arguments to pass them to conv2d to perform the equivalent
-  convolution operation.
-
-  Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
-  For example, if `data_format` does not start with "NC", a tensor of shape
-    [batch, in_width, in_channels]
-  is reshaped to
-    [batch, 1, in_width, in_channels],
-  and the filter is reshaped to
-    [1, filter_width, in_channels, out_channels].
-  The result is then reshaped back to
-    [batch, out_width, out_channels]
-  \(where out_width is a function of the stride and padding as in conv2d\) and
-  returned to the caller.
-
-  Args:
-    input: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
-    filters: A 3D `Tensor`.  Must have the same type as `input`.
-    stride: An int or list of `ints` that has length `1` or `3`.  The number of
-      entries by which the filter is moved right at each step.
-    padding: 'SAME' or 'VALID'
-    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults
-      to `"NWC"`, the data is stored in the order of
-      [batch, in_width, in_channels].  The `"NCW"` format stores
-      data as [batch, in_channels, in_width].
-    dilations: An int or list of `ints` that has length `1` or `3` which
-      defaults to 1. The dilation factor for each dimension of input. If set to
-      k > 1, there will be k-1 skipped cells between each filter element on that
-      dimension. Dilations in the batch and depth dimensions must be 1.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor`.  Has the same type as input.
-
-  Raises:
-    ValueError: if `data_format` is invalid.
-  """
-  return conv1d(
-      input,  # pylint: disable=redefined-builtin
-      filters,
-      stride,
-      padding,
-      use_cudnn_on_gpu=True,
-      data_format=data_format,
-      name=name,
-      dilations=dilations)
-
-
-def conv1d_transpose(
-    value,
-    filter,  # pylint: disable=redefined-builtin
-    output_shape,
-    stride,
-    padding="SAME",
-    data_format="NWC",
-    name=None):
-  """The transpose of `conv1d`.
-
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv1d` rather than an actual
-  deconvolution.
-
-  Args:
-    value: A 3-D `Tensor` of type `float` and shape
-      `[batch, in_width, in_channels]` for `NWC` data format or
-      `[batch, in_channels, in_width]` for `NCW` data format.
-    filter: A 3-D `Tensor` with the same type as `value` and shape
-      `[filter_width, output_channels, in_channels]`.  `filter`'s
-      `in_channels` dimension must match that of `value`.
-    output_shape: A 1-D `Tensor`, containing three elements, representing the
-      output shape of the deconvolution op.
-    stride: An `integer`.  The number of entries by which
-      the filter is moved right at each step.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
-    data_format: A string. `'NWC'` and `'NCW'` are supported.
-    name: Optional name for the returned tensor.
-
-  Returns:
-    A `Tensor` with the same type as `value`.
-
-  Raises:
-    ValueError: If input/output depth does not match `filter`'s shape, if
-      `output_shape` is not at 3-element vector, if `padding` is other than
-      `'VALID'` or `'SAME'`, or if `data_format` is invalid.
-  """
-  with ops.name_scope(name, "conv1d_transpose",
-                      [value, filter, output_shape]) as name:
-    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(3)):
-      raise ValueError("output_shape must have shape (3,), got {}".format(
-          output_shape_.get_shape()))
-
-    # The format could be either NWC or NCW, map to NHWC or NCHW
-    if data_format is None or data_format == "NWC":
-      data_format_2d = "NHWC"
-      axis = 2
-    elif data_format == "NCW":
-      data_format_2d = "NCHW"
-      axis = 1
-    else:
-      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
-
-    if not value.get_shape().dims[axis].is_compatible_with(
-        filter.get_shape()[2]):
-      raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[axis],
-                                         filter.get_shape()[2]))
-
-    if isinstance(output_shape, (list, np.ndarray)):
-      # output_shape's shape should be == [3] if reached this point.
-      if not filter.get_shape().dims[1].is_compatible_with(
-          output_shape[axis]):
-        raise ValueError(
-            "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[axis],
-                              filter.get_shape()[1]))
-
-    if padding != "VALID" and padding != "SAME":
-      raise ValueError("padding must be either VALID or SAME:"
-                       " {}".format(padding))
-
-    # Reshape the input tensor to [batch, 1, in_width, in_channels]
-    if data_format_2d == "NHWC":
-      output_shape_ = array_ops.concat(
-          [output_shape_[:1], [1], output_shape_[1:]], axis=0)
-      spatial_start_dim = 1
-      strides = [1, 1, stride, 1]
-    else:
-      output_shape_ = array_ops.concat(
-          [output_shape_[:2], [1], output_shape_[2:]], axis=0)
-      spatial_start_dim = 2
-      strides = [1, 1, 1, stride]
-    value = array_ops.expand_dims(value, spatial_start_dim)
-    filter = array_ops.expand_dims(filter, 0)  # pylint: disable=redefined-builtin
-
-    result = gen_nn_ops.conv2d_backprop_input(
-        input_sizes=output_shape_,
-        filter=filter,
-        out_backprop=value,
-        strides=strides,
-        padding=padding,
-        data_format=data_format_2d,
-        name=name)
-    return array_ops.squeeze(result, [spatial_start_dim])
 
 
 @ops.RegisterStatistics("Dilation2D", "flops")

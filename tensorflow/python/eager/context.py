@@ -25,6 +25,7 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
@@ -83,6 +84,7 @@ class _EagerTensorCache(object):
 
 class FunctionCallOptions(object):
   """Options applied at call sites of eager functions.
+
   Eager functions are functions decorated with tf.contrib.eager.defun.
   """
 
@@ -130,46 +132,25 @@ class FunctionCallOptions(object):
                        "proto or None. got: {}".format(type(config)))
 
 
-# TODO(agarwal): better name ?
-class _EagerContext(threading.local):
-  """Thread local eager context."""
+class _ThreadLocalData(threading.local):
+  """Thread local storage for the eager context."""
 
-  def __init__(self, config=None):
-    super(_EagerContext, self).__init__()
+  def __init__(self):
+    super(_ThreadLocalData, self).__init__()
     self.device_spec = _starting_device_spec
     self.device_name = ""
     self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.recording_summaries = False
-    self.summary_writer_resource = None
+    self.summary_writer = None
+    self.summary_recording = None
+    self.summary_recording_distribution_strategy = True
+    self.summary_step = None
     self.scalar_cache = {}
     self._ones_rank_cache = None
     self._zeros_cache = None
-    self.execution_mode = None
-
-    # Default rewriter config corresponds to turning all default grappler
-    # optimizations on.
-    self._config = config
-
-    self._function_call_options = None
-
-  @property
-  def function_call_options(self):
-    if self._function_call_options is None:
-      base_config = config_pb2.ConfigProto()
-      if self._config is not None:
-        base_config.MergeFrom(self._config)
-      self._config = None
-      self._function_call_options = FunctionCallOptions(
-          config_proto=base_config)
-
-    return self._function_call_options
-
-  @function_call_options.setter
-  def function_call_options(self, function_call_options):
-    self._function_call_options = function_call_options
-    self._config = None
+    self.execution_mode = SYNC
+    self.function_call_options = None
 
   @property
   def ones_rank_cache(self):
@@ -251,27 +232,27 @@ class Context(object):
         options for the Context. Note that a lot of these options may be
         currently unimplemented or irrelevant when eager execution is enabled.
       device_policy: (Optional.) What policy to use when trying to run an
-         operation on a device with inputs which are not on that device.
-         When set to None, an appropriate value will be picked automatically.
-         The value picked may change between TensorFlow releases.
+        operation on a device with inputs which are not on that device.
+        When set to None, an appropriate value will be picked automatically.
+        The value picked may change between TensorFlow releases.
 
-         Defaults to tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32.
-         Valid values:
-         - tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
-           not correct.
-         - tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-           right device but raises a warning.
-         - tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-           hide performance problems.
-         - tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
-           raising errors on the other ones.
+        Defaults to DEVICE_PLACEMENT_SILENT.
+        Valid values:
+        - DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
+          not correct.
+        - DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+          right device but raises a warning.
+        - DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+          hide performance problems.
+        - DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+          raising errors on the other ones.
       execution_mode: (Optional.) Policy controlling how operations dispatched
         are actually executed. When set to None, an appropriate value will be
         picked automatically. The value picked may change between TensorFlow
         releases.
         Valid values:
-        - tf.contrib.eager.SYNC: executes each operation synchronously.
-        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+        - SYNC: executes each operation synchronously.
+        - ASYNC: executes each operation asynchronously. These
           operations may return "non-ready" handles.
       server_def: (Optional.) A tensorflow::ServerDef proto.
         Enables execution on remote devices. GrpcServers need to be started by
@@ -282,14 +263,16 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
-    self._eager_context = _EagerContext(config)
+    self._config = config
+    self._thread_local_data = _ThreadLocalData()
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
     self._post_execution_callbacks = []
-    self._config = config
     self._seed = None
     self._initialize_lock = threading.Lock()
+    if device_policy is None:
+      device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
     if execution_mode not in (None, SYNC, ASYNC):
       raise ValueError(
@@ -299,6 +282,16 @@ class Context(object):
     self._execution_mode = execution_mode
     self._server_def = server_def
     self._collective_ops_server_def = None
+
+    # Values set after construction
+    self._gpu_per_process_memory_fraction = None
+    self._gpu_per_process_memory_growth = None
+    self._optimizer_jit = None
+    self._intra_op_parallelism_threads = None
+    self._inter_op_parallelism_threads = None
+    self._soft_device_placement = None
+    self._log_device_placement = None
+    self._optimizer_experimental_options = {}
 
   # pylint: enable=redefined-outer-name
 
@@ -348,9 +341,8 @@ class Context(object):
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
       try:
-        if self._config is not None:
-          config_str = self._config.SerializeToString()
-          pywrap_tensorflow.TFE_ContextOptionsSetConfig(opts, config_str)
+        config_str = self.config.SerializeToString()
+        pywrap_tensorflow.TFE_ContextOptionsSetConfig(opts, config_str)
         if self._device_policy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
               opts, self._device_policy)
@@ -466,7 +458,7 @@ class Context(object):
   @tf_contextlib.contextmanager
   def _mode(self, mode):
     """A context manager to allow setting the mode to EAGER/GRAPH."""
-    ctx = self._eager_context
+    ctx = self._thread_local_data
     old_mode = ctx.mode
     old_is_eager = ctx.is_eager
     ctx.mode = mode
@@ -486,158 +478,226 @@ class Context(object):
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
-    return self._eager_context.is_eager
+    return self._thread_local_data.is_eager
 
   def scalar_cache(self):
     """Per-device cache for scalars."""
-    return self._eager_context.scalar_cache
+    return self._thread_local_data.scalar_cache
 
   def ones_rank_cache(self):
     """Per-device cache for scalars."""
-    return self._eager_context.ones_rank_cache
+    return self._thread_local_data.ones_rank_cache
 
   def zeros_cache(self):
     """Per-device cache for scalars."""
-    return self._eager_context.zeros_cache
+    return self._thread_local_data.zeros_cache
 
   @property
   def scope_name(self):
     """Returns scope name for the current thread."""
-    return self._eager_context.scope_name
+    return self._thread_local_data.scope_name
 
   @scope_name.setter
   def scope_name(self, s):
     """Sets scope name for the current thread."""
-    self._eager_context.scope_name = s
+    self._thread_local_data.scope_name = s
 
   @property
-  def summary_writer_resource(self):
-    """Returns summary writer resource."""
-    return self._eager_context.summary_writer_resource
+  def summary_writer(self):
+    """Returns default summary writer for the current thread."""
+    return self._thread_local_data.summary_writer
 
-  @summary_writer_resource.setter
-  def summary_writer_resource(self, resource):
-    """Sets summary writer resource."""
-    self._eager_context.summary_writer_resource = resource
+  @summary_writer.setter
+  def summary_writer(self, writer):
+    """Sets default summary writer for the current thread."""
+    self._thread_local_data.summary_writer = writer
+
+  @property
+  def summary_recording(self):
+    """Returns summary recording condition."""
+    return self._thread_local_data.summary_recording
+
+  @summary_recording.setter
+  def summary_recording(self, condition):
+    """Sets summary recording condition."""
+    self._thread_local_data.summary_recording = condition
+
+  @property
+  def summary_recording_distribution_strategy(self):
+    """Returns summary recording condition for distribution strategy."""
+    return self._thread_local_data.summary_recording_distribution_strategy
+
+  @summary_recording_distribution_strategy.setter
+  def summary_recording_distribution_strategy(self, condition):
+    """Sets summary recording condition for distribution strategy."""
+    self._thread_local_data.summary_recording_distribution_strategy = condition
+
+  @property
+  def summary_step(self):
+    """Returns summary step variable."""
+    return self._thread_local_data.summary_step
+
+  @summary_step.setter
+  def summary_step(self, step):
+    """Sets summary step variable."""
+    self._thread_local_data.summary_step = step
 
   @property
   def device_name(self):
     """Returns the device name for the current thread."""
-    return self._eager_context.device_name
+    return self._thread_local_data.device_name
 
   @property
   def device_spec(self):
     """Returns the device spec for the current thread."""
-    return self._eager_context.device_spec
+    return self._thread_local_data.device_spec
 
-  @tf_contextlib.contextmanager
+  def _set_device(self, device_name, device_spec):
+    self._thread_local_data.device_name = device_name
+    self._thread_local_data.device_spec = device_spec
+
   def device(self, name):
     """Context-manager to force placement of operations and Tensors on a device.
 
     Args:
       name: Name of the device or None to get default placement.
 
-    Yields:
-      Nothing.
+    Returns:
+      Context manager that forces device placement.
 
     Raises:
       ValueError: If name is not a string or is an invalid device name.
+      RuntimeError: If device scopes are not properly nested.
     """
-    eager_context = self._eager_context
-    old_device_name = eager_context.device_name
-    old_device_spec = eager_context.device_spec
-    cache_key = (old_device_name, name)
-    try:
-      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
-    except TypeError:
-      # Error while trying to compute the cache key.
-      raise ValueError("Expecting a string device name. Got %s(%s)" %
-                       (type(name), name))
-    except KeyError:
-      # Handle a cache miss.
-      if name is not None:
-        if not isinstance(name, str):
-          raise ValueError("Expecting a string device name. Got %s(%s)" %
-                           (type(name), name))
-        device_spec = pydev.DeviceSpec.from_string(name)
-        if old_device_name:
-          new_device_spec = copy.copy(old_device_spec)
-        else:
-          self._initialize_handle_and_devices()
-          new_device_spec = pydev.DeviceSpec.from_string(
-              self._context_devices[0])
-        new_device_spec.merge_from(device_spec)
-      else:
-        new_device_spec = pydev.DeviceSpec.from_string("")
-      new_device_name = new_device_spec.to_string()
-      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
-
-    try:
-      eager_context.device_name = new_device_name
-      eager_context.device_spec = new_device_spec
-      yield
-    finally:
-      eager_context.device_name = old_device_name
-      eager_context.device_spec = old_device_spec
+    return _EagerDeviceContext(self, name)
 
   def devices(self):
     """List of the names of devices available to execute operations."""
     return self._devices
 
-  def get_execution_mode(self):
-    mode = self._eager_context.execution_mode
+  @property
+  def execution_mode(self):
+    """Gets execution mode for current thread."""
+    # Only get the execution mode from the context if it has already been
+    # initialized
+    if self._context_handle is None:
+      return self._execution_mode
+
+    mode = self._thread_local_data.execution_mode
     if mode is None:
       mode = self._execution_mode
     return mode
 
-  def set_execution_mode(self, mode):
+  @execution_mode.setter
+  def execution_mode(self, mode):
     """Sets execution mode for current thread."""
     if mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
     if mode is None:
       mode = SYNC
-    self._eager_context.execution_mode = mode
-    pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle, mode == ASYNC)
 
-  @tf_contextlib.contextmanager
-  def execution_mode(self, mode):
-    """Context manager for setting execution mode for current thread."""
-    old_mode = self.get_execution_mode()
-    try:
-      self.set_execution_mode(mode)
-      yield
-    finally:
-      self.set_execution_mode(old_mode)
+    if self._thread_local_data.execution_mode != mode:
+      self._thread_local_data.execution_mode = mode
 
-  def get_function_call_options(self):
+      # Only set the execution mode if the context has already been initialized
+      if self._context_handle is not None:
+        pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._context_handle,
+                                                       mode == ASYNC)
+      else:
+        self._execution_mode = mode
+
+  @property
+  def config(self):
+    """Return the ConfigProto with all runtime deltas applied."""
+    config = config_pb2.ConfigProto()
+    if self._config is not None:
+      config.CopyFrom(self._config)
+
+    if self._gpu_per_process_memory_fraction is not None:
+      config.gpu_options.per_process_gpu_memory_fraction = (
+          self._gpu_per_process_memory_fraction)
+    if self._gpu_per_process_memory_growth is not None:
+      config.gpu_options.allow_growth = self._gpu_per_process_memory_growth
+    if self._optimizer_jit is not None:
+      config.graph_options.optimizer_options.global_jit_level = (
+          config_pb2.OptimizerOptions.ON_1
+          if self._optimizer_jit else config_pb2.OptimizerOptions.OFF)
+    if self._intra_op_parallelism_threads is not None:
+      config.intra_op_parallelism_threads = self._intra_op_parallelism_threads
+    if self._inter_op_parallelism_threads is not None:
+      config.inter_op_parallelism_threads = self._inter_op_parallelism_threads
+
+    if self._soft_device_placement is not None:
+      config.allow_soft_placement = self._soft_device_placement
+    else:
+      config.allow_soft_placement = self.executing_eagerly()
+
+    if self._log_device_placement is not None:
+      config.log_device_placement = self._log_device_placement
+
+    def rewriter_toggle(option):
+      toggle = self._optimizer_experimental_options.get(option, None)
+      if toggle is None:
+        return
+
+      setattr(config.graph_options.rewrite_options,
+              option,
+              (rewriter_config_pb2.RewriterConfig.ON
+               if toggle else rewriter_config_pb2.RewriterConfig.OFF))
+
+    def rewriter_bool(option):
+      toggle = self._optimizer_experimental_options.get(option, None)
+      if toggle is None:
+        return
+
+      setattr(config.graph_options.rewrite_options,
+              option,
+              toggle)
+
+    rewriter_toggle("layout_optimizer")
+    rewriter_toggle("constant_folding")
+    rewriter_toggle("shape_optimization")
+    rewriter_toggle("remapping")
+    rewriter_toggle("arithmetic_optimization")
+    rewriter_toggle("dependency_optimization")
+    rewriter_toggle("loop_optimization")
+    rewriter_toggle("function_optimization")
+    rewriter_toggle("debug_stripper")
+    rewriter_bool("disable_model_pruning")
+    rewriter_toggle("scoped_allocator_optimization")
+    rewriter_toggle("pin_to_host_optimization")
+    rewriter_toggle("implementation_selector")
+    rewriter_bool("disable_meta_optimizer")
+    nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
+    if nodes is not None:
+      config.graph_options.rewrite_options.min_graph_nodes = nodes
+
+    return config
+
+  @property
+  def function_call_options(self):
     """Returns function call options for current thread.
 
     Note that the returned object is still referenced by the eager context.
 
     Returns: the FunctionCallOptions for current thread.
     """
-    return self._eager_context.function_call_options
+    if self._thread_local_data.function_call_options is None:
+      config = self.config
 
-  @tf_contextlib.contextmanager
-  def function_call_options(self, set_options_func):
-    """Context manager for setting function call options of current thread.
+      # Default to soft placement for functions unless specified
+      if self._soft_device_placement is None:
+        config.allow_soft_placement = True
+      self._thread_local_data.function_call_options = FunctionCallOptions(
+          config_proto=config)
 
-    Args:
-      set_options_func: A callable that takes one argument of type
-        FunctionCallOptions. It should set the properties of that
-        FunctionCallOptions.
+    return self._thread_local_data.function_call_options
 
-    Yields:
-      Nothing.
-    """
-    current_options = self.get_function_call_options()
-    old_options = copy.copy(current_options)
-    try:
-      set_options_func(current_options)
-      yield
-    finally:
-      self._eager_context.function_call_options = old_options
+  @function_call_options.setter
+  def function_call_options(self, options):
+    """Returns function call options for current thread."""
+    self._thread_local_data.function_call_options = options
 
   def async_wait(self):
     """Waits for ops dispatched in ASYNC mode to finish."""
@@ -715,6 +775,157 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
+  @property
+  def gpu_per_process_memory_fraction(self):
+    return self.config.gpu_options.per_process_gpu_memory_fraction
+
+  @gpu_per_process_memory_fraction.setter
+  def gpu_per_process_memory_fraction(self, fraction):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "GPU options must be set at program startup")
+
+    self._gpu_per_process_memory_fraction = fraction
+
+  @property
+  def gpu_per_process_memory_growth(self):
+    return self.config.gpu_options.allow_growth
+
+  @gpu_per_process_memory_growth.setter
+  def gpu_per_process_memory_growth(self, enabled):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "GPU options must be set at program startup")
+
+    self._gpu_per_process_memory_growth = enabled
+
+  @property
+  def optimizer_jit(self):
+    level = self.config.graph_options.optimizer_options.global_jit_level
+    return (level == config_pb2.OptimizerOptions.ON_1 or
+            level == config_pb2.OptimizerOptions.ON_2)
+
+  @optimizer_jit.setter
+  def optimizer_jit(self, enabled):
+    self._optimizer_jit = enabled
+
+    self._thread_local_data.function_call_options = None
+
+  def get_optimizer_experimental_options(self):
+    """Get experimental options for the optimizer.
+
+    Returns:
+      Dictionary of current option values
+    """
+    rewrite_options = self.config.graph_options.rewrite_options
+    options = {}
+
+    def rewriter_toggle(option):
+      attr = getattr(rewrite_options, option)
+      if attr != 0:
+        options[option] = (attr == rewriter_config_pb2.RewriterConfig.ON)
+
+    def rewriter_bool(option):
+      options[option] = getattr(rewrite_options, option)
+
+    rewriter_toggle("layout_optimizer")
+    rewriter_toggle("constant_folding")
+    rewriter_toggle("shape_optimization")
+    rewriter_toggle("remapping")
+    rewriter_toggle("arithmetic_optimization")
+    rewriter_toggle("dependency_optimization")
+    rewriter_toggle("loop_optimization")
+    rewriter_toggle("function_optimization")
+    rewriter_toggle("debug_stripper")
+    rewriter_bool("disable_model_pruning")
+    rewriter_toggle("scoped_allocator_optimization")
+    rewriter_toggle("pin_to_host_optimization")
+    rewriter_toggle("implementation_selector")
+    rewriter_bool("disable_meta_optimizer")
+
+    if rewrite_options.min_graph_nodes != 0:
+      options["min_graph_nodes"] = rewrite_options.min_graph_nodes
+
+    return options
+
+  def set_optimizer_experimental_options(self, options):
+    """Set experimental options for the optimizer.
+
+    Args:
+      options: Dictionary of options to modify
+    """
+    self._optimizer_experimental_options.update(options)
+
+    self._thread_local_data.function_call_options = None
+
+  @property
+  def intra_op_parallelism_threads(self):
+    return self.config.intra_op_parallelism_threads
+
+  @intra_op_parallelism_threads.setter
+  def intra_op_parallelism_threads(self, num_threads):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Intra op parallelism must be set at program startup")
+
+    self._intra_op_parallelism_threads = num_threads
+
+  @property
+  def inter_op_parallelism_threads(self):
+    return self.config.inter_op_parallelism_threads
+
+  @inter_op_parallelism_threads.setter
+  def inter_op_parallelism_threads(self, num_threads):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Inter op parallelism must be set at program startup")
+
+    self._inter_op_parallelism_threads = num_threads
+
+  @property
+  def soft_device_placement(self):
+    return self.config.allow_soft_placement
+
+  @soft_device_placement.setter
+  def soft_device_placement(self, enabled):
+    self._soft_device_placement = enabled
+
+    self._thread_local_data.function_call_options = None
+
+  @property
+  def log_device_placement(self):
+    return self.config.log_device_placement
+
+  @log_device_placement.setter
+  def log_device_placement(self, enabled):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Device placement logging must be set at program startup")
+
+    self._log_device_placement = enabled
+    self._thread_local_data.function_call_options = None
+
+  @property
+  def device_policy(self):
+    # Only get the policy from the context if it has already been initialized
+    if self._context_handle is not None:
+      return pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(self._handle)
+
+    return self._device_policy
+
+  @device_policy.setter
+  def device_policy(self, policy):
+    if policy is None:
+      policy = DEVICE_PLACEMENT_SILENT
+
+    if self._device_policy != policy:
+      self._device_policy = policy
+
+      # Only set the policy if the context has already been initialized
+      if self._context_handle is not None:
+        pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+            self._handle, self._device_policy)
+
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
 
@@ -723,23 +934,25 @@ class Context(object):
     """
     pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
 
-  @tf_contextlib.contextmanager
-  def device_policy(self, policy):
-    handle = self._handle
-    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(handle)
-    pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-        handle, policy)
-    try:
-      yield
-    finally:
-      pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-          handle, old)
-
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
+
+  def enable_graph_collection(self):
+    """Enables graph collection of executed functions.
+
+    To retrieve the accumulated graphs call context.export_run_metadata()
+    and to stop collecting graphs call context.disable_graph_collection().
+    """
+    pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
+
+  def disable_graph_collection(self):
+    """Disables graph collections of executed functions."""
+    if not self._context_handle:
+      return
+    pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
 
   def export_run_metadata(self):
     """Returns a RunMetadata proto with accumulated information.
@@ -773,6 +986,58 @@ class Context(object):
 
 _context = None
 _context_lock = threading.Lock()
+
+
+class _EagerDeviceContext(object):
+  """Context-manager forcing placement of ops and Tensors on a device."""
+
+  def __init__(self, ctx, device_name):
+    self._device_name = device_name
+    self._ctx = ctx
+    self._stack = []
+
+  def __enter__(self):
+    ctx = self._ctx
+    old_device_name = ctx.device_name
+    old_device_spec = ctx.device_spec
+    new_device_name = self._device_name
+    cache_key = (old_device_name, new_device_name)
+    try:
+      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
+    except TypeError:
+      # Error while trying to compute the cache key.
+      raise ValueError("Expecting a string device name. Got %s(%s)" %
+                       (type(new_device_name), new_device_name))
+    except KeyError:
+      # Handle a cache miss.
+      if new_device_name is not None:
+        if not isinstance(new_device_name, str):
+          raise ValueError("Expecting a string device name. Got %s(%s)" %
+                           (type(new_device_name), new_device_name))
+        device_spec = pydev.DeviceSpec.from_string(new_device_name)
+        if old_device_name:
+          new_device_spec = copy.copy(old_device_spec)
+        else:
+          ctx._initialize_handle_and_devices()  # pylint: disable=protected-access
+          new_device_spec = pydev.DeviceSpec.from_string(
+              ctx._context_devices[0])  # pylint: disable=protected-access
+        new_device_spec.merge_from(device_spec)
+      else:
+        new_device_spec = pydev.DeviceSpec.from_string("")
+      new_device_name = new_device_spec.to_string()
+      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
+
+    ctx._set_device(new_device_name, new_device_spec)  # pylint: disable=protected-access
+    self._stack.append((old_device_name, old_device_spec, new_device_spec))
+
+  def __exit__(self, *ex_info):
+    ctx = self._ctx
+    old_device_name, old_device_spec, new_device_spec = self._stack[-1]
+    if ctx.device_spec is not new_device_spec:
+      raise RuntimeError(
+          "Exiting device scope without proper scope nesting")
+    del self._stack[-1]
+    ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
 def _initialize_context():
@@ -817,6 +1082,9 @@ def executing_eagerly():
   but may also be enabled within the context of a Python function via
   tf.contrib.eager.py_func.
   """
+  if context_safe() is None:
+    return default_execution_mode == EAGER_MODE
+
   return context().executing_eagerly()
 
 
@@ -897,6 +1165,7 @@ def device(name):
   return context().device(name)
 
 
+@tf_export("config.experimental_list_devices")
 def list_devices():
   """List the names of the available devices.
 
@@ -906,33 +1175,76 @@ def list_devices():
   return context().devices()
 
 
+@tf_export("debugging.get_log_device_placement")
+def get_log_device_placement():
+  """Get if device placements are logged.
+
+  Returns:
+    If device placements are logged.
+  """
+  return context().log_device_placement
+
+
+@tf_export("debugging.set_log_device_placement")
+def set_log_device_placement(enabled):
+  """Set if device placements should be logged.
+
+  Args:
+    enabled: Whether to enabled device placement logging.
+  """
+  context().log_device_placement = enabled
+
+
+@tf_contextlib.contextmanager
+def device_policy(policy):
+  """Context manager for setting device placement policy for current thread."""
+  ctx = context()
+  old_policy = ctx.device_policy
+  try:
+    ctx.device_policy = policy
+    yield
+  finally:
+    ctx.device_policy = old_policy
+
+
 def set_execution_mode(mode):
   """Sets execution mode for the current thread."""
-  context().set_execution_mode(mode)
+  context().execution_mode = mode
 
 
+@tf_contextlib.contextmanager
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
-  return context().execution_mode(mode)
+  ctx = context()
+  old_mode = ctx.execution_mode
+  try:
+    ctx.execution_mode = mode
+    yield
+  finally:
+    ctx.execution_mode = old_mode
 
 
 @tf_export("experimental.function_executor_type")
+@tf_contextlib.contextmanager
 def function_executor_type(executor_type):
-  """Context manager for setting the executor of eagar defined functions.
+  """Context manager for setting the executor of eager defined functions.
 
   Eager defined functions are functions decorated by tf.contrib.eager.defun.
 
   Args:
-    executor_type: a string for the name of the executor to be used
-    to execute functions defined by tf.contrib.eager.defun.
+    executor_type: a string for the name of the executor to be used to execute
+      functions defined by tf.contrib.eager.defun.
 
-  Returns:
+  Yields:
     Context manager for setting the executor of eager defined functions.
   """
-  def _set_options_func(options):
-    options.executor_type = executor_type
-
-  return context().function_call_options(_set_options_func)
+  current_options = context().function_call_options
+  old_options = copy.copy(current_options)
+  try:
+    current_options.executor_type = executor_type
+    yield
+  finally:
+    context().function_call_options = old_options
 
 
 def async_wait():
@@ -968,6 +1280,20 @@ def disable_run_metadata():
   context().disable_run_metadata()
 
 
+def enable_graph_collection():
+  """Enables tracing of op execution via RunMetadata.
+
+  To retrieve the accumulated metadata call context.export_run_metadata()
+  and to stop tracing call context.disable_run_metadata().
+  """
+  context().enable_graph_collection()
+
+
+def disable_graph_collection():
+  """Disables tracing of op execution via RunMetadata."""
+  context().disable_graph_collection()
+
+
 def export_run_metadata():
   """Returns a RunMetadata proto with accumulated information.
 
@@ -978,25 +1304,6 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
-
-
-def function_config_proto(config_proto):
-  """Context manager for setting the grappler rewrite config.
-
-  This config is used by Grappler when optimizing the function graph.
-
-  Args:
-    config_proto: a `config_pb2.ConfigProto` proto or
-      a serialized string of that proto or None. If None, the default instance
-      of `config_pb2.ConfigProto` will be used.
-
-  Returns:
-    A context manager.
-  """
-  def _set_options_func(options):
-    options.config_proto_serialized = config_proto
-
-  return context().function_call_options(_set_options_func)
 
 
 def set_server_def(server_def):

@@ -335,10 +335,10 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // Update stats.
         ++stats_.num_allocs;
         stats_.bytes_in_use += chunk->size;
-        stats_.max_bytes_in_use =
-            std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
-        stats_.max_alloc_size =
-            std::max<std::size_t>(stats_.max_alloc_size, chunk->size);
+        stats_.peak_bytes_in_use =
+            std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+        stats_.largest_alloc_size =
+            std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
 
         VLOG(4) << "Returning: " << chunk->ptr;
         if (VLOG_IS_ON(4)) {
@@ -391,6 +391,8 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
+  VLOG(1) << "DeallocateRaw " << Name() << " "
+          << (ptr ? RequestedSize(ptr) : 0);
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();
 }
@@ -524,6 +526,7 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
 bool BFCAllocator::TracksAllocationSizes() { return true; }
 
 size_t BFCAllocator::RequestedSize(const void* ptr) {
+  CHECK(ptr);
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
@@ -685,16 +688,16 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 
-void BFCAllocator::GetStats(AllocatorStats* stats) {
+absl::optional<AllocatorStats> BFCAllocator::GetStats() {
   mutex_lock l(lock_);
-  *stats = stats_;
+  return stats_;
 }
 
 void BFCAllocator::ClearStats() {
   mutex_lock l(lock_);
   stats_.num_allocs = 0;
-  stats_.max_bytes_in_use = stats_.bytes_in_use;
-  stats_.max_alloc_size = 0;
+  stats_.peak_bytes_in_use = stats_.bytes_in_use;
+  stats_.largest_alloc_size = 0;
 }
 
 std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins>

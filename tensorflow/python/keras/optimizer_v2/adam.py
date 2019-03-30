@@ -37,8 +37,6 @@ class Adam(optimizer_v2.OptimizerV2):
   requirement, invariant to diagonal rescaling of gradients, and is well suited
   for problems that are large in terms of data/parameters'.
 
-  Note, amsgrad is currently not supported and the argument can only be False.
-
   # References
       See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
         ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
@@ -64,7 +62,7 @@ class Adam(optimizer_v2.OptimizerV2):
       $$t := 0 \text{(Initialize timestep)}$$
 
       The update rule for `variable` with gradient `g` uses an optimization
-      described at the end of section2 of the paper:
+      described at the end of section 2 of the paper:
 
       $$t := t + 1$$
       $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
@@ -82,7 +80,7 @@ class Adam(optimizer_v2.OptimizerV2):
       $$t := 0 \text{(Initialize timestep)}$$
 
       The update rule for `variable` with gradient `g` uses an optimization
-      described at the end of section2 of the paper:
+      described at the end of section 2 of the paper:
 
       $$t := t + 1$$
       $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$

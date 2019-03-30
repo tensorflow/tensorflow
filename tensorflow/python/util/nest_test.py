@@ -68,6 +68,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
       field1 = attr.ib()
       field2 = attr.ib()
 
+    @attr.s
+    class UnsortedSampleAttr(object):
+      field3 = attr.ib()
+      field1 = attr.ib()
+      field2 = attr.ib()
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testAttrsFlattenAndPack(self):
     if attr is None:
@@ -86,6 +92,21 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Check that flatten fails if attributes are not iterable
     with self.assertRaisesRegexp(TypeError, "object is not iterable"):
       flat = nest.flatten(NestTest.BadAttr())
+
+  @parameterized.parameters(
+      {"values": [1, 2, 3]},
+      {"values": [{"B": 10, "A": 20}, [1, 2], 3]},
+      {"values": [(1, 2), [3, 4], 5]},
+      {"values": [PointXY(1, 2), 3, 4]},
+  )
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testAttrsMapStructure(self, values):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    structure = NestTest.UnsortedSampleAttr(*values)
+    new_structure = nest.map_structure(lambda x: x, structure)
+    self.assertEqual(structure, new_structure)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack(self):
@@ -231,17 +252,17 @@ class NestTest(parameterized.TestCase, test.TestCase):
                             ["and", "goodbye", "again"])
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testIsSequence(self):
-    self.assertFalse(nest.is_sequence("1234"))
-    self.assertTrue(nest.is_sequence([1, 3, [4, 5]]))
-    self.assertTrue(nest.is_sequence(((7, 8), (5, 6))))
-    self.assertTrue(nest.is_sequence([]))
-    self.assertTrue(nest.is_sequence({"a": 1, "b": 2}))
-    self.assertFalse(nest.is_sequence(set([1, 2])))
+  def testIsNested(self):
+    self.assertFalse(nest.is_nested("1234"))
+    self.assertTrue(nest.is_nested([1, 3, [4, 5]]))
+    self.assertTrue(nest.is_nested(((7, 8), (5, 6))))
+    self.assertTrue(nest.is_nested([]))
+    self.assertTrue(nest.is_nested({"a": 1, "b": 2}))
+    self.assertFalse(nest.is_nested(set([1, 2])))
     ones = array_ops.ones([2, 3])
-    self.assertFalse(nest.is_sequence(ones))
-    self.assertFalse(nest.is_sequence(math_ops.tanh(ones)))
-    self.assertFalse(nest.is_sequence(np.ones((4, 5))))
+    self.assertFalse(nest.is_nested(ones))
+    self.assertFalse(nest.is_nested(math_ops.tanh(ones)))
+    self.assertFalse(nest.is_nested(np.ones((4, 5))))
 
   @parameterized.parameters({"mapping_type": _CustomMapping},
                             {"mapping_type": dict})

@@ -1,4 +1,4 @@
-# Converter command-line reference
+# Converter command line reference
 
 This page is complete reference of command-line flags used by the TensorFlow
 Lite Converter's command line starting from TensorFlow 1.9 up until the most
@@ -38,7 +38,7 @@ The following flags specify optional parameters when using SavedModels.
     Specifies a comma-separated set of tags identifying the MetaGraphDef within
     the SavedModel to analyze. All tags in the tag set must be specified.
 *   `--saved_model_signature_key`. Type: string. Default:
-    [DEFAULT_SERVING_SIGNATURE_DEF_KEY](https://www.tensorflow.org/api_docs/python/tf/saved_model/signature_constants).
+    `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`.
     Specifies the key identifying the SignatureDef containing inputs and
     outputs.
 

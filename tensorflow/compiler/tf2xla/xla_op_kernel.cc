@@ -319,6 +319,27 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape) {
   return Status::OK();
 }
 
+Status XlaOpKernelContext::ConstantInputAsPartialShape(
+    int index, PartialTensorShape* shape) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  // If `literal` is a scalar it's value must be -1.
+  if (literal.shape().rank() == 0) {
+    int64 shape_val;
+    TF_RETURN_IF_ERROR(LiteralToInt64Scalar(literal, &shape_val));
+    if (shape_val != -1) {
+      return errors::InvalidArgument(
+          "Cannot convert value to PartialTensorShape: ", shape_val);
+    }
+    *shape = PartialTensorShape();  // Shape with unknown rank.
+    return Status::OK();
+  }
+  std::vector<int64> dims;
+  TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
+  *shape = PartialTensorShape(dims);
+  return Status::OK();
+}
+
 Status XlaOpKernelContext::InputList(absl::string_view name,
                                      std::vector<xla::XlaOp>* handles,
                                      std::vector<TensorShape>* shapes) {
@@ -447,6 +468,16 @@ void XlaOpKernelContext::SetOutputExpression(int index,
   }
 }
 
+xla::PrimitiveType XlaOpKernelContext::output_xla_type(int index) {
+  xla::PrimitiveType type;
+  Status status = DataTypeToPrimitiveType(expected_output_dtype(index), &type);
+  if (!status.ok()) {
+    SetStatus(status);
+    return xla::PRIMITIVE_TYPE_INVALID;
+  }
+  return type;
+}
+
 void XlaOpKernelContext::SetOutput(int index, const xla::XlaOp& handle) {
   SetOutputExpression(
       index,
@@ -503,6 +534,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
     handle = xla::Reshape(handle,
                           xla::AsInt64Slice(representation_shape.dimensions()));
   }
+  variable->SetRepresentationShape(representation_shape);
   return variable->SetValue(handle);
 }
 

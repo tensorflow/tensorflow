@@ -117,7 +117,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  begin->type == kTfLiteInt32 || begin->type == kTfLiteInt64);
   TF_LITE_ENSURE(context,
                  size->type == kTfLiteInt32 || size->type == kTfLiteInt64);
-  TF_LITE_ENSURE(context, NumDimensions(begin) == NumDimensions(size) == 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
                      "Slice op only supports 1D-4D input arrays.");
 
@@ -203,6 +204,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt64:
       TF_LITE_SLICE(int64_t, kernel_type);
+      break;
+    case kTfLiteInt8:
+      TF_LITE_SLICE(int8_t, kernel_type);
       break;
     case kTfLiteUInt8:
       TF_LITE_SLICE(uint8_t, kernel_type);

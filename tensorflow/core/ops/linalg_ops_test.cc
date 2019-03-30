@@ -314,4 +314,40 @@ TEST(LinalgOpsTest, Lu_ShapeFn) {
            "[d0_0,d0_1,d0_2,d0_3,d0_5,d0_5];[d0_0,d0_1,d0_2,d0_3,d0_5]");
 }
 
+TEST(LinalgOpsTest, TridiagonalSolve_ShapeFn) {
+  ShapeInferenceTestOp op("TridiagonalSolve");
+  INFER_OK(op, "?;?", "in1");
+  INFER_OK(op, "[3,5];[?,1]", "in1");
+  INFER_OK(op, "[?,5];[5,1]", "in1");
+  INFER_OK(op, "[?,5];[?,?]", "in1");
+  INFER_OK(op, "[?,?];[?,?]", "in1");
+  INFER_OK(op, "[3,5];[5,1]", "in1");
+  INFER_OK(op, "[3,5];[5,2]", "in1");
+
+  INFER_OK(op, "[?,?,?];[?,?,?]", "in1");
+  INFER_OK(op, "[?,3,5];[7,5,2]", "in1");
+  INFER_OK(op, "[7,3,5];[?,5,2]", "in1");
+  INFER_OK(op, "[7,?,5];[?,5,?]", "in1");
+  INFER_OK(op, "[7,3,5];[7,5,2]", "in1");
+
+  INFER_OK(op, "[7,?,3,5];[7,8,5,2]", "in1");
+  INFER_OK(op, "[7,8,3,5];[7,8,5,2]", "in1");
+
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[3];[5,1]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[3,5];[5]");
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 4 and 8. "
+      "Shapes are [6,4] and [6,8].",
+      op, "[6,4,3,5];[6,8,5,2]");
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 4 and 8. "
+      "Shapes are [?,4] and [6,8].",
+      op, "[?,4,3,5];[6,8,5,2]");
+  INFER_ERROR("Dimension must be 3 but is 4", op, "[4,5];[5,2]");
+  INFER_ERROR("Dimension must be 3 but is 4", op, "[6,4,5];[6,5,2]");
+  INFER_ERROR("Dimensions must be equal, but are 9 and 5", op, "[3,9];[5,2]");
+  INFER_ERROR("Dimensions must be equal, but are 9 and 5", op,
+              "[6,3,9];[6,5,2]");
+}
+
 }  // end namespace tensorflow

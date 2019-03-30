@@ -94,8 +94,6 @@
 @@smart_constant_value
 @@smart_case
 
-@@CriticalSection
-
 @@BoundedTensorSpec
 @@TensorSpec
 
@@ -129,6 +127,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = ['nest']
 _nest_allowed_symbols = [
     'assert_same_structure',
+    'is_nested',
     'is_sequence',
     'is_sequence_or_composite',
     'flatten',

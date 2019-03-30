@@ -45,11 +45,8 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
     case ComputationKind::kWhileBody:
       repr += ":WHILE_BODY";
       break;
-    case ComputationKind::kConditionalTrue:
-      repr += ":CONDITIONAL_TRUE";
-      break;
-    case ComputationKind::kConditionalFalse:
-      repr += ":CONDITIONAL_FALSE";
+    case ComputationKind::kConditionalBranch:
+      repr += absl::StrCat(":CONDITIONAL_BRANCH_", index_);
       break;
     case ComputationKind::kCallFunction:
       repr += ":CALL";
@@ -307,10 +304,10 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       tracked_instructions_[hlo->while_body()] =
           TrackedInstruction(hlo, ComputationKind::kWhileBody);
     } else if (hlo->opcode() == HloOpcode::kConditional) {
-      tracked_instructions_[hlo->true_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalTrue);
-      tracked_instructions_[hlo->false_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalFalse);
+      for (int b = 0; b < hlo->branch_count(); ++b) {
+        tracked_instructions_[hlo->branch_computation(b)] =
+            TrackedInstruction(hlo, ComputationKind::kConditionalBranch, b);
+      }
     } else if (hlo->opcode() == HloOpcode::kCall) {
       tracked_instructions_[hlo->to_apply()] =
           TrackedInstruction(hlo, ComputationKind::kCallFunction);
@@ -389,9 +386,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
                instruction1->opcode() == HloOpcode::kCall);
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
-
-  if (!ContainsKey(companion_set_index_, instruction1) &&
-      !ContainsKey(companion_set_index_, instruction2)) {
+  if (instruction1 == instruction2) {
+    return Status::OK();
+  } else if (!ContainsKey(companion_set_index_, instruction1) &&
+             !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
         absl::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
@@ -419,7 +417,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];
     }
-    companion_sets_.erase(companion_sets_.begin() + index_to_remove);
+    // We can't remove the set from the vector because companion_set_index_
+    // references sets by their index in this vector, so we reset to nullptr
+    // instead.
+    companion_sets_[index_to_remove].reset(nullptr);
   }
   return Status::OK();
 }

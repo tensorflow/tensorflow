@@ -143,6 +143,10 @@ class NcclManager {
   void AddToAllReduce(std::unique_ptr<Participant> participant,
                       const Context& context, ncclRedOp_t reduction_op);
 
+  // Adds one participant to an all-gather.
+  void AddToAllGather(std::unique_ptr<Participant> participant,
+                      const Context& context);
+
   // AddBroadcastSend and AddBroadcastRecv combine to send data from one sender
   // to all receivers.
   void AddBroadcastSend(std::unique_ptr<Participant> participant,
@@ -170,6 +174,7 @@ class NcclManager {
     kAllReduce = 1,
     kBroadcast = 2,
     kReduce = 3,
+    kAllGather = 4,
   };
   struct Collective;
   struct Communicator;
@@ -184,7 +189,7 @@ class NcclManager {
   // the corresponding NCCL/CUDA error string.
   Status GetCommunicator(Collective* collective, Communicator** communicator);
 
-  // Adds a participant device to the local `Collective` instance correponding
+  // Adds a participant device to the local `Collective` instance corresponding
   // to `collective_key`.  Launches the `Collective` if it is ready, which it
   // checks by calling `CheckReady()`.  Also performs consistency and sanity
   // checks before launching.

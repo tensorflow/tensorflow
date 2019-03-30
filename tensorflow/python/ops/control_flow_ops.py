@@ -2455,7 +2455,12 @@ class WhileContext(ControlFlowContext):
     # store the tensor after the reduction as opposed to the tensor before
     # reduction, and therefore could significantly reduce memory consumption.
     # For now, we do this only for a few ops.
-    if op.type in {"Shape", "Size", "Rank"}:
+    #
+    # If in XLA context, do not move constant ops to forward pass as pushing to
+    # and popping from a stack removes the constant property of an op and breaks
+    # XLA compilation, which requires certain inputs to be constant for certain
+    # ops.
+    if not util.IsInXLAContext(op) and op.type in {"Shape", "Size", "Rank"}:
       grad_ctxt = ops.get_default_graph()._get_control_flow_context()
       if grad_ctxt:
         grad_ctxt = grad_ctxt.GetWhileContext()
@@ -3443,6 +3448,12 @@ def while_loop(cond,
         if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
           packed = True
           loop_vars = (loop_vars,)
+
+      def convert(x):
+        if isinstance(x, tensor_array_ops.TensorArray):
+          return x
+        return ops.convert_to_tensor(x)
+      loop_vars = nest.map_structure(convert, loop_vars)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
@@ -3619,7 +3630,7 @@ def group(*inputs, **kwargs):
       """A sort key that allows None to be compared to strings."""
       return "" if dev is None else dev
 
-    for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
+    for dev in sorted(ops_on_device, key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
 
     with ops.control_dependencies(deps):

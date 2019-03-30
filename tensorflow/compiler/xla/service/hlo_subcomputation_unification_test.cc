@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -87,17 +86,7 @@ TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
 
   EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before unification",
-                                module->config().debug_options());
-  }
   EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after unification",
-                                module->config().debug_options());
-  }
   EXPECT_EQ(2, module->computation_count());
   EXPECT_EQ(x->to_apply(), y->to_apply());
 }
@@ -126,17 +115,7 @@ TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
 
   EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before unification",
-                                module->config().debug_options());
-  }
   EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after unification",
-                                module->config().debug_options());
-  }
   EXPECT_EQ(2, module->computation_count());
   EXPECT_EQ(x->to_apply(), y->to_apply());
 }
@@ -166,17 +145,7 @@ TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
 
   EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before unification",
-                                module->config().debug_options());
-  }
   EXPECT_FALSE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after unification",
-                                module->config().debug_options());
-  }
   EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
 }

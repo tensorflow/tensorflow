@@ -87,7 +87,6 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
-MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
@@ -112,7 +111,8 @@ tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/internal/quantization_util.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/version.h
+tensorflow/lite/version.h \
+tensorflow/core/public/version.h
 
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \
@@ -126,12 +126,23 @@ third_party/flatbuffers/LICENSE.txt
 
 MAKE_PROJECT_FILES := \
   README_MAKE.md \
-  Makefile
+  Makefile \
+  .vscode/tasks.json
 
 MBED_PROJECT_FILES := \
   README_MBED.md \
   mbed-os.lib \
-  mbed_app.json
+  mbed_app.json \
+  .vscode/tasks.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
+
+ARDUINO_PROJECT_FILES := \
+  library.properties
+
+ALL_PROJECT_TARGETS :=
 
 KEIL_PROJECT_FILES := \
   README_KEIL.md \
@@ -142,6 +153,9 @@ KEIL_PROJECT_FILES := \
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+
+# Call specialize here so that platform-specific tags can be taken into account.
+MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
 ALL_TAGS += $(TARGET_ARCH)
 
@@ -209,11 +223,21 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
+# snease: Add %.bin rule here since BINDIR is now defined
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+$(BINDIR)%.bin: $(BINDIR)%
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) $< $@ -O binary
+
 # Generate standalone makefile projects for all of the test targets.
 $(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
+
+generate_projects: $(ALL_PROJECT_TARGETS)
 
 # Gets rid of all generated files.
 clean:

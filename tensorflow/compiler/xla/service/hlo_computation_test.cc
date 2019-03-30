@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -37,6 +39,7 @@ namespace xla {
 namespace {
 
 namespace m = match;
+namespace op = xla::testing::opcode_matchers;
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
@@ -506,8 +509,9 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
       HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
   auto param2 =
       builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
-  auto lt = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param0, param1));
+  auto lt = builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                    param1, ComparisonDirection::kLt));
   auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
@@ -666,6 +670,35 @@ TEST_F(HloComputationTest, DeepEquality) {
   auto computation_c = MakeAddNComputation(199999);
   EXPECT_FALSE(*computation_a == *computation_c);
   EXPECT_FALSE(*computation_c == *computation_b);
+}
+
+// Tests that cross-module AllReduce instructions are ordered before all their
+// predecessors and after all their successors.
+TEST_F(HloComputationTest, InstructionPostOrderWithAllReduce) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param = f32[128] parameter(0), sharding={maximal device=0}
+  crs0 = f32[128] all-reduce(param),
+    replica_groups={{0}}, all_reduce_id=1, barrier="", to_apply=add,
+    sharding={maximal device=0}
+  crs1 = f32[128] all-reduce(param),
+    replica_groups={{0}}, all_reduce_id=1, barrier="", to_apply=add,
+    sharding={maximal device=1}
+  add = f32[128] add(crs0, crs0), sharding={maximal device=0}
+  ROOT t = (f32[128], f32[128]) tuple(add, crs1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+  EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
+              ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
+                          op::Add(), op::Tuple()));
 }
 
 }  // namespace

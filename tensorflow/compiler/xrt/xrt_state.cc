@@ -220,7 +220,7 @@ XRTTupleAllocation::~XRTTupleAllocation() {
 }
 
 Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
-                                     xla::Literal* literal) {
+                                     xla::MutableLiteralBase* literal) {
   auto transfer_manager = backend->transfer_manager();
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal));
 
@@ -234,9 +234,8 @@ Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
                                      " has been released");
     }
   }
-  TF_ASSIGN_OR_RETURN(*literal, transfer_manager->TransferLiteralFromDevice(
-                                    stream.get(), shaped_buffer));
-  return Status::OK();
+  return transfer_manager->TransferLiteralFromDevice(stream.get(),
+                                                     shaped_buffer, *literal);
 }
 
 Status XRTTupleAllocation::WriteLiteral(xla::Backend* backend,

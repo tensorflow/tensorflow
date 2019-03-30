@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -50,6 +51,11 @@ class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
                                                    variant_tensor)
 
 
+@deprecation.deprecated(
+    None,
+    "Use `tf.data.Dataset.shuffle(buffer_size, seed)` followed by "
+    "`tf.data.Dataset.repeat(count)`. Static tf.data optimizations will take "
+    "care of using the fused implementation.")
 @tf_export("data.experimental.shuffle_and_repeat")
 def shuffle_and_repeat(buffer_size, count=None, seed=None):
   """Shuffles and repeats a Dataset returning a new permutation for each epoch.

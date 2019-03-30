@@ -50,6 +50,7 @@ WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.
 For more information, please see:
   * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
   * https://github.com/tensorflow/addons
+  * https://github.com/tensorflow/io (for I/O related ops)
 If you depend on functionality not listed there, please file an issue.
 """
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib',
@@ -70,7 +71,7 @@ _API_MODULE = app  # pylint: disable=undefined-variable
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))  # pylint: disable=undefined-variable
+_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
 if not hasattr(_current_module, '__path__'):
   __path__ = [_tf_api_dir]
 elif _tf_api_dir not in __path__:

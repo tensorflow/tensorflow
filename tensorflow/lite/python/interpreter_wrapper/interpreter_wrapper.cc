@@ -26,14 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/string_util.h"
 
-#if PY_MAJOR_VERSION >= 3
-#define PY_TO_CPPSTRING PyBytes_AsStringAndSize
-#define CPP_TO_PYSTRING PyBytes_FromStringAndSize
-#else
-#define PY_TO_CPPSTRING PyString_AsStringAndSize
-#define CPP_TO_PYSTRING PyString_FromStringAndSize
-#endif
-
 #define TFLITE_PY_CHECK(x)               \
   if ((x) != kTfLiteOk) {                \
     return error_reporter_->exception(); \
@@ -58,6 +50,8 @@ namespace interpreter_wrapper {
 
 namespace {
 
+using python_utils::PyDecrefDeleter;
+
 std::unique_ptr<tflite::Interpreter> CreateInterpreter(
     const tflite::FlatBufferModel* model,
     const tflite::ops::builtin::BuiltinOpResolver& resolver) {
@@ -73,10 +67,6 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
   }
   return interpreter;
 }
-
-struct PyDecrefDeleter {
-  void operator()(PyObject* p) const { Py_DECREF(p); }
-};
 
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
@@ -135,7 +125,16 @@ PyObject* InterpreterWrapper::AllocateTensors() {
 
 PyObject* InterpreterWrapper::Invoke() {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_CHECK(interpreter_->Invoke());
+
+  // Release the GIL so that we can run multiple interpreters in parallel
+  TfLiteStatus status_code = kTfLiteOk;
+  Py_BEGIN_ALLOW_THREADS;  // To return can happen between this and end!
+  status_code = interpreter_->Invoke();
+  Py_END_ALLOW_THREADS;
+
+  TFLITE_PY_CHECK(
+      status_code);  // don't move this into the Py_BEGIN/Py_End block
+
   Py_RETURN_NONE;
 }
 
@@ -429,7 +428,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   char * buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  if (PY_TO_CPPSTRING(data, &buf, &length) == -1) {
+
+  if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
   }
   std::unique_ptr<tflite::FlatBufferModel> model =

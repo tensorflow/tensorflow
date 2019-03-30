@@ -47,8 +47,9 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
   }
 
   tensorflow::SubProcess file_check_process;
-  file_check_process.SetProgram(file_check_path,
-                                {file_check_path, "-v", pattern_path});
+  file_check_process.SetProgram(
+      file_check_path,
+      {file_check_path, "-v", "-dump-input=always", pattern_path});
   file_check_process.SetChannelAction(tensorflow::CHAN_STDIN,
                                       tensorflow::ACTION_PIPE);
   file_check_process.SetChannelAction(tensorflow::CHAN_STDERR,

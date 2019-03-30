@@ -149,6 +149,26 @@ def tftop_k(_):
   array_ops.identity(output[1], name='indices')
 
 
+def tfvariable(_):
+  x = variables.Variable(1000.0, name='x')
+  old_x = x.value()
+  with ops.control_dependencies([old_x]):
+    new_x = x.assign_add(42.0)
+  array_ops.stack([old_x, new_x], name='result')
+
+
+def tfvariable_sequential_updates(_):
+  x = variables.Variable(1.0, name='x')
+  y = variables.Variable(1.0, name='y')
+  updates = control_flow_ops.no_op()
+  for _ in range(3):
+    with ops.control_dependencies([updates]):
+      x_val = x.read_value() + y
+      updates = x.assign_sub(0.1 * x_val)
+
+  array_ops.identity(updates, name='result')
+
+
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
@@ -171,6 +191,8 @@ def main(_):
   write_graph(tfmatmulandadd, FLAGS.out_dir)
   write_graph(tfsplits, FLAGS.out_dir)
   write_graph(tftop_k, FLAGS.out_dir)
+  write_graph(tfvariable, FLAGS.out_dir)
+  write_graph(tfvariable_sequential_updates, FLAGS.out_dir)
 
 
 if __name__ == '__main__':

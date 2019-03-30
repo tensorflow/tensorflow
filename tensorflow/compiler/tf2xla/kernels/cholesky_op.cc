@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/cholesky.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -24,7 +25,9 @@ class CholeskyOp : public XlaOpKernel {
  public:
   explicit CholeskyOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    ctx->SetOutput(0, xla::Cholesky(ctx->Input(0)));
+    ctx->SetOutput(0,
+                   xla::Triangle(xla::Cholesky(ctx->Input(0), /*lower=*/true),
+                                 /*lower=*/true));
   }
 };
 

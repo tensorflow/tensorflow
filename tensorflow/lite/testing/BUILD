@@ -10,6 +10,7 @@ load(
     "generated_test_models_all",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -69,6 +70,23 @@ test_suite(
     ],
 )
 
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
+    data = [
+        "//tensorflow/lite/toco",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_examples_report",
+        ":string_util_wrapper",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
@@ -77,9 +95,8 @@ py_binary(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":generate_examples_report",
+        ":generate_examples_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:graph_util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -159,6 +176,7 @@ cc_library(
     srcs = ["tflite_driver.cc"],
     hdrs = ["tflite_driver.h"],
     deps = [
+        ":join",
         ":split",
         ":test_runner",
         "//tensorflow/lite:builtin_op_data",
@@ -388,6 +406,31 @@ tf_cc_binary(
         ":init_tensorflow",
         ":tflite_diff_flags",
         ":tflite_diff_util",
+    ],
+)
+
+cc_library(
+    name = "string_util_lib",
+    srcs = ["string_util.cc"],
+    hdrs = ["string_util.h"],
+    deps = [
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_py_wrap_cc(
+    name = "string_util_wrapper",
+    srcs = [
+        "string_util.i",
+    ],
+    deps = [
+        ":string_util_lib",
+        "//third_party/python_runtime:headers",
     ],
 )
 

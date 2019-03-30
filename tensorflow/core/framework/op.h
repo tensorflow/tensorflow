@@ -144,6 +144,9 @@ class OpRegistry : public OpRegistryInterface {
   Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
       const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  Status LookUpSlow(const string& op_type_name,
+                    const OpRegistrationData** op_reg_data) const;
+
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
   mutable std::vector<OpRegistrationDataFactory> deferred_ GUARDED_BY(mu_);

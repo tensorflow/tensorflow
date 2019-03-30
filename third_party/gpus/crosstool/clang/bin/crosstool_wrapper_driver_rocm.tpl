@@ -30,6 +30,12 @@ GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 
 HIPCC_PATH = '%{hipcc_path}'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
+HIPCC_ENV = '%{hipcc_env}'
+HIP_RUNTIME_PATH = '%{hip_runtime_path}'
+HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
+HCC_RUNTIME_PATH = '%{hcc_runtime_path}'
+HCC_RUNTIME_LIBRARY = '%{hcc_runtime_library}'
+VERBOSE = '%{crosstool_verbose}'=='1'
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -165,6 +171,11 @@ def InvokeHipcc(argv, log=False):
 
   hipccopts = ' '
   hipccopts += ' ' + hipcc_compiler_options
+  # Use -fno-gpu-rdc by default for early GPU kernel finalization
+  # This flag would trigger GPU kernels be generated at compile time, instead
+  # of link time. This allows the default host compiler (gcc) be used as the
+  # linker for TensorFlow on ROCm platform.
+  hipccopts += ' -fno-gpu-rdc '
   hipccopts += undefines
   hipccopts += defines
   hipccopts += std_options
@@ -205,37 +216,46 @@ def main():
   args, leftover = parser.parse_known_args(sys.argv[1:])
 
   if args.x and args.x[0] == 'rocm':
-    # XXX use hipcc to link
-    if args.pass_exit_codes:
-      gpu_compiler_flags = [flag for flag in sys.argv[1:]
-                                 if not flag.startswith(('-pass-exit-codes'))]
-
-      # special handling for $ORIGIN
-      # - guard every argument with ''
-      modified_gpu_compiler_flags = []
-      for flag in gpu_compiler_flags:
-        modified_gpu_compiler_flags.append("'" + flag + "'")
-
-      if args.rocm_log: Log('Link with hipcc: %s' % (' '.join([HIPCC_PATH] + modified_gpu_compiler_flags)))
-      return subprocess.call([HIPCC_PATH] + modified_gpu_compiler_flags)
-
+    # compilation for GPU objects
     if args.rocm_log: Log('-x rocm')
     leftover = [pipes.quote(s) for s in leftover]
     if args.rocm_log: Log('using hipcc')
     return InvokeHipcc(leftover, log=args.rocm_log)
 
-  # Strip our flags before passing through to the CPU compiler for files which
-  # are not -x rocm. We can't just pass 'leftover' because it also strips -x.
-  # We not only want to pass -x to the CPU compiler, but also keep it in its
-  # relative location in the argv list (the compiler is actually sensitive to
-  # this).
-  cpu_compiler_flags = [flag for flag in sys.argv[1:]
-                             if not flag.startswith(('--rocm_log'))]
+  elif args.pass_exit_codes:
+    # link
+    # with hipcc compiler invoked with -fno-gpu-rdc by default now, it's ok to 
+    # use host compiler as linker, but we have to link with HCC/HIP runtime.
+    # Such restriction would be revised further as the bazel script get
+    # improved to fine tune dependencies to ROCm libraries.
+    gpu_linker_flags = [flag for flag in sys.argv[1:]
+                               if not flag.startswith(('--rocm_log'))]
 
-  # XXX: SE codes need to be built with gcc, but need this macro defined
-  cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")
+    gpu_linker_flags.append('-L' + HCC_RUNTIME_PATH)
+    gpu_linker_flags.append('-Wl,-rpath=' + HCC_RUNTIME_PATH)
+    gpu_linker_flags.append('-l' + HCC_RUNTIME_LIBRARY)
+    gpu_linker_flags.append('-L' + HIP_RUNTIME_PATH)
+    gpu_linker_flags.append('-Wl,-rpath=' + HIP_RUNTIME_PATH)
+    gpu_linker_flags.append('-l' + HIP_RUNTIME_LIBRARY)
 
-  return subprocess.call([CPU_COMPILER] + cpu_compiler_flags)
+    if VERBOSE: print(' '.join([CPU_COMPILER] + gpu_linker_flags))
+    return subprocess.call([CPU_COMPILER] + gpu_linker_flags)
+
+  else:
+    # compilation for host objects
+
+    # Strip our flags before passing through to the CPU compiler for files which
+    # are not -x rocm. We can't just pass 'leftover' because it also strips -x.
+    # We not only want to pass -x to the CPU compiler, but also keep it in its
+    # relative location in the argv list (the compiler is actually sensitive to
+    # this).
+    cpu_compiler_flags = [flag for flag in sys.argv[1:]
+                               if not flag.startswith(('--rocm_log'))]
+
+    # XXX: SE codes need to be built with gcc, but need this macro defined
+    cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")
+    if VERBOSE: print(' '.join([CPU_COMPILER] + cpu_compiler_flags))
+    return subprocess.call([CPU_COMPILER] + cpu_compiler_flags)
 
 if __name__ == '__main__':
   sys.exit(main())

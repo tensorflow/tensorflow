@@ -37,7 +37,7 @@ from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 
@@ -272,7 +272,7 @@ class DistributedValues(object):
   def device_map(self):
     return self._device_map
 
-  # TODO(josh11b): Replace unwrap with this?
+  # TODO(josh11b): Replace experimental_local_results with this?
   @property
   def values(self):
     return self._values
@@ -422,6 +422,16 @@ def _assert_strategy(strategy):
         (current_strategy, strategy))
 
 
+@contextlib.contextmanager
+def _enter_or_assert_strategy(strategy):
+  if not distribution_strategy_context.has_strategy():
+    with strategy.scope():
+      yield
+  else:
+    _assert_strategy(strategy)
+    yield
+
+
 DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "type"])
 
@@ -535,6 +545,21 @@ class DistributedVariable(DistributedDelegate):
     return self.primary.shape
 
   @property
+  def handle(self):
+    device = None
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is None:
+      device = distribute_lib.get_update_device()
+      if device is None:
+        raise ValueError("`handle` is not available outside the replica context"
+                         " or a `tf.distribute.Strategy.update()` call.")
+    return self.get(device=device).handle
+
+  @property
+  def trainable(self):
+    return self.primary.trainable
+
+  @property
   def distribute_strategy(self):
     return self._distribute_strategy
 
@@ -608,8 +633,9 @@ def validate_colocate(v, extended):
 
 def _apply_aggregation(strategy, value, aggregation, destinations):
   if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-    return strategy.extended.broadcast_to(strategy.unwrap(value)[0],
-                                          destinations=destinations)
+    return strategy.extended.broadcast_to(
+        strategy.experimental_local_results(value)[0],
+        destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
@@ -630,7 +656,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 class MirroredVariable(DistributedVariable, Mirrored,
-                       checkpointable.Checkpointable):
+                       trackable.Trackable):
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(
@@ -646,39 +672,39 @@ class MirroredVariable(DistributedVariable, Mirrored,
   # update_non_slot() function (like OptimizerV2._finish), which can
   # update several non-slot variables in one call.
   def _assign_func(self, *args, **kwargs):
-    _assert_strategy(self._distribute_strategy)
-    f = kwargs.pop("f")
-    if distribution_strategy_context.in_cross_replica_context():
-      update_device = distribute_lib.get_update_device()
-      if update_device is not None:
-        # We are calling an assign function on the mirrored variable in an
-        # update context.
-        v = self.get(device=update_device)
-        return f(v, *args, **kwargs)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      f = kwargs.pop("f")
+      if distribution_strategy_context.in_cross_replica_context():
+        update_device = distribute_lib.get_update_device()
+        if update_device is not None:
+          # We are calling an assign function on the mirrored variable in an
+          # update context.
+          v = self.get(device=update_device)
+          return f(v, *args, **kwargs)
 
-      # We are calling assign on the mirrored variable in cross replica context,
-      # use `strategy.extended.update()` to update the variable.
-      return self._distribute_strategy.extended.update(
-          self, f, args=args, kwargs=kwargs)
-    else:
-      _assert_replica_context(self._distribute_strategy)
-      # We are calling an assign function on the mirrored variable in replica
-      # context.
-      # We reduce the value we want to assign/add/sub. More details about how we
-      # handle the different use cases can be found in the _reduce method.
-      # We call the function on each of the mirrored variables with the reduced
-      # value.
-      if self._aggregation == vs.VariableAggregation.NONE:
-        raise ValueError("You must specify an aggregation method to update a "
-                         "MirroredVariable in Replica Context.")
+        # We are calling assign on the mirrored variable in cross replica
+        # context, use `strategy.extended.update()` to update the variable.
+        return self._distribute_strategy.extended.update(
+            self, f, args=args, kwargs=kwargs)
+      else:
+        _assert_replica_context(self._distribute_strategy)
+        # We are calling an assign function on the mirrored variable in replica
+        # context.
+        # We reduce the value we want to assign/add/sub. More details about how
+        # we handle the different use cases can be found in the _reduce method.
+        # We call the function on each of the mirrored variables with the
+        # reduced value.
+        if self._aggregation == vs.VariableAggregation.NONE:
+          raise ValueError("You must specify an aggregation method to update a "
+                           "MirroredVariable in Replica Context.")
 
-      def merge_fn(strategy, value, *other_args, **other_kwargs):
-        v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.extended.update(
-            self, f, args=(v,) + other_args, kwargs=other_kwargs)
+        def merge_fn(strategy, value, *other_args, **other_kwargs):
+          v = _apply_aggregation(strategy, value, self._aggregation, self)
+          return strategy.extended.update(
+              self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
-      return distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, args=args, kwargs=kwargs)
+        return distribution_strategy_context.get_replica_context().merge_call(
+            merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
@@ -710,7 +736,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
     return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
-    """Overrides CheckpointableBase method.
+    """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
     MirroredVariables.
@@ -720,7 +746,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
     """
     def _saveable_factory(name=self._common_name):
       return _MirroredSaveable(self, self.primary, name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
 # Register a conversion function which reads the value of the variable,
@@ -752,7 +778,7 @@ def _enclosing_tpu_context():
 # tpu.replicate() because it assumes that you're in a device context where you
 # can operate on a single version of the variable, but a tpu.replicate()
 # operates on all variables and is replicated during a rewrite pass.
-class TPUMirroredVariable(checkpointable.Checkpointable):
+class TPUMirroredVariable(trackable.Trackable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
   def __init__(
@@ -810,7 +836,7 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
   def device_map(self):
     return self._device_map
 
-  # TODO(josh11b): Replace unwrap with this?
+  # TODO(josh11b): Replace experimental_local_results with this?
   @property
   def values(self):
     return self._values
@@ -904,7 +930,7 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
 
   @property
   def device(self):
-    return self._get().device
+    return self.handle.device
 
   def eval(self, session=None):
     return self.primary.eval(session)
@@ -916,42 +942,43 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
   # update_non_slot() function (like OptimizerV2._finish), which can
   # update several non-slot variables in one call.
   def _assign_func(self, *args, **kwargs):
-    _assert_strategy(self._distribute_strategy)
-    f = kwargs.pop("f")
-    if distribution_strategy_context.in_cross_replica_context():
-      if _enclosing_tpu_context() is not None:
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      f = kwargs.pop("f")
+      if distribution_strategy_context.in_cross_replica_context():
+        if _enclosing_tpu_context() is not None:
+          return self._distribute_strategy.extended.update(
+              self, f, args=args, kwargs=kwargs)
+
+        update_device = distribute_lib.get_update_device()
+        # We are calling update on the mirrored variable in cross replica
+        # context.
+        if update_device is not None:
+          # We are calling an assign function on the mirrored variable in cross
+          # replica context.
+          v = self._get(device=update_device)
+          return f(v, *args, **kwargs)
+
         return self._distribute_strategy.extended.update(
             self, f, args=args, kwargs=kwargs)
+      else:
+        _assert_replica_context(self._distribute_strategy)
+        # We are calling an assign function on the mirrored variable in replica
+        # context.
+        # We reduce the value we want to assign/add/sub. More details about how
+        # we handle the different use cases can be found in the _reduce method.
+        # We call the function on each of the mirrored variables with the
+        # reduced value.
+        if self._aggregation == vs.VariableAggregation.NONE:
+          raise ValueError("You must specify an aggregation method to update a "
+                           "TPUMirroredVariable in Replica Context.")
 
-      update_device = distribute_lib.get_update_device()
-      # We are calling update on the mirrored variable in cross replica context.
-      if update_device is not None:
-        # We are calling an assign function on the mirrored variable in cross
-        # replica context.
-        v = self._get(device=update_device)
-        return f(v, *args, **kwargs)
+        def merge_fn(strategy, value, *other_args, **other_kwargs):
+          v = _apply_aggregation(strategy, value, self._aggregation, self)
+          return strategy.extended.update(
+              self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
-      return self._distribute_strategy.extended.update(
-          self, f, args=args, kwargs=kwargs)
-    else:
-      _assert_replica_context(self._distribute_strategy)
-      # We are calling an assign function on the mirrored variable in replica
-      # context.
-      # We reduce the value we want to assign/add/sub. More details about how we
-      # handle the different use cases can be found in the _reduce method.
-      # We call the function on each of the mirrored variables with the reduced
-      # value.
-      if self._aggregation == vs.VariableAggregation.NONE:
-        raise ValueError("You must specify an aggregation method to update a "
-                         "TPUMirroredVariable in Replica Context.")
-
-      def merge_fn(strategy, value, *other_args, **other_kwargs):
-        v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.extended.update(
-            self, f, args=(v,) + other_args, kwargs=other_kwargs)
-
-      return distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, args=args, kwargs=kwargs)
+        return distribution_strategy_context.get_replica_context().merge_call(
+            merge_fn, args=args, kwargs=kwargs)
 
   @contextlib.contextmanager
   def _handle_graph(self, handle):
@@ -983,7 +1010,8 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._read_variable_op()
 
   def assign_sub(self, *args, **kwargs):
-    def assign_sub_fn(var, delta, **kw):
+    def assign_sub_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -997,7 +1025,8 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._assign_func(f=assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    def assign_add_fn(var, delta, **kw):
+    def assign_add_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1011,7 +1040,8 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._assign_func(f=assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    def assign_fn(var, value, **kw):
+    def assign_fn(var, value, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1080,12 +1110,14 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribution_strategy_context.in_cross_replica_context():
-      return self.primary._as_graph_element()
-    return self._read_variable_op()
+    if _enclosing_tpu_context() is None:
+      if distribution_strategy_context.in_cross_replica_context():
+        return self.primary._as_graph_element()
+      return self._get()._as_graph_element()
+    return None
 
   def _gather_saveables_for_checkpoint(self):
-    """Overrides CheckpointableBase method.
+    """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
     MirroredVariables.
@@ -1095,7 +1127,7 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     """
     def _saveable_factory(name=self._common_name):
       return _MirroredSaveable(self, self.primary, name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -1170,28 +1202,29 @@ ops.register_tensor_conversion_function(TPUMirroredVariable,
 ops.register_dense_tensor_like_type(TPUMirroredVariable)
 
 
-class _ReplicaLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
-  """Class for defining how to restore a ReplicaLocalVariable."""
+class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
+  """Class for defining how to restore a SyncOnReadVariable."""
 
-  def __init__(self, replica_local_variable, name):
-    self._replica_local_variable = replica_local_variable
+  def __init__(self, sync_on_read_variable, name):
+    self._sync_on_read_variable = sync_on_read_variable
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      strategy = replica_local_variable._distribute_strategy  # pylint: disable=protected-access
-      return strategy.extended.read_var(replica_local_variable)
+      strategy = sync_on_read_variable._distribute_strategy  # pylint: disable=protected-access
+      return strategy.extended.read_var(sync_on_read_variable)
 
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
         slice_spec="",
         name=name,
-        dtype=replica_local_variable.dtype)
-    super(_ReplicaLocalSaveable, self).__init__(tensor, [spec], name)
+        dtype=sync_on_read_variable.dtype,
+        device=sync_on_read_variable.primary.device)
+    super(_SyncOnReadSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    return self._replica_local_variable.assign(tensor)
+    return self._sync_on_read_variable.assign(tensor)
 
 
 def _assert_replica_context(strategy):
@@ -1204,14 +1237,13 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
-class ReplicaLocalVariable(DistributedVariable, PerReplica,
-                           checkpointable.Checkpointable):
+class SyncOnReadVariable(DistributedVariable, PerReplica, trackable.Trackable):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(
       self, strategy, device_map, values, aggregation, logical_device=None):
     self._aggregation = aggregation
-    super(ReplicaLocalVariable, self).__init__(
+    super(SyncOnReadVariable, self).__init__(
         strategy, device_map, values, logical_device=logical_device)
 
   def assign_sub(self, *args, **kwargs):
@@ -1243,11 +1275,8 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.primary
-    # TODO(josh11b): Use a strategy-specific method.
-    total = math_ops.add_n(self._values)
-    if self._aggregation == vs.VariableAggregation.MEAN:
-      return total * (1./ len(self._values))
-    return total
+    return self._distribute_strategy.reduce(
+        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
@@ -1256,28 +1285,28 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
     return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
-    """Overrides CheckpointableBase method.
+    """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
-    ReplicaLocalVariables.
+    `SyncOnReadVariable`s.
 
     Returns:
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
     def _saveable_factory(name=self._common_name):
-      return _ReplicaLocalSaveable(self, name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+      return _SyncOnReadSaveable(self, name)
+    return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
-# Register a conversion function for ReplicaLocalVariable which allows as_ref to
+# Register a conversion function for SyncOnReadVariable which allows as_ref to
 # be true.
-def _tensor_conversion_replica_local(var, dtype=None, name=None, as_ref=False):
+def _tensor_conversion_sync_on_read(var, dtype=None, name=None, as_ref=False):
   return ops.internal_convert_to_tensor(
       var.get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-ops.register_tensor_conversion_function(ReplicaLocalVariable,
-                                        _tensor_conversion_replica_local)
+ops.register_tensor_conversion_function(SyncOnReadVariable,
+                                        _tensor_conversion_sync_on_read)
 
 
 def regroup(device_map, values, wrap_class=PerReplica):
@@ -1326,7 +1355,7 @@ def regroup(device_map, values, wrap_class=PerReplica):
       break
   # Consider three cases where same_id is true:
   # * If v0 is a DistributedVariable (a MirroredVariable or
-  #   ReplicaLocalVariable, and same_id means it is the same across all
+  #   SyncOnReadVariable, and same_id means it is the same across all
   #   devices), we want to return it. We check DistributedVariable
   #   specifically since it can look like it has a
   #   _distributed_container member since its members do.
@@ -1341,7 +1370,7 @@ def regroup(device_map, values, wrap_class=PerReplica):
     return v0
 
   # Detect the case where each device has a parallel component of the
-  # same MirroredVariable (or ReplicaLocalVariable). In this case we
+  # same MirroredVariable (or SyncOnReadVariable). In this case we
   # want to return the containing MirroredVariable, after a bunch of
   # sanity checking. In particular, each component should have the
   # same container, and the devices of the variables should match the
@@ -1394,7 +1423,7 @@ def update_regroup(extended, device_map, updates, group):
   # so we can avoid all these nest operations.
   regrouped = regroup(device_map, updates, Mirrored)
   if not group:
-    return nest.map_structure(extended._unwrap, regrouped)  # pylint: disable=protected-access
+    return nest.map_structure(extended._local_results, regrouped)  # pylint: disable=protected-access
   grouped_flat = []
   for u in nest.flatten(regrouped):
     if isinstance(u, DistributedValues):
@@ -1436,7 +1465,7 @@ def value_container(val):
 
 
 # TODO(josh11b): Descend from Variable.
-class AggregatingVariable(checkpointable.Checkpointable):
+class AggregatingVariable(trackable.Trackable):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -1458,35 +1487,35 @@ class AggregatingVariable(checkpointable.Checkpointable):
     return getattr(self._v, name)
 
   def _assign_func(self, *args, **kwargs):
-    _assert_strategy(self._distribute_strategy)
-    f = kwargs.pop("f")
-    if distribution_strategy_context.in_cross_replica_context():
-      update_device = distribute_lib.get_update_device()
-      if update_device is not None:
-        # We are calling an assign function in an update context.
-        return f(self._v, *args, **kwargs)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      f = kwargs.pop("f")
+      if distribution_strategy_context.in_cross_replica_context():
+        update_device = distribute_lib.get_update_device()
+        if update_device is not None:
+          # We are calling an assign function in an update context.
+          return f(self._v, *args, **kwargs)
 
-      # We are calling an assign function in cross replica context, wrap it in
-      # an update call.
-      return self._distribute_strategy.extended.update(
-          self, f, args=args, kwargs=kwargs)
-    else:
-      replica_context = distribution_strategy_context.get_replica_context()
-      assert replica_context
-      # We are calling an assign function in replica context.
-      # We reduce the value we want to assign/add/sub. More details about how we
-      # handle the different use cases can be found in the _reduce method.
-      # We call the function with the reduced value.
-      if self._aggregation == vs.VariableAggregation.NONE:
-        raise ValueError("You must specify an aggregation method to update a "
-                         "a variable in replica context.")
+        # We are calling an assign function in cross replica context, wrap it in
+        # an update call.
+        return self._distribute_strategy.extended.update(
+            self, f, args=args, kwargs=kwargs)
+      else:
+        replica_context = distribution_strategy_context.get_replica_context()
+        assert replica_context
+        # We are calling an assign function in replica context.
+        # We reduce the value we want to assign/add/sub. More details about how
+        # we handle the different use cases can be found in the _reduce method.
+        # We call the function with the reduced value.
+        if self._aggregation == vs.VariableAggregation.NONE:
+          raise ValueError("You must specify an aggregation method to update a "
+                           "a variable in replica context.")
 
-      def merge_fn(strategy, value, *other_args, **other_kwargs):
-        v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.extended.update(
-            self, f, args=(v,) + other_args, kwargs=other_kwargs)
+        def merge_fn(strategy, value, *other_args, **other_kwargs):
+          v = _apply_aggregation(strategy, value, self._aggregation, self)
+          return strategy.extended.update(
+              self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
-      return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
+        return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
@@ -1514,7 +1543,7 @@ class AggregatingVariable(checkpointable.Checkpointable):
 
   # TODO(josh11b): Test saving & restoring.
   def _gather_saveables_for_checkpoint(self):
-    return {checkpointable.VARIABLE_VALUE_KEY: self._v}
+    return {trackable.VARIABLE_VALUE_KEY: self._v}
 
   # pylint: disable=multiple-statements
   def __add__(self, o): return self._v + o

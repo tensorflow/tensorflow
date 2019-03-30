@@ -68,6 +68,57 @@ class CollectiveOpKernel : public AsyncOpKernel {
   std::vector<int32> dependencies_;
 };
 
+class CollectiveGatherOpKernel : public CollectiveOpKernel {
+ public:
+  explicit CollectiveGatherOpKernel(OpKernelConstruction* c)
+      : CollectiveOpKernel(c) {
+    col_params_.instance.type = GATHER_COLLECTIVE;
+    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+    const NodeDef& real_node = c->def();
+    col_params_.name = strings::StrCat(real_node.name(), ": Gather");
+    col_params_.group.device_type = c->device_type();
+  }
+
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_.name),
+        done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // Allocate the output tensor.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          c, c->allocate_output(0, col_params_.instance.shape, &output), done);
+    }
+    if (!CanProceedWithCompute(c, col_exec, done)) return;
+    auto actual_done = [c, done](const Status& s) {
+      OP_REQUIRES_OK_ASYNC(c, s, done);
+      done();
+    };
+    col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveGatherOpKernel);
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_CPU),
+                        CollectiveGatherOpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_GPU),
+                        CollectiveGatherOpKernel);
+
 class CollectiveReduceOpKernel : public CollectiveOpKernel {
  public:
   explicit CollectiveReduceOpKernel(OpKernelConstruction* c)

@@ -22,12 +22,14 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -122,6 +124,71 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = self.evaluate(result)
       self.assertEqual(((i + 1) * i) // 2, result["dense"])
       self.assertSparseValuesEqual(make_sparse_fn(i), result["sparse"])
+
+  def testDatasetSideEffect(self):
+    counter_var = variables.Variable(0)
+
+    def increment_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(10).map(increment_fn)
+
+    def reduce_fn(state, value):
+      return state + value
+
+    @function.defun
+    def fn():
+      _ = dataset_fn().reduce(np.int64(0), reduce_fn)
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 10)
+
+  def testSideEffect(self):
+    counter_var = variables.Variable(0)
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(10)
+
+    def reduce_fn(state, value):
+      counter_var.assign_add(1)
+      return state + value
+
+    @function.defun
+    def fn():
+      _ = dataset_fn().reduce(np.int64(0), reduce_fn)
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 10)
+
+  def testAutomaticControlDependencies(self):
+    counter_var = variables.Variable(1)
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(1)
+
+    def reduce1_fn(state, value):
+      counter_var.assign(counter_var + 1)
+      return state + value
+
+    def reduce2_fn(state, value):
+      counter_var.assign(counter_var * 2)
+      return state + value
+
+    @function.defun
+    def fn():
+      _ = dataset_fn().reduce(np.int64(0), reduce1_fn)
+      _ = dataset_fn().reduce(np.int64(0), reduce2_fn)
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 4)
 
 
 if __name__ == "__main__":

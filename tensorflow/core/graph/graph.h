@@ -63,8 +63,8 @@ struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;    // Declared below
-class NodeIter;        // Declared below
+class NeighborIter;     // Declared below
+class NodeIter;         // Declared below
 struct NodeProperties;  // Defined in .cc
 
 class Node {
@@ -173,8 +173,11 @@ class Node {
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
-
-  bool IsDataset() const { return class_ == NC_DATASET; }
+  bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+  // Is this node a function input
+  bool IsArg() const { return class_ == NC_ARG; }
+  // Is this node a function output
+  bool IsRetval() const { return class_ == NC_RETVAL; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -256,7 +259,9 @@ class Node {
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
-    NC_DATASET,
+    NC_PARTITIONED_CALL,
+    NC_ARG,
+    NC_RETVAL,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -657,7 +662,8 @@ class Graph {
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
                      const Node* cost_node);
   void ReleaseNode(Node* node);
-
+  // Insert edge in free_edges_ for possible reuse.
+  void RecycleEdge(const Edge* edge);
   // Registry of all known ops, including functions.
   FunctionLibraryDefinition ops_;
 

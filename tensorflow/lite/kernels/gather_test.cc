@@ -96,6 +96,15 @@ TEST(GatherOpTest, Test0DIndexWith0DResult) {
   EXPECT_TRUE(m.GetOutputShape().empty());
 }
 
+TEST(GatherOpTest, Test1DInput1DIndex) {
+  GatherOpModel m({TensorType_FLOAT32, {3}}, {TensorType_INT32, {1}});
+  m.SetInput<float>({1.0, 3.0, 5.0});
+  m.SetPositions<int32_t>({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.0})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+}
+
 TEST(GatherOpTest, Test2DIndexWith2DResult) {
   GatherOpModel m({TensorType_FLOAT32, {3}}, {TensorType_INT32, {1, 2}});
   m.SetInput<float>({1.0, 2.0, 3.0});
@@ -137,6 +146,29 @@ TEST(FloatGatherOpTest, Axis1) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3}));
 }
 
+TEST(FloatGatherOpTest, Axis10DIndex) {
+  const int axis = 1;
+  GatherOpModel m({TensorType_FLOAT32, {1, 3, 2}}, {TensorType_INT32, {}},
+                  axis);
+  m.SetInput<float>({1, 2, 3, 4, 5, 6});
+  m.SetPositions<int32_t>({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3, 4})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+}
+
+TEST(FloatGatherOpTest, Axis1Slice) {
+  const int axis = 1;
+  GatherOpModel m({TensorType_FLOAT32, {1, 4, 2}}, {TensorType_INT32, {2}},
+                  axis);
+  m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetPositions<int32_t>({3, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({7, 8, 3, 4})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+}
+
 TEST(FloatGatherOpTest, LastAxis) {
   const int axis = -1;
   GatherOpModel m({TensorType_FLOAT32, {1, 2, 3}}, {TensorType_INT32, {2}},
@@ -147,6 +179,17 @@ TEST(FloatGatherOpTest, LastAxis) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({3, 1, 6, 4})));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+}
+
+TEST(FloatGatherOpTest, LastAxis0DIndex) {
+  const int axis = -1;
+  GatherOpModel m({TensorType_FLOAT32, {1, 2, 3}}, {TensorType_INT32, {}},
+                  axis);
+  m.SetInput<float>({1, 2, 3, 4, 5, 6});
+  m.SetPositions<int32_t>({2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3, 6})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
 }
 
 TEST(TypesGatherOpTest, Float32Int32) {

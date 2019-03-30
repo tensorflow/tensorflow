@@ -28,6 +28,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -629,7 +630,9 @@ class BaseSession(SessionInterface):
       target: (Optional) The TensorFlow execution engine to connect to.
       graph: (Optional) The graph to be used. If this argument is None,
         the default graph will be used.
-      config: (Optional) ConfigProto proto used to configure the session.
+      config: (Optional) ConfigProto proto used to configure the session. If no
+        config is specified, the global default will be used. The global
+        default can be configured via the tf.config APIs.
 
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
@@ -659,15 +662,14 @@ class BaseSession(SessionInterface):
     self._delete_lock = threading.Lock()
     self._dead_handles = []
 
-    if config is not None:
-      if not isinstance(config, config_pb2.ConfigProto):
-        raise TypeError(
-            'config must be a tf.ConfigProto, but got %s' % type(config))
-      self._config = config
-      self._add_shapes = config.graph_options.infer_shapes
-    else:
-      self._config = None
-      self._add_shapes = False
+    if config is None:
+      config = context.context().config
+
+    if not isinstance(config, config_pb2.ConfigProto):
+      raise TypeError(
+          'config must be a tf.ConfigProto, but got %s' % type(config))
+    self._config = config
+    self._add_shapes = config.graph_options.infer_shapes
 
     self._session = None
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
@@ -1590,7 +1592,21 @@ class Session(BaseSession):
     self._default_session_context_manager = None
     self._default_graph_context_manager = None
 
-    self.close()
+    # If we are closing due to an exception, set a time limit on our Close() to
+    # avoid blocking forever.
+    # TODO(b/120204635) remove this when deadlock is fixed.
+    if exec_type:
+      close_thread = threading.Thread(
+          name='SessionCloseThread', target=self.close)
+      close_thread.daemon = True
+      close_thread.start()
+      close_thread.join(30.0)
+      if close_thread.is_alive():
+        logging.error(
+            'Session failed to close after 30 seconds. Continuing after this '
+            'point may leave your program in an undefined state.')
+    else:
+      self.close()
 
   @staticmethod
   def reset(target, containers=None, config=None):

@@ -265,6 +265,14 @@ tf_module {
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "local_conv1d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "local_conv2d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'output_shape\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "log"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }

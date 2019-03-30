@@ -522,7 +522,7 @@ class SeluTest(test.TestCase):
     for t in [np.float16, np.float32, np.float64]:
       self._testSelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
-      # Force executed on CPU in case GPU kernels are avaiable.
+      # Force executed on CPU in case GPU kernels are available.
       with ops.device("/device:CPU:0"):
         self._testSelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))

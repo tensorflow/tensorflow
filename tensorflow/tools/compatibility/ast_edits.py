@@ -286,7 +286,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
     arg_warnings = self._get_applicable_dict("function_arg_warnings",
                                              full_name, name)
 
-    for (kwarg, arg), (level, warning) in arg_warnings.items():
+    for (kwarg, arg), (level, warning) in sorted(arg_warnings.items()):
       present, _ = get_arg_value(node, kwarg, arg)
       if present:
         warned = True
@@ -525,7 +525,7 @@ class ASTCodeUpgrader(object):
     text += "Processing file %r\n outputting to %r\n" % (in_filename,
                                                          out_filename)
     text += "-" * 80 + "\n\n"
-    text += "\n".join(log)
+    text += "\n".join(log) + "\n"
     text += "-" * 80 + "\n\n"
     return text
 
@@ -555,7 +555,7 @@ class ASTCodeUpgrader(object):
             process_errors)
 
   def process_tree(self, root_directory, output_root_directory,
-                   copy_other_files, in_place):
+                   copy_other_files):
     """Processes upgrades on an entire tree of python files in place.
 
     Note that only Python files. If you have custom code in other languages,
@@ -565,20 +565,14 @@ class ASTCodeUpgrader(object):
       root_directory: Directory to walk and process.
       output_root_directory: Directory to use as base.
       copy_other_files: Copy files that are not touched by this converter.
-      in_place: Allow the conversion of an entire directory in place.
 
     Returns:
-      A tuple of files processed, the report string ofr all files, and a dict
+      A tuple of files processed, the report string for all files, and a dict
         mapping filenames to errors encountered in that file.
     """
 
     if output_root_directory == root_directory:
-      if in_place:
-        return self.process_tree_inplace(root_directory)
-      else:
-        print("In order to copy a directory in place the `--inplace` input "
-              "arg must be set to `True`.")
-        sys.exit(1)
+      return self.process_tree_inplace(root_directory)
 
     # make sure output directory doesn't exist
     if output_root_directory and os.path.exists(output_root_directory):

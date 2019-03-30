@@ -28,7 +28,7 @@ from tensorflow.python.keras.saving.hdf5_format import save_weights_to_hdf5_grou
 from tensorflow.python.keras.saving.model_config import model_from_config
 from tensorflow.python.keras.saving.model_config import model_from_json
 from tensorflow.python.keras.saving.model_config import model_from_yaml
-from tensorflow.python.keras.saving.saved_model import export
+from tensorflow.python.keras.saving.saved_model import export_saved_model
 from tensorflow.python.keras.saving.saved_model import load_from_saved_model
 from tensorflow.python.keras.saving.saving_utils import trace_model_call
 

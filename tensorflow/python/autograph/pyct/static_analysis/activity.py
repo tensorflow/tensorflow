@@ -265,10 +265,10 @@ class ActivityAnalyzer(transformer.Base):
     self._exit_scope()
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
   def visit_Expr(self, node):
@@ -446,6 +446,10 @@ class ActivityAnalyzer(transformer.Base):
     node.target = self.visit(node.target)
     node.iter = self.visit(node.iter)
     anno.setanno(node.iter, anno.Static.SCOPE, self.scope)
+    self._exit_scope()
+    self._enter_scope(False)
+    self.visit(node.target)
+    anno.setanno(node, NodeAnno.ITERATE_SCOPE, self.scope)
     self._exit_scope()
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),

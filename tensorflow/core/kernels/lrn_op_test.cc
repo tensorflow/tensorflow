@@ -102,7 +102,7 @@ TEST_F(LRNFloatTest, Depth96) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInput<float>(TensorShape({1, 1, 1, 96}),
-                  [this](int i) -> float { return i + 1; });
+                  [](int i) -> float { return i + 1; });
   TF_ASSERT_OK(RunOpKernel());
   auto actual = GetOutput(0)->tensor<float, 4>();
 
@@ -138,7 +138,7 @@ TEST_F(LRNFloatTest, Depth16) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInput<float>(TensorShape({1, 1, 1, 16}),
-                  [this](int i) -> float { return i + 1; });
+                  [](int i) -> float { return i + 1; });
   TF_ASSERT_OK(RunOpKernel());
   auto actual = GetOutput(0)->tensor<float, 4>();
 

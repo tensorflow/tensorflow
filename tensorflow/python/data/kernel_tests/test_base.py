@@ -100,7 +100,8 @@ class DatasetTestBase(test.TestCase):
                             expected_error=None,
                             requires_initialization=False,
                             num_test_iterations=1,
-                            assert_items_equal=False):
+                            assert_items_equal=False,
+                            expected_error_iter=1):
     """Asserts that a dataset produces the expected output / error.
 
     Args:
@@ -122,6 +123,8 @@ class DatasetTestBase(test.TestCase):
         to 2.
       assert_items_equal: Tests expected_output has (only) the same elements
         regardless of order.
+      expected_error_iter: How many times to iterate before expecting an error,
+        if an error is expected.
     """
     self.assertTrue(
         expected_error is not None or expected_output is not None,
@@ -135,10 +138,12 @@ class DatasetTestBase(test.TestCase):
                                                expected_error[1]):
         get_next = self.getNext(
             dataset, requires_initialization=requires_initialization)
-        self.evaluate(get_next())
+        for _ in range(expected_error_iter):
+          self.evaluate(get_next())
       return
     if expected_shapes:
-      self.assertEqual(expected_shapes, dataset.output_shapes)
+      self.assertEqual(expected_shapes,
+                       dataset_ops.get_legacy_output_shapes(dataset))
     self.assertGreater(num_test_iterations, 0)
     for _ in range(num_test_iterations):
       get_next = self.getNext(
@@ -154,9 +159,12 @@ class DatasetTestBase(test.TestCase):
 
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
-    self.assertEqual(dataset1.output_types, dataset2.output_types)
-    self.assertEqual(dataset1.output_classes, dataset2.output_classes)
-    flattened_types = nest.flatten(dataset1.output_types)
+    self.assertTrue(dataset_ops.get_structure(dataset1).is_compatible_with(
+        dataset_ops.get_structure(dataset2)))
+    self.assertTrue(dataset_ops.get_structure(dataset2).is_compatible_with(
+        dataset_ops.get_structure(dataset1)))
+    flattened_types = nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset1))
 
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)

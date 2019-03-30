@@ -18,13 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.saved_model import nested_structure_coder
-from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
 def _serialize_function_spec(function_spec, coder):
   """Serialize a FunctionSpec object into its proto representation."""
+  if function_spec.is_method and not function_spec.fullargspec.args:
+    raise NotImplementedError(
+        "Missing support to serialize a method function without a named "
+        "'self' argument.")
   proto = saved_object_graph_pb2.FunctionSpec()
   proto.fullargspec.CopyFrom(coder.encode_structure(function_spec.fullargspec))
   proto.is_method = function_spec.is_method
@@ -49,7 +53,7 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
         "captures tensor %s which is unsupported or not reachable from root. "
         "One reason could be that a stateful object or a variable that the "
         "function depends on is not assigned to an attribute of the serialized "
-        "checkpointable object "
+        "trackable object "
         "(see SaveTest.test_captures_unreachable_variable)."
         % (concrete_function.name, capture))
   concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()

@@ -133,6 +133,25 @@ enum {
 };
 
 /**
+ * Device types.
+ *
+ * The type of NNAPI device.
+ */
+enum {
+  /** The device type cannot be provided. */
+  ANEURALNETWORKS_DEVICE_UNKNOWN = 0,
+  /** The device does not fall into any category below. */
+  ANEURALNETWORKS_DEVICE_OTHER = 1,
+  /** The device runs NNAPI models on single or multi-core CPU. */
+  ANEURALNETWORKS_DEVICE_CPU = 2,
+  /** The device can run NNAPI models and also accelerate graphics APIs such
+   * as OpenGL ES and Vulkan. */
+  ANEURALNETWORKS_DEVICE_GPU = 3,
+  /** Dedicated accelerator for Machine Learning workloads. */
+  ANEURALNETWORKS_DEVICE_ACCELERATOR = 4,
+};
+
+/**
  * ANeuralNetworksMemory is an opaque type that represents memory.
  *
  * This type is used to represent shared memory, memory mapped files,

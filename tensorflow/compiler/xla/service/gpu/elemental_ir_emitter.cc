@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "llvm/IR/DerivedTypes.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
@@ -191,39 +192,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
-  llvm::Type* llvm_ty = lhs_value->getType();
-
-  auto make_sqrt = [&, this]() -> StatusOr<llvm::Value*> {
-    // NVPTX has four relevant square root instructions:
-    //   sqrt.approx{.ftz}.f32
-    //   sqrt.rn{.ftz}.f32
-    //   sqrt.rn.f64
-    //   rsqrt.approx.f64
-    // We rely on LLVM's NVPTX backend to pick the right one based on our
-    // fast-math options.  (If fast-math is enabled, llvm may compute the 64-bit
-    // sqrt from the rsqrt approximation.)
-    return EmitLlvmIntrinsicMathCall("llvm.sqrt", {lhs_value}, {lhs_input_type},
-                                     output_type);
-  };
-
-  const HloInstruction* rhs = op->operand(1);
-  if (IsFPLiteralWithValue(rhs, .5)) {
-    VLOG(10) << "emitting pow(A, .5) as sqrt(A): " << op->ToString();
-    return make_sqrt();
-  }
-
-  if (IsFPLiteralWithValue(rhs, -.5)) {
-    VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
-    // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
-    // rsqrt.approx instruction.
-    //
-    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
-    // we force-enable it?
-    TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
-    return FDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
-  }
-
-  VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
   return EmitLibdeviceMathCall("__nv_pow", {lhs_value, rhs_value},
                                {lhs_input_type, rhs_input_type}, output_type);
 }
@@ -270,6 +238,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_sqrt", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
+                                                        llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_rsqrt", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
                                                         llvm::Value* lhs,
                                                         llvm::Value* rhs) {
@@ -293,6 +271,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return FPCast(fast_tanh, value->getType());
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
+    PrimitiveType prim_type, llvm::Value* value) {
+  // Use libdevice __nv_round instead of llvm.round. This is to workaround a
+  // bug in the PTX backend, which implements llvm.round with PTX cvt.rni.
+  // When the llvm.round is fixed, we may still want to use __nv_round here as
+  // expanding the non-trivial implementation early while inlining allows better
+  // optimizations.
+  return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
+}
+
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
     const string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
@@ -311,7 +299,7 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
   llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
       b_->GetInsertBlock()
           ->getModule()
-          ->getOrInsertFunction(llvm_ir::AsStringRef(callee_name), callee_type)
+          ->getOrInsertFunction(callee_name, callee_type)
           .getCallee());
 
   for (auto attribute : attributes) {
@@ -397,12 +385,12 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
 
-        IrArray::Index input_index(index_type, index.size());
+        std::vector<llvm::Value*> input_multi_index(index.size());
         llvm::Value* in_bounds = b_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = NSWMul(
               index[i], index_typed_const(window.dimensions(i).stride()));
-          input_index[i] = NSWSub(
+          input_multi_index[i] = NSWSub(
               NSWAdd(stridden_index,
                      NSWMul(window_index[i],
                             index_typed_const(
@@ -411,24 +399,24 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
           // We need to verify that we are not in the dilated base area.
           llvm::Value* dilation_condition = ICmpEQ(
-              SRem(input_index[i],
+              SRem(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation())),
               index_typed_const(0));
           in_bounds = And(in_bounds, dilation_condition);
 
           // Apply base dilation to the index.
-          input_index[i] =
-              SDiv(input_index[i],
+          input_multi_index[i] =
+              SDiv(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation()));
 
-          // We must check whether 0 ≤ input_index[i] < bound, as otherwise
-          // we are in the pad and so can skip the computation. This
+          // We must check whether 0 ≤ input_multi_index[i] < bound, as
+          // otherwise we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
-          // input_index[i] < bound, as a negative value wraps to a large
+          // input_multi_index[i] < bound, as a negative value wraps to a large
           // positive value.
           in_bounds =
               And(in_bounds,
-                  ICmpULT(input_index[i],
+                  ICmpULT(input_multi_index[i],
                           index_typed_const(operand->shape().dimensions(i))));
         }
 
@@ -437,6 +425,8 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(if_data.true_block, b_);
 
         // We are not in pad, so do the computation.
+        IrArray::Index input_index(input_multi_index, operand->shape(),
+                                   index_type);
         TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                             operand_to_generator.at(operand)(input_index));
         TF_ASSIGN_OR_RETURN(
@@ -463,19 +453,22 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         b()->CreateStore(init_value, accum_ptr);
 
         llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
-        IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
-            operand->shape(), hlo->dimensions(), "reduction_dim");
+        std::vector<llvm::Value*> input_multi_index =
+            loops.AddLoopsForShapeOnDimensions(
+                operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {
-          // Here only input_index[hlo->dimensions()] are non-null, so we must
-          // set the rest.
+          // Here only input_multi_index[hlo->dimensions()] are non-null, so we
+          // must set the rest.
           size_t j = 0;
-          for (size_t i = 0; i < input_index.size(); ++i) {
-            if (input_index[i] == nullptr) {
-              input_index[i] = output_index[j++];
+          for (auto& i : input_multi_index) {
+            if (i == nullptr) {
+              i = output_index[j++];
             }
           }
           CHECK_EQ(output_index.size(), j);
         }
+        llvm_ir::IrArray::Index input_index(
+            input_multi_index, hlo->operand(0)->shape(), index_type);
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
         TF_ASSIGN_OR_RETURN(

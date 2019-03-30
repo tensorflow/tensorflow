@@ -29,11 +29,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
 
+@tf_export("distribute.OneDeviceStrategy")
 class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   """A distribution strategy for running on a single device."""
   # TODO(josh11b): Do we wrap values in types to generate errors if you are
@@ -157,13 +159,13 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
     return array_ops.identity(replica_local_var)
 
-  def _unwrap(self, value):
+  def _local_results(self, value):
     return (value,)
 
   def value_container(self, value):

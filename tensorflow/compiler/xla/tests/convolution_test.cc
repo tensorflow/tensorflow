@@ -1945,7 +1945,7 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
 
 class ConvolutionHloTest : public HloTestBase {};
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64Forward)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF64Forward) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1957,7 +1957,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF32ForwardReversed)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF32ForwardReversed) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1969,7 +1969,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64BackwardFilter)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF64BackwardFilter) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1981,7 +1981,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64BackwardInput)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveF64BackwardInput) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 

@@ -60,6 +60,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
@@ -101,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -110,8 +112,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
+        ":one_device_strategy",
+        "//tensorflow/python/distribute/experimental",
     ],
 )
 
@@ -149,10 +154,17 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":distribute_lib",
+        ":input_lib",
+        ":reduce_util",
+        ":values",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -364,7 +376,6 @@ py_library(
     srcs = ["input_ops.py"],
     deps = [
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -384,6 +395,7 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -401,6 +413,35 @@ py_test(
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy",
+    srcs = ["tpu_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":cross_device_ops",
+        ":device_util",
+        ":distribute_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
@@ -445,6 +486,16 @@ py_test(
 )
 
 py_library(
+    name = "summary_op_util",
+    srcs = ["summary_op_util.py"],
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
+    ],
+)
+
+py_library(
     name = "values",
     srcs = ["values.py"],
     deps = [
@@ -457,7 +508,64 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "combinations",
+    srcs = ["combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "strategy_combinations",
+    srcs = ["strategy_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":combinations",
+        ":distribute_lib",
+        ":mirrored_strategy",
+        ":one_device_strategy",
+        ":parameter_server_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
+py_library(
+    name = "multi_worker_test_base",
+    srcs = ["multi_worker_test_base.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
     ],
 )

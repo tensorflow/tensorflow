@@ -1597,7 +1597,7 @@ def _padding(sequences, num_unroll):
   else:  # Only have SparseTensors
     sparse_lengths = [value.dense_shape[0] for value in sequences_dict.values()
                       if isinstance(value, sparse_tensor.SparseTensor)]
-    length = math_ops.reduce_max(math_ops.to_int32(sparse_lengths))
+    length = math_ops.reduce_max(math_ops.cast(sparse_lengths, dtypes.int32))
 
   unroll = array_ops.constant(num_unroll)
   padded_length = length + ((unroll - (length % unroll)) % unroll)
@@ -1620,8 +1620,9 @@ def _padding(sequences, num_unroll):
       # 3. concat values with paddings
       padded_sequences[key] = array_ops.concat([value, paddings], 0)
     else:
-      padded_shape = array_ops.concat([[math_ops.to_int64(padded_length)],
-                                       value.dense_shape[1:]], 0)
+      padded_shape = array_ops.concat(
+          [[math_ops.cast(padded_length, dtypes.int64)], value.dense_shape[1:]],
+          0)
       padded_sequences[key] = sparse_tensor.SparseTensor(
           indices=value.indices,
           values=value.values,
@@ -1834,8 +1835,8 @@ def _reconstruct_sparse_tensor_seq(sequence,
     Returns:
       A SparseTensor with a +1 higher rank than the input.
     """
-    idx_batch = math_ops.to_int64(
-        math_ops.floor(sp_tensor.indices[:, 0] / num_unroll))
+    idx_batch = math_ops.cast(
+        math_ops.floor(sp_tensor.indices[:, 0] / num_unroll), dtypes.int64)
     idx_time = math_ops.mod(sp_tensor.indices[:, 0], num_unroll)
     indices = array_ops.concat(
         [

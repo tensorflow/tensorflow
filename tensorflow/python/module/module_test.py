@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 
 from absl.testing import parameterized
+import six
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
@@ -84,6 +87,20 @@ class TestModuleNaming(test.TestCase):
     # `foo` is not a method so we do not re-enter the name scope.
     self.assertEqual(mod.foo(), "")
 
+  def test_property(self):
+    mod = PropertyModule()
+    mod.some_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.some_property
+    self.assertEqual(getter_scope_name, "property_module/")
+    self.assertEqual(setter_scope_name, "property_module/")
+
+  def test_property_no_name_scope(self):
+    mod = PropertyModule()
+    mod.no_name_scope_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.no_name_scope_property
+    self.assertEqual(getter_scope_name, "")
+    self.assertEqual(setter_scope_name, "")
+
   def test_invalid_name(self):
     msg = ".* is not a valid module name"
     with self.assertRaisesRegexp(ValueError, msg):
@@ -132,6 +149,34 @@ class TestModuleNaming(test.TestCase):
       mod()
 
     self.assertEqual("", get_name_scope())
+
+  def test_get_attr_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttrModule(module.Module):
+
+      def __getattr__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttrModule, self).__getattr__(name)
+
+    mod = GetAttrModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
+  def test_get_attribute_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttributeModule(module.Module):
+
+      def __getattribute__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttributeModule, self).__getattribute__(name)
+
+    mod = GetAttributeModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
 
 
 class VariableNamingTest(test.TestCase):
@@ -182,22 +227,41 @@ class ModuleTrackingTest(test.TestCase):
     self.assertEqual(set(m.submodules), {leaf1, leaf2})
 
 
-class CommonErrorsTest(test.TestCase):
+class ForwardMethodsTest(test.TestCase):
 
-  def test_not_calling_super_constructor(self):
-    msg = ("Constructing a tf.Module without calling the super constructor is "
-           "not supported")
-    with self.assertRaisesRegexp(ValueError, msg):
-      DoesNotCallSuperConstructorModule()
+  def testFunctionType(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertTrue(isinstance(mod.forward, def_function.Function))
+    self.assertTrue(isinstance(mod.forward_ag, def_function.Function))
 
-  def test_calls_method_before_super(self):
-    msg = "super constructor must be called before any other methods"
-    with self.assertRaisesRegexp(AttributeError, msg):
-      CallsMethodBeforeSuperConstructorModule(allowed_method=False)
+  def testEntersNameScope_call(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(mod.forward().numpy(),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(mod.forward_ag().numpy(),
+                     b"module_with_function_annotated_call/")
 
-  def test_annotated_method_is_allowed(self):
-    self.assertIsNotNone(
-        CallsMethodBeforeSuperConstructorModule(allowed_method=True))
+  def testEntersNameScope_concreteFunction(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(mod.forward.get_concrete_function()().numpy(),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(mod.forward_ag.get_concrete_function()().numpy(),
+                     b"module_with_function_annotated_call/")
+
+
+class AbcTest(test.TestCase):
+
+  def testAbstract(self):
+    msg = "Can't instantiate .* abstract methods"
+    with self.assertRaisesRegexp(TypeError, msg):
+      AbstractModule()  # pylint: disable=abstract-class-instantiated
+
+  def testConcrete(self):
+    mod = ConcreteModule()
+    x, scope_name = mod(2.)
+    self.assertEqual(x, 4.)
+    self.assertEqual(scope_name, "concrete_module/")
+    self.assertEqual(get_name_scope(), "")
 
 
 def get_name_scope():
@@ -225,10 +289,26 @@ class RecursiveModule(module.Module):
 
   def __init__(self, depth, trainable=True):
     super(RecursiveModule, self).__init__(name="badger")
-    self.child = None
-    if depth > 1:
-      self.child = RecursiveModule(depth - 1, trainable=trainable)
-    self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
+    with self.name_scope:
+      self.child = None
+      if depth > 1:
+        self.child = RecursiveModule(depth - 1, trainable=trainable)
+      self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
+
+
+@six.add_metaclass(abc.ABCMeta)
+class AbstractModule(module.Module):
+
+  @abc.abstractmethod
+  def __call__(self, x):
+    pass
+
+
+class ConcreteModule(AbstractModule):
+
+  @module.Module.with_name_scope
+  def __call__(self, x):
+    return x ** 2, get_name_scope()
 
 
 class TreeModule(module.Module):
@@ -237,6 +317,7 @@ class TreeModule(module.Module):
     super(TreeModule, self).__init__(name=name)
     self._leaves = []
 
+  @module.Module.with_name_scope
   def new_leaf(self, name=None):
     leaf = TreeModule(name=name)
     self._leaves.append(leaf)
@@ -245,15 +326,18 @@ class TreeModule(module.Module):
 
 class ReturnsNameScopeModule(module.Module):
 
+  @module.Module.with_name_scope
   def alternative_forward(self):
     return get_name_scope()
 
+  @module.Module.with_name_scope
   def __call__(self):
     return get_name_scope()
 
 
 class SubclassedReturnsNameScopeModule(ReturnsNameScopeModule):
 
+  @module.Module.with_name_scope
   def alternative_alternative_forward(self):
     return get_name_scope()
 
@@ -272,28 +356,44 @@ class ModuleOverridingNameScope(ReturnsNameScopeModule):
     return ops.name_scope("yolo/")
 
 
-class DoesNotCallSuperConstructorModule(module.Module):
+class ModuleWithFunctionAnnotatedCall(module.Module):
+
+  @def_function.function(autograph=False)
+  @module.Module.with_name_scope
+  def forward(self):
+    return get_name_scope()
+
+  @def_function.function(autograph=True)
+  @module.Module.with_name_scope
+  def forward_ag(self):
+    return get_name_scope()
+
+
+class PropertyModule(module.Module):
 
   def __init__(self):
-    # NOTE: Intentionally does not call super constructor.
-    pass
+    super(PropertyModule, self).__init__()
+    self._setter_scope_name = None
 
+  @property
+  @module.Module.with_name_scope
+  def some_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
 
-class CallsMethodBeforeSuperConstructorModule(module.Module):
+  @some_property.setter
+  @module.Module.with_name_scope
+  def some_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
 
-  def __init__(self, allowed_method):
-    if allowed_method:
-      self.no_name_scope()
-    else:
-      self.with_name_scope()
-    super(CallsMethodBeforeSuperConstructorModule, self).__init__()
+  @property
+  def no_name_scope_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
 
-  @module.Module.no_name_scope
-  def no_name_scope(self):
-    pass
-
-  def with_name_scope(self):
-    pass
+  @no_name_scope_property.setter
+  def no_name_scope_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
 
 NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
 mk_index_dict = lambda v: dict(enumerate(v))

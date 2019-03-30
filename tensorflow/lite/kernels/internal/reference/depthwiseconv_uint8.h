@@ -27,7 +27,7 @@ namespace tflite {
 // Used in tests and template parameters to control which version of depthwise
 // convolution is called. Primarily for reference code, and specializations
 // forced in tests.
-enum class DepthwiseConvInvocation {
+enum class DepthwiseConvImplementation {
   // Run all tests against kUseStandardEntry even if also testing another
   // kernel, since we need to be sure that the main DepthwiseConv() function in
   // optimized_ops.h dispatches to a correctly-executing kernel.
@@ -59,6 +59,7 @@ enum class DepthwiseConvDepthMultiplication {
 };
 
 namespace reference_ops {
+namespace depthwise_conv {
 
 template <DepthwiseConvOutputRounding output_rounding>
 inline int32 DepthwiseConvRound(int32 x, int32 quantized_multiplier,
@@ -172,13 +173,15 @@ struct DepthwiseConvBasicKernel {
   }
 };
 
+}  // namespace depthwise_conv
+
 inline void DepthwiseConv(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data) {
-  return DepthwiseConvBasicKernel<
+  return depthwise_conv::DepthwiseConvBasicKernel<
       DepthwiseConvOutputRounding::kAwayFromZero>::Run(params, input_shape,
                                                        input_data, filter_shape,
                                                        filter_data, bias_shape,

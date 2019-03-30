@@ -50,7 +50,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto data_type = output->type;
   TF_LITE_ENSURE(context,
                  data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8 ||
-                     data_type == kTfLiteInt32 || data_type == kTfLiteInt64);
+                     data_type == kTfLiteInt8 || data_type == kTfLiteInt32 ||
+                     data_type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
   const int block_size = params->block_size;
@@ -98,6 +99,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_SPACE_TO_DEPTH(reference_ops, uint8_t);
       } else {
         TF_LITE_SPACE_TO_DEPTH(optimized_ops, uint8_t);
+      }
+      break;
+    case kTfLiteInt8:
+      if (kernel_type == kReference) {
+        TF_LITE_SPACE_TO_DEPTH(reference_ops, int8_t);
+      } else {
+        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int8_t);
       }
       break;
     case kTfLiteInt32:

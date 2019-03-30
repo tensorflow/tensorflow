@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
@@ -238,6 +239,10 @@ class XlaBuilder {
   // See also set_die_immediately_on_error().
   Status first_error() const { return first_error_; }
 
+  // Returns the current status of the builder, complete with the stack trace
+  // information.
+  Status GetCurrentStatus() const;
+
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
@@ -299,14 +304,17 @@ class XlaBuilder {
     input_output_aliases_.push_back({output_index, param_number, param_index});
   }
 
- private:
   // Describes an input/output alias as inserted by the SetUpAlias() API.
   struct InputOutputAlias {
+    // Specifies the index of the aliased buffer in the result tuple.
     ShapeIndex output_index;
+    // Specifies the parameter containing the buffer to be aliased.
     int64 param_number;
+    // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
   };
 
+ private:
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
@@ -501,8 +509,11 @@ class XlaBuilder {
 
   XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 
+  ABSL_DEPRECATED("Use form with comparator computation instead")
   XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
              int64 dimension = -1);
+  XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
+             int64 dimension = -1, bool is_stable = false);
 
   XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
 
@@ -521,6 +532,10 @@ class XlaBuilder {
                     const XlaComputation& true_computation,
                     const XlaOp& false_operand,
                     const XlaComputation& false_computation);
+
+  XlaOp Conditional(const XlaOp& branch_index,
+                    absl::Span<const XlaComputation* const> branch_computations,
+                    absl::Span<const XlaOp> branch_operands);
 
   XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                         const int mantissa_bits);
@@ -582,9 +597,11 @@ class XlaBuilder {
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
-  // when the operation is between tensors of different ranks.
+  // when the operation is between tensors of different ranks. The direction is
+  // only used if opcode is kCompare.
   XlaOp BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                 absl::Span<const int64> broadcast_dimensions);
+                 absl::Span<const int64> broadcast_dimensions,
+                 absl::optional<ComparisonDirection> direction = absl::nullopt);
 
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
@@ -753,6 +770,9 @@ class XlaBuilder {
                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
                   absl::Span<const int64> broadcast_dimensions);
+  friend XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+                       absl::Span<const int64> broadcast_dimensions,
+                       ComparisonDirection direction);
   friend XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
@@ -794,6 +814,7 @@ class XlaBuilder {
   friend XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                                bool unit_diagonal,
                                TriangularSolveOptions::Transpose transpose_a);
+  friend XlaOp Cholesky(XlaOp a, bool lower);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const string& config);
   friend void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
@@ -831,6 +852,7 @@ class XlaBuilder {
   friend XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Not(const XlaOp& operand);
+  friend XlaOp PopulationCount(const XlaOp& operand);
   friend XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> broadcast_dimensions);
   friend XlaOp ShiftRightArithmetic(
@@ -903,6 +925,8 @@ class XlaBuilder {
   friend XlaOp Tanh(const XlaOp& operand);
   friend XlaOp Real(const XlaOp& operand);
   friend XlaOp Imag(const XlaOp& operand);
+  friend XlaOp Sqrt(const XlaOp& operand);
+  friend XlaOp Rsqrt(const XlaOp& operand);
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
@@ -919,6 +943,9 @@ class XlaBuilder {
   friend XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
   friend XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
                     int64 dimension);
+  friend XlaOp Sort(absl::Span<const XlaOp> operands,
+                    const XlaComputation& comparator, int64 dimension,
+                    bool is_stable);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -933,6 +960,10 @@ class XlaBuilder {
                            const XlaComputation& true_computation,
                            const XlaOp& false_operand,
                            const XlaComputation& false_computation);
+  friend XlaOp Conditional(
+      const XlaOp& branch_index,
+      absl::Span<const XlaComputation* const> branch_computations,
+      absl::Span<const XlaOp> branch_operands);
   friend XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                const int mantissa_bits);
   friend XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
@@ -1255,6 +1286,11 @@ XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions = {});
 
+// Enqueues a comparison instruction onto the computation.
+XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction);
+
 // Enqueues a dot instruction onto the computation.
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
           const PrecisionConfig* precision_config = nullptr);
@@ -1330,8 +1366,7 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 // * `left_side` is a boolean, indicating whether to solve a system of the form
 //   op(a) * x = b (true) or x * op(a) = b (false).
 // * `lower` is a boolean, indicating whether the argument `a` is
-// lower-triangular
-//   (true) or upper-triangular (false).
+//   lower-triangular (true) or upper-triangular (false).
 // * If `unit_diagonal` is true, the diagonal elements of `a` are assumed to be
 //   1 and not accessed.
 // * `transpose_a` indicates which function `op` we use to transform the tensor
@@ -1339,6 +1374,20 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                       bool unit_diagonal,
                       TriangularSolveOptions::Transpose transpose_a);
+
+// Computes the Cholesky decompositions of a batch of symmetric (Hermitian)
+// positive definite matrices.
+// `a` must be a (batched) square matrix; i.e., it must have rank >= 2 with the
+// two minor dimensions equal.
+// If `lower` is true, the data from the lower triangle is used; if false, the
+// upper triangle is used. The input data in the other triangle of the input
+// does not affect the output. Returns the output in the same lower/uppper
+// triangle. The data returned in the other output triangle is arbitrary and
+// implementation-defined.
+//
+// The value returned if `a` is not Hermitian positive definite is
+// implementation-defined.
+XlaOp Cholesky(XlaOp a, bool lower);
 
 // Enqueues an infeed instruction onto the computation, which writes data of
 // the given shape to the infeed buffer of the device.
@@ -1470,6 +1519,8 @@ XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Not(const XlaOp& operand);
+
+XlaOp PopulationCount(const XlaOp& operand);
 
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                 absl::Span<const int64> broadcast_dimensions = {});
@@ -1628,6 +1679,12 @@ XlaOp Real(const XlaOp& operand);
 // Enqueues an imaginary-part instruction onto the computation.
 XlaOp Imag(const XlaOp& operand);
 
+// Enqueues a sqrt computation onto the computation.
+XlaOp Sqrt(const XlaOp& operand);
+
+// Enqueues a rsqrt computation onto the computation.
+XlaOp Rsqrt(const XlaOp& operand);
+
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
@@ -1675,7 +1732,7 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // of keys, in ascending order.
 // * If the keys have higher rank, the keys are sorted along the provided
 // dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
-// value of 0 will indepenently sort every column, and a dimension value of 1
+// value of 0 will independently sort every column, and a dimension value of 1
 // will independently sort each row. If no dimension number is provided, then
 // the last dimension is chosen by default.
 //
@@ -1685,8 +1742,38 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and tensors with their
 // corresponding values as the other elements.
+ABSL_DEPRECATED("Use form with comparator computation instead")
 XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
            int64 dimension = -1);
+
+// Enqueues a sort instruction onto the computation, using 'comparator' for
+// comparisons. 'comparator' needs to define a strict weak order. 'is_stable'
+// determines whether the stable sorting should be used.
+// If only one operand is provided:
+// * If the operand is a rank-1 tensor (an array), the result is a sorted array.
+//   The resulting sorting order has the property that for all index positions
+//   i, j with i < j, either
+//   comparator(value[i], value[j]) = comparator(value[j], value[i]) = false or
+//   comparator(value[i], value[j]) = true.
+// * If the operand has higher rank, the operand is sorted along the provided
+//   dimension. For example, for a rank-2 tensor (a matrix), a dimension value
+//   of 0 will independently sort every column, and a dimension value of 1 will
+//   independently sort each row. If no dimension number is provided, then the
+//   last dimension is chosen by default. For the dimension which is sorted, the
+//   same sorting order applies as in the rank-1 case.
+//
+// If more than one operand is provided:
+// * All operands must be tensors with the same dimensions. The element types of
+//   the tensors may be different.
+// * The result is a tuple that consists of the operands in sorted order (along
+//   the provided dimension, as above). The same permutation as implied by the
+//   comparison computation is applied to all operand tensors. When comparing
+//   two index positions, 'comparator' is called with 2 * n scalar parameters,
+//   where parameter 2 * i and 2 * i + 1 correspond to the value of operand i at
+//   two index positions.
+// Default comparator computations can be found in lib/comparators.h
+XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
+           int64 dimension = -1, bool is_stable = false);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
@@ -1713,6 +1800,15 @@ XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                   const XlaComputation& true_computation,
                   const XlaOp& false_operand,
                   const XlaComputation& false_computation);
+
+// Enqueues either a predicated (if/else) or indexed (switch/case/default)
+// conditional node onto the computation. N >= 1 branch_computations and
+// branch_operands are matched by index. branch_index selects the branch that
+// will be executed. Out of range branch_index uses the N-1'th
+// branch_computation as default.
+XlaOp Conditional(const XlaOp& branch_index,
+                  absl::Span<const XlaComputation* const> branch_computations,
+                  absl::Span<const XlaOp> branch_operands);
 
 // Enqueues a ReducePrecision node onto the computation.
 XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,

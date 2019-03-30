@@ -20,16 +20,17 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python.single_loss_example import batchnorm_example
 from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -37,6 +38,21 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.losses import losses_impl
+
+
+VAR_MAP_V1 = {
+    "GradientDescent": ("dense/kernel", "dense/bias"),
+    "Adagrad": ("dense/kernel/Adagrad", "dense/kernel", "dense/bias/Adagrad",
+                "dense/bias")
+}
+
+VAR_MAP_V2 = {
+    "SGD": ("dense/bias", "learning_rate", "decay", "iter", "dense/kernel",
+            "momentum"),
+    "Adagrad": ("iter", "epsilon", "dense/bias", "dense/kernel",
+                "learning_rate", "decay", "dense/kernel/accumulator",
+                "dense/bias/accumulator")
+}
 
 
 class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
@@ -48,14 +64,22 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.distributions_and_v1_optimizers(),
+          strategy_combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
           + combinations.combine(mode=["eager"], use_callable_loss=[True])) +
+      combinations.times(
+          strategy_combinations.distributions_and_v2_optimizers(),
+          combinations.combine(
+              mode=["graph", "eager"], use_callable_loss=[True])) +
       combinations.combine(
-          distribution=[combinations.tpu_strategy],
-          optimizer_fn=combinations.optimizers_v1,
+          distribution=[strategy_combinations.tpu_strategy],
+          optimizer_fn=strategy_combinations.optimizers_v2,
           mode=["graph"],
-          use_callable_loss=[True, False]))
+          use_callable_loss=[True]) + combinations.combine(
+              distribution=[strategy_combinations.tpu_strategy],
+              optimizer_fn=strategy_combinations.optimizers_v1,
+              mode=["graph"],
+              use_callable_loss=[True, False]))
   def testTrainNetwork(self, distribution, optimizer_fn, use_callable_loss):
     with distribution.scope():
       model_fn, dataset_fn, layer = minimize_loss_example(
@@ -90,9 +114,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.distributions_and_v1_optimizers(),
+          strategy_combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
-          + combinations.combine(mode=["eager"], use_callable_loss=[True])))
+          + combinations.combine(mode=["eager"], use_callable_loss=[True])) +
+      combinations.times(
+          strategy_combinations.distributions_and_v2_optimizers(),
+          combinations.combine(
+              mode=["graph", "eager"], use_callable_loss=[True])))
   def testTrainNetworkByCallForEachReplica(self, distribution, optimizer_fn,
                                            use_callable_loss):
     with distribution.scope():
@@ -124,13 +152,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.distributions_and_v1_optimizers() +
-          combinations.distributions_and_v2_optimizers(),
-          combinations.combine(mode=["graph", "eager"])) +
-      combinations.combine(
-          distribution=[combinations.tpu_strategy],
-          optimizer_fn=combinations.optimizers_v1+combinations.optimizers_v2,
-          mode=["graph"]))
+          strategy_combinations.distributions_and_v1_and_v2_optimizers(),
+          combinations.combine(mode=["graph", "eager"])) + combinations.combine(
+              distribution=[strategy_combinations.tpu_strategy],
+              optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
+              mode=["graph"]))
   def testOptimizerInsideModelFn(self, distribution, optimizer_fn):
     created_variables = []
     trainable_variables = []
@@ -171,19 +197,20 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       run_step()
 
       def get_expected_variables(optimizer_fn, num_parameter_devices):
-        variables_map = {
-            "GradientDescent": ["dense/kernel", "dense/bias"],
-            "Adagrad": [
-                "dense/kernel/Adagrad", "dense/kernel",
-                "dense/bias/Adagrad", "dense/bias"
-            ]
-        }
-        variables = variables_map[optimizer_fn().get_name()]
-        variables.extend([
+        optimizer = optimizer_fn()
+        name = optimizer._name
+
+        if isinstance(optimizer, optimizer_v2.OptimizerV2):
+          variables = VAR_MAP_V2[name]
+        else:
+          variables = VAR_MAP_V1[name]
+
+        extended_variables = [
             v + "/replica_{}".format(replica)
             for v in variables
             for replica in range(1, num_parameter_devices)
-        ])
+        ]
+        variables = list(variables) + extended_variables
         return set([v + ":0" for v in variables])
 
       self.assertEqual(
@@ -195,15 +222,15 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       combinations.times(
           combinations.combine(momentum=[0.8, 0.9, 0.99], renorm=[False, True]),
           combinations.times(
-              combinations.distributions_and_v1_optimizers(),
+              strategy_combinations.distributions_and_v1_and_v2_optimizers(),
               combinations.combine(
                   mode=["graph", "eager"],
                   # TODO(isaprykin):  Allow False here.  Currently subsequent
                   # replicas will re-execute UPDATE_OPS of previous replicas.
                   update_ops_in_cross_replica_mode=[True])) +
           combinations.combine(
-              distribution=[combinations.tpu_strategy],
-              optimizer_fn=combinations.optimizers_v1,
+              distribution=[strategy_combinations.tpu_strategy],
+              optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
               mode=["graph"],
               update_ops_in_cross_replica_mode=[False])))
   def testTrainNetworkWithBatchNorm(self, distribution, optimizer_fn, momentum,
@@ -220,7 +247,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def step_fn(ctx, inputs):
         del ctx  # Unused
-        fetches = distribution.unwrap(
+        fetches = distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(
                 model_fn, args=(inputs,)))
         if update_ops_in_cross_replica_mode:
@@ -260,32 +287,40 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(
-              optimizer_fn=[
-                  combinations.gradient_descent_optimizer_v1_fn,
-                  combinations.gradient_descent_optimizer_v2_fn
-              ],
-              loss_reduction=[
-                  losses_impl.Reduction.SUM, losses_impl.Reduction.MEAN,
-                  losses_impl.Reduction.SUM_OVER_BATCH_SIZE,
-                  losses_impl.Reduction.SUM_OVER_NONZERO_WEIGHTS
-              ]),
+          combinations.combine(loss_reduction=[
+              losses_impl.Reduction.SUM, losses_impl.Reduction.MEAN,
+              losses_impl.Reduction.SUM_OVER_BATCH_SIZE,
+              losses_impl.Reduction.SUM_OVER_NONZERO_WEIGHTS
+          ]),
           combinations.times(
-              combinations.combine(
-                  distribution=[
-                      combinations.one_device_strategy,
-                      combinations.mirrored_strategy_with_gpu_and_cpu,
-                      combinations.mirrored_strategy_with_two_gpus,
-                      combinations.core_mirrored_strategy_with_gpu_and_cpu,
-                      combinations.core_mirrored_strategy_with_two_gpus
-                  ]),
-              combinations.combine(
-                  mode=["graph"], use_callable_loss=[True, False]) +
-              combinations.combine(mode=["eager"], use_callable_loss=[True])) +
+              combinations.combine(distribution=[
+                  strategy_combinations.one_device_strategy,
+                  strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+                  strategy_combinations.mirrored_strategy_with_two_gpus
+              ]),
+              combinations.times(
+                  combinations.combine(optimizer_fn=strategy_combinations
+                                       .gradient_descent_optimizer_v1_fn),
+                  combinations.combine(
+                      mode=["graph"], use_callable_loss=[True, False]) +
+                  combinations.combine(
+                      mode=["eager"], use_callable_loss=[True])) +
+              combinations.times(
+                  combinations.combine(optimizer_fn=strategy_combinations
+                                       .gradient_descent_optimizer_keras_v2_fn),
+                  combinations.combine(
+                      mode=["graph", "eager"], use_callable_loss=[True]))) +
           combinations.combine(
-              distribution=[combinations.tpu_strategy],
+              distribution=[strategy_combinations.tpu_strategy],
+              optimizer_fn=strategy_combinations
+              .gradient_descent_optimizer_v1_fn,
               mode=["graph"],
-              use_callable_loss=[True, False])))
+              use_callable_loss=[True, False]) + combinations.combine(
+                  distribution=[strategy_combinations.tpu_strategy],
+                  optimizer_fn=strategy_combinations
+                  .gradient_descent_optimizer_keras_v2_fn,
+                  mode=["graph"],
+                  use_callable_loss=[True])))
   def testMeanVsSum(self, distribution, optimizer_fn, loss_reduction,
                     use_callable_loss):
     with distribution.scope():
@@ -293,20 +328,24 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def model_fn(inputs):
         x, y = inputs
+        w = variable_scope.get_variable("w", initializer=[[2.]])
+        all_vars.append(w)
+
         def loss_fn():
           # Use fixed initialization to make the steps deterministic.
-          w = variable_scope.get_variable("w", initializer=[[2.]])
-          all_vars.append(w)
           predict = math_ops.matmul(x, w)
           return losses_impl.mean_squared_error(
               y, predict, reduction=loss_reduction)
 
         optimizer = optimizer_fn()  # GradientDescent with 0.2 learning rate
 
-        if use_callable_loss:
-          return optimizer.minimize(loss_fn)
+        if isinstance(optimizer, optimizer_v2.OptimizerV2):
+          return optimizer.minimize(loss_fn, [w])
         else:
-          return optimizer.minimize(loss_fn())
+          if use_callable_loss:
+            return optimizer.minimize(loss_fn)
+          else:
+            return optimizer.minimize(loss_fn())
 
       def dataset_fn():
         features = dataset_ops.Dataset.from_tensors([[2.], [7.]])
@@ -361,14 +400,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.distributions_and_v1_optimizers(),
+          strategy_combinations.distributions_and_v1_and_v2_optimizers(),
           combinations.combine(mode=["graph", "eager"]),
-          combinations.combine(is_tpu=[False])) +
-      combinations.combine(
-          distribution=[combinations.tpu_strategy],
-          optimizer_fn=combinations.optimizers_v1,
-          mode=["graph"],
-          is_tpu=[True]))
+          combinations.combine(is_tpu=[False])) + combinations.combine(
+              distribution=[strategy_combinations.tpu_strategy],
+              optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
+              mode=["graph"],
+              is_tpu=[True]))
   def testRunStepsWithOutputContext(self, distribution, optimizer_fn, is_tpu):
     with distribution.scope():
       def dataset_fn():
@@ -389,7 +427,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
           return y * y
 
-        train_op = optimizer.minimize(loss_fn)
+        if isinstance(optimizer, optimizer_v2.OptimizerV2):
+          train_op = optimizer.minimize(
+              loss_fn, lambda: layer.trainable_variables)
+        else:
+          train_op = optimizer.minimize(loss_fn)
         loss = loss_fn()
         output_context.set_last_step_output(
             name="replica_loss_reduced",
@@ -418,13 +460,15 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         # tensors. But for non reduced losses, we need to have initial
         # values that are of the same structure as non reduced losses. In
         # MirroredStrategy, this will be a list of losses, in TPUStrategy
-        # it will be single tensor. Using `broadcast` followed by `unwrap`
-        # gives us the desired initial value structure.
+        # it will be single tensor. Using `call_for_each_replica` followed
+        # by `experimental_local_results` gives us the desired initial
+        # value structure.
+        not_reduced = distribution.experimental_local_results(
+            distribution.extended.call_for_each_replica(initial_loss))
         initial_loop_values = {
             "replica_loss_reduced": initial_loss(),
             "cross_replica_loss_reduced": initial_loss(),
-            "cross_replica_loss_not_reduced":
-            distribution.unwrap(distribution.broadcast(initial_loss()))
+            "cross_replica_loss_not_reduced": not_reduced,
         }
         ctx = distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=2,
@@ -468,11 +512,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def _verify_loss_output(self, initial_loss, loss_output, reduced,
                           distribution):
     if not reduced:
-      self.assertLen(distribution.unwrap(loss_output),
+      self.assertLen(distribution.experimental_local_results(loss_output),
                      distribution.num_replicas_in_sync)
       loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
     else:
-      unwrapped_output = distribution.unwrap(loss_output)
+      unwrapped_output = distribution.experimental_local_results(loss_output)
       self.assertLen(unwrapped_output, 1)
       loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)

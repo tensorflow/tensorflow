@@ -18,6 +18,12 @@ message GraphDebugInfo {
 
     // Col number in the file line.
     int32 col = 3;
+
+    // Name of function contains the file line.
+    string func = 4;
+
+    // Source code contained in this file line.
+    string code = 5;
   }
 
   // This represents a stack trace which is a ordered list of `FileLineCol`.

@@ -236,6 +236,9 @@ class ConstantFolding : public GraphOptimizer {
   bool MergeConcat(const GraphProperties& properties, bool use_shape_info,
                    GraphDef* optimized_graph, NodeDef* node);
 
+  Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
+                                               GraphDef* optimized_graph);
+
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;

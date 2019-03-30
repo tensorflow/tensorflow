@@ -54,10 +54,6 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list);
 
-// Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list);
-
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
 // An AttrBuilder is a convenience class to help with that - providing a smaller
 // interface than NodeDefBuilder and avoiding expensive (unnecessary?) sanity
@@ -105,6 +101,22 @@ class AttrBuilder {
     return *this;
   }
 
+  // Retrieves the attribute value.
+  // Note that Get() can involve a linear scan of all attributes with the same
+  // value type in this Node. This is not an issue, because Get is used rarely
+  // and nodes have a small number of attributes.
+  template <class T>
+  Status Get(StringPiece attr_name, T* value) const {
+    // Common attributes are stored in AttrVecs. This Get() template
+    // is specialized for them below. If we end up here, the type must be
+    // among those that we store in the node_def_.
+    if (node_def_ == nullptr) {
+      return errors::NotFound("No attr named'", attr_name,
+                              "' found in AttrBuilder for ", op_name_);
+    }
+    return GetNodeAttr(node_def_, attr_name, value);
+  }
+
   tensorflow::Fprint128 CacheKey(const string& device);
 
   void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
@@ -130,17 +142,11 @@ class AttrBuilder {
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
-    // Copied from NodeDefBuilder::Attr
-    const AttrValue* found = AttrSlice(m).Find(attr_name);
-    AttrValue attr_value;
-    if (found == nullptr) {
+    // If attribute is set more than once, its first value prevails
+    if (AttrSlice(m).Find(attr_name) == nullptr) {
+      AttrValue attr_value;
       SetAttrValue(value, &attr_value);
       m->insert(AttrValueMap::value_type(attr_name, attr_value));
-    } else {
-      // TODO(ashankar): Do what is done in
-      // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
-      SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[attr_name] = attr_value;
     }
   }
 
@@ -166,6 +172,16 @@ AttrBuilder& AttrBuilder::Set(StringPiece attr_name, bool&& value);
 template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
                               tensorflow::DataType&& value);
+
+template <>
+Status AttrBuilder::Get(StringPiece attr_name, int* value) const;
+template <>
+Status AttrBuilder::Get(StringPiece attr_name, float* value) const;
+template <>
+Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
+template <>
+Status AttrBuilder::Get(StringPiece attr_name,
+                        tensorflow::DataType* value) const;
 
 }  // namespace tensorflow
 

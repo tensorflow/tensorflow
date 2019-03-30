@@ -19,18 +19,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
-
-namespace {
-bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
-  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
-         window_dimension.padding_low() == 0 &&
-         window_dimension.padding_high() == 0 &&
-         window_dimension.window_dilation() == 1 &&
-         window_dimension.base_dilation() == 1;
-}
-}  // namespace
 
 class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
  public:
@@ -81,6 +72,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
 
   Status HandleWhile(HloInstruction* hlo) override;
+
+  Status HandleSlice(HloInstruction* hlo) override;
 
  private:
   using OperandDynamicDimensionFn = std::function<Status(
@@ -142,7 +135,7 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
         int64 broadcast_dim = hlo->dimensions(dimension);
-        parent_->SetDynamicSize(hlo, index, broadcast_dim, dynamic_size);
+        parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size);
         return Status::OK();
       });
 }
@@ -364,7 +357,7 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
         const WindowDimension& window_dimension =
             reduce_window->window().dimensions(dimension);
 
-        if (!IsTrivialWindowDimension(window_dimension)) {
+        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
           return Unimplemented(
               "Dynamic Spatial reduce window is not supported: %s",
               reduce_window->ToString());
@@ -385,7 +378,7 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
         const WindowDimension& window_dimension =
             select_and_scatter->window().dimensions(dimension);
 
-        if (!IsTrivialWindowDimension(window_dimension)) {
+        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
           return Unimplemented(
               "Dynamic Spatial select and scatter is not supported: %s",
               select_and_scatter->ToString());
@@ -393,6 +386,26 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
 
         parent_->SetDynamicSize(select_and_scatter, {}, dimension,
                                 dynamic_size);
+
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleSlice(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex /*index*/, int64 dimension,
+               int64 /*operand_index*/, HloInstruction* dynamic_size) {
+        if (hlo->slice_starts(dimension) != 0 ||
+            hlo->slice_strides(dimension) != 1 ||
+            hlo->slice_limits(dimension) !=
+                operand->shape().dimensions(dimension)) {
+          return Unimplemented(
+              "Dynamic dimension propagation on Slice where it doesn't slice "
+              "out an entire dimension is not supported %s",
+              hlo->ToString());
+        }
+
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });

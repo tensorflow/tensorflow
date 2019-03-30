@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "MapVectorizationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "NestedStructure"
     mtype: "<type \'type\'>"
   }
@@ -89,6 +93,10 @@ tf_module {
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
   member_method {
+    name: "bytes_produced_stats"
+    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "cardinality"
     argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
   }
@@ -107,10 +115,6 @@ tf_module {
   member_method {
     name: "enumerate_dataset"
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
-  }
-  member_method {
-    name: "filter_for_shard"
-    argspec: "args=[\'num_shards\', \'shard_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_next_as_optional"
@@ -142,7 +146,7 @@ tf_module {
   }
   member_method {
     name: "make_csv_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'False\', \'100\', \'None\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\', \'ignore_errors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'False\', \'100\', \'None\', \'False\'], "
   }
   member_method {
     name: "make_saveable_from_iterator"

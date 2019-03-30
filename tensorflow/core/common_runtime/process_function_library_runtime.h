@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -79,6 +80,10 @@ class ProcessFunctionLibraryRuntime {
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
   FunctionLibraryRuntime* GetFLR(const string& device_name) const;
 
+  // Returns the return types for the function identified by handle `h`.
+  Status GetRetTypes(FunctionLibraryRuntime::Handle h,
+                     DataTypeVector* ret_types);
+
   // Returns the device incarnation for the given device_name.
   Status GetDeviceIncarnation(const string& device_name,
                               int64* incarnation) const;
@@ -137,6 +142,8 @@ class ProcessFunctionLibraryRuntime {
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
 
+  const DeviceMgr* device_mgr() { return device_mgr_; }
+
  private:
   friend class FunctionLibraryRuntimeImpl;
 
@@ -156,17 +163,17 @@ class ProcessFunctionLibraryRuntime {
     // The handle for the instantiated component function.
     FunctionLibraryRuntime::Handle handle_;
     // arg_indices_.size() is the number of arguments to the component function.
-    // The i'th argument of the component function comes from the
-    // `arg_indices_[i]`th argument of the multi-device function.
+    // The i-th argument of the component function comes from the
+    // `arg_indices_[i]`-th argument of the multi-device function.
     std::vector<int> arg_indices_;
-    // ret_indices_.size() is the number of return value of the component
-    // function.  The i'th return value of the component function goes to the
-    // `ret_indices_[i]`th return value of the multi-device function.
+    // ret_indices_.size() is the number of return values of the component
+    // function.  The i-th return value of the component function goes to the
+    // `ret_indices_[i]`-th return value of the multi-device function.
     std::vector<int> ret_indices_;
-    // arg_alloc_attrs_[i] are the allocator attributes of the i'th argument to
+    // arg_alloc_attrs_[i] are the allocator attributes of the i-th argument to
     // the component function.
     std::vector<AllocatorAttributes> arg_alloc_attrs_;
-    // ret_alloc_attrs_[i] are the allocator attributes of the i'th return value
+    // ret_alloc_attrs_[i] are the allocator attributes of the i-th return value
     // of the component function.
     std::vector<AllocatorAttributes> ret_alloc_attrs_;
   };
@@ -178,21 +185,24 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            const FunctionLibraryDefinition& overlay_lib)
-        : num_outputs_(num_outputs),
-          instantiation_counter_(1),
-          function_name_(function_name),
+                            FunctionLibraryDefinition&& lib_def,
+                            DataTypeVector ret_types)
+        : function_name_(function_name),
           function_key_(function_key),
-          overlay_lib_(overlay_lib) {}
+          instantiation_counter_(1),
+          lib_def_(std::move(lib_def)),
+          num_outputs_(num_outputs),
+          ret_types_(std::move(ret_types)) {}
 
-    // Stored here to resize the output tensor vector when function is run.
-    const int num_outputs_;
-    uint64 instantiation_counter_;
     const string function_name_;
     const string function_key_;
-    // The overlay library holding component function definitions as well as
-    // the definitions of functions they call.
-    FunctionLibraryDefinition overlay_lib_;
+    uint64 instantiation_counter_;
+    // A library that contains definitions of component functions and their
+    // transitive dependencies.
+    FunctionLibraryDefinition lib_def_;
+    // Stored here to resize the output tensor vector when function is run.
+    const int num_outputs_;
+    DataTypeVector ret_types_;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -239,7 +249,9 @@ class ProcessFunctionLibraryRuntime {
   // access these resources to the appropriate devices.
   Status PinArgsAndRets(const std::vector<string>& input_devices,
                         const std::vector<string>& output_devices,
-                        const DeviceSet& device_set, Graph* graph) const;
+                        const DeviceSet& device_set,
+                        const std::vector<Node*>& arg_nodes,
+                        const std::vector<Node*>& ret_nodes) const;
 
   void RunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                       FunctionLibraryRuntime::Handle handle,
@@ -285,6 +297,7 @@ class ProcessFunctionLibraryRuntime {
 
   mutable mutex mu_;
 
+  Env* const env_;
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;

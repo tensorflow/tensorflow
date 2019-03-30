@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -72,7 +72,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
     return _GetParams(add_quantization_nodes=False)
 
   def ShouldRunTest(self, run_params):
-    if trt_convert.get_linked_tensorrt_version()[0] < 5:
+    if get_linked_tensorrt_version()[0] < 5:
       return False
     # Only test static engine mode, with or without calibration.
     return (trt_test.IsQuantizationMode(run_params.precision_mode) and
@@ -96,7 +96,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
     return _GetParams(add_quantization_nodes=True)
 
   def ShouldRunTest(self, run_params):
-    if trt_convert.get_linked_tensorrt_version()[0] < 5:
+    if get_linked_tensorrt_version()[0] < 5:
       return False
     # Test static/dynamic engine with/without calibration.
     return (trt_test.IsQuantizationMode(run_params.precision_mode) and

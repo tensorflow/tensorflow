@@ -40,8 +40,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-namespace gtl = ::tensorflow::gtl;
-
 class HloProfileTest : public ClientLibraryTestBase {};
 
 struct ParsedProfileOutputLine {

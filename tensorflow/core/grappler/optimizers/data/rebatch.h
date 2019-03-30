@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_REBATCH_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_REBATCH_H_
 
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
+#include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -23,10 +25,7 @@ namespace grappler {
 // This optimizer changes the batch size of the output dataset by dividing the
 // current batch size by parameter `num_workers`. Currently, this works only
 // for very simple pipelines with a single BatchDatasetV2 transformation.
-//
-// TODO(rohanj): Extend this logic to correctly handle any input pipeline that
-// uses core tf.data APIs + MapAndBatch.
-class RebatchOptimizer : public CustomGraphOptimizer {
+class RebatchOptimizer : public TFDataOptimizerBase {
  public:
   RebatchOptimizer() = default;
   ~RebatchOptimizer() override = default;
@@ -36,8 +35,9 @@ class RebatchOptimizer : public CustomGraphOptimizer {
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override;
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* output) override;
+  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
+                                 GraphDef* output,
+                                 OptimizationStats* stats) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;

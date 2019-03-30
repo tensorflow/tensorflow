@@ -57,6 +57,14 @@ py_binary(
     srcs = ["run_and_gather_logs.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = [":run_and_gather_logs_main_lib"],
+)
+
+py_library(
+    name = "run_and_gather_logs_main_lib",
+    srcs = ["run_and_gather_logs.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_lib",
         "//tensorflow/core:protos_all_py",

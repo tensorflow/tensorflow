@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Import a checkpointable object from a SavedModel."""
+"""Import a trackable object from a SavedModel."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,22 +24,21 @@ import os
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
+from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import graph_view
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
-from tensorflow.python.util import compat
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
+from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Loader(object):
@@ -66,7 +65,7 @@ class _Loader(object):
 
     for node in self._nodes:
       if isinstance(node, tracking.TrackableResource):
-        init_op = node.initialize()
+        init_op = node._initialize()  # pylint: disable=protected-access
         ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _setup_functions_structures(self):
@@ -111,28 +110,68 @@ class _Loader(object):
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
-    obj = self._nodes[node_id]
-    if resource_variable_ops.is_resource_variable(obj):
-      return obj.handle
-    elif isinstance(obj, tracking.TrackableAsset):
-      return obj.asset_path.handle
-    elif tensor_util.is_tensor(obj):
-      return obj
-    raise ValueError("Can't convert node %s to tensor" % (type(obj)))
+    """Resolves a node id into a tensor to be captured for a function."""
+    with ops.init_scope():
+      obj = self._nodes[node_id]
+      if resource_variable_ops.is_resource_variable(obj):
+        return obj.handle
+      elif isinstance(obj, tracking.TrackableAsset):
+        return obj.asset_path
+      elif tensor_util.is_tensor(obj):
+        return obj
+      elif isinstance(obj, tracking.TrackableResource):
+        # Note: this executes restored functions in the TrackableResource.
+        return obj.resource_handle
+      raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
     """Load all saved objects and wire their properties."""
-    self._nodes = []
-    node_setters = []
+    # Maps from node ids to recreated objects
+    nodes = {}
+    # Maps from node ids to setter functions (same signature as setattr) for
+    # setting dependencies.
+    node_setters = {}
+
+    # Figure out which objects are slot variables. These objects are created
+    # with Optimizer.add_slot rather than _recreate_variable.
+    slot_variable_node_ids = set()
     for proto in self._proto.nodes:
+      for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_ids.add(slot_variable_proto.slot_variable_node_id)
+
+    # Re-create everything except slot variables.
+    for node_id, proto in enumerate(self._proto.nodes):
+      if node_id in slot_variable_node_ids:
+        # Defer recreating slot variables so we can use the public Optimizer
+        # interface.
+        continue
       node, setter = self._recreate(proto)
-      self._nodes.append(node)
-      node_setters.append(setter)
+      nodes[node_id] = node
+      node_setters[node_id] = setter
+
+    # Now that we have created the variables being optimized, we have enough
+    # information to re-create slot variables for them.
+    for node_id, proto in enumerate(self._proto.nodes):
+      optimizer_object = nodes[node_id]
+      for slot_variable_proto in proto.slot_variables:
+        optimized_variable = nodes[
+            slot_variable_proto.original_variable_node_id]
+        slot_variable = optimizer_object.add_slot(
+            var=optimized_variable,
+            slot_name=slot_variable_proto.slot_name)
+        nodes[slot_variable_proto.slot_variable_node_id] = slot_variable
+        node_setters[slot_variable_proto.slot_variable_node_id] = setattr
+
+    self._nodes = []
+
     # After creating the objects, construct the edges between the objects.
-    for obj, object_proto, setter in zip(self._nodes, self._proto.nodes,
-                                         node_setters):
+    for node_id, object_proto in enumerate(self._proto.nodes):
+      obj = nodes[node_id]
+      setter = node_setters[node_id]
+      self._nodes.append(obj)
+
       for reference in object_proto.children:
-        setter(obj, reference.local_name, self._nodes[reference.node_id])
+        setter(obj, reference.local_name, nodes[reference.node_id])
         # Note: if an object has an attribute `__call__` add a class method
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
@@ -142,16 +181,16 @@ class _Loader(object):
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
-    # TODO(andresp): Clean use of private methods of CheckpointableSaver.
+    # TODO(andresp): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
-    saver = util.CheckpointableSaver(graph_view.ObjectGraphView(self.get(0)))
+    saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     saver._file_prefix_placeholder = constant_op.constant(variables_path)
     load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
     # When running in eager mode, the `restore` call above has already run and
-    # restored the state of checkpointables, call `position.restore_ops()` will
+    # restored the state of trackables, call `position.restore_ops()` will
     # return an empty list as there is nothing left to do. In graph mode, that
     # will return the list of ops that must run to restore the object on that
     # position. We have to wire them in the initializers of the objects so that
@@ -183,6 +222,7 @@ class _Loader(object):
             proto.bare_concrete_function),
         "variable": lambda: self._recreate_variable(proto.variable),
         "constant": lambda: self._recreate_constant(proto.constant),
+        "resource": lambda: self._recreate_resource(proto.resource),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -197,7 +237,7 @@ class _Loader(object):
       # individually callable by adding a `__call__` method to the classes of
       # the objects instances that have a `__call__` property.
 
-      class _UserObject(tracking.AutoCheckpointable):
+      class _UserObject(tracking.AutoTrackable):
         pass
 
       return _UserObject(), setattr
@@ -228,33 +268,98 @@ class _Loader(object):
         tensor_util.MakeNdarray(tensor_proto))
     return imported_constant, setattr
 
+  def _recreate_resource(self, proto):
+    del proto
+    return _RestoredResource(), setattr
+
+
+# TODO(b/124205571,b/124092991): Solve destruction of resources.
+class _RestoredResource(tracking.TrackableResource):
+  """Restored SavedResource."""
+
+  def _create_resource(self):
+    raise RuntimeError()
+
+  def _initialize(self):
+    raise RuntimeError()
+
+  def _list_functions_for_serialization(self):
+    # Overwrite this method to avoid the implementation of
+    # base class to re-wrap the polymorphic functions into
+    # another layer of `tf.function`.
+    return {
+        "_create_resource": self._create_resource,
+        "_initialize": self._initialize,
+    }
+
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
 
 
-def _load_saved_object_graph_proto(filename):
-  with file_io.FileIO(filename, "rb") as f:
-    contents = f.read()
-    return saved_object_graph_pb2.SavedObjectGraph.FromString(contents)
+@tf_export("saved_model.load", v1=["saved_model.load_v2"])
+def load(export_dir, tags=None):
+  """Load a SavedModel from `export_dir`.
 
+  Signatures associated with the SavedModel are available as functions:
 
-def load(export_dir):
-  """Load a SavedModel from `export_dir`."""
+  ```python
+  imported = tf.saved_model.load(path)
+  f = imported.signatures["serving_default"]
+  print(f(x=tf.constant([[1.]])))
+  ```
+
+  Objects exported with `tf.saved_model.save` additionally have trackable
+  objects and functions assigned to attributes:
+
+  ```python
+  exported = tf.train.Checkpoint(v=tf.Variable(3.))
+  exported.f = tf.function(
+      lambda x: exported.v * x,
+      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  tf.saved_model.save(exported, path)
+  imported = tf.saved_model.load(path)
+  assert 3. == imported.v.numpy()
+  assert 6. == imported.f(x=tf.constant(2.)).numpy()
+  ```
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
+      if the SavedModel contains a single MetaGraph, as for those exported from
+      `tf.saved_model.load`.
+
+  Returns:
+    A trackable object with a `signatures` attribute mapping from signature
+    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    it also points to trackable objects and functions which were attached
+    to the exported object.
+
+  Raises:
+    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
+  """
+  if tags is not None and not isinstance(tags, set):
+    # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
+    # sequences for nest.flatten, so we put those through as-is.
+    tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
-  object_graph_filename = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY),
-      compat.as_bytes("object_graph.pb"))
-  if file_io.file_exists(object_graph_filename):
-    object_graph_proto = _load_saved_object_graph_proto(object_graph_filename)
+  if (len(saved_model_proto.meta_graphs) == 1
+      and saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
+    meta_graph_def = saved_model_proto.meta_graphs[0]
+    if (tags is not None
+        and set(tags) != set(meta_graph_def.meta_info_def.tags)):
+      raise ValueError(
+          ("The SavedModel at {} has one MetaGraph with tags {}, but got an "
+           "incompatible argument tags={} to tf.saved_model.load. You may omit "
+           "it, pass 'None', or pass matching tags.")
+          .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
+    object_graph_proto = meta_graph_def.object_graph_def
     with ops.init_scope():
       loader = _Loader(object_graph_proto,
                        saved_model_proto,
                        export_dir)
       root = loader.get(0)
   else:
-    raise NotImplementedError(
-        "Currently only SavedModels exported with `tf.saved_model.save` may be "
-        "imported. Other SavedModels may eventually be supported via load().")
+    with ops.init_scope():
+      root = load_v1_in_v2.load(export_dir, tags)
   return root

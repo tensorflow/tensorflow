@@ -153,6 +153,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // in `Prepare`, so we don't need to do it here again.
   TF_LITE_ENSURE_OK(context, active_branch_subgraph.Invoke());
 
+  for (int tensor_index : active_branch_subgraph.outputs()) {
+    active_branch_subgraph.EnsureTensorDataIsReadable(tensor_index);
+  }
+
   bool has_dynamic_output_tensors = false;
   for (int i = 0; i < node->outputs->size; ++i) {
     TfLiteTensor* output = GetOutput(context, node, i);

@@ -20,6 +20,8 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 
+#define __HIP_DISABLE_CPP_FUNCTIONS__
+
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hiprand/hiprand.h"

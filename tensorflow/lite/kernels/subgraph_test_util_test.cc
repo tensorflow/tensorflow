@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 namespace tflite {
@@ -24,53 +25,142 @@ namespace subgraph_test_util {
 
 namespace {
 
-// SubGraphTestUtilTest tests the helper functions defined in this file.
-TEST(SubGraphTestUtilTest, TestBuildAddSubgraph) {
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
-  BuildAddSubgraph(&interpreter->primary_subgraph());
+class SubgraphBuilderTest : public ::testing::Test {
+ public:
+  SubgraphBuilderTest()
+      : interpreter_(new Interpreter), builder_(new SubgraphBuilder) {}
 
-  interpreter->ResizeInputTensor(interpreter->inputs()[0], {2});
-  interpreter->ResizeInputTensor(interpreter->inputs()[1], {1, 2});
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+  ~SubgraphBuilderTest() override {
+    interpreter_.reset();
+    builder_.reset();
+  }
 
-  FillIntTensor(interpreter->tensor(interpreter->inputs()[0]), {5, 7});
-  FillIntTensor(interpreter->tensor(interpreter->inputs()[1]), {1, 2});
-  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+ protected:
+  void TestAccumelateLoopBody(int input1, int input2, int output1,
+                              int output2) {
+    interpreter_.reset(new Interpreter);
+    builder_->BuildAccumulateLoopBodySubgraph(
+        &interpreter_->primary_subgraph());
 
-  TfLiteTensor* output = interpreter->tensor(interpreter->outputs()[0]);
+    interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+    interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
+    ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+    FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {input1});
+    FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {input2});
+
+    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+    TfLiteTensor* output_tensor1 =
+        interpreter_->tensor(interpreter_->outputs()[0]);
+    CheckIntTensor(output_tensor1, {1}, {output1});
+    TfLiteTensor* output_tensor2 =
+        interpreter_->tensor(interpreter_->outputs()[1]);
+    CheckIntTensor(output_tensor2, {1}, {output2});
+  }
+
+  std::unique_ptr<Interpreter> interpreter_;
+  std::unique_ptr<SubgraphBuilder> builder_;
+};
+
+TEST_F(SubgraphBuilderTest, TestBuildAddSubgraph) {
+  builder_->BuildAddSubgraph(&interpreter_->primary_subgraph());
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {2});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 2});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {5, 7});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1, 2});
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   CheckIntTensor(output, {1, 2}, {6, 9});
 }
 
-TEST(SubGraphTestUtilTest, TestBuildMulSubgraph) {
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
-  BuildMulSubgraph(&interpreter->primary_subgraph());
+TEST_F(SubgraphBuilderTest, TestBuildMulSubgraph) {
+  builder_->BuildMulSubgraph(&interpreter_->primary_subgraph());
 
-  interpreter->ResizeInputTensor(interpreter->inputs()[0], {2});
-  interpreter->ResizeInputTensor(interpreter->inputs()[1], {1, 2});
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {2});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 2});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
-  FillIntTensor(interpreter->tensor(interpreter->inputs()[0]), {5, 7});
-  FillIntTensor(interpreter->tensor(interpreter->inputs()[1]), {1, 2});
-  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {5, 7});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1, 2});
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 
-  TfLiteTensor* output = interpreter->tensor(interpreter->outputs()[0]);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   CheckIntTensor(output, {1, 2}, {5, 14});
 }
 
-TEST(SubGraphTestUtilTest, TestBuildPadSubgraph) {
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
-  BuildPadSubgraph(&interpreter->primary_subgraph());
+TEST_F(SubgraphBuilderTest, TestBuildPadSubgraph) {
+  builder_->BuildPadSubgraph(&interpreter_->primary_subgraph());
 
-  interpreter->ResizeInputTensor(interpreter->inputs()[0], {2});
-  interpreter->ResizeInputTensor(interpreter->inputs()[1], {1, 2});
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {2});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 2});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
-  FillIntTensor(interpreter->tensor(interpreter->inputs()[0]), {5, 7});
-  FillIntTensor(interpreter->tensor(interpreter->inputs()[1]), {1, 2});
-  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {5, 7});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1, 2});
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 
-  TfLiteTensor* output = interpreter->tensor(interpreter->outputs()[0]);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   CheckIntTensor(output, {5}, {0, 5, 7, 0, 0});
+}
+
+TEST_F(SubgraphBuilderTest, TestBuildDynamicPadSubgraph) {
+  builder_->BuildPadSubgraph(&interpreter_->primary_subgraph());
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {2});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 2});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {5, 7});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1, 2});
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  EXPECT_TRUE(IsDynamicTensor(output));
+  CheckIntTensor(output, {5}, {0, 5, 7, 0, 0});
+}
+
+TEST_F(SubgraphBuilderTest, TestBuildLessEqualCondSubgraph) {
+  builder_->BuildLessEqualCondSubgraph(&interpreter_->primary_subgraph(), 3);
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {5});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {10, 10});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  // Test [1, 2, 3, 4, 5] <= 3 == [true, true, true, false, false]
+  // (with broadcasting).
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]),
+                {1, 2, 3, 4, 5});
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckBoolTensor(output, {5}, {true, true, true, false, false});
+}
+
+TEST_F(SubgraphBuilderTest, TestBuildAccumulateLoopBodySubgraph) {
+  TestAccumelateLoopBody(1, 1, 2, 3);
+  TestAccumelateLoopBody(2, 3, 3, 6);
+  TestAccumelateLoopBody(3, 6, 4, 10);
+}
+
+TEST_F(SubgraphBuilderTest, TestBuildPadLoopBodySubgraph) {
+  builder_->BuildPadLoopBodySubgraph(&interpreter_->primary_subgraph(), {1, 2});
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {5});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]),
+                {0, 5, 7, 0, 0});
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output1, {1}, {2});
+  TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckIntTensor(output2, {8}, {0, 0, 5, 7, 0, 0, 0, 0});
 }
 
 }  // namespace

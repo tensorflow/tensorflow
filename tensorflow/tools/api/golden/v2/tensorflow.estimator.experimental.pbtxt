@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "dnn_logit_fn_builder"
-    argspec: "args=[\'units\', \'hidden_units\', \'feature_columns\', \'activation_fn\', \'dropout\', \'input_layer_partitioner\', \'batch_norm\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'units\', \'hidden_units\', \'feature_columns\', \'activation_fn\', \'dropout\', \'batch_norm\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "linear_logit_fn_builder"

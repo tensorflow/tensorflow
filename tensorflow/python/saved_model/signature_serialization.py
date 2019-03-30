@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.tracking import base
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -37,7 +37,7 @@ SIGNATURE_ATTRIBUTE_NAME = "signatures"
 
 def _get_signature(function):
   if (isinstance(function, (defun.Function, def_function.Function)) and
-      function._input_signature is not None):  # pylint: disable=protected-access
+      function.input_signature is not None):
     function = function.get_concrete_function()
   if not isinstance(function, defun.ConcreteFunction):
     return None
@@ -99,9 +99,8 @@ def canonicalize_signatures(signatures):
            "got {}. Only `tf.functions` with an input signature or "
            "concrete functions can be used as a signature.").format(function))
 
-    # Re-wrap the function so that it only takes keyword arguments and it
-    # returns a dictionary of Tensors. This matches the format of 1.x-style
-    # signatures.
+    # Re-wrap the function so that it returns a dictionary of Tensors. This
+    # matches the format of 1.x-style signatures.
     # pylint: disable=cell-var-from-loop
     @def_function.function
     def signature_wrapper(**kwargs):
@@ -117,8 +116,19 @@ def canonicalize_signatures(signatures):
       keyword = compat.as_str(keyword)
       tensor_spec_signature[keyword] = tensor_spec.TensorSpec.from_tensor(
           tensor, name=keyword)
-    concrete_signatures[signature_key] = (
-        signature_wrapper.get_concrete_function(**tensor_spec_signature))
+    final_concrete = signature_wrapper.get_concrete_function(
+        **tensor_spec_signature)
+    # pylint: disable=protected-access
+    if len(final_concrete._arg_keywords) == 1:
+      # If there is only one input to the signature, a very common case, then
+      # ordering is unambiguous and we can let people pass a positional
+      # argument. Since SignatureDefs are unordered (protobuf "map") multiple
+      # arguments means we need to be keyword-only.
+      final_concrete._num_positional_args = 1
+    else:
+      final_concrete._num_positional_args = 0
+    # pylint: enable=protected-access
+    concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
   return concrete_signatures
 
@@ -170,7 +180,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 # saved if they contain a _SignatureMap. A ".signatures" attribute containing
 # any other type (e.g. a regular dict) will raise an exception asking the user
 # to first "del obj.signatures" if they want it overwritten.
-class _SignatureMap(collections.Mapping, base.Checkpointable):
+class _SignatureMap(collections.Mapping, base.Trackable):
   """A collection of SavedModel signatures."""
 
   def __init__(self):
@@ -205,7 +215,7 @@ revived_types.register_revived_type(
     "signature_map",
     lambda obj: isinstance(obj, _SignatureMap),
     versions=[revived_types.VersionedTypeRegistration(
-        # Standard dependencies are enough to reconstruct the checkpointable
+        # Standard dependencies are enough to reconstruct the trackable
         # items in dictionaries, so we don't need to save any extra information.
         object_factory=lambda proto: _SignatureMap(),
         version=1,
@@ -215,8 +225,28 @@ revived_types.register_revived_type(
     )])
 
 
-def create_signature_map(signatures, saveable_view):
-  """Performs sanity checks and creates an object containing `signatures`."""
+def create_signature_map(signatures):
+  """Creates an object containing `signatures`."""
+  signature_map = _SignatureMap()
+  for name, func in signatures.items():
+    # This true of any signature that came from canonicalize_signatures. Here as
+    # a sanity check on saving; crashing on load (e.g. in _add_signature) would
+    # be more problematic in case future export changes violated these
+    # assertions.
+    assert isinstance(func, defun.ConcreteFunction)
+    assert isinstance(func.structured_outputs, collections.Mapping)
+    # pylint: disable=protected-access
+    if len(func._arg_keywords) == 1:
+      assert 1 == func._num_positional_args
+    else:
+      assert 0 == func._num_positional_args
+    signature_map._add_signature(name, func)
+    # pylint: enable=protected-access
+  return signature_map
+
+
+def validate_saveable_view(saveable_view):
+  """Performs signature-related sanity checks on `saveable_view`."""
   for name, dep in saveable_view.list_dependencies(
       saveable_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
@@ -231,14 +261,3 @@ def create_signature_map(signatures, saveable_view):
                  saveable_view.root,
                  signatures=SIGNATURE_ATTRIBUTE_NAME))
       break
-  signature_map = _SignatureMap()
-  for name, func in signatures.items():
-    # This true of any signature that came from canonicalize_signatures. Here as
-    # a sanity check on saving; crashing on load (e.g. in _add_signature) would
-    # be more problematic in case future export changes violated these
-    # assertions.
-    assert isinstance(func, defun.ConcreteFunction)
-    assert isinstance(func.structured_outputs, collections.Mapping)
-    assert 0 == func._num_positional_args  # pylint: disable=protected-access
-    signature_map._add_signature(name, func)  # pylint: disable=protected-access
-  return signature_map

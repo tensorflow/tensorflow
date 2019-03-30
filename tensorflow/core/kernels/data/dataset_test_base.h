@@ -47,6 +47,19 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   ~DatasetOpsTestBase() {}
 
+  // The method validates whether the two tensors have the same shape, dtype,
+  // and value.
+  static Status ExpectEqual(const Tensor& a, const Tensor& b);
+
+  // Creates a tensor with the specified dtype, shape, and value.
+  template <typename T>
+  static Tensor CreateTensor(TensorShape input_shape,
+                             const gtl::ArraySlice<T>& input_data) {
+    Tensor tensor(DataTypeToEnum<T>::value, input_shape);
+    test::FillValues<T>(&tensor, input_data);
+    return tensor;
+  }
+
   // Creates a new op kernel based on the node definition.
   Status CreateOpKernel(const NodeDef& node_def,
                         std::unique_ptr<OpKernel>* op_kernel);
@@ -94,6 +107,17 @@ class DatasetOpsTestBase : public ::testing::Test {
         GetDatasetFromContext(range_context.get(), 0, range_dataset));
     return Status::OK();
   }
+
+  // Creates a new TensorSliceDataset op kernel.
+  Status CreateTensorSliceDatasetKernel(
+      StringPiece node_name, const DataTypeVector& dtypes,
+      const std::vector<PartialTensorShape>& shapes,
+      std::unique_ptr<OpKernel>* tensor_slice_dataset_kernel);
+
+  // Creates a new TensorSliceDataset.
+  Status CreateTensorSliceDataset(StringPiece node_name,
+                                  std::vector<Tensor>* const components,
+                                  DatasetBase** tensor_slice_dataset);
 
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,

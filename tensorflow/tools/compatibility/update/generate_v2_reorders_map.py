@@ -86,7 +86,16 @@ def collect_function_arg_names(function_names):
       matches_function_names = any(
           name in function_names for name in api_names_v1)
       if matches_function_names:
-        arg_list = tf_inspect.getargspec(attr)[0]
+        if tf_inspect.isclass(attr):
+          # Get constructor arguments if attr is a class
+          arg_list = tf_inspect.getargspec(
+              getattr(attr, '__init__'))[0]
+          arg_list = arg_list[1:]  # skip 'self' argument
+        else:
+          # Get function arguments.
+          # getargspec returns a tuple of (args, varargs, keywords, defaults)
+          # we just look at args.
+          arg_list = tf_inspect.getargspec(attr)[0]
         for name in api_names_v1:
           function_to_args[name] = arg_list
 

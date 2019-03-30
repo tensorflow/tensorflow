@@ -39,6 +39,7 @@ constexpr char kDepthwiseConv2dNativeBackpropInput[] =
     "DepthwiseConv2dNativeBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
+constexpr char kSparseTensorDenseMatMul[] = "SparseTensorDenseMatMul";
 constexpr char kPlaceholder[] = "Placeholder";
 constexpr char kIdentity[] = "Identity";
 constexpr char kIdentityN[] = "IdentityN";
@@ -64,6 +65,7 @@ constexpr char kAvgPool[] = "AvgPool";
 constexpr char kAvgPoolGrad[] = "AvgPoolGrad";
 constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
 constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
+constexpr char kQuantizedMatMul[] = "QuantizedMatMul";
 constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
 // Persistent ops.
 constexpr char kConst[] = "Const";
@@ -232,7 +234,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kFusedConv2dBiasActivation,
        wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation)},
-      // reuse Conv2D for DepthwiseConv2dNative because the caculation is the
+      // reuse Conv2D for DepthwiseConv2dNative because the calculation is the
       // same although the actual meaning of the parameters are different. See
       // comments in PredictConv2D and related functions
       {kDepthwiseConv2dNative, wrap(&OpLevelCostEstimator::PredictConv2D)},
@@ -242,7 +244,10 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
+      {kSparseTensorDenseMatMul,
+       wrap(&OpLevelCostEstimator::PredictSparseTensorDenseMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kQuantizedMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kQuantizedMatMulV2, wrap(&OpLevelCostEstimator::PredictMatMul)},
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -447,7 +452,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   // of any input. We use the count for the largest input here to be more robust
   // in case that the shape is unknown or partially known for other input.
   int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
-  // If output shape is available, try use the element count calcuated from
+  // If output shape is available, try use the element count calculated from
   // that.
   if (op_info.outputs_size() > 0) {
     op_count = std::max(
@@ -549,6 +554,10 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
   costs.intermediate_memory_time = intermediate_memory_cost;
+  costs.intermediate_memory_read_time =
+      Costs::NanoSeconds(intermediate_read_time);
+  costs.intermediate_memory_write_time =
+      Costs::NanoSeconds(intermediate_write_time);
   CombineCostsAndUpdateExecutionTime(&costs);
   return costs;
 }
@@ -1219,6 +1228,49 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
       CountMatMulOperations(op_info, &found_unknown_shapes), op_info);
   costs.inaccurate = found_unknown_shapes;
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictSparseTensorDenseMatMul(
+    const OpContext& op_context) const {
+  const auto& op_info = op_context.op_info;
+  bool found_unknown_shapes = false;
+  // input[0]: indices in sparse matrix a
+  // input[1]: values in sparse matrix a
+  // input[2]: shape of matrix a
+  // input[3]: matrix b
+  // See
+  // https://github.com/tensorflow/tensorflow/blob/9a43dfeac5/tensorflow/core/ops/sparse_ops.cc#L85
+  int64 num_elems_in_a =
+      CalculateTensorElementCount(op_info.inputs(1), &found_unknown_shapes);
+  auto b_matrix = op_info.inputs(3);
+  auto b_matrix_shape =
+      MaybeGetMinimumShape(b_matrix.shape(), 2, &found_unknown_shapes);
+  int64 n_dim = b_matrix_shape.dim(1).size();
+
+  // Each element in A is multiplied and added with an element from each column
+  // in b.
+  const int64 op_count = kOpsPerMac * num_elems_in_a * n_dim;
+
+  int64 a_indices_input_size =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  int64 a_values_input_size =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  int64 a_shape_input_size =
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+  int64 b_input_size =
+      num_elems_in_a * n_dim * DataTypeSize(BaseType(b_matrix.dtype()));
+  double input_size = a_indices_input_size + a_values_input_size +
+                      a_shape_input_size + b_input_size;
+
+  double output_size = CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  auto costs =
+      PredictOpCountBasedCost(op_count, input_size, output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
+  costs.max_memory = output_size;
+
   return costs;
 }
 

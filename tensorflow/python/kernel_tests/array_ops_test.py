@@ -40,6 +40,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -189,6 +190,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       self.assertAllClose(numpy_result, tf_result.eval())
 
+  @test_util.run_deprecated_v1
   def testEmptyInput1D(self):
     mask = np.array([]).astype(bool)
     arr = np.array([]).astype(np.float32)
@@ -435,6 +437,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             np_answer = x_np[:, ::-1, :]
             self.assertAllEqual(x_tf, np_answer)
 
+  @test_util.run_deprecated_v1
   def testReverseColumnsOf3Channels(self):
     with self.session(use_gpu=True):
       for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
@@ -507,6 +510,22 @@ class StridedSliceChecker(object):
 
   def __getitem__(self, spec):
     op = self.x.__getitem__(spec)
+
+    def eval_if_tensor(x):
+      try:
+        return x.eval()
+      except AttributeError:
+        return x
+
+    if isinstance(spec, bool) or \
+      (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
+      (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
+      (isinstance(spec, (list, tuple)) and np.asarray(spec).dtype == bool):
+      tensor = op.eval()
+      np_spec = eval_if_tensor(spec)
+      self.test.assertAllEqual(self.x_np[np_spec], tensor)
+      return tensor
+
     if not isinstance(spec, (list, tuple)):
       spec = [spec]
 
@@ -514,12 +533,6 @@ class StridedSliceChecker(object):
 
     # Make a numpy spec that pre-evals the tensors
     np_specs = []
-
-    def eval_if_tensor(x):
-      try:
-        return x.eval()
-      except AttributeError:
-        return x
 
     for s in spec:
       if isinstance(s, slice):
@@ -611,6 +624,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[-1:0, :, :]
       # empty interval in every dimension
       _ = checker[-1:0, 2:2, 2:3:-1]
+      # empty first dimension only (used to break for aligned tensors).
+      checker = StridedSliceChecker(self,
+                                    StridedSliceChecker.REF_TENSOR_ALIGNED)
+      _ = checker[1:0]
 
   @test_util.run_deprecated_v1
   def testEllipsis(self):
@@ -678,6 +695,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[0.0]
       with self.assertRaisesRegexp(TypeError, expected):
         _ = checker[constant_op.constant(0.0)]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant([1, 2, 3])]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[[2.1, -0.7, 1.5]]
 
   @test_util.run_deprecated_v1
   def testExpand(self):
@@ -721,6 +742,32 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[1:]
       # First axis slice
       _ = checker[np.newaxis, 1:]
+
+  @test_util.run_v1_only("currently failing on v2")
+  def testMasks(self):
+    with self.session(use_gpu=True):
+      scalar = np.array(0)
+      # Test tensor type mask
+      checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+      _ = checker[checker.x > 2]
+      _ = checker[checker.x <= 5]
+      _ = checker[ops.convert_to_tensor(scalar)]
+
+      # Test numpy array type mask
+      raw = np.array([[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
+                       [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23,
+                                                              24]]]]])
+      checker1 = StridedSliceChecker(self, raw)
+      _ = checker1[raw >= 4]
+      _ = checker1[raw < 19]
+      _ = checker1[scalar]
+
+      # Test boolean and non boolean cases
+      mask = np.array([True, False, True])
+      raw1 = np.array([[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]])
+      checker2 = StridedSliceChecker(self, raw1)
+      _ = checker2[mask]
+      _ = checker2[ops.convert_to_tensor(mask)]
 
 
 class StridedSliceShapeChecker(object):
@@ -807,7 +854,7 @@ class GradSliceChecker(object):
     analytic_grad2 = 2 * slice_val
 
     dy = variables.Variable(
-        array_ops.ones(shape=slice_var.get_shape(), dtype=dtypes.float32))
+        array_ops.ones_like(slice_var, dtype=dtypes.float32))
     assign = dy.assign(slice_var)
     slice_val_grad, = gradients_impl.gradients(slice_val, self.var, grad_ys=dy)
     slice_val_grad2, = gradients_impl.gradients(
@@ -821,6 +868,8 @@ class GradSliceChecker(object):
     # compute analytic gradient for slice
     np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
+    if isinstance(spec, ops.Tensor):
+      spec = self.sess.run([spec])
     np_sliceval_grad[spec] = np_val_grad[spec]
     # verify gradient
     self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
@@ -829,7 +878,7 @@ class GradSliceChecker(object):
 class StridedSliceGradTest(test_util.TensorFlowTestCase):
   """Test that strided slice's custom gradient produces correct gradients."""
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testGradient(self):
     with self.session(use_gpu=True) as sess:
       var = variables.Variable(
@@ -838,8 +887,8 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       init = variables.global_variables_initializer()
       sess.run(init)
 
-      grad = GradSliceChecker(self, sess, var,
-                              np.array(range(1, 97, 1)).reshape((6, 4, 4)))
+      raw = np.array(range(1, 97, 1)).reshape((6, 4, 4))
+      grad = GradSliceChecker(self, sess, var, raw)
       _ = grad[2:6:2, 1:3, 1:3]
       _ = grad[3:0:-2, 1:3, 1:3]
       _ = grad[3:0:-2, array_ops.newaxis, 1:3, 2, array_ops.newaxis]
@@ -851,6 +900,12 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "out of bounds"):
         _ = grad[:, 200, :]
 
+      # Test numpy array type mask
+      _ = grad[raw > 51]
+      # Test tensor type mask
+      _ = grad[ops.convert_to_tensor(raw) <= 76]
+
+  @test_util.run_v1_only("b/120545219")
   def testGradientZero(self):
     with self.session(use_gpu=True) as sess:
       var = variables.Variable(8.)
@@ -1059,7 +1114,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
   def testSliceAssignResource(self):
     self.doTestSliceAssign(use_resource=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testUninitialized(self):
     with self.assertRaisesRegexp(
         errors.FailedPreconditionError,
@@ -1068,6 +1123,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         v = variables.VariableV1([1, 2])
         sess.run(v[:].assign([1, 2]))
 
+  @test_util.run_v1_only("b/120545219")
   def testTypeError(self):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
@@ -1168,6 +1224,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
+  @test_util.run_deprecated_v1
   def testTwoDimensional(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
@@ -1546,6 +1603,211 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(result, tf_result)
 
+
+class BatchGatherNdTest(test_util.TensorFlowTestCase):
+
+  def testShapesMatch(self):
+    """Tests for various different shape combinations."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((2, 2, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 2), (2, 3), 0),)
+    shapes.append(((2, 2, 2), (3,), 0),)
+    shapes.append(((2, 2, 2), (1,), 0),)
+    shapes.append(((2, 2, 3, 2), (2, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params = constant_op.constant(1.0, shape=(params_shape))
+      indices = constant_op.constant(
+          1, shape=(indices_shape), dtype=dtypes.int32)
+      out = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+      ndims_params = len(params_shape) - batch_dims
+      ndims_rows = ndims_params - indices_shape[-1]
+      expected_out_shape = indices_shape[:-1]
+      if ndims_rows > 0:
+        expected_out_shape += params_shape[-ndims_rows:]
+      self.assertSequenceEqual(out.shape, expected_out_shape)
+
+  def testReducesToGatherNDWhenBatchDimIsZero(self):
+    """Confirms setting batch_dims to zero reduces to tf.gather_nd."""
+    params = constant_op.constant(np.random.uniform(0.0, 1.0, size=(7, 8, 9)))
+    indices_shapes = []
+    indices_shapes.append((1,))
+    indices_shapes.append((3, 1))
+    indices_shapes.append((3, 3, 1))
+    indices_shapes.append((2,))
+    indices_shapes.append((3, 2))
+    indices_shapes.append((3, 3, 2))
+    indices_shapes.append((3,))
+    indices_shapes.append((3, 3))
+    indices_shapes.append((3, 3, 3))
+
+    for indices_shape in indices_shapes:
+      indices = np.random.randint(0, 7, size=indices_shape)
+      gather_nd_result = gen_array_ops.gather_nd(params, indices)
+      batch_gather_nd_result = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=0)
+      self.assertAllEqual(gather_nd_result, batch_gather_nd_result)
+
+  def testSameResultAsMapFn(self):
+    """Compares results with gather_nd called on every element with map_fn."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((2, 2, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params = constant_op.constant(
+          np.random.uniform(0.0, 1.0, size=(params_shape)))
+      indices = np.random.randint(0, 2, size=indices_shape)
+      batch_gather_nd_result = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+
+      if batch_dims > 1:
+        params = array_ops.reshape(
+            params, shape=[-1] + list(params_shape[batch_dims:]))
+        indices = array_ops.reshape(
+            indices, shape=[-1] + list(indices_shape[batch_dims:]))
+
+      map_fn_gather_nd_result = map_fn.map_fn(
+          fn=self._map_fn_body,
+          elems=(params, indices),
+          dtype=dtypes.float64)
+
+      if batch_dims > 1:
+        out_shape = map_fn_gather_nd_result.shape.as_list()
+        out_shape = list(params_shape[:batch_dims]) + out_shape[1:]
+        map_fn_gather_nd_result = array_ops.reshape(
+            map_fn_gather_nd_result, shape=out_shape)
+
+      self.assertAllEqual(map_fn_gather_nd_result, batch_gather_nd_result)
+
+  def _map_fn_body(self, elems):
+    return gen_array_ops.gather_nd(elems[0], elems[1])
+
+  def testBatchDimsAsTensor(self):
+    """Tests Tensor batch_dims as input works as intended."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 0),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params = constant_op.constant(
+          np.random.uniform(0.0, 1.0, size=(params_shape)))
+      indices = np.random.randint(0, 2, size=indices_shape)
+      batch_gather_nd_result = array_ops.gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+      batch_dims_tensor = constant_op.constant([batch_dims])
+      batch_gather_nd_tensor_batch_dims_result = array_ops.gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims_tensor)
+
+      self.assertAllEqual(batch_gather_nd_tensor_batch_dims_result,
+                          batch_gather_nd_result)
+
+  def testInvalidBatchDimsRaisesException(self):
+    """Tests whether invalid batch_dims raise expected exceptions."""
+    params = constant_op.constant(
+        np.random.uniform(0.0, 1.0, size=(3, 2, 2, 3, 4)))
+    indices = np.random.randint(0, 2, size=(3, 2, 3))
+
+    with self.assertRaises(TypeError):
+      array_ops.batch_gather_nd(
+          params=params,
+          indices=indices,
+          batch_dims=constant_op.constant((0, 1)))
+
+    with self.assertRaises(ValueError):
+      array_ops.batch_gather_nd(
+          params=params,
+          indices=indices,
+          batch_dims=-1)
+
+    with self.assertRaises(ValueError):
+      array_ops.batch_gather_nd(
+          params=params,
+          indices=indices,
+          batch_dims=4)
+
+  @test_util.run_deprecated_v1
+  def testNoneBatchDimensions(self):
+    """Tests gather_nd works with None dimensions."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((2, 2, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params_ph_shape = list(params_shape)
+      indices_ph_shape = list(indices_shape)
+      for i in range(batch_dims):
+        params_ph_shape[i] = None
+        indices_ph_shape[i] = None
+
+      params = array_ops.placeholder(dtypes.float32, shape=params_ph_shape)
+      indices = array_ops.placeholder(dtypes.int32, shape=indices_ph_shape)
+      out = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+
+      with self.cached_session() as sess:
+        params_val = np.ones(dtype=np.float32, shape=params_shape)
+        indices_val = np.ones(dtype=np.int32, shape=indices_shape)
+        res = sess.run(out,
+                       feed_dict={params: params_val, indices: indices_val})
+      row_ndims = len(params_shape) - batch_dims - indices_shape[-1]
+      expected_out_shape = indices_shape[:-1]
+      if row_ndims > 0:
+        expected_out_shape += params_shape[-row_ndims:]
+
+      self.assertSequenceEqual(res.shape, expected_out_shape)
+
+  @test_util.run_deprecated_v1
+  def testUnknownIndices(self):
+    """Tests whether indices with unknown rank works correctly."""
+    params = constant_op.constant(((0, 1, 2),))
+    indices = array_ops.placeholder(dtypes.int32)
+    gather_nd_t = array_ops.gather_nd(params, indices, batch_dims=1)
+    shape = gather_nd_t.get_shape()
+    self.assertEqual(None, shape.ndims)
+    self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
 if __name__ == "__main__":
   test_lib.main()

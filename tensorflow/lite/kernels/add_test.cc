@@ -63,9 +63,10 @@ class QuantizedAddOpModel : public BaseAddOpModel {
  public:
   using BaseAddOpModel::BaseAddOpModel;
 
+  template <typename integer_dtype>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<integer_dtype>(ExtractVector<integer_dtype>(output_),
+                                     GetScale(output_), GetZeroPoint(output_));
   }
 
   std::vector<float> GetDequantizedOutputInt16() {
@@ -74,17 +75,15 @@ class QuantizedAddOpModel : public BaseAddOpModel {
   }
 };
 
-// for quantized Add, the error shouldn't exceed 2*step
+// for quantized Add, the error shouldn't exceed step
 float GetTolerance(float min, float max) {
   float kQuantizedStep = (max - min) / 255.0;
-  float kQuantizedTolerance = 2.0 * kQuantizedStep;
-  return kQuantizedTolerance;
+  return kQuantizedStep;
 }
 
 float GetToleranceInt16(float min, float max) {
   float kQuantizedStep = (max - min) / 32767.f;
-  float kQuantizedTolerance = 2.0 * kQuantizedStep;
-  return kQuantizedTolerance;
+  return kQuantizedStep;
 }
 
 TEST(FloatAddOpModel, NoActivation) {
@@ -191,7 +190,8 @@ TEST(IntegerAddOpModel, WithBroadcast) {
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
+template <TensorType tensor_type, typename integer_dtype>
+void QuantizedTestsNoActivation() {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<std::vector<float>> inputs1 = {
       {0.1, 0.2, 0.3, 0.4}, {-0.8, 0.2, 0.4, 0.7}, {-0.8, 0.2, 0.7, 0.3}};
@@ -200,17 +200,26 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
   std::vector<std::vector<float>> results = {
       {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
   for (int i = 0; i < inputs1.size(); ++i) {
-    QuantizedAddOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                          {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                          {TensorType_UINT8, {}, -1.0, 1.0},
+    QuantizedAddOpModel m({tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
+                          {tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
+                          {tensor_type, {}, -1.0, 1.0},
                           ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[i]);
-    m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input2(), inputs2[i]);
     m.Invoke();
-    EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
-                                              results[i], kQuantizedTolerance)))
+    EXPECT_THAT(
+        m.GetDequantizedOutput<integer_dtype>(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
         << "With test number " << i;
   }
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsNoActivationUInt8) {
+  QuantizedTestsNoActivation<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt8) {
+  QuantizedTestsNoActivation<TensorType_INT8, int8_t>();
 }
 
 TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
@@ -238,7 +247,8 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU_N1_TO_1) {
+template <enum TensorType tensor_type, typename integer_dtype>
+void QuantizedTestsActivationRELU_N1_TO_1() {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<std::vector<float>> inputs1 = {{-0.8, 0.2, 0.9, 0.7},
                                              {-0.8, 0.2, 0.7, 0.3}};
@@ -247,53 +257,74 @@ TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU_N1_TO_1) {
   std::vector<std::vector<float>> results = {{-0.2, 0.6, 1.0, -0.1},
                                              {-0.2, 0.6, -0.1, 0.8}};
   for (int i = 0; i < inputs1.size(); ++i) {
-    QuantizedAddOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                          {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                          {TensorType_UINT8, {}, -1.0, 1.0},
+    QuantizedAddOpModel m({tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
+                          {tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
+                          {tensor_type, {}, -1.0, 1.0},
                           ActivationFunctionType_RELU_N1_TO_1);
-    m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[i]);
-    m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input2(), inputs2[i]);
     m.Invoke();
-    EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
-                                              results[i], kQuantizedTolerance)))
+    EXPECT_THAT(
+        m.GetDequantizedOutput<integer_dtype>(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
         << "With test number " << i;
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedVariousInputShapes) {
+TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU_N1_TO_1UInt8) {
+  QuantizedTestsActivationRELU_N1_TO_1<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU_N1_TO_1Int8) {
+  QuantizedTestsActivationRELU_N1_TO_1<TensorType_INT8, int8_t>();
+}
+
+template <enum TensorType tensor_type, typename integer_dtype>
+void QuantizedVariousInputShapes() {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    QuantizedAddOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},
-                          {TensorType_UINT8, test_shapes[i], -3.0, 3.0},
-                          {TensorType_UINT8, {}, -3.0, 3.0},
+    QuantizedAddOpModel m({tensor_type, test_shapes[i], -3.0, 3.0},
+                          {tensor_type, test_shapes[i], -3.0, 3.0},
+                          {tensor_type, {}, -3.0, 3.0},
                           ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<uint8_t>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.1, 0.3, 0.3, 0.5, 1.1, 0.1});
+    m.QuantizeAndPopulate<integer_dtype>(m.input1(),
+                                         {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.QuantizeAndPopulate<integer_dtype>(m.input2(),
+                                         {0.1, 0.3, 0.3, 0.5, 1.1, 0.1});
     m.Invoke();
-    EXPECT_THAT(m.GetDequantizedOutput(),
+    EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
                 ElementsAreArray(ArrayFloatNear({-1.9, 0.5, 1.0, 1.3, 2.2, 2.1},
                                                 kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcast) {
+TEST(QuantizedAddOpModel, QuantizedVariousInputShapesUInt8) {
+  QuantizedVariousInputShapes<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedAddOpModel, QuantizedVariousInputShapesInt8) {
+  QuantizedVariousInputShapes<TensorType_INT8, int8_t>();
+}
+
+template <enum TensorType tensor_type, typename integer_dtype>
+void QuantizedWithScalarBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.f, 3.f);
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel model_fixture(
-        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
-        {TensorType_UINT8, {}, -3.f, 3.f}, {TensorType_UINT8, {}, -3.f, 3.f},
-        ActivationFunctionType_NONE);
-    model_fixture.QuantizeAndPopulate<uint8_t>(
+        {tensor_type, test_shapes[i], -3.f, 3.f}, {tensor_type, {}, -3.f, 3.f},
+        {tensor_type, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input1(), {-2.0f, 0.2f, 0.7f, 0.8f, 1.1f, 2.0f});
-    model_fixture.QuantizeAndPopulate<uint8_t>(model_fixture.input2(), {0.1f});
+    model_fixture.QuantizeAndPopulate<integer_dtype>(model_fixture.input2(),
+                                                     {0.1f});
     model_fixture.Invoke();
     EXPECT_THAT(
-        model_fixture.GetDequantizedOutput(),
+        model_fixture.GetDequantizedOutput<integer_dtype>(),
         ElementsAreArray(ArrayFloatNear({-1.9f, 0.3f, 0.8f, 0.9f, 1.2f, 2.1f},
                                         kQuantizedTolerance)))
         << "With shape number " << i;
@@ -301,22 +332,31 @@ TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcast) {
   // Re-run with exchanged inputs.
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel model_fixture(
-        {TensorType_UINT8, {}, -3.f, 3.f},
-        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
-        {TensorType_UINT8, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
-    model_fixture.QuantizeAndPopulate<uint8_t>(model_fixture.input1(), {0.1f});
-    model_fixture.QuantizeAndPopulate<uint8_t>(
+        {tensor_type, {}, -3.f, 3.f}, {tensor_type, test_shapes[i], -3.f, 3.f},
+        {tensor_type, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<integer_dtype>(model_fixture.input1(),
+                                                     {0.1f});
+    model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input2(), {-2.0f, 0.2f, 0.7f, 0.8f, 1.1f, 2.0f});
     model_fixture.Invoke();
     EXPECT_THAT(
-        model_fixture.GetDequantizedOutput(),
+        model_fixture.GetDequantizedOutput<integer_dtype>(),
         ElementsAreArray(ArrayFloatNear({-1.9f, 0.3f, 0.8f, 0.9f, 1.2f, 2.1f},
                                         kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcast) {
+TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcastUInt8) {
+  QuantizedWithScalarBroadcast<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcastInt8) {
+  QuantizedWithScalarBroadcast<TensorType_INT8, int8_t>();
+}
+
+template <enum TensorType tensor_type, typename integer_dtype>
+void QuantizedWithMixedBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.f, 3.f);
   const std::vector<int> base_shape = {2, 3, 1, 2};
   std::vector<std::vector<int>> test_shapes = {
@@ -335,38 +375,46 @@ TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcast) {
       {-0.1f, 2.5f, 1.2f, 0.8f, 0.4f, -1.5f, 1.7f, 3.0f, -0.6f, 1.0f, 1.6f,
        -1.3f}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    QuantizedAddOpModel model_fixture(
-        {TensorType_UINT8, base_shape, -3.f, 3.f},
-        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
-        {TensorType_UINT8, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
-    model_fixture.QuantizeAndPopulate<uint8_t>(
+    QuantizedAddOpModel model_fixture({tensor_type, base_shape, -3.f, 3.f},
+                                      {tensor_type, test_shapes[i], -3.f, 3.f},
+                                      {tensor_type, {}, -3.f, 3.f},
+                                      ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input1(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    model_fixture.QuantizeAndPopulate<uint8_t>(
+    model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input2(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
     model_fixture.Invoke();
     EXPECT_THAT(
-        model_fixture.GetDequantizedOutput(),
+        model_fixture.GetDequantizedOutput<integer_dtype>(),
         ElementsAreArray(ArrayFloatNear(test_outputs[i], kQuantizedTolerance)))
         << "With shape number " << i;
   }
   // Re-run with exchanged inputs.
   for (int i = 0; i < test_shapes.size(); ++i) {
-    QuantizedAddOpModel model_fixture(
-        {TensorType_UINT8, test_shapes[i], -3.f, 3.f},
-        {TensorType_UINT8, base_shape, -3.f, 3.f},
-        {TensorType_UINT8, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
-    model_fixture.QuantizeAndPopulate<uint8_t>(
+    QuantizedAddOpModel model_fixture({tensor_type, test_shapes[i], -3.f, 3.f},
+                                      {tensor_type, base_shape, -3.f, 3.f},
+                                      {tensor_type, {}, -3.f, 3.f},
+                                      ActivationFunctionType_NONE);
+    model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input1(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    model_fixture.QuantizeAndPopulate<uint8_t>(
+    model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
     model_fixture.Invoke();
     EXPECT_THAT(
-        model_fixture.GetDequantizedOutput(),
+        model_fixture.GetDequantizedOutput<integer_dtype>(),
         ElementsAreArray(ArrayFloatNear(test_outputs[i], kQuantizedTolerance)))
         << "With shape number " << i;
   }
+}
+
+TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcastUInt8) {
+  QuantizedWithMixedBroadcast<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcastInt8) {
+  QuantizedWithMixedBroadcast<TensorType_INT8, int8_t>();
 }
 
 }  // namespace

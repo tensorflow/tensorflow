@@ -198,7 +198,7 @@ tf_module {
   }
   member_method {
     name: "get_session"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'op_input_list\'], varargs=None, keywords=None, defaults=[\'()\'], "
   }
   member_method {
     name: "get_uid"
@@ -267,6 +267,14 @@ tf_module {
   member_method {
     name: "less_equal"
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_conv1d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "local_conv2d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'output_shape\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "log"

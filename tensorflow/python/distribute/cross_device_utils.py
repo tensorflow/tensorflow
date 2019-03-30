@@ -264,10 +264,10 @@ class CollectiveKeys(object):
         recorded with an id.
     """
     self._group_key = group_key_start
-    self._group_key_table = dict()
+    self._group_key_table = {}
 
     # For instance keys with ids
-    self._instance_key_id_to_key_table = dict()
+    self._instance_key_id_to_key_table = {}
     self._instance_key_with_id_counter = instance_key_with_id_start
 
     # For instance keys without ids
@@ -350,7 +350,7 @@ def build_collective_reduce(input_tensors,
   """
   group_size = len(input_tensors) * num_workers
   if group_size < 2:
-    raise ValueError('num_workers * len(input_tensors) must be 2 or greater')
+    return input_tensors
   devices = [t.device for t in input_tensors]
   num_devices = len(devices)
   group_key = collective_keys.get_group_key(devices)
@@ -374,6 +374,49 @@ def build_collective_reduce(input_tensors,
     # a graph or a defun.
     collective_all_reduce = def_function.function(collective_all_reduce)
   return collective_all_reduce()
+
+
+def build_collective_gather(input_tensors, num_workers, collective_keys):
+  """Build a subgraph that does one full all-gather, using the collective Op.
+
+  Args:
+    input_tensors: tensors within a single worker graph that are to be gathered
+      together; must be one per device.
+    num_workers: total number of workers with identical independent graphs that
+      will be doing this same reduction.  The reduction will actually include
+      the corresponding tensors at all these workers.
+    collective_keys: a CollectiveKeys object.
+
+  Returns:
+    An array of final tensors, one per device, computed by the full gather.
+
+  Raises:
+    ValueError: There must be at least two tensors over all the workers.
+  """
+  group_size = len(input_tensors) * num_workers
+  if group_size < 2:
+    return input_tensors
+  devices = [t.device for t in input_tensors]
+  num_devices = len(devices)
+  group_key = collective_keys.get_group_key(devices)
+  instance_key = collective_keys.get_instance_key()
+
+  def collective_all_gather():
+    """Call collective allgather."""
+    assert not context.executing_eagerly()
+    out_tensors = []
+    for d in range(num_devices):
+      with ops.device(devices[d]):
+        gather_op = collective_ops.all_gather(input_tensors[d], group_size,
+                                              group_key, instance_key)
+        out_tensors.append(gather_op)
+    return out_tensors
+
+  if context.executing_eagerly():
+    # Collective ops will block unless they are executed concurrently such as in
+    # a graph or a defun.
+    collective_all_gather = def_function.function(collective_all_gather)
+  return collective_all_gather()
 
 
 def sum_grad_and_var_all_reduce(grad_and_vars,
@@ -681,3 +724,58 @@ def contains_indexed_slices(value):
     return contains_indexed_slices(value.values)
   else:
     return False
+
+
+def is_indexed_slices(value):
+  if isinstance(value, ops.IndexedSlices):
+    return True
+  assert isinstance(value, value_lib.DistributedValues)
+  return all([isinstance(v, ops.IndexedSlices) for v in value.values])
+
+
+def split_by_sparsity(values):
+  """Split values into dense and sparse values.
+
+  Args:
+    values: a list of tensors or `PerReplica`s.
+
+  Returns:
+    Four lists:
+      a list of dense values, a list of their indices in `values` and
+      a list of sparse values, a list of their indices in `values`.
+  """
+  dense_values = []
+  dense_indices = []
+  sparse_values = []
+  sparse_indices = []
+  for i, v in enumerate(values):
+    if is_indexed_slices(v):
+      sparse_values.append(v)
+      sparse_indices.append(i)
+    else:
+      dense_values.append(v)
+      dense_indices.append(i)
+  return dense_values, dense_indices, sparse_values, sparse_indices
+
+
+def stitch_values(values_and_indices_list):
+  """Stitch values together according to their indices.
+
+  Args:
+    values_and_indices_list: a list of tuples of values and indices indicating
+      the values and postions in the returned list.
+
+  Returns:
+    a stitched list of values.
+  """
+  length = 0
+  for values_and_indices in values_and_indices_list:
+    length += len(values_and_indices[0])
+
+  result = [None] * length
+  for values_and_indices in values_and_indices_list:
+    if values_and_indices and values_and_indices[0]:
+      for v, i in zip(*values_and_indices):
+        assert result[i] is None
+        result[i] = v
+  return result

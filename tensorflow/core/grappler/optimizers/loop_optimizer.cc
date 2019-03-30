@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -581,8 +582,19 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
   return Status::OK();
 }
 
+// TODO(lyandy): Consolidate with ConstantFolding implementation.
+bool IsReallyConstant(const NodeDef& node,
+                      const absl::flat_hash_set<string>& feed_nodes) {
+  if (!IsConstant(node)) {
+    return false;
+  }
+  // If the node is fed it's not constant anymore.
+  return feed_nodes.find(node.name()) == feed_nodes.end();
+}
+
 Status CheckForDeadFanout(const MutableGraphView& view,
                           const NodeDef& switch_node, const NodeMap& node_map,
+                          const absl::flat_hash_set<string>& feed_nodes,
                           DeviceBase* cpu_device, ResourceMgr* resource_mgr,
                           bool* has_dead_fanout, int* dead_fanout) {
   *has_dead_fanout = false;
@@ -591,7 +603,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
       view.GetRegularFanin(switch_loopcond_port).node;
 
   // CASE 1: Control is a constant.
-  if (IsConstant(*switch_predicate)) {
+  if (IsReallyConstant(*switch_predicate, feed_nodes)) {
     Tensor selector;
     CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
     *has_dead_fanout = true;
@@ -630,7 +642,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     if (IsMerge(*node)) {
       merge_node = node;
     }
-    if (IsConstant(*node)) {
+    if (IsReallyConstant(*node, feed_nodes)) {
       constant_ctrl_input = node;
       constant_index = i;
     }
@@ -646,7 +658,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     if (IsEnter(*node)) {
       enter_node = node;
     }
-    if (IsConstant(*node)) {
+    if (IsReallyConstant(*node, feed_nodes)) {
       constant_init_node = node;
     }
   }
@@ -654,7 +666,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     if (constant_init_node != nullptr) return Status::OK();
     for (const auto& input : enter_node->input()) {
       NodeDef* node = node_map.GetNode(input);
-      if (IsConstant(*node)) {
+      if (IsReallyConstant(*node, feed_nodes)) {
         constant_init_node = node;
       }
     }
@@ -710,8 +722,12 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     // TODO(srjoglekar): Figure out if we can optimize NodeMap creations across
     // optimizer passes.
     NodeMap node_map(optimized_graph);
-    TF_RETURN_IF_ERROR(
-        RemoveDeadBranches(item.NodesToPreserve(), node_map, optimized_graph));
+    absl::flat_hash_set<string> feed_nodes;
+    for (const auto& feed : item.feed) {
+      feed_nodes.insert(NodeName(feed.first));
+    }
+    TF_RETURN_IF_ERROR(RemoveDeadBranches(item.NodesToPreserve(), node_map,
+                                          feed_nodes, optimized_graph));
   }
 
   return Status::OK();
@@ -719,7 +735,8 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
 Status LoopOptimizer::RemoveDeadBranches(
     const std::unordered_set<string>& nodes_to_preserve,
-    const NodeMap& node_map, GraphDef* optimized_graph) {
+    const NodeMap& node_map, const absl::flat_hash_set<string>& feed_nodes,
+    GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
   // TODO(bsteiner): also rewrite switches as identity. For now we just record
@@ -737,9 +754,9 @@ Status LoopOptimizer::RemoveDeadBranches(
 
     int dead_fanout;
     bool has_dead_fanout;
-    TF_RETURN_IF_ERROR(CheckForDeadFanout(view, node, node_map, cpu_device_,
-                                          resource_mgr_.get(), &has_dead_fanout,
-                                          &dead_fanout));
+    TF_RETURN_IF_ERROR(CheckForDeadFanout(view, node, node_map, feed_nodes,
+                                          cpu_device_, resource_mgr_.get(),
+                                          &has_dead_fanout, &dead_fanout));
     if (!has_dead_fanout) {
       continue;
     }
@@ -774,8 +791,8 @@ Status LoopOptimizer::RemoveDeadBranches(
       }
 
       if (IsMerge(*dead.node)) {
-        const int fanout = dead.node->attr().at("N").i();
-        if (fanout > 2) {
+        const int num_data_inputs = dead.node->attr().at("N").i();
+        if (num_data_inputs > 2) {
           // This never happens in practice, so we'll just skip these to
           // simplify the code for now.
           found_node_to_preserve = true;
@@ -793,18 +810,21 @@ Status LoopOptimizer::RemoveDeadBranches(
         }
 
         bool fully_dead = false;
-        if (dead.port_id < 0) {
-          // If the control dependency never gets triggered the merge will also
-          // never get triggered.
-          fully_dead = true;
-        } else {
+        // Merge node can become real dead only if all data inputs are dead.
+        // Merge always waits for all control edges, but they do not
+        // change the node deadness.
+        if (dead.port_id >= 0) {
           local_dead_merge_inputs[dead.node].insert(dead.port_id);
-          if (local_dead_merge_inputs[dead.node].size() ==
-              dead.node->attr().at("N").i()) {
+          if (local_dead_merge_inputs[dead.node].size() == num_data_inputs) {
             fully_dead = true;
           }
+        } else {
+          // Keep track of all Merge nodes, even if they do not have dead data
+          // inputs. We'll need to cleanup dead control edges for them later.
+          local_dead_merge_inputs.insert({dead.node, {}});
         }
         if (fully_dead) {
+          local_dead_merge_inputs.erase(dead.node);
           local_dead_nodes.insert(dead.node);
           for (const MutableGraphView::InputPort& port :
                view.GetFanouts(*dead.node, true)) {
@@ -836,21 +856,47 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (dead_nodes.count(&optimized_graph->node(i)))
       nodes_idx_to_delete.push_back(i);
   }
-  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
+  // Names of the nodes that were removed from the graph.
+  absl::flat_hash_set<absl::string_view> dead_node_names;
+  dead_node_names.reserve(dead_nodes.size());
+  for (const NodeDef* dead_node : dead_nodes)
+    dead_node_names.insert(dead_node->name());
+
+  // Remove dead inputs from Merge nodes that were not pruned from the graph.
   for (const auto& itr : dead_merge_inputs) {
     NodeDef* dead_node = itr.first;
     if (dead_nodes.find(dead_node) != dead_nodes.end()) {
       // The node has been pruned since all its inputs are dead.
       continue;
     }
+    // Remove dead data input.
     const std::set<int>& dead_inputs = itr.second;
     for (int index : dead_inputs) {
       dead_node->mutable_input()->DeleteSubrange(index, 1);
     }
-    dead_node->set_op("Identity");
-    dead_node->mutable_attr()->erase("N");
+    // Turn Merge into Identity only if we deleted data inputs.
+    if (!dead_inputs.empty()) {
+      dead_node->set_op("Identity");
+      dead_node->mutable_attr()->erase("N");
+    }
+    // Remove control inputs from dead nodes.
+    int pos = 0;
+    while (pos < dead_node->input_size()) {
+      TensorId tensor = ParseTensorName(dead_node->input(pos));
+      if (tensor.index() == Graph::kControlSlot &&
+          dead_node_names.contains(tensor.node())) {
+        auto* inputs = dead_node->mutable_input();
+        inputs->SwapElements(pos, dead_node->input_size() - 1);
+        inputs->RemoveLast();
+      } else {
+        ++pos;
+      }
+    }
   }
+
+  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
+
   return Status::OK();
 }
 

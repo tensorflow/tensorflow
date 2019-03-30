@@ -71,4 +71,5 @@ from tensorflow.python.autograph.operators.py_builtins import range_
 from tensorflow.python.autograph.operators.slices import get_item
 from tensorflow.python.autograph.operators.slices import GetItemOpts
 from tensorflow.python.autograph.operators.slices import set_item
-from tensorflow.python.autograph.operators.special_values import UNDEFINED
+from tensorflow.python.autograph.operators.special_values import is_undefined
+from tensorflow.python.autograph.operators.special_values import Undefined

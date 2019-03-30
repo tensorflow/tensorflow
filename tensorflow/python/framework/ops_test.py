@@ -29,6 +29,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -621,6 +622,8 @@ class OperationTest(test_util.TensorFlowTestCase):
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 
+      # Clear output shapes to bypass shape checking.
+      while_op._set_shape_list_attr("output_shapes", [])
       while_op._set_type_list_attr("T",
                                    [t.dtype for t in while_op.inputs] +
                                    [new_input1.dtype, new_input2.dtype])
@@ -1295,6 +1298,22 @@ class DeviceTest(test_util.TensorFlowTestCase):
              device: "/device:CPU:5" }
     """, gd)
 
+  def testNestingErrorGraph(self):
+    g = ops.Graph()
+    scope = g.device("/device:GPU:8")
+    scope.__enter__()
+    with g.device("/device:GPU:9"):
+      with self.assertRaises(RuntimeError):
+        scope.__exit__(None, None, None)
+
+  def testNestingErrorEager(self):
+    with context.eager_mode():
+      scope = ops.device("/device:CPU:0")
+      scope.__enter__()
+      with ops.device(None):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+
   def testNoneClearsDefault(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2/device:CPU:1"):
@@ -1587,6 +1606,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
     self.assertSequenceEqual(g.collections, ["key"])
     g.add_to_collection("other", "foo")
     self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
+    self.assertSequenceEqual(
+        sorted(g.get_all_collection_keys()), ["key", "other"])
 
   def test_add_to_collection(self):
     g = ops.Graph()
@@ -2414,17 +2435,22 @@ class GraphTest(test_util.TensorFlowTestCase):
 
   def testDefaultGraph(self):
     orig = ops.get_default_graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     g0 = ops.Graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     context_manager_0 = g0.as_default()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     with context_manager_0 as g0:
       self._AssertDefault(g0)
       with ops.Graph().as_default() as g1:
+        self.assertTrue(ops.has_default_graph())
         self._AssertDefault(g1)
       self._AssertDefault(g0)
     self._AssertDefault(orig)
+    self.assertFalse(ops.has_default_graph())
 
   def testPreventFeeding(self):
     g = ops.Graph()
@@ -3017,6 +3043,72 @@ class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "execution_mode must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, execution_mode=c)
+
+
+class _TupleTensor(composite_tensor.CompositeTensor):
+  """`Tensor`-like `tuple`-like for custom `Tensor` conversion masquerading."""
+
+  def __init__(self, components):
+    super(_TupleTensor, self).__init__()
+    self._components = tuple(ops.convert_to_tensor(c) for c in components)
+
+  def _to_components(self):
+    return self._components
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    raise NotImplementedError("CompositeTensor._shape_invariant_to_components")
+
+  def _is_graph_tensor(self):
+    return any(hasattr(t, "graph") for t in self._components)
+
+  def __getitem__(self, key):
+    return self._components[key]
+
+  def __len__(self):
+    return len(self._components)
+
+  def __iter__(self):
+    return iter(self._components)
+
+
+class _MyTuple(object):
+  """Pretend user-side class for `ConvertToCompositeTensorTest ."""
+
+  def __init__(self, components):
+    super(_MyTuple, self).__init__()
+    self._components = tuple(components)
+
+  def __getitem__(self, key):
+    return self._components[key]
+
+  def __len__(self):
+    return len(self._components)
+
+  def __iter__(self):
+    return iter(self._components)
+
+
+ops.register_tensor_conversion_function(
+    _MyTuple, conversion_func=lambda x, *_, **__: _TupleTensor(x))
+
+
+class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
+
+  def testCompositeTensorConversion(self):
+    """Tests that a user can register a CompositeTensor converter."""
+    x = _MyTuple((1, [2., 3.], [[4, 5], [6, 7]]))
+    y = ops.convert_to_tensor_or_composite(x)
+    self.assertTrue(tensor_util.is_tensor(y))
+    self.assertIsInstance(y, _TupleTensor)
+    self.assertLen(y, len(x))
+    for x_, y_ in zip(x, y):
+      self.assertIsInstance(y_, ops.Tensor)
+      self.assertTrue(tensor_util.is_tensor(y_))
+      self.assertAllEqual(x_, tensor_util.constant_value(y_))
 
 
 if __name__ == "__main__":

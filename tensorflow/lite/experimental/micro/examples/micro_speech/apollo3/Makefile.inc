@@ -5,7 +5,7 @@ ifeq ($(TARGET), apollo3evb)
     $(AP3_MICRO_DIR)/../preprocessor.cc \
     $(AP3_MICRO_DIR)/pushbutton_main.c \
     $(AP3_MICRO_DIR)/pushbutton_test.cc \
-    $(AP3_MICRO_DIR)/../tiny_conv_model_data.cc \
+    $(AP3_MICRO_DIR)/../simple_features/tiny_conv_simple_features_model_data.cc \
     $(APOLLO3_SDK)/devices/am_devices_led.c
   ALL_SRCS += $(PUSHBUTTON_MICRO_SPEECH_TEST_SRCS)
   PUSHBUTTON_MICRO_SPEECH_TEST_OBJS := $(addprefix $(OBJDIR), \
@@ -24,8 +24,8 @@ ifeq ($(TARGET), apollo3evb)
   PUSHBUTTON_CMSIS_SPEECH_TEST_SRCS := \
     $(AP3_MICRO_DIR)/pushbutton_main.c \
     $(AP3_MICRO_DIR)/pushbutton_test.cc \
-    $(AP3_MICRO_DIR)/../tiny_conv_model_data.cc \
-    $(CMSIS_DIR)/preprocessor.cc \
+    $(AP3_MICRO_DIR)/../simple_features/tiny_conv_simple_features_model_data.cc \
+    $(CMSIS_DIR)/simple_features_generator.cc \
     $(CMSIS_EXT_DIR)/arm_cmplx_mag_squared_q10p6.c \
     $(CMSIS_DIR)/hanning.c \
     $(APOLLO3_SDK)/devices/am_devices_led.c \

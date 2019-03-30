@@ -35,9 +35,9 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override {
     int64 num_workers;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_workers", &num_workers));
-    OP_REQUIRES(ctx, num_workers > 0,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_workers > 0,
+        errors::InvalidArgument("num_workers must be greater than zero."));
 
     Dataset* dataset =
         new Dataset(ctx, input, num_workers, output_types_, output_shapes_);
@@ -62,8 +62,17 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "RebatchDatasetOp::Dataset"; }
 
    private:
+    bool ShouldOptimizeFunctions() override {
+      // We only want to optimize functions for some particular datasets like
+      // FlatMapDataset, InterleaveDataset etc. So we disable generalized
+      // function optimization and explicitly handle function modifications
+      // for those datasets in the rewrite.
+      return false;
+    }
+
     RewriterConfig CreateGrapplerRewriteConfig() override {
       RewriterConfig rewriter_config;
+      rewriter_config.set_fail_on_optimizer_errors(true);
       rewriter_config.add_optimizers(kOptimizerName);
       rewriter_config.set_meta_optimizer_iterations(
           RewriterConfig_NumIterationsType_ONE);

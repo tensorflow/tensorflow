@@ -247,10 +247,13 @@ class Node {
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     std::shared_ptr<Node> result = Clone(output);
-    result->buffered_bytes_ = buffered_bytes_;
-    result->processing_time_ = processing_time_;
-    result->num_elements_ = num_elements_;
-    result->parameters_ = parameters_;
+    {
+      mutex_lock l2(result->mu_);
+      result->buffered_bytes_ = buffered_bytes_;
+      result->processing_time_ = processing_time_;
+      result->num_elements_ = num_elements_;
+      result->parameters_ = parameters_;
+    }
     for (auto& input : inputs_) {
       result->add_input(input->Snapshot(result));
     }
@@ -388,6 +391,9 @@ class Model {
 
   // Records that a node has produced an element.
   void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
+
+  // Returns the number of elements that the input pipeline has produced.
+  int64 NumElements(const string& name) LOCKS_EXCLUDED(mu_);
 
   // Records that the given node has started work. If `stop_output` is set, it
   // also records that the output of the given node has stopped work.

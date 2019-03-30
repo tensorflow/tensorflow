@@ -26,11 +26,14 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -211,7 +214,8 @@ class DefFunctionTest(test.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaises(lift_to_graph.UnliftableError):
+      with self.assertRaisesRegexp(
+          lift_to_graph.UnliftableError, r'transitively.* mul .* x'):
         fn(constant_op.constant(3.0))
 
   def testMethod(self):
@@ -242,6 +246,35 @@ class DefFunctionTest(test.TestCase):
         def_function.function(functools.partial(lambda x, y: x + y, 1.))(
             constant_op.constant(2.)))
 
+  def test_functools_partial_single_keyword(self):
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, x=constant_op.constant(1)))
+
+    # This is a limitation of functools.partial. It is not unexpected behavior,
+    # but still testing for it for completeness.
+    with self.assertRaisesRegexp(
+        TypeError, 'got multiple values for'):
+      func(5)
+
+  def test_functools_partial_keywords(self):
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
+    self.assertAllEqual(func(), [0.0])
+
+  def test_functools_partial_single_positional(self):
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, constant_op.constant(1)))
+    self.assertAllEqual(func(5), 6)
+
   def test_unspecified_default_argument(self):
     wrapped = def_function.function(
         lambda x, y=2: x + y,
@@ -270,6 +303,71 @@ class DefFunctionTest(test.TestCase):
     self.assertEqual(signature_args,
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
+
+  def test_concrete_function_keyword_arguments(self):
+    @def_function.function
+    def f(x):
+      return x
+
+    conc = f.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32, 'y'))
+    conc(y=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('y', signature_args[0].name)
+
+    conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
+    conc(x=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('x', signature_args[0].name)
+
+    @def_function.function
+    def g(x):
+      return x[0]
+
+    conc = g.get_concrete_function(
+        [tensor_spec.TensorSpec(None, dtypes.float32, 'z'), 2])
+    conc(z=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('z', signature_args[0][0].name)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'either zero or all names have to be specified'):
+      conc = g.get_concrete_function([
+          tensor_spec.TensorSpec(None, dtypes.float32, 'z'),
+          tensor_spec.TensorSpec(None, dtypes.float32),
+      ])
+
+  def test_error_inner_capture(self):
+
+    @def_function.function
+    def f(inputs):
+      num_steps, _ = inputs.shape[:2]
+      outputs = []
+      for t in math_ops.range(num_steps):
+        outputs.append(inputs[t])
+      return outputs
+
+    with self.assertRaisesRegexp(ValueError, 'inner'):
+      f(array_ops.zeros(shape=(8, 42, 3)))
+
+  def testRuntimeErrorNotSticky(self):
+
+    @def_function.function
+    def fail(i):
+      control_flow_ops.Assert(math_ops.equal(i, 0), ['ick'])
+
+    fail(constant_op.constant(0))  # OK
+    with self.assertRaises(errors.InvalidArgumentError):
+      fail(constant_op.constant(1))  # InvalidArgument: "ick"
+    fail(constant_op.constant(0))  # OK
+
+  def testUnderscoreName(self):
+
+    @def_function.function
+    def f(_):
+      return _ + _
+
+    self.assertAllEqual(2.0, f(constant_op.constant(1.0)))
 
   def test_serialization_signature_cache(self):
 
@@ -428,6 +526,39 @@ class DefFunctionTest(test.TestCase):
 
     created_variable_read = create_variable()
     self.assertRegexpMatches(created_variable_read.device, "CPU")
+
+  def testDecorate(self):
+    func = def_function.function(lambda: 1)
+    def decorator(f):
+      return lambda: 1 + f()
+
+    func._decorate(decorator)
+    self.assertEqual(func().numpy(), 2)
+
+  def testLiftPlaceholderInitializedVariable(self):
+    with ops.Graph().as_default():
+      var_list = []
+
+      @def_function.function
+      def use_variable():
+        if not var_list:
+          initial_value = array_ops.placeholder(shape=[], dtype=dtypes.float32)
+          v = variables.Variable(initial_value)
+          var_list.append(v)
+        return var_list[0] + 1.
+
+      var_plus_one = use_variable()
+      with self.session() as session:
+        init_op = var_list[0].initializer
+        session.run(init_op, feed_dict={init_op.inputs[1]: 2.})
+        self.assertEqual(3., session.run(var_plus_one))
+
+  def testDecorate_rejectedAfterTrace(self):
+    func = def_function.function(lambda: 1)
+    self.assertEqual(func().numpy(), 1)
+    msg = 'Functions cannot be decorated after they have been traced.'
+    with self.assertRaisesRegexp(ValueError, msg):
+      func._decorate(lambda f: f)
 
 
 if __name__ == '__main__':

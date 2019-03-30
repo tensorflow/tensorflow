@@ -100,8 +100,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
 
     // Logic to be executed on the RecvBufAsync callback.
     auto recv_buf_callback = [this, state, peer_task, to_device, to_alloc_attr,
-                              to_device_ctx, to_tensor, dev_to_dev_stream_index,
-                              done](const Status& s) {
+                              to_device_ctx, to_tensor, done](const Status& s) {
       if (s.ok()) {
         remote_memory_manager_->TensorFromTransportOptions(
             to_tensor, state->call->resp_.transport_options(), to_device,

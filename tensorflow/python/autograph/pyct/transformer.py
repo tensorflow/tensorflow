@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 
 import gast
 
@@ -44,8 +45,11 @@ class Context(object):
     self.current_origin = None
 
 
-# TODO(mdan): Use namedtuple.
-class EntityInfo(object):
+# TODO(mdan): Move to a standalone file.
+class EntityInfo(
+    collections.namedtuple(
+        'EntityInfo',
+        ('source_code', 'source_file', 'future_features', 'namespace'))):
   """Contains information about a Python entity.
 
   Immutable.
@@ -55,22 +59,13 @@ class EntityInfo(object):
   Attributes:
     source_code: The entity's source code.
     source_file: The entity's source file.
+    future_features: Tuple[Text], the future features that this entity was
+      compiled with. See
+      https://docs.python.org/2/reference/simple_stmts.html#future.
     namespace: Dict[str, ], containing symbols visible to the entity (excluding
       parameters).
-    arg_values: dict[str->*], containing parameter values, if known.
-    arg_types: dict[str->*], containing parameter types, if known.
-    owner_type: The surrounding class type of the function, if present.
   """
-
-  # TODO(mdan): Remove the default and update tests.
-  def __init__(self, source_code, source_file, namespace, arg_values, arg_types,
-               owner_type):
-    self.source_code = source_code
-    self.source_file = source_file
-    self.namespace = namespace
-    self.arg_values = {} if arg_values is None else arg_values
-    self.arg_types = {} if arg_types is None else arg_types
-    self.owner_type = owner_type
+  pass
 
 
 class _StateStack(object):

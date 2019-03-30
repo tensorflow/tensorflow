@@ -89,7 +89,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        "no_oss",  # b/123045964
         "optonly",
     ],
 )

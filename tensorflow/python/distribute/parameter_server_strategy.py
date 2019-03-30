@@ -20,11 +20,12 @@ from __future__ import print_function
 
 import copy
 
-from tensorflow.contrib.distribute.python import mirrored_strategy
+
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
@@ -39,12 +40,14 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 _LOCAL_CPU = "/device:CPU:0"
 _LOCAL_GPU_0 = "/device:GPU:0"
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
+@tf_export("distribute.experimental.ParameterServerStrategy")
 class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   """A parameter server DistributionStrategy.
 
@@ -57,7 +60,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   In local training mode, variables are assigned to local CPU or the only GPU.
   When each worker has more than one GPU, operations will be replicated on these
   GPUs. In both cases, operations are replicated but variables are not and these
-  workers share a common view for which paramater server a variable is assigned
+  workers share a common view for which parameter server a variable is assigned
   to.
 
   This class assumes between-graph replication will be used and works on a graph
@@ -101,16 +104,13 @@ class ParameterServerStrategyExtended(
 
     # We typically don't need to do all-reduce in this strategy.
     self._cross_device_ops = (
-        cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps(
-            reduce_to_device=_LOCAL_CPU))
+        cross_device_ops_lib.ReductionToOneDevice(reduce_to_device=_LOCAL_CPU))
 
   def _initialize_strategy(self, cluster_resolver):
     if cluster_resolver.cluster_spec().as_dict():
       self._initialize_multi_worker(cluster_resolver)
     else:
       self._initialize_local(cluster_resolver)
-    # Save the num_gpus_per_worker for configure method.
-    self._num_gpus_per_worker = cluster_resolver.num_accelerators()
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initialize devices for multiple workers.
@@ -127,7 +127,16 @@ class ParameterServerStrategyExtended(
     Raises:
       ValueError: if the cluster doesn't have ps jobs.
     """
-    num_gpus = cluster_resolver.num_accelerators()
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
+    # Save the num_gpus_per_worker for configure method.
+    self._num_gpus_per_worker = num_gpus
+
     cluster_spec = cluster_resolver.cluster_spec()
     task_type = cluster_resolver.task_type
     task_id = cluster_resolver.task_id
@@ -198,7 +207,17 @@ class ParameterServerStrategyExtended(
     """Initialize internal devices for local training."""
     worker_device = device_util.canonicalize("/device:CPU:0")
     self._input_host_device = numpy_dataset.SingleDevice(worker_device)
-    num_gpus = cluster_resolver.num_accelerators()
+
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
+    # Save the num_gpus_per_worker for configure method.
+    self._num_gpus_per_worker = num_gpus
+
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
@@ -318,7 +337,8 @@ class ParameterServerStrategyExtended(
           if kwargs.get("trainable", True):
             collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
             l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-            l.remove(v)
+            if v in l:
+              l.remove(v)
           g.add_to_collections(collections, wrapped)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, wrapped)
@@ -406,7 +426,7 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
@@ -416,9 +436,9 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)
@@ -464,7 +484,7 @@ class ParameterServerStrategyExtended(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=self._num_gpus_per_worker)
+          num_accelerators={"GPU": self._num_gpus_per_worker})
       self._initialize_multi_worker(cluster_resolver)
 
     if session_config:
@@ -482,11 +502,13 @@ class ParameterServerStrategyExtended(
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
-    if self._task_type not in ["chief", "worker"]:
-      return updated_config
     del updated_config.device_filters[:]
-    updated_config.device_filters.extend(
-        ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    if self._task_type in ["chief", "worker"]:
+      updated_config.device_filters.extend(
+          ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    elif self._task_type == "evaluator":
+      updated_config.device_filters.append(
+          "/job:%s/task:%d" % (self._task_type, self._task_id))
     return updated_config
 
   @property

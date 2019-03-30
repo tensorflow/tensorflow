@@ -3,11 +3,11 @@
 
 licenses(["notice"])
 
-exports_files(["LICENSE"])
-
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "tensorrt_headers",
@@ -18,15 +18,14 @@ cc_library(
 cc_library(
     name = "tensorrt",
     srcs = %{tensorrt_libs},
+    copts = cuda_default_copts(),
     data = %{tensorrt_libs},
-    copts= cuda_default_copts(),
-    deps = [
-        "@local_config_cuda//cuda:cuda",
-        ":tensorrt_headers",
-    ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
+    deps = [
+        ":tensorrt_headers",
+        "@local_config_cuda//cuda",
+    ],
 )
 
 %{copy_rules}
-

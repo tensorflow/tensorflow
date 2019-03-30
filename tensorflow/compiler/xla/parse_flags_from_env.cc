@@ -186,6 +186,14 @@ bool ParseFlagsFromEnvAndDieIfUnknown(
   tensorflow::mutex_lock lock(env_argv_mu);
   auto* env_argv = &EnvArgvs()[string(envvar)];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << "For env var " << envvar << " found arguments:";
+    for (int i = 0; i < env_argv->argc; i++) {
+      VLOG(1) << "  argv[" << i << "] = " << env_argv->argv[i];
+    }
+  }
+
   bool result =
       tensorflow::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
 

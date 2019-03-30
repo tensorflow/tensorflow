@@ -78,13 +78,18 @@ class QuantizedConcatenationOpModel : public BaseConcatenationOpModel {
             .Union());
     BuildInterpreter(all_input_shapes);
   }
+  template <typename T>
   void SetInput(int index, std::initializer_list<float> data) {
-    QuantizeAndPopulate<uint8_t>(index, data);
+    QuantizeAndPopulate<T>(index, data);
   }
-  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+  template <typename T>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
   }
 };
 
@@ -165,25 +170,47 @@ TEST(ConcatenationOpTest, FourInputs) {
               }));
 }
 
-TEST(ConcatenationOpTest, FourInputsQuantized) {
+TEST(ConcatenationOpTest, FourInputsQuantizedUint8) {
   QuantizedConcatenationOpModel m0({TensorType_UINT8, {2, 1, 2}, -12.7, 12.8},
                                    /*axis=*/2,
                                    /*num_inputs=*/4);
 
-  m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.SetInput(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput(2, {1.2f, 3.2f, 4.2f, 7.2f});
-  m0.SetInput(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput(),
+  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
                   4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
               })));
-  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({
-                                  137, 157, 138, 158, 139, 159, 140, 160,  //
-                                  167, 197, 168, 198, 169, 199, 170, 200,  //
-                              }));
+  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+              ElementsAreArray({
+                  137, 157, 138, 158, 139, 159, 140, 160,  //
+                  167, 197, 168, 198, 169, 199, 170, 200,  //
+              }));
+}
+
+TEST(ConcatenationOpTest, FourInputsQuantizedInt8) {
+  QuantizedConcatenationOpModel m0({TensorType_INT8, {2, 1, 2}, -12.7, 12.8},
+                                   /*axis=*/2,
+                                   /*num_inputs=*/4);
+
+  m0.SetInput<int8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<int8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<int8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<int8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  1, 3, 1.1, 3.1, 1.2, 3.2, 1.3, 3.3,  //
+                  4, 7, 4.1, 7.1, 4.2, 7.2, 4.3, 7.3   //
+              })));
+  EXPECT_THAT(m0.GetOutput<int8_t>(), ElementsAreArray({
+                                          9, 29, 10, 30, 11, 31, 12, 32,   //
+                                          39, 69, 40, 70, 41, 71, 42, 72,  //
+                                      }));
 }
 
 TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
@@ -194,20 +221,21 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
                                    /*axis=*/2, /*num_inputs=*/4,
                                    {TensorType_UINT8, {2, 1, 2}, -12.7, 12.8});
 
-  m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.SetInput(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput(2, {1.2f, 3.2f, 4.2f, 7.2f});
-  m0.SetInput(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput(),
+  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
                   4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
               })));
-  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({
-                                  137, 157, 138, 158, 139, 159, 140, 160,  //
-                                  167, 197, 168, 198, 169, 199, 170, 200,  //
-                              }));
+  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+              ElementsAreArray({
+                  137, 157, 138, 158, 139, 159, 140, 160,  //
+                  167, 197, 168, 198, 169, 199, 170, 200,  //
+              }));
 }
 
 TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
@@ -218,22 +246,23 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
                                    /*axis=*/2, /*num_inputs=*/4,
                                    {TensorType_UINT8, {2, 1, 2}, -1., 1.});
 
-  m0.SetInput(0, {1.0f, -3.0f, -4.0f, -7.0f});
-  m0.SetInput(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput(2, {1.2f, -3.2f, -4.2f, 7.2f});
-  m0.SetInput(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.SetInput<uint8_t>(0, {1.0f, -3.0f, -4.0f, -7.0f});
+  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<uint8_t>(2, {1.2f, -3.2f, -4.2f, 7.2f});
+  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput(),
+  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.0f, -1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f,   //
                       -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  //
                   },
                   4e-3)));
-  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({
-                                  255, 0, 255, 255, 255, 0, 255, 255,  //
-                                  0, 0, 255, 255, 0, 255, 255, 255,    //
-                              }));
+  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+              ElementsAreArray({
+                  255, 0, 255, 255, 255, 0, 255, 255,  //
+                  0, 0, 255, 255, 0, 255, 255, 255,    //
+              }));
 }
 
 }  // namespace

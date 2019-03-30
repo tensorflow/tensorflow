@@ -52,6 +52,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
+  Status HandleCholesky(HloInstruction* hlo) override;
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
@@ -105,7 +106,8 @@ class ShapeVerifier : public DfsHloVisitor {
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
-                    const Shape& inferred_shape);
+                    const Shape& inferred_shape,
+                    bool only_compare_minor_to_major_in_layout = false);
 
   // Overload which takes a StatusOr to reduce boilerplate in the caller.
   Status CheckShape(const HloInstruction* instruction,
@@ -119,14 +121,31 @@ class ShapeVerifier : public DfsHloVisitor {
 
  private:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b) {
-    return layout_sensitive_ ? ShapeUtil::Equal(a, b)
-                             : ShapeUtil::Compatible(a, b);
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  bool minor_to_major_only = false) {
+    if (!layout_sensitive_) {
+      return ShapeUtil::Compatible(a, b);
+    }
+    Shape::Equal equal;
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    return equal(a, b);
   }
-  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b) {
-    return layout_sensitive_ ? ShapeUtil::EqualIgnoringFpPrecision(a, b)
-                             : ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+
+  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
+                                     bool minor_to_major_only = false) {
+    if (!layout_sensitive_) {
+      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+    }
+    Shape::Equal equal;
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    equal.IgnoreFpPrecision();
+    return equal(a, b);
   }
+
   string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
