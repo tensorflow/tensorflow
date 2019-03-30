@@ -493,7 +493,7 @@ Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
   const int op_version = registration->version;
   if (op_version > max_version) {
     return UnimplementedError(
-        absl::StrFormat("Max version supported: %d. Requested %d version.",
+        absl::StrFormat("Max version supported: %d. Requested version %d.",
                         max_version, op_version));
   }
   return OkStatus();
@@ -504,7 +504,7 @@ Status CheckExactSupportedOpVersion(const TfLiteRegistration* registration,
   int op_version = registration->version;
   if (op_version != expected_version) {
     return UnimplementedError(
-        absl::StrFormat("Only %d version is supported. Requested %d version.",
+        absl::StrFormat("Only version %d is supported. Requested version %d.",
                         expected_version, op_version));
   }
   return OkStatus();
