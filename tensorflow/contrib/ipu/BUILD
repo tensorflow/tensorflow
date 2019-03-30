@@ -306,6 +306,25 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "sharded_inplace_test",
+    size = "small",
+    srcs = ["python/tests/sharded_inplace_test.py"],
+    additional_deps = [
+        ":ipu",
+        ":test_util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/plugin/poplar:test_utils_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -318,6 +337,7 @@ test_suite(
         "popnn_normalization_test",
         "popops_cross_replica_sum_test",
         "replicated_graph_test",
+        "sharded_inplace_test",
         "sort_op_test",
         "while_loop_perf_test",
         "while_loop_sharded_test",

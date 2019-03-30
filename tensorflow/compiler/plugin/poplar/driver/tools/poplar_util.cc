@@ -33,7 +33,8 @@ uint64 GetShardForOutputIndex(const HloInstruction* inst,
   if (inst->has_sharding()) {
     const auto& sharding = GetShardingDeviceIdVector(inst->sharding());
     if (flattened_output_tuple_index >= sharding.size()) {
-      LOG(FATAL) << "Sharding index out of range on " << inst->ToString();
+      LOG(FATAL) << "Sharding index " << flattened_output_tuple_index
+                 << " out of range on " << inst->ToString();
     }
 
     return sharding[flattened_output_tuple_index];
@@ -49,7 +50,8 @@ poplar::Graph& GetGraphWithOutputIndex(CompilerResources& res,
     int device_id = GetShardForOutputIndex(inst, flattened_output_tuple_index);
 
     if (device_id >= res.shard_graphs.size()) {
-      LOG(FATAL) << "Graph index out of range on " << inst->ToString();
+      LOG(FATAL) << "Graph index " << device_id << " out of range on "
+                 << inst->ToString();
     }
 
     return res.shard_graphs[device_id];
