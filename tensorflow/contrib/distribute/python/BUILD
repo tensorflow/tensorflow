@@ -607,6 +607,8 @@ py_library(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -625,7 +627,7 @@ distribute_py_test(
     ],
     deps = [
         ":keras_test_lib",
-        "//tensorflow/python/keras:distribute_strategy_test",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     ],
 )
 

@@ -31,7 +31,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 
 _RANDOM_SEED = 1337
 _EVAL_STEPS = 20

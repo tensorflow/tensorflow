@@ -32,7 +32,7 @@ from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
