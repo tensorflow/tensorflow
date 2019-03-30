@@ -294,6 +294,7 @@ def convert_variables_to_constants(sess,
   variable_names = []
   variable_dict_names = []
   resource_identity_types = {}
+  read_variable_op_types = {}
   for node in inference_graph.node:
     if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
@@ -307,12 +308,14 @@ def convert_variables_to_constants(sess,
         variable_names.append(variable_name + "/Read/ReadVariableOp:0")
       else:
         variable_names.append(variable_name + ":0")
-    elif node.op in ["ReadVariableOp", "ResourceGather"]:
+    elif node.op in ["ReadVariableOp", "ResourceGather", "VariableShape"]:
       # There can be one or more Identity or control flow ops in between the ReadVariableOp and
       # VarHandleOp.  Store them with the associated dtypes.
       source_op_name, nodes_in_path = trace_back_find_variable(_node_name(node.input[0]), map_name_to_node)
+      dtype = map_name_to_node[source_op_name].attr["dtype"]
       for node_name in nodes_in_path:
-        resource_identity_types[node_name] = node.attr["dtype"]
+        resource_identity_types[node_name] = dtype
+      read_variable_op_types[node.name] = dtype
 
   # Gets map of variables and the associated data.
   if variable_names:
@@ -368,6 +371,12 @@ def convert_variables_to_constants(sess,
       output_node.attr["Taxis"].CopyFrom(axis_dtype)
       if "_class" in input_node.attr:
         output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
+    elif input_node.op == "VariableShape":
+      output_node.op = "Shape"
+      output_node.name = input_node.name
+      output_node.input.extend([input_node.input[0]])
+      output_node.attr["T"].CopyFrom(read_variable_op_types[input_node.name])
+      output_node.attr["out_type"].CopyFrom(input_node.attr["out_type"])
     else:
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
