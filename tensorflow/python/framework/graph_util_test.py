@@ -312,7 +312,7 @@ class DeviceFunctionsTest(test.TestCase):
     # Make model.
     model = keras.models.Sequential()
     model.add(keras.layers.LSTM(5, name='LSTM', return_sequences=False,
-                                use_bias=False,  input_shape=(5,1)), stateful=True)
+                                use_bias=False,  input_shape=(5,1)))
     model.add(keras.layers.Dense(1, activation='linear', name='output'))
 
     # Get associated session.
