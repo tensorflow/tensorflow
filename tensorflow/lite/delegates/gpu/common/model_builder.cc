@@ -244,7 +244,7 @@ class ObjectReader {
     return OkStatus();
   }
 
-  int GetAmountOfRuntimeInputs() {
+  int GetNumberOfRuntimeInputs() {
     return GetNumberOfRuntimeInputsForNode(context_, tflite_node_);
   }
 
@@ -1096,9 +1096,10 @@ class LstmOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckExactSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/5, /*outputs=*/4));
+    RETURN_IF_ERROR(CheckExactSupportedOpVersion(registration, 2));
+    // TODO(eignasheva): Fix bad check.
+    // RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/5,
+    //                                    /*outputs=*/4));
     TfLiteLSTMParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckParameters(tf_options));
@@ -1364,7 +1365,7 @@ class MulOperationParser : public TFLiteOperationParser {
                const TfLiteRegistration* registration, GraphFloat32* graph,
                ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    if (reader->GetAmountOfRuntimeInputs() == 2) {
+    if (reader->GetNumberOfRuntimeInputs() == 2) {
       // ApplyMask operation
       node->operation.type = ToString(OperationType::APPLY_MASK);
       RETURN_IF_ERROR(reader->AddInput(node, 0));
