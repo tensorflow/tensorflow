@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/gemm_support.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
@@ -274,6 +275,7 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 }
 
 namespace {
+template <KernelType kernel_type>
 void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
                         const TfLiteTensor* filter, const TfLiteTensor* bias,
                         TfLiteTensor* output,
@@ -286,11 +288,19 @@ void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  reference_integer_ops::FullyConnected(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(filter), GetTensorData<int8_t>(filter),
-      GetTensorShape(bias), GetTensorData<int32_t>(bias),
-      GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+  if (kernel_type == kReference) {
+    reference_integer_ops::FullyConnected(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(filter), GetTensorData<int8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+  } else {
+    optimized_integer_ops::FullyConnected(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(filter), GetTensorData<int8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+  }
 }
 }  // namespace
 
@@ -338,7 +348,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         }
         break;
       case kTfLiteInt8:
-        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
+        FullyConnectedInt8<kernel_type>(data, input, filter, bias, output,
+                                        gemm_context);
         break;
       case kTfLiteInt16:
         if (kernel_type == kReference) {
