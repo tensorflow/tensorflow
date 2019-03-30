@@ -304,6 +304,35 @@ class DeviceFunctionsTest(test.TestCase):
                                             model.outputs, [input_data])
     np.testing.assert_almost_equal(np.array([expected_value]), actual_value, 5)
 
+  @test_util.run_v1_only("Incompatible with TF 2.0")
+  def testConvertVariablesToConstsWithLSTM(self):
+    """Freezes a graph with embeddings."""
+    input_data=np.random.rand(10, 5, 1)
+
+    # Make model.
+    model = keras.models.Sequential()
+    model.add(keras.layers.LSTM(5, name='LSTM', return_sequences=False,
+                                use_bias=False,  input_shape=(5,1)), stateful=True)
+    model.add(keras.layers.Dense(1, activation='linear', name='output'))
+
+    # Get associated session.
+    sess = keras.backend.get_session()
+    variable_graph_def = sess.graph_def
+    output_tensor = [tensor.name.split(":")[0] for tensor in model.outputs]
+    constant_graph_def = graph_util.convert_variables_to_constants(
+        sess, variable_graph_def, output_tensor)
+
+    # Ensure graph has no variables.
+    for node in constant_graph_def.node:
+      self.assertNotIn(
+          node.op, ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
+
+    # Compare the value of the graphs.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluate_graph_def(constant_graph_def, model.inputs,
+                                            model.outputs, [input_data])
+    np.testing.assert_almost_equal(np.array([expected_value]), actual_value, 5)
+
   def testConvertVariablesToConsts(self):
     self._test_variable_to_const_conversion(use_resource=False)
 
