@@ -2981,13 +2981,13 @@ def ssim(img1, img2, max_val, filter_size = _SSIM_FILTER_SIZE,
       im2 = tf.decode_png('path/to/im2.png')
       # Compute SSIM over tf.uint8 Tensors.
       ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size = 11,
-      filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
+                            filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
 
       # Compute SSIM over tf.float32 Tensors.
       im1 = tf.image.convert_image_dtype(im1, tf.float32)
       im2 = tf.image.convert_image_dtype(im2, tf.float32)
       ssim2 = tf.image.ssim(im1, im2, max_val=1.0, filter_size = 11,
-      filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
+                            filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
       # ssim1 and ssim2 both have type tf.float32 and are almost equal.
   ```
 
