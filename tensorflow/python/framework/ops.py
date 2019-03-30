@@ -4139,7 +4139,7 @@ class Graph(object):
   # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
   def name_scope(self, name):
-    r"""Returns a context manager that creates hierarchical names for operations.
+    """Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
     statement pushes a new name onto the stack for the lifetime of the context.
