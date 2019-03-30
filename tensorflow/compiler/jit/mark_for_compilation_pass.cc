@@ -1339,7 +1339,7 @@ Status MarkForCompilation(
                                     options.session_options != nullptr
                                         ? options.session_options->env
                                         : Env::Default(),
-                                    GetGlobalJitLevel(options)}
+                                    GetGlobalJitLevelForGraph(options)}
       .Run();
 }
 

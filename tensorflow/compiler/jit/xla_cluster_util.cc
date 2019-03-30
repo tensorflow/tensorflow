@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -350,24 +351,89 @@ Status CanPickDeviceForXla(absl::Span<const string> device_names,
                               /*out_device_picked=*/nullptr);
 }
 
-OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+namespace {
+struct XlaGlobalJitLevel {
+  OptimizerOptions::GlobalJitLevel single_gpu;
+  OptimizerOptions::GlobalJitLevel general;
+};
+
+XlaGlobalJitLevel GetXlaGlobalJitLevel(
     const GraphOptimizationPassOptions& options) {
-  OptimizerOptions::GlobalJitLevel global_jit_level =
+  XlaGlobalJitLevel result;
+
+  OptimizerOptions::GlobalJitLevel jit_level_in_session_opts =
       options.session_options->config.graph_options()
           .optimizer_options()
           .global_jit_level();
-  if (global_jit_level == OptimizerOptions::DEFAULT) {
+  if (jit_level_in_session_opts == OptimizerOptions::DEFAULT) {
     // To set compilation to be on by default, change the following line.
-    global_jit_level = OptimizerOptions::OFF;
+    result.single_gpu = result.general = OptimizerOptions::OFF;
+  } else {
+    result.single_gpu = result.general = jit_level_in_session_opts;
   }
+
+  // If the flag tf_xla_auto_jit is a valid, non-DEFAULT setting, it overrides
+  // the setting in ConfigProto.
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  if (flags->tf_xla_auto_jit != OptimizerOptions::DEFAULT) {
-    // If the flag tf_xla_auto_jit is a valid, non-DEFAULT setting, it overrides
-    // the setting in ConfigProto.
-    global_jit_level =
-        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
+  if (flags->xla_auto_jit_flag.optimization_level_single_gpu !=
+      OptimizerOptions::DEFAULT) {
+    result.single_gpu = static_cast<OptimizerOptions::GlobalJitLevel>(
+        flags->xla_auto_jit_flag.optimization_level_single_gpu);
   }
-  return global_jit_level;
+  if (flags->xla_auto_jit_flag.optimization_level_general !=
+      OptimizerOptions::DEFAULT) {
+    result.general = static_cast<OptimizerOptions::GlobalJitLevel>(
+        flags->xla_auto_jit_flag.optimization_level_general);
+  }
+
+  return result;
+}
+
+int GetGpuNumber(const string& device_name) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return -1;
+  }
+
+  return parsed_name.type == DEVICE_GPU ? parsed_name.id : -1;
+}
+}  // namespace
+
+bool IsSingleGpuGraph(const Graph& g) {
+  int gpus_seen = 0;
+  absl::flat_hash_set<string> devices_seen;
+
+  for (Node* n : g.op_nodes()) {
+    if (devices_seen.contains(n->assigned_device_name())) {
+      continue;
+    }
+
+    int gpu_number = GetGpuNumber(n->assigned_device_name());
+    if (gpu_number != -1) {
+      if (++gpus_seen > 1) {
+        return false;
+      }
+    }
+
+    devices_seen.insert(n->assigned_device_name());
+  }
+
+  return gpus_seen == 1;
+}
+
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(
+    const GraphOptimizationPassOptions& options) {
+  XlaGlobalJitLevel xla_global_jit_level = GetXlaGlobalJitLevel(options);
+  if (xla_global_jit_level.single_gpu == xla_global_jit_level.general) {
+    VLOG(4) << "GetGlobalJitLevelForGraph returning "
+            << xla_global_jit_level.single_gpu;
+    return xla_global_jit_level.single_gpu;
+  }
+  OptimizerOptions::GlobalJitLevel result =
+      IsSingleGpuGraph(**options.graph) ? xla_global_jit_level.single_gpu
+                                        : xla_global_jit_level.general;
+  VLOG(4) << "GetGlobalJitLevelForGraph returning " << result;
+  return result;
 }
 
 }  // namespace tensorflow
