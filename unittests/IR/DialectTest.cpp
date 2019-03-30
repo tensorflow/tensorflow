@@ -23,7 +23,7 @@ using namespace mlir::detail;
 
 namespace {
 struct TestDialect : public Dialect {
-  TestDialect(MLIRContext *context) : Dialect(/*namePrefix=*/"test", context) {}
+  TestDialect(MLIRContext *context) : Dialect(/*name=*/"test", context) {}
 };
 
 TEST(DialectDeathTest, MultipleDialectsWithSameNamespace) {

@@ -47,7 +47,7 @@ class Dialect {
 public:
   MLIRContext *getContext() const { return context; }
 
-  StringRef getNamespace() const { return namePrefix; }
+  StringRef getNamespace() const { return name; }
 
   /// Registered fallback constant fold hook for the dialect. Like the constant
   /// fold hook of each operation, it attempts to constant fold the operation
@@ -127,12 +127,14 @@ public:
   static bool isValidNamespace(StringRef str);
 
 protected:
-  /// Note: The namePrefix must not contain '.' characters.
-  /// Note: All operations belonging to this dialect will need to have names
-  ///       starting with the namePrefix followed by '.'.
+  /// The constructor takes a unique namespace for this dialect as well as the
+  /// context to bind to.
+  /// Note: The namespace must not contain '.' characters.
+  /// Note: All operations belonging to this dialect must have names starting
+  ///       with the namespace followed by '.'.
   /// Example:
   ///       - "tf" for the TensorFlow ops like "tf.add".
-  Dialect(StringRef namePrefix, MLIRContext *context);
+  Dialect(StringRef name, MLIRContext *context);
 
   /// This method is used by derived classes to add their operations to the set.
   ///
@@ -194,8 +196,8 @@ private:
   /// takes ownership of the heap allocated dialect.
   void registerDialect(MLIRContext *context);
 
-  /// This is the namespace used as a prefix for IR defined by this dialect.
-  StringRef namePrefix;
+  /// The namespace of this dialect.
+  StringRef name;
 
   /// This is the context that owns this Dialect object.
   MLIRContext *context;

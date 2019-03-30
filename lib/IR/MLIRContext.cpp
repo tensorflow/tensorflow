@@ -103,7 +103,7 @@ namespace {
 /// A builtin dialect to define types/etc that are necessary for the
 /// validity of the IR.
 struct BuiltinDialect : public Dialect {
-  BuiltinDialect(MLIRContext *context) : Dialect(/*namePrefix=*/"", context) {
+  BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
     addTypes<FunctionType, UnknownType, FloatType, IndexType, IntegerType,
              VectorType, RankedTensorType, UnrankedTensorType, MemRefType,
              ComplexType, TupleType>();
@@ -742,15 +742,15 @@ std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() {
 }
 
 void Dialect::addOperation(AbstractOperation opInfo) {
-  assert(opInfo.name.split('.').first == namePrefix &&
-         "op name doesn't start with dialect prefix");
+  assert(opInfo.name.split('.').first == getNamespace() &&
+         "op name doesn't start with dialect namespace");
   assert(&opInfo.dialect == this && "Dialect object mismatch");
   auto &impl = context->getImpl();
 
   // Lock access to the context registry.
   llvm::sys::SmartScopedWriter<true> registryLock(impl.contextMutex);
   if (!impl.registeredOperations.insert({opInfo.name, opInfo}).second) {
-    llvm::errs() << "error: ops named '" << opInfo.name
+    llvm::errs() << "error: operation named '" << opInfo.name
                  << "' is already registered.\n";
     abort();
   }

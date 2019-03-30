@@ -58,7 +58,7 @@ void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
 }
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
-    : Dialect(/*namePrefix=*/"std", context) {
+    : Dialect(/*name=*/"std", context) {
   addOperations<AllocOp, BranchOp, CallOp, CallIndirectOp, CmpIOp, CondBranchOp,
                 ConstantOp, DeallocOp, DimOp, DmaStartOp, DmaWaitOp,
                 ExtractElementOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,

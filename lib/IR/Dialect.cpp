@@ -59,9 +59,9 @@ void mlir::registerAllDialects(MLIRContext *context) {
   }
 }
 
-Dialect::Dialect(StringRef namePrefix, MLIRContext *context)
-    : namePrefix(namePrefix), context(context) {
-  assert(isValidNamespace(namePrefix) && "invalid dialect namespace");
+Dialect::Dialect(StringRef name, MLIRContext *context)
+    : name(name), context(context) {
+  assert(isValidNamespace(name) && "invalid dialect namespace");
   registerDialect(context);
 }
 
