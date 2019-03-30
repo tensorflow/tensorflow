@@ -256,6 +256,24 @@ struct MemRefTypeStorage : public TypeStorage {
   const unsigned memorySpace;
 };
 
+/// Complex Type Storage.
+struct ComplexTypeStorage : public TypeStorage {
+  ComplexTypeStorage(Type elementType) : elementType(elementType) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = Type;
+  bool operator==(const KeyTy &key) const { return key == elementType; }
+
+  /// Construction.
+  static ComplexTypeStorage *construct(TypeStorageAllocator &allocator,
+                                       Type elementType) {
+    return new (allocator.allocate<ComplexTypeStorage>())
+        ComplexTypeStorage(elementType);
+  }
+
+  Type elementType;
+};
+
 /// A type representing a collection of other types.
 struct TupleTypeStorage final
     : public TypeStorage,
@@ -266,7 +284,7 @@ struct TupleTypeStorage final
 
   /// Construction.
   static TupleTypeStorage *construct(TypeStorageAllocator &allocator,
-                                     const ArrayRef<Type> &key) {
+                                     ArrayRef<Type> key) {
     // Allocate a new storage instance.
     auto byteSize = TupleTypeStorage::totalSizeToAlloc<Type>(key.size());
     auto rawMem = allocator.allocate(byteSize, alignof(TupleTypeStorage));

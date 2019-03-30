@@ -804,6 +804,11 @@ void ModulePrinter::printType(Type type) {
     os << '>';
     return;
   }
+  case StandardTypes::Complex:
+    os << "complex<";
+    printType(type.cast<ComplexType>().getElementType());
+    os << '>';
+    return;
   case StandardTypes::Tuple: {
     auto tuple = type.cast<TupleType>();
     os << "tuple<";

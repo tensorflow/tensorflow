@@ -87,11 +87,14 @@ TOK_OPERATOR(star,               "*")
 // TODO: More operator tokens
 
 // Keywords.  These turn "foo" into Token::kw_foo enums.
+
+// NOTE: Please key these alphabetized to make it easier to find something in
+// this list and to cater to OCD.
 TOK_KEYWORD(attributes)
 TOK_KEYWORD(bf16)
 TOK_KEYWORD(ceildiv)
+TOK_KEYWORD(complex)
 TOK_KEYWORD(dense)
-TOK_KEYWORD(splat)
 TOK_KEYWORD(f16)
 TOK_KEYWORD(f32)
 TOK_KEYWORD(f64)
@@ -107,13 +110,14 @@ TOK_KEYWORD(min)
 TOK_KEYWORD(mod)
 TOK_KEYWORD(opaque)
 TOK_KEYWORD(size)
+TOK_KEYWORD(sparse)
+TOK_KEYWORD(splat)
 TOK_KEYWORD(step)
 TOK_KEYWORD(tensor)
 TOK_KEYWORD(to)
 TOK_KEYWORD(true)
 TOK_KEYWORD(tuple)
 TOK_KEYWORD(type)
-TOK_KEYWORD(sparse)
 TOK_KEYWORD(vector)
 
 #undef TOK_MARKER

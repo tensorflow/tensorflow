@@ -185,6 +185,7 @@ public:
                                        bool allowDynamic);
   Type parseExtendedType();
   Type parseTensorType();
+  Type parseComplexType();
   Type parseTupleType();
   Type parseMemRefType();
   Type parseFunctionType();
@@ -320,6 +321,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///                       | vector-type
 ///                       | tensor-type
 ///                       | memref-type
+///                       | complex-type
 ///                       | tuple-type
 ///
 ///   index-type ::= `index`
@@ -333,6 +335,8 @@ Type Parser::parseNonFunctionType() {
     return parseMemRefType();
   case Token::kw_tensor:
     return parseTensorType();
+  case Token::kw_complex:
+    return parseComplexType();
   case Token::kw_tuple:
     return parseTupleType();
   case Token::kw_vector:
@@ -569,6 +573,26 @@ Type Parser::parseTensorType() {
   if (isUnranked)
     return UnrankedTensorType::getChecked(elementType, typeLocation);
   return RankedTensorType::getChecked(dimensions, elementType, typeLocation);
+}
+
+/// Parse a complex type.
+///
+///   complex-type ::= `complex` `<` type `>`
+///
+Type Parser::parseComplexType() {
+  consumeToken(Token::kw_complex);
+
+  // Parse the '<'.
+  if (parseToken(Token::less, "expected '<' in complex type"))
+    return nullptr;
+
+  auto typeLocation = getEncodedSourceLocation(getToken().getLoc());
+  auto elementType = parseType();
+  if (!elementType ||
+      parseToken(Token::greater, "expected '>' in complex type"))
+    return nullptr;
+
+  return ComplexType::getChecked(elementType, typeLocation);
 }
 
 /// Parse a tuple type.

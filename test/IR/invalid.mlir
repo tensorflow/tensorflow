@@ -1059,3 +1059,18 @@ func @ssa_name_missing_eq() {
   %0:2 "foo" () : () -> (i32, i32)
   return
 }
+
+// -----
+
+// expected-error @+1 {{invalid element type for complex}}
+func @bad_complex(complex<memref<2x4xi8>>)
+
+// -----
+
+// expected-error @+1 {{expected '<' in complex type}}
+func @bad_complex(complex memref<2x4xi8>>)
+
+// -----
+
+// expected-error @+1 {{expected '>' in complex type}}
+func @bad_complex(complex<i32)

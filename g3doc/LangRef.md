@@ -512,6 +512,8 @@ non-function-type ::= integer-type
                     | memref-type
                     | dialect-type
                     | type-alias
+                    | complex-type
+                    | tuple-type
 
 type-list-no-parens ::=  type (`,` type)*
 type-list-parens ::= `(` `)`
@@ -859,6 +861,25 @@ The semi-affine map composition can be used in dependence analysis, memory
 access pattern analysis, and for performance optimizations like vectorization,
 copy elision and in-place updates. If an affine map composition is not specified
 for the memref, the identity affine map is assumed.
+
+#### Complex Type {#complex-type}
+
+Syntax:
+
+``` {.ebnf}
+complex-type ::= `complex` `<` type `>`
+```
+
+The value of `complex` type represents a complex number with a parameterized
+element type, which is composed of a real and imaginary value of that element
+type. The element must be a floating point or integer scalar type.
+
+Examples:
+
+```mlir {.mlir}
+complex<f32>
+complex<i32>
+```
 
 #### Tuple Type {#tuple-type}
 

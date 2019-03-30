@@ -41,6 +41,7 @@ struct VectorTypeStorage;
 struct RankedTensorTypeStorage;
 struct UnrankedTensorTypeStorage;
 struct MemRefTypeStorage;
+struct ComplexTypeStorage;
 struct TupleTypeStorage;
 
 } // namespace detail
@@ -64,6 +65,7 @@ enum Kind {
   RankedTensor,
   UnrankedTensor,
   MemRef,
+  Complex,
   Tuple,
 };
 
@@ -419,6 +421,38 @@ private:
   static MemRefType getImpl(ArrayRef<int64_t> shape, Type elementType,
                             ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace, Optional<Location> location);
+};
+
+/// The 'complex' type represents a complex number with a parameterized element
+/// type, which is composed of a real and imaginary value of that element type.
+///
+/// The element must be a floating point or integer scalar type.
+///
+class ComplexType
+    : public Type::TypeBase<ComplexType, Type, detail::ComplexTypeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a ComplexType with the provided element type.
+  static ComplexType get(Type elementType);
+
+  /// Get or create a ComplexType with the provided element type.  This emits
+  /// and error at the specified location and returns null if the element type
+  /// isn't supported.
+  static ComplexType getChecked(Type elementType, Location location);
+
+  /// Verify the construction of an integer type.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, Type elementType);
+
+  Type getElementType();
+
+  static bool kindof(unsigned kind) { return kind == StandardTypes::Complex; }
+
+private:
+  static ComplexType getCheckedImpl(Type elementType,
+                                    Optional<Location> location);
 };
 
 /// Tuple types represent a collection of other types. Note: This type merely

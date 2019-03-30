@@ -26,7 +26,9 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-/// Integer Type.
+//===----------------------------------------------------------------------===//
+// Integer Type
+//===----------------------------------------------------------------------===//
 
 /// Verify the construction of an integer type.
 LogicalResult IntegerType::verifyConstructionInvariants(
@@ -51,7 +53,9 @@ IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
 
 unsigned IntegerType::getWidth() const { return getImpl()->width; }
 
-/// Float Type.
+//===----------------------------------------------------------------------===//
+// Float Type
+//===----------------------------------------------------------------------===//
 
 unsigned FloatType::getWidth() const {
   switch (getKind()) {
@@ -95,7 +99,9 @@ unsigned Type::getIntOrFloatBitWidth() const {
   return floatType.getWidth();
 }
 
-/// VectorOrTensorType
+//===----------------------------------------------------------------------===//
+// VectorOrTensorType
+//===----------------------------------------------------------------------===//
 
 Type VectorOrTensorType::getElementType() const {
   return static_cast<ImplType *>(type)->elementType;
@@ -180,7 +186,9 @@ bool VectorOrTensorType::hasStaticShape() const {
   return llvm::none_of(getShape(), [](int64_t i) { return i < 0; });
 }
 
-/// VectorType
+//===----------------------------------------------------------------------===//
+// VectorType
+//===----------------------------------------------------------------------===//
 
 VectorType VectorType::get(ArrayRef<int64_t> shape, Type elementType) {
   return Base::get(elementType.getContext(), StandardTypes::Vector, shape,
@@ -219,7 +227,9 @@ LogicalResult VectorType::verifyConstructionInvariants(
 
 ArrayRef<int64_t> VectorType::getShape() const { return getImpl()->getShape(); }
 
-/// TensorType
+//===----------------------------------------------------------------------===//
+// TensorType
+//===----------------------------------------------------------------------===//
 
 // Check if "elementType" can be an element type of a tensor. Emit errors if
 // location is not nullptr.  Returns failure if check failed.
@@ -234,7 +244,9 @@ static inline LogicalResult checkTensorElementType(Optional<Location> location,
   return success();
 }
 
-/// RankedTensorType
+//===----------------------------------------------------------------------===//
+// RankedTensorType
+//===----------------------------------------------------------------------===//
 
 RankedTensorType RankedTensorType::get(ArrayRef<int64_t> shape,
                                        Type elementType) {
@@ -266,7 +278,9 @@ ArrayRef<int64_t> RankedTensorType::getShape() const {
   return getImpl()->getShape();
 }
 
-/// UnrankedTensorType
+//===----------------------------------------------------------------------===//
+// UnrankedTensorType
+//===----------------------------------------------------------------------===//
 
 UnrankedTensorType UnrankedTensorType::get(Type elementType) {
   return Base::get(elementType.getContext(), StandardTypes::UnrankedTensor,
@@ -284,7 +298,9 @@ LogicalResult UnrankedTensorType::verifyConstructionInvariants(
   return checkTensorElementType(loc, context, elementType);
 }
 
-/// MemRefType
+//===----------------------------------------------------------------------===//
+// MemRefType
+//===----------------------------------------------------------------------===//
 
 /// Get or create a new MemRefType defined by the arguments.  If the resulting
 /// type would be ill-formed, return nullptr.  If the location is provided,
@@ -313,13 +329,12 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
   for (const auto &affineMap : affineMapComposition) {
     if (affineMap.getNumDims() != dim) {
       if (location)
-        context->emitDiagnostic(
+        context->emitError(
             *location,
             "memref affine map dimension mismatch between " +
                 (i == 0 ? Twine("memref rank") : "affine map " + Twine(i)) +
                 " and affine map" + Twine(i + 1) + ": " + Twine(dim) +
-                " != " + Twine(affineMap.getNumDims()),
-            MLIRContext::DiagnosticKind::Error);
+                " != " + Twine(affineMap.getNumDims()));
       return nullptr;
     }
 
@@ -361,7 +376,36 @@ unsigned MemRefType::getNumDynamicDims() const {
   return llvm::count_if(getShape(), [](int64_t i) { return i < 0; });
 }
 
+//===----------------------------------------------------------------------===//
+/// ComplexType
+//===----------------------------------------------------------------------===//
+
+ComplexType ComplexType::get(Type elementType) {
+  return Base::get(elementType.getContext(), StandardTypes::Complex,
+                   elementType);
+}
+
+ComplexType ComplexType::getChecked(Type elementType, Location location) {
+  return Base::getChecked(location, elementType.getContext(),
+                          StandardTypes::Complex, elementType);
+}
+
+/// Verify the construction of an integer type.
+LogicalResult ComplexType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
+  if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>()) {
+    if (loc)
+      context->emitError(*loc, "invalid element type for complex");
+    return failure();
+  }
+  return success();
+}
+
+Type ComplexType::getElementType() { return getImpl()->elementType; }
+
+//===----------------------------------------------------------------------===//
 /// TupleType
+//===----------------------------------------------------------------------===//
 
 /// Get or create a new TupleType with the provided element types. Assumes the
 /// arguments define a well-formed type.
