@@ -39,13 +39,16 @@ class HParamsTest(test.TestCase):
 
   def testSomeValues(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d='/a/b=c/d')
-    self.assertDictEqual(
-        {'aaa': 1, 'b': 2.0, 'c_c': 'relu6', 'd': '/a/b=c/d'},
-        hparams.values())
-    expected_str = ('[(\'aaa\', 1), (\'b\', 2.0), (\'c_c\', \'relu6\'), '
-                    '(\'d\', \'/a/b=c/d\')]')
-    self.assertEqual(expected_str, str(hparams.__str__()))
-    self.assertEqual(expected_str, str(hparams))
+    self.assertDictEqual({
+        'aaa': 1,
+        'b': 2.0,
+        'c_c': 'relu6',
+        'd': '/a/b=c/d'
+    }, hparams.values())
+    expected_str = ('HParams([(\'aaa\', 1), (\'b\', 2.0), (\'c_c\', \'relu6\'),'
+                    ' (\'d\', \'/a/b=c/d\')])')
+    self.assertEqual(expected_str, repr(hparams))
+    self.assertEqual(expected_str, repr(hparams))
     self.assertEqual(1, hparams.aaa)
     self.assertEqual(2.0, hparams.b)
     self.assertEqual('relu6', hparams.c_c)
@@ -73,8 +76,12 @@ class HParamsTest(test.TestCase):
     self.assertEqual('relu4', hparams.c_c)
     self.assertEqual('/a/b=c/d', hparams.d)
     hparams.parse('c_c=,b=0,')
-    self.assertDictEqual({'aaa': 12, 'b': 0, 'c_c': '', 'd': '/a/b=c/d'},
-                         hparams.values())
+    self.assertDictEqual({
+        'aaa': 12,
+        'b': 0,
+        'c_c': '',
+        'd': '/a/b=c/d'
+    }, hparams.values())
     self.assertEqual(12, hparams.aaa)
     self.assertEqual(0.0, hparams.b)
     self.assertEqual('', hparams.c_c)
@@ -140,8 +147,11 @@ class HParamsTest(test.TestCase):
 
     hparams = hparam.HParams(x=1, b=2.0, d=[0.5])
     hparams.override_from_dict({'d': [0.1, 0.2, 0.3]})
-    self.assertDictEqual({'d': [0.1, 0.2, 0.3], 'x': 1, 'b': 2.0},
-                         hparams.values())
+    self.assertDictEqual({
+        'd': [0.1, 0.2, 0.3],
+        'x': 1,
+        'b': 2.0
+    }, hparams.values())
 
   def testBoolParsing(self):
     for value in 'true', 'false', 'True', 'False', '1', '0':
@@ -209,6 +219,21 @@ class HParamsTest(test.TestCase):
     self.assertEqual([1.0], hparams2.b)
     self.assertEqual(['_12', '3\'4"'], hparams2.c_c)
 
+  def testStr(self):
+    hparam1 = hparam.HParams(a=1, b=[2.0, 3.0], c='relu6')
+    hparam1_str = str(hparam1)
+    # Create the signature
+    hparam2 = hparam.HParams()
+    hparam2.add_hparam('a', 4)
+    hparam2.add_hparam('b', [5.0, 6.0])
+    hparam2.add_hparam('c', 'relu10')
+    # Load from string
+    hparam2.parse(hparam1_str)
+    # Verifies all hparams are restored
+    self.assertEqual(hparam2.a, hparam1.a)
+    self.assertEqual(hparam2.b, hparam1.b)
+    self.assertEqual(hparam2.c, hparam1.c)
+
   def testParseValuesWithIndexAssigment1(self):
     """Assignment to an index position."""
     parse_dict = hparam.parse_values('arr[1]=10', {'arr': int})
@@ -241,9 +266,10 @@ class HParamsTest(test.TestCase):
 
   def testParseValuesWithIndexAssigment3(self):
     """Assignment to index positions in multiple names."""
-    parse_dict = hparam.parse_values('arr[0]=10,arr[1]=20,L[5]=100,L[10]=200',
-                                     {'arr': int,
-                                      'L': int})
+    parse_dict = hparam.parse_values('arr[0]=10,arr[1]=20,L[5]=100,L[10]=200', {
+        'arr': int,
+        'L': int
+    })
     self.assertEqual(len(parse_dict), 2)
     self.assertTrue(isinstance(parse_dict['arr'], dict))
     self.assertDictEqual(parse_dict['arr'], {0: 10, 1: 20})
@@ -253,8 +279,11 @@ class HParamsTest(test.TestCase):
   def testParseValuesWithIndexAssigment3_IgnoreUnknown(self):
     """Assignment to index positions in multiple names."""
     parse_dict = hparam.parse_values(
-        'arr[0]=10,C=5,arr[1]=20,B[0]=kkk,L[5]=100,L[10]=200',
-        {'arr': int, 'L': int}, ignore_unknown=True)
+        'arr[0]=10,C=5,arr[1]=20,B[0]=kkk,L[5]=100,L[10]=200', {
+            'arr': int,
+            'L': int
+        },
+        ignore_unknown=True)
     self.assertEqual(len(parse_dict), 2)
     self.assertTrue(isinstance(parse_dict['arr'], dict))
     self.assertDictEqual(parse_dict['arr'], {0: 10, 1: 20})
@@ -263,10 +292,11 @@ class HParamsTest(test.TestCase):
 
   def testParseValuesWithIndexAssigment4(self):
     """Assignment of index positions and scalars."""
-    parse_dict = hparam.parse_values('x=10,arr[1]=20,y=30',
-                                     {'x': int,
-                                      'y': int,
-                                      'arr': int})
+    parse_dict = hparam.parse_values('x=10,arr[1]=20,y=30', {
+        'x': int,
+        'y': int,
+        'arr': int
+    })
     self.assertEqual(len(parse_dict), 3)
     self.assertTrue(isinstance(parse_dict['arr'], dict))
     self.assertDictEqual(parse_dict['arr'], {1: 20})
@@ -276,8 +306,12 @@ class HParamsTest(test.TestCase):
   def testParseValuesWithIndexAssigment4_IgnoreUnknown(self):
     """Assignment of index positions and scalars."""
     parse_dict = hparam.parse_values(
-        'x=10,foo[0]=bar,arr[1]=20,zzz=78,y=30',
-        {'x': int, 'y': int, 'arr': int}, ignore_unknown=True)
+        'x=10,foo[0]=bar,arr[1]=20,zzz=78,y=30', {
+            'x': int,
+            'y': int,
+            'arr': int
+        },
+        ignore_unknown=True)
     self.assertEqual(len(parse_dict), 3)
     self.assertTrue(isinstance(parse_dict['arr'], dict))
     self.assertDictEqual(parse_dict['arr'], {1: 20})
@@ -305,8 +339,12 @@ class HParamsTest(test.TestCase):
   def testParseValuesWithIndexAssigment5_IgnoreUnknown(self):
     """Different variable types."""
     parse_dict = hparam.parse_values(
-        'a[0]=5,cc=4,b[1]=true,c[2]=abc,mm=2,d[3]=3.14',
-        {'a': int, 'b': bool, 'c': str, 'd': float},
+        'a[0]=5,cc=4,b[1]=true,c[2]=abc,mm=2,d[3]=3.14', {
+            'a': int,
+            'b': bool,
+            'c': str,
+            'd': float
+        },
         ignore_unknown=True)
     self.assertEqual(set(parse_dict.keys()), {'a', 'b', 'c', 'd'})
     self.assertTrue(isinstance(parse_dict['a'], dict))
@@ -404,9 +442,8 @@ class HParamsTest(test.TestCase):
     self.assertEqual('{"aaa"=123}', hparams3.to_json(separators=(';', '=')))
 
     hparams4 = hparam.HParams(aaa=123, b='hello', c_c=False)
-    self.assertEqual(
-        '{"aaa": 123, "b": "hello", "c_c": false}',
-        hparams4.to_json(sort_keys=True))
+    self.assertEqual('{"aaa": 123, "b": "hello", "c_c": false}',
+                     hparams4.to_json(sort_keys=True))
 
   def testSetHParam(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True)
@@ -471,6 +508,7 @@ class HParamsTest(test.TestCase):
     self.assertEqual('1', hparams.none)
 
   def testSetHParamExactTypeMatch(self):
+
     class DummyContext(object):
 
       def __init__(self, a, b=0):

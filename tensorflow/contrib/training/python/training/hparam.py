@@ -663,10 +663,13 @@ class HParams(object):
     return key in self._hparam_types
 
   def __str__(self):
-    return str(sorted(self.values().items()))
+    hpdict = self.values()
+    output_list = ['{}={}'.format(key, hpdict[key]) for key in hpdict]
+    return ','.join(output_list)
 
   def __repr__(self):
-    return '%s(%s)' % (type(self).__name__, self.__str__())
+    strval = str(sorted(self.values().items()))
+    return '%s(%s)' % (type(self).__name__, strval)
 
   @staticmethod
   def _get_kind_name(param_type, is_list):
