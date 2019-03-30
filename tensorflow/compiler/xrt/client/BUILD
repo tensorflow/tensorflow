@@ -101,6 +101,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_cc_binary(
