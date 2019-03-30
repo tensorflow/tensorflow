@@ -731,7 +731,6 @@ class BidirectionalTest(test.TestCase):
       self.assertEqual(len(y), 1)
       self.assertAllClose(y[0][0, 2], np.zeros(units * 2))
 
-
   def test_TimeDistributed_learning_phase(self):
     with self.cached_session():
       # test layers that need learning_phase to be set
