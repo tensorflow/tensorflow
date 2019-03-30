@@ -17,9 +17,8 @@ tf.bitcast() and tf.cast() work differently when real dtype is casted as a compl
 gives module error.
 For example,
 Example 1:
->>> import tensorflow as tf
 >>> a = [1., 2., 3.]
->>> euality_bitcast = tf.bitcast(a,tf.complex128)
+>>> equality_bitcast = tf.bitcast(a,tf.complex128)
 tensorflow.python.framework.errors_impl.InvalidArgumentError: Cannot bitcast from float to complex128: shape [3] [Op:Bitcast]
 >>> equality_cast = tf.cast(a,tf.complex128)
 >>> print(equality_cast)
@@ -30,7 +29,6 @@ Example 2:
 <tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
 
 Example 3:
->>> import tensorflow as tf
 >>> x = [1., 2., 3.]
 >>> y = [0., 2., 3.]
 >>> equality= tf.equal(x,y)
