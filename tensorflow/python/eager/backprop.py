@@ -956,7 +956,7 @@ class GradientTape(object):
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
                           for x in nest.flatten(output_gradients)]
     
-    for v in target:
+    for v in flat_targets:
       if not is_floating(v):
         raise ValueError("GradientTape.gradient can only be called when "
                          "data type is float.")
