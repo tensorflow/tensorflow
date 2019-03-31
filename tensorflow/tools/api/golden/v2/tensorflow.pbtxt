@@ -1017,6 +1017,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "tensor_strided_slice_update"
+    argspec: "args=[\'input\', \'begin\', \'end\', \'strides\', \'value\', \'begin_mask\', \'end_mask\', \'ellipsis_mask\', \'new_axis_mask\', \'shrink_axis_mask\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\', \'0\', \'None\'], "
+  }
+  member_method {
     name: "tensordot"
     argspec: "args=[\'a\', \'b\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

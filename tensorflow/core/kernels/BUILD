@@ -151,6 +151,7 @@ tf_kernel_library(
         ":dense_update_functor",
         ":ops_util",
         ":training_op_helpers",
+        ":inplace_ops",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

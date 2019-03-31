@@ -4141,6 +4141,10 @@ tf_module {
     argspec: "args=[\'components\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "TensorStridedSliceUpdate"
+    argspec: "args=[\'input\', \'begin\', \'end\', \'strides\', \'value\', \'begin_mask\', \'end_mask\', \'ellipsis_mask\', \'new_axis_mask\', \'shrink_axis_mask\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\', \'0\', \'None\'], "
+  }
+  member_method {
     name: "TensorSummary"
     argspec: "args=[\'tensor\', \'description\', \'labels\', \'display_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'[]\', \'\', \'None\'], "
   }
