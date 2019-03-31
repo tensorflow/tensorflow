@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -300,16 +301,19 @@ class StridedSliceAssignOp : public OpKernel {
     Tensor* old_lhs = nullptr;
     Tensor tmp;
     if (isTensor) {
-      std::unique_ptr<Tensor> forwarded_input = c->forward_input(
+      const Tensor& input = context->input(0);
+      TensorShape shape = input.shape();
+
+      std::unique_ptr<Tensor> forwarded_input = context->forward_input(
           0, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
 
       if (forwarded_input == nullptr) {
         // We were not able to forward the input, so we deep copy the tensor and
         // set the output.
-        OP_REQUIRES_OK(c, c->allocate_output(0, input.shape(), &old_lhs));
+        OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &old_lhs));
 
-        OP_REQUIRES_OK(c, tensorflow::functor::DoCopy(c->eigen_device<Device>(),
-                                                      input, old_lhs));
+        OP_REQUIRES_OK(context, tensorflow::functor::DoCopy(
+            context->eigen_device<Device>(), input, old_lhs));
       } else {
         old_lhs = forwarded_input.get();
       }
