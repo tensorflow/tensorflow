@@ -99,7 +99,7 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  stack = tf_stack.extract_stack()
+  stack = tf_stack.extract_stack_file_and_line(max_length=4)
   length = len(stack)
   if length == 0:  # should never happen as we're in a function
     return 'UNKNOWN'
@@ -107,7 +107,7 @@ def _call_location(outer=False):
   if index < 0:
     index = 0
   frame = stack[index]
-  return '{filename}:{lineno}'.format(filename=frame[0], lineno=frame[1])
+  return '{}:{}'.format(frame.file, frame.line)
 
 
 def _wrap_decorator(wrapped_function):

@@ -210,6 +210,12 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_lightweight_check",
+    hdrs = ["runtime_lightweight_check.h"],
+    copts = runtime_copts(),
+)
+
+cc_library(
     name = "runtime_fp16",
     srcs = [
         "runtime_fp16.cc",
@@ -537,6 +543,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
@@ -572,6 +579,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:framework_lite",
@@ -596,6 +604,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         ":runtime_matvec",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
@@ -627,6 +636,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_lightweight_check",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",

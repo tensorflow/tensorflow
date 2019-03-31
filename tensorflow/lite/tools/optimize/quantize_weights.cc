@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace tflite {
@@ -60,7 +61,7 @@ std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
     for (size_t i = 0; i < op->inputs.size(); ++i) {
       if (op->inputs[i] == tensor_idx) {
         consumer_ops.push_back(
-            {op, static_cast<int>(op_idx), static_cast<int>(i)});
+            {op, static_cast<int32_t>(op_idx), static_cast<int32_t>(i)});
       }
     }
   }
@@ -95,6 +96,9 @@ std::vector<int32_t> GetWeightInputIndices(const BuiltinOperator& op_code) {
   } else if (op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_rnn.cc
     return {1, 2, 4, 5};
+  } else if (op_code == BuiltinOperator_GATHER) {
+    // https://www.tensorflow.org/code/tensorflow/lite/kernels/gather.cc
+    return {0};
   }
   return {};
 }
@@ -232,7 +236,7 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 
 // Updates operator code versions for the operators with INT8 inputs.
 void UpdateInt8OperatorVersions(ModelT* model) {
-  for (size_t i = 0; i < model->operator_codes.size(); ++i) {
+  for (int i = 0; i < model->operator_codes.size(); ++i) {
     const BuiltinOperator& op_code = model->operator_codes[i]->builtin_code;
     if (op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
         op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
@@ -248,6 +252,57 @@ void UpdateInt8OperatorVersions(ModelT* model) {
       model->operator_codes[i]->version = 3;
     }
   }
+}
+
+// Returns true if the op in consumer_op_infos can pass through quantization.
+bool IsQuantizationPassThroughOps(
+    const ModelT* model, const std::vector<ConsumerOpInfo>& consumer_op_infos) {
+  if (consumer_op_infos.size() != 1) {
+    return false;
+  }
+  const OperatorT* consumer_op = consumer_op_infos.front().op;
+  const BuiltinOperator op_code =
+      model->operator_codes[consumer_op->opcode_index]->builtin_code;
+  return op_code == BuiltinOperator_GATHER;
+}
+
+// Copies quantization parameters from input to output and returns consumers of
+// the output tensor as a tuple with values:
+// - index of the output tensor
+// - pointer to the output tensor
+// - vector of consumers ops.
+std::tuple<int32_t, TensorT*, std::vector<ConsumerOpInfo>>
+PassQuantizationAndGetConsumers(
+    const ModelT* model, const SubGraphT* subgraph,
+    const std::vector<ConsumerOpInfo>& consumer_op_infos) {
+  const OperatorT* op = consumer_op_infos.front().op;
+  const BuiltinOperator op_code =
+      model->operator_codes[op->opcode_index]->builtin_code;
+  if (op->outputs.size() != 1) {
+    LOG(ERROR)
+        << "An op that passes quantization has more than one quantized output";
+    return std::make_tuple(-1, nullptr, std::vector<ConsumerOpInfo>());
+  }
+  const int32_t output_tensor_idx = op->outputs.front();
+  const auto input_idx = GetWeightInputIndices(op_code);
+  if (input_idx.size() != 1) {
+    LOG(ERROR)
+        << "An op that passes quantization has more than one quantized input";
+    return std::make_tuple(-1, nullptr, std::vector<ConsumerOpInfo>());
+  }
+  const int32_t input_tensor_idx = op->inputs[input_idx.front()];
+
+  // Propagate quantization params.
+  const TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
+  TensorT* output_tensor = subgraph->tensors[output_tensor_idx].get();
+  if (!output_tensor->quantization) {
+    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
+  *output_tensor->quantization = *input_tensor->quantization;
+  output_tensor->type = TensorType_INT8;
+  return std::make_tuple(
+      output_tensor_idx, output_tensor,
+      GetTensorConsumers(model, subgraph, output_tensor_idx));
 }
 
 TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
@@ -268,7 +323,7 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
 
   std::vector<std::unique_ptr<OperatorT>> new_operators;
   std::unordered_map<int32_t, TensorT*> tensor_map;
-  for (size_t i = 0; i < subgraph->operators.size(); ++i) {
+  for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
     TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
         model.get(), op, weights_min_num_elements, &tensor_map));
@@ -285,10 +340,19 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
 
   // Examine the tensor consumers to determine which require dequantize ops.
   for (const auto& tensor_pair : tensor_map) {
-    const int32_t tensor_idx = tensor_pair.first;
+    int32_t tensor_idx = tensor_pair.first;
     TensorT* tensor = tensor_pair.second;
     std::vector<ConsumerOpInfo> consumer_op_infos =
         GetTensorConsumers(model.get(), subgraph, tensor_idx);
+    if (IsQuantizationPassThroughOps(model.get(), consumer_op_infos)) {
+      std::tie(tensor_idx, tensor, consumer_op_infos) =
+          PassQuantizationAndGetConsumers(model.get(), subgraph,
+                                          consumer_op_infos);
+      if (tensor_idx < 0) {
+        // Error message is already logged by PassQuantizationAndGetConsumers.
+        return kTfLiteError;
+      }
+    }
 
     std::vector<ConsumerOpInfo> dequant_op_infos;  // Ops that need dequants.
     for (ConsumerOpInfo& consumer_op_info : consumer_op_infos) {
@@ -307,32 +371,47 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
       }
     }
 
-    // If no ops require dequant, we are done for this tensor.
-    if (dequant_op_infos.empty()) {
+    // Check that this tensor is an output tensor.
+    int32_t output_index = -1;
+    for (int32_t i = 0; i < subgraph->outputs.size(); ++i) {
+      if (subgraph->outputs[i] == tensor_idx) {
+        output_index = i;
+        break;
+      }
+    }
+
+    // If no ops require dequant and it is not output, we are done for this
+    // tensor.
+    if (dequant_op_infos.empty() && output_index < 0) {
       continue;
     }
 
     // Create a new tensor to be the output of the dequantize op.
     std::unique_ptr<TensorT> dequantize_output;
     const string dequant_name = tensor->name + "_dequantize";
-    MakeTensor(dequant_name, tensor->shape, &dequantize_output);
+    utils::MakeTensor(dequant_name, tensor->shape, TensorType_FLOAT32,
+                      &dequantize_output);
     const int32_t dequantize_output_idx = subgraph->tensors.size();
     subgraph->tensors.push_back(std::move(dequantize_output));
 
     // Create the Dequantize operation.
     std::unique_ptr<OperatorT> dequantize_op;
-    MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
-                           dequantize_output_idx);
+    utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
+                                  dequantize_output_idx);
 
     LOG(INFO) << "Creating Dequantize op with name " << dequant_name << ".";
 
     // Update the op_input of all the ops that need the created dequantize
     // operation.
-    int32_t min_op_idx = 0;
+    int32_t min_op_idx = subgraph->operators.size();
     for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
       dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
           dequantize_output_idx;
       min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
+    }
+    // Update output name.
+    if (output_index >= 0) {
+      subgraph->outputs[output_index] = dequantize_output_idx;
     }
 
     // Insert the newly created Dequantize operation before the earliest

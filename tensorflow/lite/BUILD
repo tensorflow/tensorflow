@@ -71,7 +71,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],

@@ -1384,6 +1384,37 @@ class ControlFlowTest(test.TestCase):
           lambda i: i < 3, lambda i: i + 1, [0], maximum_iterations=1)
       self.assertEqual(1, self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
+  def testXLAGradInLoop(self):
+    # We have an optimization that moves certain reduction ops, this test makes
+    # sure we don't do that for XLA ops.
+
+    # Use dynamic inputs, which triggers the creation of "BroadcastGradientArgs"
+    # and "Shape" op.
+    input1 = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+    input2 = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+    def cond(i1, i2):
+      return False
+
+    def body(i1, i2):
+      return math_ops.add(i1, i2), math_ops.add(i1, i2)
+
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    xla_context.Enter()
+
+    out1, _ = control_flow_ops.while_loop(
+        cond, body, (input1, input2), maximum_iterations=2)
+    g = gradients_impl.gradients(out1, [input1])
+
+    for op in out1.graph.get_operations():
+      # Test that the "Shape" is directly passed to BroadcastGradientArgs
+      # instead of being pushed to the stack.
+      if op.type == "BroadcastGradientArgs":
+        self.assertEqual(op.inputs[0].op.type, "Shape")
+        self.assertEqual(op.inputs[1].op.type, "Shape")
+    xla_context.Exit()
+
+
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   @test_util.run_v1_only("b/120545219")
   def testSingleNestedMaximumIterationsWhileLoopGradientInXLAContext(self):

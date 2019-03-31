@@ -62,7 +62,11 @@ class ConstantFoldingTest : public GrapplerTest {
         add1 = ops::LogicalOr(s.WithOpName("add1"), x, zeros);
         add2 = ops::LogicalOr(s.WithOpName("add2"), x, ones);
       } else {
-        mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+        if (DTYPE == DT_FLOAT) {
+          mul1 = ops::MulNoNan(s.WithOpName("mul1"), x, zeros);
+        } else {
+          mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+        }
         mul2 = ops::Mul(s.WithOpName("mul2"), x, ones);
         add1 = ops::Add(s.WithOpName("add1"), x, zeros);
         add1 = ops::Add(s.WithOpName("add2"), x, ones);
@@ -513,8 +517,8 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output mul2 = ops::Mul(s.WithOpName("mul2"), zeros, y);
     Output mul3 = ops::Mul(s.WithOpName("mul3"), x, ones);
     Output mul4 = ops::Mul(s.WithOpName("mul4"), ones, y);
-    Output mul5 = ops::Mul(s.WithOpName("mul5"), x, zeros_1d);
-    Output mul6 = ops::Mul(s.WithOpName("mul6"), zeros_1d, y);
+    Output mul5 = ops::MulNoNan(s.WithOpName("mul5"), x, zeros_1d);
+    Output mul6 = ops::MulNoNan(s.WithOpName("mul6"), zeros_1d, y);
     Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
     Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);

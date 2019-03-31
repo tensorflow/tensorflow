@@ -170,7 +170,6 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
                             " can't be found in function library");
   }
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
-  inst_ops.overlay_lib = nullptr;
   inst_ops.state_handle = "";
   inst_ops.target = ctx->device()->name();
   native_func_ = 0;

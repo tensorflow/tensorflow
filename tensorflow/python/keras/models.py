@@ -91,6 +91,10 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     raise ValueError('Expected `model` argument '
                      'to be a functional `Model` instance, '
                      'got a `Sequential` instance instead:', model)
+  if not model._is_graph_network:
+    raise ValueError('Expected `model` argument '
+                     'to be a functional `Model` instance, '
+                     'but got a subclass model instead.')
 
   layer_map = {}  # Cache for created layers.
   tensor_map = {}  # Map {reference_tensor: corresponding_tensor}
@@ -259,7 +263,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
 
 
 @keras_export('keras.models.clone_model')
-def clone_model(model, input_tensors=None):
+def clone_model(model, input_tensors=None, clone_function=None):
   """Clone any `Model` instance.
 
   Model cloning is similar to calling a model on new inputs,
@@ -272,19 +276,36 @@ def clone_model(model, input_tensors=None):
       input_tensors: optional list of input tensors or InputLayer objects
           to build the model upon. If not provided,
           placeholders will be created.
+      clone_function: Callable to be used to clone each layer in the target
+          model (except `InputLayer` instances). It takes as argument the layer
+          instance to be cloned, and returns the corresponding layer instance to
+          be used in the model copy. If unspecified, this callable defaults to
+          the following serialization/deserialization function:
+          `lambda layer: layer.__class__.from_config(layer.get_config())`.
+          By passing a custom callable, you can customize your copy of the
+          model, e.g. by wrapping certain layers of interest (you might want to
+          replace all `LSTM` instances with equivalent
+          `Bidirectional(LSTM(...))` instances, for example).
 
   Returns:
       An instance of `Model` reproducing the behavior
       of the original model, on top of new inputs tensors,
-      using newly instantiated weights.
+      using newly instantiated weights. The cloned model might behave
+      differently from the original model if a custom clone_function
+      modifies the layer.
 
   Raises:
       ValueError: in case of invalid `model` argument value.
   """
+  if clone_function is None:
+    clone_function = _clone_layer
+
   if isinstance(model, Sequential):
-    return _clone_sequential_model(model, input_tensors=input_tensors)
+    return _clone_sequential_model(
+        model, input_tensors=input_tensors, layer_fn=clone_function)
   else:
-    return _clone_functional_model(model, input_tensors=input_tensors)
+    return _clone_functional_model(
+        model, input_tensors=input_tensors, layer_fn=clone_function)
 
 
 # "Clone" a subclassed model by reseting all of the attributes.

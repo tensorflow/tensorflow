@@ -712,6 +712,13 @@ TEST_F(OperatorTest, BuiltinMatrixDiag) {
           GetOperator("MATRIX_DIAG", OperatorType::kMatrixDiag), op);
 }
 
+TEST_F(OperatorTest, BuiltinMatrixSetDiag) {
+  MatrixSetDiagOperator op;
+  std::unique_ptr<toco::MatrixSetDiagOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag), op);
+}
+
 // Test version for a simple Op with 2 versions and the input type controls the
 // version.
 template <typename Op>

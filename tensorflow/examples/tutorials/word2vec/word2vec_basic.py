@@ -81,10 +81,10 @@ def word2vec_basic(log_dir):
     """Process raw inputs into a dataset."""
     count = [['UNK', -1]]
     count.extend(collections.Counter(words).most_common(n_words - 1))
-    dictionary = dict()
+    dictionary = {}
     for word, _ in count:
       dictionary[word] = len(dictionary)
-    data = list()
+    data = []
     unk_count = 0
     for word in words:
       index = dictionary.get(word, 0)

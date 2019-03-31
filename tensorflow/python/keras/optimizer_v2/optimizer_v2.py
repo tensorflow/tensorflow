@@ -95,6 +95,25 @@ class OptimizerV2(trackable.Trackable):
   opt.minimize(loss, var_list=[var1, var2])
   ```
 
+  ### Custom training loop with Keras models
+
+  In Keras models, sometimes variables are created when the model is first
+  called, instead of construction time. Examples include 1) sequential models
+  without input shape pre-defined, or 2) subclassed models. Pass var_list as
+  callable in these cases.
+
+  Example:
+  ```python
+  opt = tf.keras.optimizers.SGD(learning_rate=0.1)
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Dense(num_hidden, activation='relu'))
+  model.add(tf.keras.layers.Dense(num_classes, activation='sigmoid')
+  loss_fn = lambda: tf.keras.losses.mse(model(input), output)
+  var_list_fn = lambda: model.trainable_weights
+  for input, output in data:
+    opt.minimize(loss_fn, var_list_fn)
+  ```
+
   ### Processing gradients before applying them.
 
   Calling `minimize()` takes care of both computing the gradients and
@@ -266,7 +285,7 @@ class OptimizerV2(trackable.Trackable):
     self._hypers_created = False
 
   def minimize(self, loss, var_list, grad_loss=None, name=None):
-    """Add operations to minimize `loss` by updating `var_list`.
+    """Minimize `loss` by updating `var_list`.
 
     This method simply computes gradient using `tf.GradientTape` and calls
     `apply_gradients()`. If you want to process the gradient before applying
@@ -276,7 +295,10 @@ class OptimizerV2(trackable.Trackable):
     Args:
       loss: A callable taking no arguments which returns the value to minimize.
       var_list: list or tuple of `Variable` objects to update to minimize
-        `loss`.
+        `loss`, or a callable returning the list or tuple of `Variable` objects.
+        Use callable when the variable list would otherwise be incomplete before
+        `minimize` since the variables are created at the first time `loss` is
+        called.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       name: Optional name for the returned operation.
 
@@ -287,12 +309,6 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
 
-    @compatibility(eager)
-    When eager execution is enabled, `loss` should be a Python function that
-    takes no arguments and computes the value to be minimized. Minimization (and
-    gradient computation) is done with respect to the elements of `var_list`.
-    `grad_loss` is ignored when eager execution is enabled.
-    @end_compatibility
     """
     grads_and_vars = self._compute_gradients(
         loss, var_list=var_list, grad_loss=grad_loss)
@@ -310,9 +326,11 @@ class OptimizerV2(trackable.Trackable):
 
     Args:
       loss: A callable taking no arguments which returns the value to minimize.
-      var_list: List or tuple of `tf.Variable` to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph under
-        the key `GraphKeys.TRAINABLE_VARIABLES`.
+      var_list: list or tuple of `Variable` objects to update to minimize
+        `loss`, or a callable returning the list or tuple of `Variable` objects.
+        Use callable when the variable list would otherwise be incomplete before
+        `minimize` and the variables are created at the first time when `loss`
+        is called.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
 
     Returns:
@@ -323,11 +341,14 @@ class OptimizerV2(trackable.Trackable):
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid, or var_list is None.
     """
-    var_list = nest.flatten(var_list)
     # TODO(josh11b): Test that we handle weight decay in a reasonable way.
     with backprop.GradientTape() as tape:
-      tape.watch(var_list)
+      if not callable(var_list):
+        tape.watch(var_list)
       loss_value = loss()
+    if callable(var_list):
+      var_list = var_list()
+    var_list = nest.flatten(var_list)
     grads = tape.gradient(loss_value, var_list, grad_loss)
 
     if hasattr(self, "clipnorm"):
@@ -400,9 +421,9 @@ class OptimizerV2(trackable.Trackable):
     var_list = [v for (_, v) in grads_and_vars]
 
     # Create iteration if necessary.
-    _ = self.iterations
-    self._create_hypers()
     with ops.init_scope():
+      _ = self.iterations
+      self._create_hypers()
       self._create_slots(var_list)
 
     self._prepare(var_list)

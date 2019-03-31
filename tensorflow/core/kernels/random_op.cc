@@ -173,7 +173,7 @@ class RandomGammaOp : public OpKernel {
     Tensor* samples_t = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));
 
-    if (num_samples == 0) return;
+    if (samples_shape.num_elements() == 0) return;
 
     using random::PhiloxRandom;
 

@@ -96,6 +96,7 @@ class CallTreeTransformer(converter.Base):
         assert starred_arg is None, 'Multiple *args should be impossible.'
         starred_arg = a
       else:
+        a = self.visit(a)
         normal_args.append(a)
     if starred_arg is None:
       args = templates.replace_as_expression('(args,)', args=normal_args)
@@ -112,6 +113,7 @@ class CallTreeTransformer(converter.Base):
         assert kwargs_arg is None, 'Multiple **kwargs should be impossible.'
         kwargs_arg = k
       else:
+        k = self.visit(k)
         normal_keywords.append(k)
     if kwargs_arg is None:
       kwargs = ast_util.keywords_to_dict(normal_keywords)
@@ -134,6 +136,22 @@ class CallTreeTransformer(converter.Base):
         kwargs=kwargs)
 
     return new_call
+
+  def visit_Print(self, node):
+    node = self.generic_visit(node)
+    args = node.values
+    # Following is the case when calling print(a, b)
+    if len(args) == 1 and isinstance(args[0], gast.Tuple):
+      args = args[0].elts
+
+    template = """
+      ag__.converted_call(func, None, options, args, {})
+    """
+    return templates.replace_as_expression(
+        template,
+        func='print',
+        options=self.ctx.program.options.to_ast(),
+        args=args)
 
 
 def transform(node, ctx):

@@ -7,6 +7,19 @@ hardware acceleration.
 
 ## Getting Started
 
+To build the Swift TensorFlow Lite library on Apple platforms,
+[install from source](https://www.tensorflow.org/install/source#setup_for_linux_and_macos)
+or [clone the GitHub repo](https://github.com/tensorflow/tensorflow).
+Then, configure TensorFlow by navigating to the root directory and executing the
+`configure.py` script:
+
+```shell
+python configure.py
+```
+
+Follow the prompts and when asked to configure TensorFlow for iOS builds,
+enter `y`.
+
 ### Bazel
 
 In your `BUILD` file, add the `TensorFlowLite` dependency:
@@ -24,17 +37,6 @@ In your Swift files, import the module:
 ```swift
 import TensorFlowLite
 ```
-
-If you would like to build the Swift TensorFlow Lite library using Bazel on Apple
-platforms, clone or download the [TensorFlow GitHub repo](https://github.com/tensorflow/tensorflow),
-then navigate to the root `tensorflow` directory and execute the `configure.py` script:
-
-```shell
-python configure.py
-```
-
-Follow the prompts and when asked to configure the Bazel rules for Apple
-platforms, enter `y`.
 
 Build the `TensorFlowLite` Swift library target:
 
@@ -60,4 +62,20 @@ script from the root `tensorflow` directory:
 
 ```shell
 generate_xcodeproj.sh --genconfig tensorflow/lite/experimental/swift/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
+```
+
+### CocoaPods
+
+Add the following to your `Podfile`:
+
+```ruby
+pod 'TensorFlowLiteSwift'
+```
+
+Then, run `pod install`.
+
+In your Swift files, import the module:
+
+```swift
+import TensorFlowLite
 ```

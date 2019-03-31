@@ -297,6 +297,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
 
@@ -341,6 +342,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:summary_interface",
     ],
 )
 

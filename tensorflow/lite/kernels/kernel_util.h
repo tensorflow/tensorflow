@@ -113,6 +113,12 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               TfLiteTensor* output,
                                               double* multiplier);
 
+TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
+                                              const TfLiteTensor* input,
+                                              const TfLiteTensor* filter,
+                                              TfLiteTensor* output,
+                                              double* multiplier);
+
 // Calculates the useful quantized range of an activation layer given its
 // activation tensor.
 TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,

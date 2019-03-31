@@ -20,10 +20,11 @@ from __future__ import print_function
 
 import os
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
+from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -36,6 +37,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
+
+
+# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
+# third_party/tensorflow/python/distribute/strategy_combinations.py
+# pylint: disable=g-long-lambda
+parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
+    "ParameterServer2GPUs",
+    lambda: parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2),
+    required_gpus=2)
 
 
 class DistributedValuesTest(test.TestCase):
@@ -392,6 +403,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testSaveAndRestoreMirroredOneGraph(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
+      # Graph mode can work without GPU because the Placer "moves" the
+      # variable to a CPU. In other words, if there is no GPU available, but
+      # user requested to create a variable on GPU, Placer will ignore the
+      # user request and assign the VarHandleOp to CPU. This requires
+      # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     with self.cached_session(config=self.config) as sess:
@@ -474,6 +490,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testSaveMirroredRestoreMirrored(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
+      # Graph mode can work without GPU because the Placer "moves" the
+      # variable to a CPU. In other words, if there is no GPU available, but
+      # user requested to create a variable on GPU, Placer will ignore the
+      # user request and assign the VarHandleOp to CPU. This requires
+      # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_mirrored()
@@ -482,6 +503,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testSaveMirroredRestoreNormal(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
+      # Graph mode can work without GPU because the Placer "moves" the
+      # variable to a CPU. In other words, if there is no GPU available, but
+      # user requested to create a variable on GPU, Placer will ignore the
+      # user request and assign the VarHandleOp to CPU. This requires
+      # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_mirrored()
@@ -490,16 +516,22 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testSaveNormalRestoreMirrored(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
+      # Graph mode can work without GPU because the Placer "moves" the
+      # variable to a CPU. In other words, if there is no GPU available, but
+      # user requested to create a variable on GPU, Placer will ignore the
+      # user request and assign the VarHandleOp to CPU. This requires
+      # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_normal()
     self._restore_mirrored(save_path)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_one_gpu,
-          combinations.core_mirrored_strategy_with_one_gpu],
-      mode=["graph"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_gpu,
+          ],
+          mode=["graph"]))
   def testFetchAMirroredVariable(self, distribution):
     with self.session(graph=ops.Graph()) as sess, distribution.scope():
       with ops.device("/device:GPU:0"):
@@ -511,14 +543,14 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       sess.run({"complicated": mirrored})
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_one_cpu,
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.tpu_strategy,
-      ],
-      mode=["graph", "eager"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["graph", "eager"]))
   def testAssignOutOfScope_mirrored(self, distribution):
     with distribution.scope():
       mirrored = variables_lib.Variable(1.)
@@ -529,9 +561,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     for component in mirrored.values:
       self.assertEqual(self.evaluate(component.read_value()), 3.)
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.parameter_server_strategy_with_two_gpus],
-      mode=["graph", "eager"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[parameter_server_strategy_with_two_gpus],
+          mode=["graph", "eager"]))
   def testAssignOutOfScope_aggregating(self, distribution):
     with distribution.scope():
       aggregating = variables_lib.Variable(1.)
@@ -600,11 +633,12 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
       self.assertEqual(converted.dtype, replica_local.dtype)
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, devices, v, new):

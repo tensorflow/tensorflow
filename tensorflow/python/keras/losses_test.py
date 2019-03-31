@@ -72,7 +72,7 @@ class KerasLossesTest(test.TestCase):
       y_b = keras.backend.variable(np.random.random((5, 6, 7)))
       for obj in ALL_LOSSES:
         objective_output = obj(y_a, y_b)
-        self.assertListEqual(objective_output.get_shape().as_list(), [5, 6])
+        self.assertListEqual(objective_output.shape.as_list(), [5, 6])
 
   def test_objective_shapes_2d(self):
     with self.cached_session():
@@ -80,7 +80,9 @@ class KerasLossesTest(test.TestCase):
       y_b = keras.backend.variable(np.random.random((6, 7)))
       for obj in ALL_LOSSES:
         objective_output = obj(y_a, y_b)
-        self.assertListEqual(objective_output.get_shape().as_list(), [6,])
+        self.assertListEqual(objective_output.shape.as_list(), [
+            6,
+        ])
 
   def test_cce_one_hot(self):
     with self.cached_session():

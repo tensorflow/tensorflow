@@ -122,7 +122,20 @@ class InputIterator(object):
 class InputIteratorImpl(InputIterator):
   """Common implementation for all input iterators."""
 
-  def __init__(self, input_workers, iterators):
+  def __init__(self, input_workers, iterators, **kwargs):
+    # TODO(b/128995245): Remove this temporary flag once the zero batch case can
+    # be correctly handled.
+    self._enable_get_next_as_optional = False
+    if len(kwargs) > 1:
+      raise ValueError("InputIteratorImpl constructor only takes one "
+                       "experimental flag now")
+    if len(kwargs) == 1:
+      if "_enable_get_next_as_optional" not in kwargs:
+        raise ValueError("InputIteratorImpl constructor does not support "
+                         "arguments: {}".format(kwargs))
+      self._enable_get_next_as_optional = (
+          kwargs["_enable_get_next_as_optional"])
+
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
@@ -132,6 +145,20 @@ class InputIteratorImpl(InputIterator):
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
+    if not self._enable_get_next_as_optional:
+      replicas = []
+      for i, worker in enumerate(self._input_workers.worker_devices):
+        if name is not None:
+          d = tf_device.DeviceSpec.from_string(worker)
+          new_name = "%s_%s_%d" % (name, d.job, d.task)
+        else:
+          new_name = None
+        with ops.device(worker):
+          # Make `replicas` a flat list of values across all replicas.
+          replicas.extend(
+              self._iterators[i].get_next_as_list_deprecated(new_name))
+      return values.regroup(self._input_workers.device_map, replicas)
+
     replicas = []
     worker_has_values = []
     for i, worker in enumerate(self._input_workers.worker_devices):
@@ -236,7 +263,7 @@ class InputIteratorImpl(InputIterator):
 class InputFunctionIterator(InputIteratorImpl):
   """Iterator created from input function."""
 
-  def __init__(self, input_fn, input_workers, input_contexts):
+  def __init__(self, input_fn, input_workers, input_contexts, **kwargs):
     """Make an iterator for input provided via an input function.
 
     Currently implements PER_WORKER mode, in which the `input_fn` is called
@@ -250,6 +277,7 @@ class InputFunctionIterator(InputIteratorImpl):
       input_contexts: A list of `InputContext` instances to be passed to call(s)
         to `input_fn`. Length and order should match worker order in
         `worker_device_pairs`.
+      **kwargs: Additional experimental flags. Will be removed in future.
     """
     assert isinstance(input_workers, InputWorkers)
     if input_workers.num_workers != len(input_contexts):
@@ -273,13 +301,14 @@ class InputFunctionIterator(InputIteratorImpl):
               "input_fn must return a tf.data.Dataset or a callable.")
         iterators.append(iterator)
 
-    super(InputFunctionIterator, self).__init__(input_workers, iterators)
+    super(InputFunctionIterator, self).__init__(
+        input_workers, iterators, **kwargs)
 
 
 class DatasetIterator(InputIteratorImpl):
   """Iterator created from input dataset."""
 
-  def __init__(self, dataset, input_workers, split_batch_by=None):
+  def __init__(self, dataset, input_workers, split_batch_by=None, **kwargs):
     """Make an iterator for the dataset on given devices.
 
     If `split_batch_by` is not None, we "split" each batch of the
@@ -304,6 +333,7 @@ class DatasetIterator(InputIteratorImpl):
       input_workers: an `InputWorkers` object.
       split_batch_by: Optional integer. If present, we "split" each batch of the
         dataset by `split_batch_by` value.
+      **kwargs: Additional experimental flags. Will be removed in future.
     """
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
@@ -323,7 +353,7 @@ class DatasetIterator(InputIteratorImpl):
 
     self._element_structure = dataset._element_structure  # pylint: disable=protected-access
 
-    super(DatasetIterator, self).__init__(input_workers, iterators)
+    super(DatasetIterator, self).__init__(input_workers, iterators, **kwargs)
 
 
 def _dummy_tensor_fn(value_structure):
@@ -395,6 +425,13 @@ class _SingleWorkerDatasetIterator(object):
     del name
     with ops.device(self._worker):
       return self._iterator.get_next(device)
+
+  def get_next_as_list_deprecated(self, name=None):
+    """Get next element from the underlying iterator."""
+    del name
+    with ops.device(self._worker):
+      data_list = self._iterator.get_next()
+      return data_list
 
   def get_next_as_list(self, name=None):
     """Get next element from underlying iterator.
@@ -478,6 +515,13 @@ class _SingleWorkerCallableIterator(object):
     del device, name
     with ops.device(self._worker):
       return self._fn()
+
+  def get_next_as_list_deprecated(self, name=None):
+    """Get next element from the callable."""
+    del name
+    with ops.device(self._worker):
+      data_list = [self._fn() for _ in self._devices]
+      return data_list
 
   def get_next_as_list(self, name=None):
     """Get next element from the callable."""

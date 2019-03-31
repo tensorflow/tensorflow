@@ -82,24 +82,20 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     return errors::Internal("Can't find a function: node=", SummarizeNode(*n));
   }
 
-  FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fdef, n->attrs(), &flib_def,
-      [&flib_def](const string& op, const OpDef** sig) {
-        return flib_def.LookUpOpDef(op, sig);
-      },
-      &fbody));
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(*fdef, n->attrs(), &flib_def, &fbody));
 
-  Status can_inline_function_call = ValidateInlining(n, fbody, inline_options);
+  Status can_inline_function_call =
+      ValidateInlining(n, fbody.get(), inline_options);
   if (can_inline_function_call.ok()) {
     TF_RETURN_IF_ERROR(
-        InlineFunctionBody(g->flib_def(), g, n, fbody, inline_options));
+        InlineFunctionBody(g->flib_def(), g, n, fbody.get(), inline_options));
   } else {
     VLOG(2) << "Failed to inline function call node: "
             << can_inline_function_call.error_message();
   }
 
-  delete fbody;
   return Status::OK();
 }
 

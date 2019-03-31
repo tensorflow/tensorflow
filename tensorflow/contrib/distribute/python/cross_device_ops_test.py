@@ -24,14 +24,15 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -246,9 +247,8 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
   # strategy.
   reduction_to_one_combinations = combinations.combine(
       cross_device_ops=[
-          combinations.NamedObject(
-              "DefaultReductionToOneDevice",
-              cross_device_ops_lib.ReductionToOneDevice()),
+          combinations.NamedObject("DefaultReductionToOneDevice",
+                                   cross_device_ops_lib.ReductionToOneDevice()),
           combinations.NamedObject(
               "ReductionToCPUDeviceCrossDeviceOps",
               cross_device_ops_lib.ReductionToOneDevice(
@@ -259,11 +259,9 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
                   accumulation_fn=math_ops.accumulate_n)),
       ],
       distribution=[
-          combinations.one_device_strategy,
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_two_gpus
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
       ],
       mode=["graph", "eager"])
   allreduce_combinations = combinations.combine(
@@ -285,8 +283,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
                   "hierarchical_copy", 0, 100, 10))
       ],
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus
+          strategy_combinations.mirrored_strategy_with_two_gpus,
       ],
       mode=["graph", "eager"])
 

@@ -21,7 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 import textwrap
 import threading
 
@@ -33,18 +32,25 @@ from tensorflow.python.util import tf_inspect
 _parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
 
 
-def parse_entity(entity, future_imports):
+STANDARD_PREAMBLE = textwrap.dedent("""
+    from __future__ import division
+    from __future__ import print_function
+""")
+STANDARD_PREAMBLE_LEN = 2
+
+
+def parse_entity(entity, future_features):
   """Returns the AST and source code of given entity.
 
   Args:
-    entity: A python function/method/class
-    future_imports: An iterable of future imports to use when parsing AST. (e.g.
-        ('print_statement', 'division', 'unicode_literals'))
+    entity: Any, Python function/method/class
+    future_features: Iterable[Text], future features to use (e.g.
+      'print_statement'). See
+      https://docs.python.org/2/reference/simple_stmts.html#future
 
   Returns:
-    gast.AST, List[gast.AST], str: a tuple of the AST node corresponding
-    exactly to the entity; a list of future import AST nodes, and the string
-    that was parsed to generate the AST.
+    gast.AST, Text: the parsed AST node; the source code that was parsed to
+    generate the AST (including any prefixes that this function may have added).
   """
   try:
     with _parse_lock:
@@ -67,13 +73,13 @@ def parse_entity(entity, future_imports):
   # causing textwrap.dedent to not correctly dedent source code.
   # TODO(b/115884650): Automatic handling of comments/multiline strings.
   source = textwrap.dedent(source)
-  future_import_strings = ('from __future__ import {}'.format(name)
-                           for name in future_imports)
-  source = '\n'.join(itertools.chain(future_import_strings, [source]))
+
+  future_statements = tuple(
+      'from __future__ import {}'.format(name) for name in future_features)
+  source = '\n'.join(future_statements + (source,))
 
   try:
-    module_node = parse_str(source)
-    return _select_entity_node(module_node, source, future_imports)
+    return parse_str(source, preamble_len=len(future_features)), source
 
   except IndentationError:
     # The text below lists the causes of this error known to us. There may
@@ -110,21 +116,40 @@ def parse_entity(entity, future_imports):
     lines = lines[:lineno]  # pylint:disable=invalid-slice-index
     # Drop all characters following the error location
     lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
-    new_source = '\n'.join(lines)
+    source = '\n'.join(lines)
 
     try:
-      module_node = parse_str(new_source)
-      return _select_entity_node(module_node, new_source, future_imports)
+      return parse_str(source, preamble_len=len(future_features)), source
     except SyntaxError as e:
       raise_parse_failure(
           'If this is a lambda function, the error may be avoided by creating'
           ' the lambda in a standalone statement. Tried to strip down the'
-          ' source to:\n{}\nBut that did not work.'.format(new_source))
+          ' source to:\n{}\nBut that did not work.'.format(source))
 
 
-def parse_str(src):
-  """Returns the AST of given piece of code."""
-  return gast.parse(src)
+# TODO(mdan): This should take futures as input instead.
+def parse_str(src, preamble_len=0, single_node=True):
+  """Returns the AST of given piece of code.
+
+  Args:
+    src: Text
+    preamble_len: Int, indicates leading nodes in the parsed AST which should be
+      dropped.
+    single_node: Bool, whether `src` is assumed to be represented by exactly one
+      AST node.
+
+  Returns:
+    ast.AST
+  """
+  module_node = gast.parse(src)
+  nodes = module_node.body
+  if preamble_len:
+    nodes = nodes[preamble_len:]
+  if single_node:
+    if len(nodes) != 1:
+      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+    return nodes[0]
+  return nodes
 
 
 def parse_expression(src):
@@ -137,15 +162,10 @@ def parse_expression(src):
   Raises:
     ValueError: if src does not consist of a single Expression.
   """
-  node = parse_str(src)
-  assert isinstance(node, gast.Module)
-  if len(node.body) != 1 or not isinstance(node.body[0], gast.Expr):
-    raise ValueError(
-        'Expected a single expression, found instead %s' % node.body)
-  return node.body[0].value
-
-
-def _select_entity_node(module_node, source, future_imports):
-  assert len(module_node.body) == 1 + len(future_imports)
-  return module_node.body[-1], module_node.body[:-1], source
-
+  src = STANDARD_PREAMBLE + src.strip()
+  node = parse_str(src, preamble_len=STANDARD_PREAMBLE_LEN, single_node=True)
+  if __debug__:
+    if not isinstance(node, gast.Expr):
+      raise ValueError(
+          'expected a single expression, found instead {}'.format(node))
+  return node.value

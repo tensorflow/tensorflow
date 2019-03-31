@@ -37,6 +37,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
@@ -915,6 +916,23 @@ class MicroBenchmarks(test.Benchmark):
           lambda a, x: a + x, elems, parallel_iterations=1)
 
     self._run(scan, 100)
+
+  def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
+    @def_function.function
+    def add_all(*args):
+      return math_ops.add_n(*args)
+
+    with context.device(CPU):
+      resources = []
+      for _ in range(num_resources):
+        resources.append(resource_variable_ops.ResourceVariable(self._m_2))
+      self._run(lambda: add_all(resources), num_iters)
+
+  def benchmarkFunctionWithFiveResourceInputs(self):
+    self._benchmarkFunctionWithResourceInputs(5, 1000)
+
+  def benchmarkFunctionWithFiveHundredResourceInputs(self):
+    self._benchmarkFunctionWithResourceInputs(500, 100)
 
 
 if __name__ == "__main__":

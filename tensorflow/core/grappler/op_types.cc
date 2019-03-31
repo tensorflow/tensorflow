@@ -43,7 +43,7 @@ bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
 bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
-  return node.op() == "RealDiv" || node.op() == "Div" ||
+  return node.op() == "RealDiv" || node.op() == "Div" || node.op() == "Xdivy" ||
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
@@ -65,6 +65,10 @@ bool IsAnyMin(const NodeDef& node) {
 
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
+}
+
+bool IsArg(const NodeDef& node) {
+  return node.op() == "_Arg" || node.op() == "_DeviceArg";
 }
 
 bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
@@ -176,6 +180,8 @@ bool IsDequeueOp(const NodeDef& node) {
 }
 
 bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
+
+bool IsDivNoNan(const NodeDef& node) { return node.op() == "DivNoNan"; }
 
 // Returns true if node represents a unary elementwise function that is
 // monotonic. If *is_non_decreasing is true, the function is non-decreasing,
@@ -325,6 +331,8 @@ bool IsMirrorPadGrad(const NodeDef& node) {
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
+bool IsMulNoNan(const NodeDef& node) { return node.op() == "MulNoNan"; }
+bool IsAnyMul(const NodeDef& node) { return IsMul(node) || IsMulNoNan(node); }
 
 bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
 
@@ -413,6 +421,10 @@ bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 bool IsRestore(const NodeDef& node) {
   return (node.op() == "Restore" || node.op() == "RestoreV2" ||
           node.op() == "RestoreSlice");
+}
+
+bool IsRetval(const NodeDef& node) {
+  return node.op() == "_Retval" || node.op() == "_DeviceRetval";
 }
 
 bool IsReverse(const NodeDef& node) {
@@ -565,6 +577,8 @@ bool IsWhile(const NodeDef& node) {
   return op == "While" || op == "StatelessWhile";
 }
 
+bool IsXdivy(const NodeDef& node) { return node.op() == "Xdivy"; }
+
 bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
 
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
@@ -579,11 +593,11 @@ bool IsPersistent(const NodeDef& node) {
   return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
-bool MaybeHasRefInput(const NodeDef& node) {
+bool HasRefInput(const NodeDef& node) {
   const OpDef* op_def;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
-    return true;
+    return false;
   }
   // Nodes such as Assign or AssignAdd modify one of their inputs.
   for (const auto& input : op_def->input_arg()) {

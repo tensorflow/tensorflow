@@ -322,7 +322,7 @@ class BidirectionalTest(test.TestCase):
           self.assertIn(v, checkpointed_objects)
 
         # test compute output shape
-        ref_shape = model.layers[-1].output.get_shape()
+        ref_shape = model.layers[-1].output.shape
         shape = model.layers[-1].compute_output_shape(
             (None, timesteps, dim))
         self.assertListEqual(shape.as_list(), ref_shape.as_list())
@@ -697,7 +697,7 @@ class BidirectionalTest(test.TestCase):
           rnn(units, return_state=True), merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
       self.assertEqual(len(outputs), 5)
-      self.assertEqual(outputs[0].get_shape().as_list(), [None, units * 2])
+      self.assertEqual(outputs[0].shape.as_list(), [None, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))
@@ -724,8 +724,7 @@ class BidirectionalTest(test.TestCase):
           merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
       self.assertEqual(len(outputs), 1)
-      self.assertEqual(outputs[0].get_shape().as_list(),
-                       [None, timesteps, units * 2])
+      self.assertEqual(outputs[0].shape.as_list(), [None, timesteps, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))

@@ -73,7 +73,8 @@ class CondBuilder {
   Node* control_predecessor_;
   // The original If op.
   Node* if_op_;
-  // The identity node with the same outputs as the original If op.
+  // The identity node with the same outputs as the original If op. This node
+  // keeps lowered If fetchable.
   Node* lowered_if_output_;
   // The predicate of the conditional.
   OutputTensor pred_;
@@ -215,6 +216,9 @@ Status CondBuilder::AddOutputs() {
   // Furthermore it will guarantee that all function side effects will be
   // executed, if the function will be inlined into the graph. Having data
   // outputs is not enough, because they might become unused after inlining.
+  //
+  // We will use this node to rewrite outgoing control edges from lowered 'If'
+  // node. All data edges will read tensors directly from Merge nodes.
   TF_RETURN_IF_ERROR(NodeBuilder(graph_->NewName("branch_executed"), "Merge",
                                  graph_->op_registry(), &debug_info_)
                          .Input({pivot_t_, pivot_f_})
@@ -227,7 +231,7 @@ Status CondBuilder::AddOutputs() {
   // Add outputs.
   for (const Edge* e : if_op_->out_edges()) {
     if (e->IsControlEdge()) {
-      graph_->AddControlEdge(lowered_if_output_, e->dst());
+      graph_->AddControlEdge(branch_executed_node_, e->dst());
     } else {
       // Feed the outputs directly from the merge nodes so that downstream ops
       // can start before all the outputs have been computed.
@@ -240,14 +244,15 @@ Status CondBuilder::AddOutputs() {
 
 Status CondBuilder::BuildLoweredIfOutput() {
   // If outputs are empty, it means that we might have only output control
-  // edges. Furthermore it's illegal to have IdentityN with empty `T`.
-  // TODO(ezhulenev): `IdentityN` node will introduce redundant Send/Recv nodes
-  // if branch functions are multi-device.
-  NodeBuilder ib(name_, outputs_.empty() ? "NoOp" : "IdentityN");
-  if (!outputs_.empty()) ib.Input(outputs_);
-  ib.Device(if_op_->requested_device());
-  ib.ControlInput(branch_executed_node_);
-  return ib.Finalize(graph_, &lowered_if_output_);
+  // edges (already connected to the `branch_executed_node`). Furthermore it's
+  // illegal to have an IdentityN with empty inputs.
+  if (outputs_.empty()) return Status::OK();
+
+  return NodeBuilder(name_, "IdentityN")
+      .Input(outputs_)
+      .Device(if_op_->requested_device())
+      .ControlInput(branch_executed_node_)
+      .Finalize(graph_, &lowered_if_output_);
 }
 
 }  // namespace
