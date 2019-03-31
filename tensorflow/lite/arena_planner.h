@@ -97,15 +97,15 @@ class ArenaPlanner : public MemoryPlanner {
   // Stores allocation data for all tensors.
   std::vector<ArenaAlloc> allocs_;
 
-  // A chronological list of instructions to allocated and deallocate tensors,
+  // A chronological list of instructions to allocate and deallocate tensors,
   // reflecting the way they are used in the graph.
   std::vector<AllocationInfo> alloc_queue_;
 
-  // Raw memory buffer that is allocated for all temporary and graph outputs.
-  // that are declared kTfLiteArenaRw.
+  // Raw memory buffer that is allocated for all temporary and graph outputs
+  // those are declared kTfLiteArenaRw.
   SimpleMemoryArena arena_;
 
-  // Raw memory buffer that is allocated for persistent tensors that are
+  // Raw memory buffer that is allocated for persistent tensors those are
   // declared as kTfLiteArenaRwPersistent.
   SimpleMemoryArena persistent_arena_;
 
@@ -114,7 +114,7 @@ class ArenaPlanner : public MemoryPlanner {
   // unpredictable results.
   bool preserve_inputs_;
 
-  // If true, then no overlapping of memory areas is done, meaning intermediates
+  // If true, then no overlapping of memory areas is done, meaning intermediate
   // results can be queried after running (modulo running delegates).
   bool preserve_intermediates_;
 
