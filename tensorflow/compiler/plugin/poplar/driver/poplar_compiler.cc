@@ -273,8 +273,9 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
   }
 }
 
-std::string SerializeComputationToGraphDef(const HloComputation& comp) {
-  return hlo_graph_dumper::HloComputationToDotGraph(comp, {});
+StatusOr<std::string> SerializeComputationToGraphDef(const HloComputation& comp) {
+  return RenderGraph(
+      comp, comp.name(), {}, RenderedGraphFormat::kDot, nullptr, true);
 }
 
 HloPrintOptions GetPrintOptions() {
@@ -523,8 +524,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   HloComputation* entry = module->entry_computation();
 
   if (poplarExecutor->IpuTraceEventsEnabled()) {
+    std::string dot_graph;
+    auto status = SerializeComputationToGraphDef(*entry);
+    if (status.ok()) {
+      dot_graph = status.ValueOrDie();
+    }
     poplarExecutor->AddCompileBeginEventRecord(
-        module->name(), SerializeComputationToGraphDef(*entry));
+        module->name(), dot_graph);
   }
 
   // Set layout if there isn't one

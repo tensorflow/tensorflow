@@ -61,7 +61,7 @@ Status XlaIpuDeviceFactory::CreateDevices(
   registration.compilation_device_name = DEVICE_IPU_XLA_JIT;
   registration.autoclustering_policy =
       XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  registration.compile_resource_ops = true;
+  registration.compile_all_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_IPU, registration);
 
   auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
