@@ -714,8 +714,25 @@ cc_library(
 #   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #   #include "third_party/tensorflow/core/kernels/eigen_contraction_kernel.h"
 #   #endif
+#
+# We define a two-level target because if we just add
+#   ":no_mkldnn_contraction_kernel": []
+# in the same select list with //third_party/tensorflow:{android,arm,ios,ppc},
+# there can be more than one match, e.g., when building for android and MKL-DNN
+# contraction kernel is disabled. Bazel doesn't allow multiple matches.
+# See more details in
+#   https://github.com/tensorflow/tensorflow/issues/24414
 cc_library(
     name = "eigen_contraction_kernel",
+    hdrs = ["eigen_contraction_kernel.h"],
+    deps = select({
+        ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
+        "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
+    }),
+)
+
+cc_library(
+    name = "eigen_contraction_kernel_with_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
@@ -723,7 +740,6 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
-        ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
@@ -736,9 +752,15 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
-        ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
+)
+
+cc_library(
+    name = "eigen_contraction_kernel_no_mkl",
+    srcs = ["eigen_contraction_kernel.cc"],
+    hdrs = ["eigen_contraction_kernel.h"],
+    deps = ["//third_party/eigen3"],
 )
 
 cc_library(
