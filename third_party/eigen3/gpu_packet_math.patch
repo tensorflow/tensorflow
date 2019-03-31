@@ -4,7 +4,7 @@
    return make_double2(from, from);
  }
  
-+#if defined(EIGEN_CUDA_ARCH)
++#if __clang__ || defined(EIGEN_CUDA_ARCH)
  namespace {
  
  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float bitwise_and(const float& a,
