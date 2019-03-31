@@ -19,7 +19,6 @@
 
 from __future__ import absolute_import
 from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -33,6 +32,7 @@ def while_loop(condition,
                body,
                inputs=None,
                infeed_queue=None,
+               maximum_iterations=None,
                use_while_v1=True):
   """Builds a while loop for IPUs.
 
@@ -58,7 +58,9 @@ def while_loop(condition,
   """
 
   # Converts inputs to Tensors.
-  inputs = [] if inputs is None else [ops.convert_to_tensor(x) for x in inputs]
+  inputs = [] if inputs is None else [
+      ops.convert_to_tensor(x) for x in _convert_to_list(inputs)
+  ]
   input_types = [x.dtype for x in inputs]
   input_arity = len(inputs)
   body_arg_error = xla.check_function_argument_count(body, input_arity,
@@ -142,13 +144,13 @@ def while_loop(condition,
 
     # Add a dummy output, if needed.
     if not output_tensors:
-      output_tensors = array_ops.constant(0)
+      output_tensors = [array_ops.constant(0)]
 
     if output_operations:
-      return control_flow_ops.tuple(
+      output_tensors = control_flow_ops.tuple(
           output_tensors, control_inputs=output_operations)
-    else:
-      return output_tensors
+
+    return output_tensors[0] if len(output_tensors) == 1 else output_tensors
 
   # If the body has arity 0, add a dummy loop-carried value to which we can add
   # control dependencies from any side-effecting operations.
@@ -162,14 +164,24 @@ def while_loop(condition,
     logging.warning("Usage of while_v2 is still experimental.")
 
   outputs = while_fn(
-      condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
+      condition_wrapper,
+      body_wrapper,
+      inputs,
+      maximum_iterations=maximum_iterations,
+      name="",
+      parallel_iterations=1)
 
   # Check the infeed queue has been used - this is more of a courtesy to the
   # user.
   if infeed_queue is not None and not infeed_queue.dequeued:
     raise ValueError("The infeed queue has not been dequeued.")
 
-  return outputs
+  outputs = _convert_to_list(outputs)
+  if len(outputs) == 1:
+    # If there were no inputs, only return the op for the dummy output.
+    return outputs[0].op if input_arity == 0 else outputs[0]
+  else:
+    return outputs
 
 
 def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
@@ -192,8 +204,10 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
     ValueError: if there is a type error.
     TypeError: if body has the wrong signature.
   """
-  inputs = _convert_to_list(inputs)
-  input_arity = len(inputs)
+  if inputs is None:
+    inputs = []
+
+  input_arity = len(_convert_to_list(inputs))
   body_arg_error = xla.check_function_argument_count(body, input_arity,
                                                      infeed_queue)
   if body_arg_error is not None:
@@ -209,29 +223,13 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
           "infeed, but the computation needs %s." %
           (input_arity, str(inputs), infeed_queue.number_of_tuple_elements,
            body_arg_error))
-
-  def cond(i, *args):
-    del args
-    return i < n
-
-  def body_wrapper(i, *args, **kwargs):
-    return [i + 1] + _convert_to_list(body(*args, **kwargs))
-
-  inputs = [0] if inputs is None else [0] + _convert_to_list(inputs)
-  outputs = while_loop(
-      cond,
-      body_wrapper,
+  return while_loop(
+      lambda *args: True,
+      body,
       inputs=inputs,
       infeed_queue=infeed_queue,
+      maximum_iterations=n,
       use_while_v1=use_while_v1)
-  outputs = _convert_to_list(outputs)
-  if len(outputs) == 1:
-    # Returns the Op rather than an empty list.
-    return outputs[0].op
-  elif len(outputs) == 2:
-    return outputs[1]
-  else:
-    return outputs[1:]
 
 
 def _convert_to_list(xs):

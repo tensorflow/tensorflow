@@ -22,6 +22,8 @@ from tensorflow.contrib.ipu.python import sharding
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.platform import tf_logging as logging
 
+prohibited_ops = frozenset(["NextIteration", "PopDatastreamInfeedDequeue"])
+
 
 def tensor_memory_use(t):
   return t.shape.num_elements() * t.dtype.size
@@ -151,17 +153,19 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
 
   assert len(op_list) > 0
 
-  for op in op_list:
-    op_name = str(op.name.lower())
-    if op.type == "NextIteration" or op.type == "PopDatastreamInfeedDequeue":
-      continue
-    if 'gradient' in op_name:
-      bwd_ops.append(op)
-    else:
-      fwd_ops.append(op)
+  marked_collection = loss_op.graph.get_collection(sharding._IPU_AUTOSHARD)
+
+  if len(marked_collection) > 0:
+    fwd_ops = marked_collection
+  else:
+    for op in op_list:
+      if 'gradient' not in op.name.lower():
+        fwd_ops.append(op)
 
   fwd_ops = list(fwd_ops)
-  bwd_ops = list(bwd_ops)
+  bwd_ops = [o for o in op_list if o not in fwd_ops]
+
+  fwd_ops = [o for o in fwd_ops if o.type not in prohibited_ops]
 
   if input_ts.op not in fwd_ops:
     input_op = [op for op in input_ts.consumers() if op in fwd_ops][0]

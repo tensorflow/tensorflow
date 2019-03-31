@@ -20,11 +20,11 @@ import numpy as np
 import test_util as tu
 
 from tensorflow.contrib import ipu
+from tensorflow.keras import layers
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -323,13 +323,12 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     def my_net(iters):
       def body(loss, x):
         with variable_scope.variable_scope("vs", use_resource=True):
-          y = convolutional.conv2d(
-              x,
+          y = layers.Conv2D(
               2,
               1,
               use_bias=True,
               kernel_initializer=init_ops.ones_initializer(),
-              name='conv1')
+              name='conv1')(x)
         loss = math_ops.reduce_sum(y)
         optimizer = gradient_descent.GradientDescentOptimizer(0.1)
         train = optimizer.minimize(loss)
@@ -636,13 +635,12 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     def my_net(iters):
       def body(loss, x):
         with variable_scope.variable_scope("vs", use_resource=True):
-          y = convolutional.conv2d(
-              x,
+          y = layers.Conv2D(
               2,
               1,
               use_bias=True,
               kernel_initializer=init_ops.ones_initializer(),
-              name='conv1')
+              name='conv1')(x)
         loss = math_ops.reduce_sum(y)
         optimizer = gradient_descent.GradientDescentOptimizer(0.1)
         train = optimizer.minimize(loss)
@@ -681,13 +679,12 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     def my_net(iters):
       def body(loss, x):
         with variable_scope.variable_scope("vs", use_resource=True):
-          y = convolutional.conv2d(
-              x,
+          y = layers.Conv2D(
               2,
               1,
               use_bias=True,
               kernel_initializer=init_ops.ones_initializer(),
-              name='conv1')
+              name='conv1')(x)
         loss = math_ops.reduce_sum(y)
         optimizer = gradient_descent.GradientDescentOptimizer(0.1)
         train = optimizer.minimize(loss)

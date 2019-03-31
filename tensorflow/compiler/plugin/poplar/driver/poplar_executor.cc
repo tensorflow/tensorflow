@@ -226,7 +226,8 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
                  << " Did you initialize the infeed_queue?";
     }
     auto* infeed_dataset_iterator = itr->second.get();
-    for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
+    auto tensor_count = infeed_dataset_iterator->shapes.size();
+    for (auto j = 0; j < tensor_count; ++j) {
       current_engine_->connectStreamToCallback(
           GetInfeedCopyHandle(inst->name(), j),
           [this, j, infeed_dataset_iterator](void* dest) {
@@ -361,7 +362,8 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
         }
 
         if (!infeed_thread_cancelled_) {
-          for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
+          auto tensor_count = infeed_dataset_iterator->shapes.size();
+          for (auto j = 0; j < tensor_count; ++j) {
             auto tensor = infeed_dataset_iterator->tensors[j];
 
             const char* tensor_data = tensor.tensor_data().data();
@@ -1542,6 +1544,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
               poplar::printExecutionSummary(report_stream, graph_profile,
                                             exec_profile, opts);
+            } else if (CompilerReportingCborFormat()) {
+              poplar::serializeToCBOR(report_stream, exec_profile);
             } else {
               poplar::serializeToJSON(report_stream, exec_profile);
             }

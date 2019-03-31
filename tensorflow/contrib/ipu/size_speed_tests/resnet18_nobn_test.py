@@ -124,7 +124,8 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
       logits = inference(x)
 
       loss = math_ops.reduce_mean(
-          nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
+          nn_ops.softmax_cross_entropy_with_logits_v2(
+              logits=logits, labels=array_ops.stop_gradient(y_)))
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
@@ -156,7 +157,8 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
       logits = inference(x)
 
       loss = math_ops.reduce_mean(
-          nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
+          nn_ops.softmax_cross_entropy_with_logits_v2(
+              logits=logits, labels=array_ops.stop_gradient(y_)))
 
       train = gradient_descent.GradientDescentOptimizer(0.01).minimize(loss)
 

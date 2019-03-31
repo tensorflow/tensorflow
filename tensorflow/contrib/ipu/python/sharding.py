@@ -16,6 +16,7 @@
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
 
+_IPU_AUTOSHARD = "IPU_AUTOSHARD"
 _XLA_SHARDING = '_XlaSharding'
 
 

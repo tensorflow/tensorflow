@@ -103,6 +103,7 @@ cc_library(
         "driver/tools/single_hlo_matcher.cc",
         "driver/tools/util.cc",
         "driver/tools/while_loop_util.cc",
+        "driver/schedulers/sync_list_scheduler.cc",
     ],
     hdrs = [
         "driver/compiler_annotations.h",
@@ -141,6 +142,7 @@ cc_library(
         "driver/tools/single_hlo_matcher.h",
         "driver/tools/util.h",
         "driver/tools/while_loop_util.h",
+        "driver/schedulers/sync_list_scheduler.h",
     ],
     deps = [
         ":backend_config",
@@ -630,6 +632,17 @@ tf_cc_test(
 tf_cc_test(
     name = "scheduler_test",
     srcs = ["tests/scheduler_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "sync_list_scheduler_test",
+    srcs = ["tests/sync_list_scheduler_test.cc"],
     size = "small",
     deps = [
         ":optimizers",
@@ -1387,6 +1400,7 @@ test_suite(
         "sharding_pass_test",
         "simple_network_test",
         "sort_op_test",
+        "sync_list_scheduler_test",
         "tensor_array_test",
         "update_op_dependencies_test",
         "variable_test",

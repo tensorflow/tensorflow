@@ -160,6 +160,9 @@ ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
  * is not parallel writable or because further analysis has shown that the op
  * can no longer be in place. If that's the case, this function will add an
  * extra tensor copy and use that tensor as the input/output tensor.
+ *
+ * The ArgVector contains only those inputs which are listed as inplace inputs
+ * by InplaceUtil::GetHloInstructionDescription.
  */
 StatusOr<ArgVectors> GetInplaceOutputTensors(
     TensorMap& map, CompilerResources& res, const HloInstruction* inst,

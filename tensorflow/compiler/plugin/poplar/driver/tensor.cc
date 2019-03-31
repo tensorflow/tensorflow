@@ -1385,10 +1385,11 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
 
   // Get all the input tensors for all the inplace operands
   auto inplace_indexes = inplace_description.GetInplaceOperandIndexes();
+
   ArgVectors tensors(inplace_indexes.size());
-  // Specialise for GTEs
+
   if (inst->opcode() == HloOpcode::kGetTupleElement) {
-    // This should *always* be true
+    // For GTEs there is only one input, and it is always inplace
     CHECK_EQ(inplace_indexes.size(), 1);
     CHECK_EQ(inplace_indexes[0], 0);
     tensors[0] = FindTupleInInstructionInput(
@@ -1402,21 +1403,26 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
 
   // Go through all the inplace tensors and check if we need to add copies.
   for (uint64 i = 0; i < inplace_indexes.size(); i++) {
-    for (uint64 j = 0; j < tensors[i].size(); j++) {
-      poplar::Tensor t = tensors[i][j];
+    for (uint64 tuple_idx = 0; tuple_idx < tensors[i].size(); tuple_idx++) {
+      poplar::Tensor t = tensors[i][tuple_idx];
+
       // We need to add a copy before an inplace op if:
       // 1. t is not ParallelWriteable,
       // 2. inst is not marked as inplace.
-      bool requires_copy_inplace =
+      bool requires_copy_of_inplace_operand =
           !t.isParallelWriteable() || !is_still_inplace;
-      if (requires_copy_inplace) {
-        VLOG(1) << "Adding a copy for inplace op " << inst->name();
-        auto& graph = GetGraphWithOutputIndex(res, inst, inplace_indexes[i]);
+
+      if (requires_copy_of_inplace_operand) {
+        VLOG(1) << "Adding a copy for operand " << inplace_indexes[i]
+                << ", tuple index " << tuple_idx << ", of inplace op "
+                << inst->name();
+        const auto* operand = inst->operand(inplace_indexes[i]);
+        auto& graph = GetGraphWithOutputIndex(res, operand, tuple_idx);
         poplar::Tensor copy = graph.clone(t, GetDebugName(inst) + ".clone");
         seq.add(poplar::program::Copy(t, copy));
         t = copy;
       }
-      tensors[i][j] = t;
+      tensors[i][tuple_idx] = t;
     }
   }
   return tensors;

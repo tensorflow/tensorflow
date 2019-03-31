@@ -8,10 +8,10 @@ from __future__ import print_function
 import numpy as np
 import test_utils as tu
 
+from tensorflow.keras import layers
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -27,18 +27,16 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
-        y = convolutional.conv2d(
-            y,
+            kernel_initializer=init_ops.ones_initializer())(x)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(y)
 
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
@@ -69,19 +67,17 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(x)
         y = math_ops.cast(y, np.float16)
-        y = convolutional.conv2d(
-            y,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(y)
 
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
@@ -112,19 +108,17 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(x)
         y = array_ops.reshape(y, [1, 2, 8, 2])
-        y = convolutional.conv2d(
-            y,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(y)
 
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
@@ -155,19 +149,17 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
-            kernel_initializer=init_ops.ones_initializer())
-        y = convolutional.conv2d(
-            y,
+            kernel_initializer=init_ops.ones_initializer())(x)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             strides=(2, 1),
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(y)
 
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
@@ -198,27 +190,24 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             kernel_initializer=init_ops.ones_initializer(),
-            name='conv1')
-        y = convolutional.conv2d(
-            y,
+            name='conv1')(x)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             kernel_initializer=init_ops.ones_initializer(),
-            name='conv2')
-        y = convolutional.conv2d(
-            y,
+            name='conv2')(y)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             kernel_initializer=init_ops.ones_initializer(),
-            name='conv3')
+            name='conv3')(y)
 
       loss = math_ops.reduce_sum(y)
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
@@ -261,27 +250,24 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       lr = array_ops.placeholder(np.float32, shape=[])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             kernel_initializer=init_ops.ones_initializer(),
-            name='conv1')
-        y = convolutional.conv2d(
-            y,
+            name='conv1')(x)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             kernel_initializer=init_ops.ones_initializer(),
-            name='conv2')
-        y = convolutional.conv2d(
-            y,
+            name='conv2')(y)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=False,
             kernel_initializer=init_ops.ones_initializer(),
-            name='conv3')
+            name='conv3')(y)
 
       loss = math_ops.reduce_sum(y)
       optimizer = gradient_descent.GradientDescentOptimizer(lr)

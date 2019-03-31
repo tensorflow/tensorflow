@@ -118,10 +118,12 @@ Status DeferredAllocationVisitor::HandleGetTupleElement(HloInstruction* inst) {
   } else if (defer_any_allocations) {
     // Note that the forward allocation finder makes sure that this is inplace -
     // we therefore don't need to worry about copies.
+    const int64 offset =
+        InsertIntoTuple(inst->operand(0)->shape(), inst->tuple_index(), 0);
     for (int64 i = 0; i < shapes.size(); i++) {
       if (!DeferAllocation(inst, i)) {
         // Get the tensor for this shape and assign it as an output.
-        auto range = std::make_pair(i, i + 1);
+        auto range = std::make_pair(offset + i, offset + i + 1);
         auto outputs = FindInstructionInputsInRange(
             tensor_map, resources_, inst, 0, range, sequence, false);
         CHECK_EQ(outputs.size(), 1);

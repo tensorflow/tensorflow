@@ -50,10 +50,12 @@ def configure_ipu_system(config, device="cpu"):
 def create_ipu_config(profiling=False,
                       enable_ipu_events=False,
                       use_poplar_text_report=False,
+                      use_poplar_cbor_report=False,
                       report_every_nth_execution=0,
                       always_rearrange_copies_on_the_host=False,
                       disable_graph_convolution_caching=False,
-                      retain_control_dependencies=False):
+                      retain_control_dependencies=False,
+                      max_cross_replica_sum_buffer_size=0):
   """Create an empty IPU session configuration structure.
 
   Args:
@@ -61,6 +63,7 @@ def create_ipu_config(profiling=False,
                       events.
     :param enable_ipu_events: Enable IPU trace events without poplar reports.
     :param use_poplar_text_report: Enable the poplar textual report summary
+    :param use_poplar_cbor_report: Enable the poplar CBOR reports
     :param report_every_nth_execution: Only produce an execution report on
                                        every Nth execution.  0=One report
                                        only.
@@ -75,13 +78,13 @@ def create_ipu_config(profiling=False,
                                                 this option the rearrangment
                                                 will be perfomed on the host at
                                                 the expense of latency.
-    :param disable_graph_convolution_caching: By default, the convolution  
-                                              opeartion searches for an 
+    :param disable_graph_convolution_caching: By default, the convolution
+                                              operation searches for an
                                               equivalent cached operation, and
-                                              uses this  instead of creating a  
-                                              new convolution. Setting this flag 
-                                              forces the creation of a new 
-                                              convoltuion. This can improve 
+                                              uses this  instead of creating a
+                                              new convolution. Setting this flag
+                                              forces the creation of a new
+                                              convolution. This can improve
                                               runtime at the expense of graph
                                               size.
     :param retain_control_dependencies: When set to true, control dependencies
@@ -90,6 +93,9 @@ def create_ipu_config(profiling=False,
                                         in a different memory size due to
                                         differing constraints on the operation
                                         scheduler.
+    :param max_cross_replica_sum_buffer_size: The maximum number of bytes that
+                                              can be waiting before a cross
+                                              replica sum op is scheduled.
 
   Returns:
 
@@ -109,6 +115,7 @@ def create_ipu_config(profiling=False,
   opts.profiling.enable_io_trace = profiling
   opts.profiling.enable_execution_trace = profiling
   opts.profiling.enable_poplar_reports_text = use_poplar_text_report
+  opts.profiling.enable_poplar_reports_cbor = use_poplar_cbor_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
 
   opts.speed_size_config.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
@@ -116,6 +123,7 @@ def create_ipu_config(profiling=False,
   opts.speed_size_config.disable_graph_convolution_caching = disable_graph_convolution_caching
 
   opts.retain_control_dependencies = retain_control_dependencies
+  opts.max_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
 
   return opts
 

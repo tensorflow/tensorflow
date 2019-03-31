@@ -122,8 +122,8 @@ ENTRY %cluster (arg0.1: (f32[1,4,4,2], f32[2], f32[1,1,2,2])) -> f32[1,4,4,2] {
           .ValueOrDie();
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
   poplar::Tensor arg_tensor = FindInstructionOutputs(tensor_map, arg)[1];
-  CHECK_EQ(root_tensor, gte1_tensor);
-  CHECK_EQ(gte1_tensor, arg_tensor);
+  ASSERT_EQ(root_tensor, gte1_tensor);
+  ASSERT_EQ(gte1_tensor, arg_tensor);
 }
 
 TEST_F(DeferredAllocationsVisitorTest, TestDeferredAllocationNestedTuple) {
@@ -170,9 +170,153 @@ ENTRY %cluster (arg0.1: ((f32[1,4,4,2], f32[2], f32[1,1,2,2]))) -> f32[1,4,4,2] 
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
   poplar::Tensor gte_tensor = FindInstructionOutputs(tensor_map, gte)[1];
   poplar::Tensor arg_tensor = FindInstructionOutputs(tensor_map, arg)[1];
-  CHECK_EQ(root_tensor, gte1_tensor);
-  CHECK_EQ(gte1_tensor, gte_tensor);
-  CHECK_EQ(gte_tensor, arg_tensor);
+  ASSERT_EQ(root_tensor, gte1_tensor);
+  ASSERT_EQ(gte1_tensor, gte_tensor);
+  ASSERT_EQ(gte_tensor, arg_tensor);
+}
+
+TEST_F(DeferredAllocationsVisitorTest,
+       TestDeferredAllocationDoubleNestedTuple) {
+  const string& hlo_string = R"(
+
+HloModule module
+%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+  %arg_1 = f32[2]{0} parameter(1)
+  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
+  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+}
+
+ENTRY %cluster (arg0.1: ((f32[1,4,4,2], (f32[2], f32[1,1,2,2])))) -> f32[1,4,4,2] {
+  %arg = ((f32[1,4,4,2], (f32[2], f32[1,1,2,2]))) parameter(0)
+  %gte = (f32[1,4,4,2], (f32[2], f32[1,1,2,2])) get-tuple-element(((f32[1,4,4,2], (f32[2], f32[1,1,2,2]))) %arg), index=0
+  %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], (f32[2], f32[1,1,2,2])) %gte), index=0
+  %gte1 = (f32[2], f32[1,1,2,2]) get-tuple-element((f32[1,4,4,2], (f32[2], f32[1,1,2,2])) %gte), index=1
+  %gte1.1 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2]) %gte1), index=1
+  %convolution.5 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0, f32[1,1,2,2]{3,2,1,0} %gte1.1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %gte1.0 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2]) %gte1), index=0
+  ROOT %fusion = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.5, f32[2]{0} %gte1.0), kind=kCustom, calls=%_pop_op_conv_biasadd
+}
+)";
+  std::unique_ptr<HloModule> module =
+      ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
+  auto resources = GetMockResources(module.get());
+  HloPassPipeline pipeline = GetMockPipeline(*resources.get());
+  ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
+  EntryVisitor visitor(*resources.get(), false);
+  auto entry_computation = module->entry_computation();
+  TF_EXPECT_OK(entry_computation->Accept(&visitor));
+
+  // Verify that gte1.0 has a tensor and all the deferred allocations have that
+  // tensor too.
+  auto tensor_map = resources->tensor_maps.at(entry_computation->name());
+  auto root = entry_computation->root_instruction();
+  auto gte1_0 = root->operand(1);
+  auto gte1 = gte1_0->operand(0);
+  auto gte = gte1->operand(0);
+  auto arg = gte->operand(0);
+  poplar::Tensor root_tensor =
+      FindInstructionInput(tensor_map, *resources.get(), root, 1,
+                           visitor.sequence, false)
+          .ValueOrDie();
+  poplar::Tensor gte1_0_tensor = FindInstructionOutputs(tensor_map, gte1_0)[0];
+  poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
+  poplar::Tensor gte_tensor = FindInstructionOutputs(tensor_map, gte)[1];
+  poplar::Tensor arg_tensor = FindInstructionOutputs(tensor_map, arg)[1];
+  ASSERT_EQ(root_tensor, gte1_0_tensor);
+  ASSERT_EQ(gte1_0_tensor, gte1_tensor);
+  ASSERT_EQ(gte1_tensor, gte_tensor);
+  ASSERT_EQ(gte_tensor, arg_tensor);
+}
+
+TEST_F(DeferredAllocationsVisitorTest,
+       TestDeferredAllocationMultipleDeferredAllocationsNestedTuple) {
+  const string& hlo_string = R"(
+
+HloModule module
+%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+  %arg_1 = f32[2]{0} parameter(1)
+  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
+  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+}
+
+%_pop_op_conv_biasadd.1 (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+  %arg_1 = f32[2]{0} parameter(1)
+  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
+  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+}
+
+ENTRY %cluster (arg0.1: ((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))))) -> (f32[1,4,4,2], f32[1,4,4,2]) {
+  %arg = (((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))) parameter(0)
+  %gte = ((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) get-tuple-element((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))) %arg), index=0
+  %gte0 = (f32[1,4,4,2], f32[1,4,4,2]) get-tuple-element(((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) %gte), index=0
+  %gte0.0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,4,4,2]) %gte0), index=0
+  %gte1 = (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) get-tuple-element(((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) %gte), index=1
+  %gte1.1 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=1
+  %convolution.0 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0.0, f32[1,1,2,2]{3,2,1,0} %gte1.1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %gte1.0 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=0
+  %fusion.0 = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.0, f32[2]{0} %gte1.0), kind=kCustom, calls=%_pop_op_conv_biasadd
+
+  %gte0.1 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,4,4,2]) %gte0), index=1
+  %gte1.3 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=3
+  %convolution.1 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0.1, f32[1,1,2,2]{3,2,1,0} %gte1.3), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %gte1.2 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=2
+  %fusion.1 = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.1, f32[2]{0} %gte1.2), kind=kCustom, calls=%_pop_op_conv_biasadd.1
+  ROOT %tuple = (f32[1,4,4,2], f32[1,4,4,2]) tuple(f32[1,4,4,2] fusion.0, f32[1,4,4,2] fusion.1)
+}
+)";
+  std::unique_ptr<HloModule> module =
+      ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
+  auto resources = GetMockResources(module.get());
+  HloPassPipeline pipeline = GetMockPipeline(*resources.get());
+  ASSERT_TRUE(pipeline.Run(module.get()).ValueOrDie());
+  EntryVisitor visitor(*resources.get(), false);
+  auto entry_computation = module->entry_computation();
+  TF_EXPECT_OK(entry_computation->Accept(&visitor));
+
+  auto tensor_map = resources->tensor_maps.at(entry_computation->name());
+  auto root_tuple = entry_computation->root_instruction();
+
+  // Verify that gte1.0 has a tensor and all the deferred allocations have that
+  // tensor too.
+  auto fusion_0 = root_tuple->operand(0);
+  auto gte1_0 = fusion_0->operand(1);
+  auto gte1 = gte1_0->operand(0);
+  auto gte = gte1->operand(0);
+  auto arg = gte->operand(0);
+  poplar::Tensor fusion_0_input_one_tensor =
+      FindInstructionInput(tensor_map, *resources.get(), fusion_0, 1,
+                           visitor.sequence, false)
+          .ValueOrDie();
+  poplar::Tensor gte1_0_tensor = FindInstructionOutputs(tensor_map, gte1_0)[0];
+  poplar::Tensor gte1_tensor_zero = FindInstructionOutputs(tensor_map, gte1)[0];
+  poplar::Tensor gte_tensor_two = FindInstructionOutputs(tensor_map, gte)[2];
+  poplar::Tensor arg_tensor_two = FindInstructionOutputs(tensor_map, arg)[2];
+  ASSERT_EQ(fusion_0_input_one_tensor, gte1_0_tensor);
+  ASSERT_EQ(gte1_0_tensor, gte1_tensor_zero);
+  ASSERT_EQ(gte1_tensor_zero, gte_tensor_two);
+  ASSERT_EQ(gte_tensor_two, arg_tensor_two);
+
+  // Verify that gte1.2 has a tensor and all the deferred allocations have that
+  // tensor too.
+  auto fusion_1 = root_tuple->operand(1);
+  auto gte1_2 = fusion_1->operand(1);
+  ASSERT_EQ(gte1, gte1_2->operand(0));
+
+  poplar::Tensor fusion_1_input_one_tensor =
+      FindInstructionInput(tensor_map, *resources.get(), fusion_1, 1,
+                           visitor.sequence, false)
+          .ValueOrDie();
+  poplar::Tensor gte1_2_tensor = FindInstructionOutputs(tensor_map, gte1_2)[0];
+  poplar::Tensor gte1_tensor_two = FindInstructionOutputs(tensor_map, gte1)[2];
+  poplar::Tensor gte_tensor_four = FindInstructionOutputs(tensor_map, gte)[4];
+  poplar::Tensor arg_tensor_four = FindInstructionOutputs(tensor_map, arg)[4];
+  ASSERT_EQ(fusion_1_input_one_tensor, gte1_2_tensor);
+  ASSERT_EQ(gte1_2_tensor, gte1_tensor_two);
+  ASSERT_EQ(gte1_tensor_two, gte_tensor_four);
+  ASSERT_EQ(gte_tensor_four, arg_tensor_four);
 }
 
 TEST_F(DeferredAllocationsVisitorTest,
@@ -221,9 +365,9 @@ ENTRY %cluster (arg: f32[1,1,2,2]) -> f32[1,4,4,2] {
   poplar::Tensor gte1_tensor = FindInstructionOutputs(tensor_map, gte1)[0];
   poplar::Tensor gte_tensor = FindInstructionOutputs(tensor_map, gte)[1];
   poplar::Tensor infeed_tensor = FindInstructionOutputs(tensor_map, infeed)[1];
-  CHECK_EQ(root_tensor, gte1_tensor);
-  CHECK_EQ(gte1_tensor, gte_tensor);
-  CHECK_EQ(gte_tensor, infeed_tensor);
+  ASSERT_EQ(root_tensor, gte1_tensor);
+  ASSERT_EQ(gte1_tensor, gte_tensor);
+  ASSERT_EQ(gte_tensor, infeed_tensor);
 }
 
 TEST_F(DeferredAllocationsVisitorTest, TestDeferredAllocationInsideLoops) {
