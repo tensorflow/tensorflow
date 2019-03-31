@@ -62,8 +62,9 @@ def build_model_fn_optimizer():
 
 
 def main(_):
+  cross_replica_ops = tf.distribute.NcclAllReduce()
   distribution = tf.contrib.distribute.MirroredStrategy(
-      ["/device:GPU:0", "/device:GPU:1"])
+      ["/device:GPU:0", "/device:GPU:1"], cross_device_ops=cross_replica_ops , immediate_grads_reduction=True)
   config = tf.estimator.RunConfig(train_distribute=distribution,
                                   eval_distribute=distribution)
   # Since there are 2 devices and 10 samples, we set steps=5.

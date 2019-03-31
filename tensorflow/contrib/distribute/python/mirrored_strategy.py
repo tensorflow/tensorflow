@@ -82,6 +82,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     auto_shard_dataset: whether to auto-shard the dataset when there are
       multiple workers.
     cross_tower_ops: Deprecated alias for `cross_device_ops`.
+    immediate_gradients_reduction: optional, a  boolean value. If True, the
+      gradients reduction will be moved from `optimizer.apply_gradients` into
+      `tf.gradients`. This will improve computation performance when using 
+      `clp_by_global_norm`.
   """
 
   def __init__(self,
@@ -90,7 +94,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                num_gpus_per_worker=None,
                cross_device_ops=None,
                auto_shard_dataset=False,
-               cross_tower_ops=None):
+               cross_tower_ops=None,
+               immediate_grads_reduction=False):
     assert not (cross_device_ops and cross_tower_ops)
     if num_gpus is not None and num_gpus_per_worker is not None:
       raise ValueError(
@@ -99,7 +104,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       num_gpus = num_gpus_per_worker
     extended = MirroredExtended(self, devices, num_gpus,
                                 cross_device_ops or cross_tower_ops,
-                                auto_shard_dataset)
+                                auto_shard_dataset, immediate_grads_reduction)
     super(MirroredStrategy, self).__init__(extended)
 
   # Override to change the documentation to reflect the different handling of
@@ -166,7 +171,8 @@ class MirroredExtended(CoreMirroredExtended):
                devices=None,
                num_gpus_per_worker=None,
                cross_device_ops=None,
-               auto_shard_dataset=False):
+               auto_shard_dataset=False,
+               immediate_grads_reduction=False):
     if devices is None:
       devices = mirrored_strategy.all_local_devices(num_gpus_per_worker)
     elif num_gpus_per_worker is not None:
@@ -175,6 +181,7 @@ class MirroredExtended(CoreMirroredExtended):
     super(MirroredExtended, self).__init__(container_strategy, devices,
                                            cross_device_ops)
     self._auto_shard_dataset = auto_shard_dataset
+    self._immediate_grads_reduction = immediate_grads_reduction
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch.

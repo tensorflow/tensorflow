@@ -909,6 +909,10 @@ class DistributionStrategyExtended(object):
   def _allow_variable_partition(self):
     return False
 
+  @property
+  def immediate_gradients_reduction(self):
+    return False
+
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
@@ -1208,12 +1212,35 @@ class DistributionStrategyExtended(object):
     ]
 
   def regroup(self, value, destinations):
+    """Regroup PerReplicas into Mirrored bypassing `reduce_op`
+
+    Args:
+      value: A per-replica value with one value per replica.
+      destinations: A mirrored variable, a per-replica tensor, or a device
+        string. The return value will be copied to all destination devices (or
+        all the devices where the `destinations` value resides). To perform an
+        all-reduction, pass `value` to `destinations`.
+
+    Returns:
+      A list of mirrored values, one per pair in `value_destination_pairs`.
+
+    """
     return self._regroup(value, destinations)
 
   def _regroup(self, value, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
   def batch_regroup(self, value_destination_pairs):
+    """Regroup PerReplicas into a batch of Mirroreds bypassing `reduce_op`
+
+    Args:
+      value_destination_pairs: A sequence of (value, destinations)
+        pairs. See `reduce_to()` for a description.
+
+    Returns:
+      A list of mirrored values, one per pair in `value_destination_pairs`.
+
+    """
     return self._batch_regroup(value_destination_pairs)
 
   def _batch_regroup(self, value_destination_pairs):

@@ -641,7 +641,11 @@ class Optimizer(
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    reduced_grads = distribution.extended.batch_regroup(grads_and_vars)
+    if distribution.extended.immediate_gradients_reduction:
+      reduced_grads = distribution.extended.batch_regroup(grads_and_vars)
+    else:
+      reduced_grads = distribution.extended.batch_reduce_to(
+          ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 

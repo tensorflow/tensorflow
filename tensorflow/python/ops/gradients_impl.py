@@ -158,8 +158,13 @@ def gradients(ys,
         ys, xs, grad_ys, name, colocate_gradients_with_ops,
         gate_gradients, aggregation_method, stop_gradients,
         unconnected_gradients)
-  
-  return _GradientsReduction(grads, xs)
+
+  if distribute_ctx.has_strategy():
+    distribution_strategy = distribute_ctx.get_strategy()
+    if distribution_strategy.extended.immediate_gradients_reduction:
+      return _GradientsReductionHelper(grads, xs)
+
+  return grads
   # pylint: enable=protected-access
 
 
@@ -277,29 +282,32 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
         aggregation_method, stop_gradients,
         unconnected_gradients)
 
-  return _GradientsReduction(grads, xs)
+  if distribute_ctx.has_strategy():
+    distribution_strategy = distribute_ctx.get_strategy()
+    if distribution_strategy.extended.immediate_gradients_reduction:
+      return _GradientsReductionHelper(grads, xs)
+
+  return grads
   # pylint: enable=protected-access
 
-def _GradientsReduction(grads, var_refs):
-  if distribute_ctx.has_strategy():
-    if distribute_ctx.in_cross_replica_context():
-      raise RuntimeError("Use `_distributed_reduction` directly instead of "
-                         "`_GradientsReduction in a cross-replica context.`")
+def _GradientsReductionHelper(grads, var_refs):
+  if distribute_ctx.in_cross_replica_context():
+    raise RuntimeError("Use `_distributed_reduction` directly instead of "
+                       "`_GradientsReduction in a cross-replica context.`")
 
-    grads_and_vars = list(zip(grads, var_refs))
-    none_grads_indices = [grads_and_vars.index((g, v)) \
-        for g, v in grads_and_vars if g is None]
-    filtered_grads_and_vars = [(g, v) for g, v in grads_and_vars if g is not None]
-    filtered_reduced_grads = \
-        distribute_ctx.get_replica_context().merge_call(
-            _distributed_reduction, filtered_grads_and_vars)
-    for index in none_grads_indices:
-      filtered_reduced_grads.insert(index, None)
-    return filtered_reduced_grads
-  else:
-    return grads
+  grads_and_vars = list(zip(grads, var_refs))
+  none_grads_indices = [grads_and_vars.index((g, v)) \
+      for g, v in grads_and_vars if g is None]
+  filtered_grads_and_vars = [(g, v) for g, v in grads_and_vars if g is not None]
+  print (filtered_grads_and_vars)
+  filtered_reduced_grads = \
+      distribute_ctx.get_replica_context().merge_call(
+          _distributed_reduction, args=(filtered_grads_and_vars, "test_reduction"))
+  for index in none_grads_indices:
+    filtered_reduced_grads.insert(index, None)
+  return filtered_reduced_grads
 
-def _distributed_reduction(distribution, grads_and_vars):
+def _distributed_reduction(distribution, grads_and_vars, name=None):
   reduced_grads = distribution.extended.batch_reduce_to(
       ds_reduce_util.ReduceOp.SUM, grads_and_vars)
   return reduced_grads

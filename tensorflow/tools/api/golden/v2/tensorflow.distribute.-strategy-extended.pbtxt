@@ -15,6 +15,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "immediate_gradients_reduction"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "parameter_devices"
     mtype: "<type \'property\'>"
   }
@@ -37,6 +41,10 @@ tf_class {
   member_method {
     name: "batch_reduce_to"
     argspec: "args=[\'self\', \'reduce_op\', \'value_destination_pairs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch_regroup"
+    argspec: "args=[\'self\', \'value_destination_pairs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "broadcast_to"
@@ -69,6 +77,10 @@ tf_class {
   member_method {
     name: "reduce_to"
     argspec: "args=[\'self\', \'reduce_op\', \'value\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "regroup"
+    argspec: "args=[\'self\', \'value\', \'destinations\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "update"

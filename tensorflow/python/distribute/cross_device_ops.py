@@ -300,9 +300,37 @@ class CrossDeviceOps(object):
     return self.broadcast_implementation(tensor, destinations)
 
   def regroup(self, per_replica_value, destinations):
+    """Regroup the `per_replica_value` into `Mirrored` bypassing `reduce_op`.
+
+    It is useful when `per_replica_value` is actually a `Mirrored`. It will
+    bypass `reduce_op` which will introduce unnecessary compuation and
+    communication.
+
+    Args:
+      per_replica_value: a PerReplica object or a tensor with device set.
+      destinations: the reduction destinations.
+
+    Returns:
+      a Mirrored object.
+    """
+    
     return self.regroup_implementation(per_replica_value, destinations)
 
   def batch_regroup(self, value_destination_pairs):
+    """Regroup PerReplica objects in a batch of Mirrored objects.
+
+    It is useful when a batch of PerReplicas are actually Mirroreds. It will
+     bypass `reduce_op` which will introduce unnecessary compuation and
+     communication.
+
+    Args:
+      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+        (or tensors with device set if there is one device) and destinations.
+
+    Returns:
+      a list of Mirrored objects.
+    """
+
     return self.batch_regroup_implementation(value_destination_pairs)
 
   @doc_controls.for_subclass_implementers
@@ -365,9 +393,38 @@ class CrossDeviceOps(object):
     return simple_broadcast(tensor, destinations, always_mirrored=True)
 
   def regroup_implementation(self, per_replica_value, destinations):
-    return value_lib.Mirrored(per_replica_value._index)
+    """Implementation of regroup the `per_replica_value` into `Mirrored`.
+
+    It is useful when `per_replica_value` is actually a `Mirrored`. It will
+    bypass `reduce_op` which will introduce unnecessary compuation and
+    communication.
+
+    Args:
+      per_replica_value: a PerReplica object or a tensor with device set.
+      destinations: the reduction destinations.
+
+    Returns:
+      a Mirrored object.
+    """
+
+    device_map, logical_device = get_device_map_from(destinations)
+    return value_lib.Mirrored(
+        device_map, per_replica_value.values, logical_device)
 
   def batch_regroup_implementation(self, value_destination_pairs):
+    """Implementation of regroup PerReplica into a batch of Mirroreds
+
+    It is useful when a batch of PerReplicas are actually Mirroreds. It will
+    bypass `reduce_op` which will introduce unnecessary compuation and
+    communication.
+
+    Args:
+      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+        (or tensors with device set if there is one device) and destinations.
+
+    Returns:
+      a list of Mirrored objects.
+    """
     return [
         self.regroup(t, destinations=v)
         for t, v in value_destination_pairs]

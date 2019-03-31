@@ -68,16 +68,22 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
       `distribute.experimental.CollectiveCommunication`.  This provides a way
       for the user to override the choice of collective op communication.
       Possible values include `AUTO`, `RING`, and `NCCL`.
+    immediate_gradients_reduction: optional, a  boolean value. If True, the
+      gradients reduction will be moved from `optimizer.apply_gradients` into
+      `tf.gradients`. This will improve computation performance when using 
+      `clp_by_global_norm`.
   """
 
   def __init__(
       self,
-      communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
+      communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
+      immediate_grads_reduction=False):
     """Initializes the object."""
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
-            communication=communication))
+            communication=communication,
+            immediate_grads_reduction=False))
 
 
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
@@ -86,13 +92,15 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def __init__(self,
                container_strategy,
                communication,
-               cluster_resolver=TFConfigClusterResolver()):
+               cluster_resolver=TFConfigClusterResolver(),
+               immediate_grads_reduction=False):
     distribute_lib.DistributionStrategyExtended.__init__(
         self, container_strategy)
     assert isinstance(
         communication,
         cross_device_ops_lib.CollectiveCommunication)
     self._communication = communication
+    self._immediate_grads_reduction = immediate_grads_reduction
     self._initialize_strategy(cluster_resolver)
     assert isinstance(self._get_cross_device_ops(),
                       cross_device_ops_lib.CollectiveAllReduce)
@@ -229,6 +237,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       logging.info(
           "Enabled multi-worker collective ops with available devices: %r",
           context.context().devices())
+
+  @property
+  def immediate_gradients_reduction(self):
+    # Currently this function will be only enabled in graph mode.
+    return self._immediate_grads_reduction and not context.executing_eagerly()
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)

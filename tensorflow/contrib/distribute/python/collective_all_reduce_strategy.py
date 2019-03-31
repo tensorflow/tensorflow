@@ -44,7 +44,8 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
 
   def __init__(self,
                num_gpus_per_worker=0,
-               communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
+               communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
+               immediate_grads_reduction=False):
     """Initializes the object.
 
     Args:
@@ -54,12 +55,17 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
         `distribute.experimental.CollectiveCommunication`.  This provides a way
         for the user to override the choice of collective op communication.
         Possible values include `AUTO`, `RING`, and `NCCL`.
+      immediate_gradients_reduction: optional, a  boolean value. If True, the
+        gradients reduction will be moved from `optimizer.apply_gradients` into
+        `tf.gradients`. This will improve computation performance when using 
+        `clp_by_global_norm`.
     """
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
             num_gpus_per_worker=num_gpus_per_worker,
-            communication=communication))
+            communication=communication,
+            immediate_grads_reduction=immediate_grads_reduction))
 
 
 class CollectiveAllReduceExtended(
@@ -69,7 +75,8 @@ class CollectiveAllReduceExtended(
   def __init__(self,
                container_strategy,
                num_gpus_per_worker,
-               communication):
+               communication,
+               immediate_grads_reduction=False):
     # Use TFConfigClusterResolver to parse TF_CONFIG. We don't want to change
     # the constructor's interface to allow customized cluster resolver. Use
     # SimpleClusterResolver to override num_accelerators.
@@ -83,4 +90,5 @@ class CollectiveAllReduceExtended(
     super(CollectiveAllReduceExtended, self).__init__(
         container_strategy,
         communication=communication,
-        cluster_resolver=cluster_resolver)
+        cluster_resolver=cluster_resolver,
+        immediate_grads_reduction=immediate_grads_reduction)

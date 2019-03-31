@@ -185,6 +185,8 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
           with ops.name_scope(mtt_captured_name_scope),\
               ops.control_dependencies(mtt_captured_control_deps), \
               variable_scope.variable_scope(mtt_captured_var_scope):
+            print (*merge_args)
+            print (threads[0].merge_fn)
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
@@ -433,18 +435,31 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     devices: a list of device strings.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, nccl will be use by default.
+    immediate_gradients_reduction: optional, a  boolean value. If True, the
+      gradients reduction will be moved from `optimizer.apply_gradients` into
+      `tf.gradients`. This will improve computation performance when using 
+      `clp_by_global_norm`.
   """
 
-  def __init__(self, devices=None, cross_device_ops=None):
+  def __init__(self,
+               devices=None,
+               cross_device_ops=None,
+               immediate_grads_reduction=False):
     extended = MirroredExtended(
-        self, devices=devices, cross_device_ops=cross_device_ops)
+        self, devices=devices,
+        cross_device_ops=cross_device_ops,
+        immediate_grads_reduction=immediate_grads_reduction)
     super(MirroredStrategy, self).__init__(extended)
 
 
 class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   """Implementation of MirroredStrategy."""
 
-  def __init__(self, container_strategy, devices=None, cross_device_ops=None):
+  def __init__(self,
+               container_strategy,
+               devices=None,
+               cross_device_ops=None,
+               immediate_grads_reduction=False):
     super(MirroredExtended, self).__init__(container_strategy)
     if devices is None:
       devices = _all_devices()
@@ -453,6 +468,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
                        "`devices` you pass in is not empty.")
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
+    self._immediate_grads_reduction = immediate_grads_reduction
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
@@ -517,6 +533,11 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
+
+  @property
+  def immediate_gradients_reduction(self):
+    # Currently this function will be only enabled in graph mode.
+    return self._immediate_grads_reduction and not context.executing_eagerly()
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
