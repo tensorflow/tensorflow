@@ -2271,6 +2271,10 @@ def tf_pybind_extension(
         copts = copts,
         nocopts = nocopts,
         linkopts = linkopts + select({
+            "@local_config_cuda//cuda:darwin": [
+                "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+            ],
+            clean_dep("//tensorflow:windows"): [],
             "//conditions:default": [
                 "-Wl,--version-script",
                 "$(location %s)" % version_script_file,
