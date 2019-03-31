@@ -2995,6 +2995,7 @@ cuda_py_test(
         ":logging_ops",
         ":random_ops_gen",
         "//tensorflow/python/kernel_tests/random:util",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     xla_enable_strict_auto_jit = True,
 )
