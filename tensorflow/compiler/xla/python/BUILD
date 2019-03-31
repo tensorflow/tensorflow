@@ -8,7 +8,10 @@ load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
 
 py_library(
     name = "xla_client",
-    srcs = ["xla_client.py"],
+    srcs = [
+        "xla_client.py",
+        "xrt.py",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [":xla_extension"],
@@ -60,6 +63,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xrt",
+    srcs = ["xrt.cc"],
+    hdrs = ["xrt.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":types",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xrt/client:xrt_client",
+        "//tensorflow/compiler/xrt/client:xrt_grpc_eager_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
 tf_pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -76,6 +106,7 @@ tf_pybind_extension(
     module_name = "xla_extension",
     deps = [
         ":types",
+        ":xrt",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -114,3 +145,16 @@ tf_pybind_extension(
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
     ] + xla_python_default_plugins(),
 )
+
+# TODO(phawkins): enable this test.
+# py_test(
+#     name = "xrt_test",
+#     srcs = ["xrt_test.py"],
+#     deps = [
+#         ":xla_client",
+#         "//third_party/py/numpy",
+#         "//tensorflow/compiler/jit:xla_cpu_device",
+#         "//tensorflow/compiler/xrt:xrt_server",
+#         "//tensorflow/python:client_testlib",
+#     ],
+# )

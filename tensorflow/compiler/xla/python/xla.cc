@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -412,6 +413,8 @@ PYBIND11_MODULE(xla_extension, m) {
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");
   py::class_<PrecisionConfig>(m, "PrecisionConfig");
+
+  tensorflow::AddXrtSubmodule(&m);
 }
 
 }  // namespace xla_python

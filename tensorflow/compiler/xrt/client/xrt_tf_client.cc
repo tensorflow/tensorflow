@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -354,7 +355,7 @@ std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
 
   std::string wire_id = XrtGetUniqueWireID();
   EnqueueSend(this, tensor, dtype, /*recv_device_id=*/-1, wire_id,
-              /*host_memory=*/false, /*future=*/response);
+              /*host_memory=*/host_memory, /*future=*/response);
 
   const DeviceAttributes& device = devices().at(device_id);
   RecvTensorRequest request;
@@ -362,11 +363,15 @@ std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
   request.set_rendezvous_key(GetRendezvousKey(device.name(),
                                               GetReceiverDevice(this, -1),
                                               device.incarnation(), wire_id));
+  request.set_request_id(GetUniqueRequestId());
+  // TODO(phawkins): verify uniqueness of request ID. Random IDs won't collide
+  // with high probability, but we should probably add code to guard against
+  // collisions nonetheless.
 
   eager_client_->RecvTensorAsync(
       &request, &response->value_,
-      [response](Status status) {
-        VLOG(10) << "RecvTensor complete\n";
+      [response, wire_id](Status status) {
+        VLOG(10) << "RecvTensor complete for " << wire_id;
         response->Notify(status);
       },
       &response->call_options_);
