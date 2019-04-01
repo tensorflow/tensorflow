@@ -87,6 +87,12 @@ BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
+const BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) const {
+  DCHECK_GE(h, 0);
+  DCHECK_LT(h, static_cast<int>(chunks_.size()));
+  return &(chunks_[h]);
+}
+
 bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
@@ -523,33 +529,33 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
   InsertFreeChunkIntoBin(coalesced_chunk);
 }
 
-bool BFCAllocator::TracksAllocationSizes() { return true; }
+bool BFCAllocator::TracksAllocationSizes() const { return true; }
 
-size_t BFCAllocator::RequestedSize(const void* ptr) {
+size_t BFCAllocator::RequestedSize(const void* ptr) const {
   CHECK(ptr);
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for requested size of pointer we never allocated: " << ptr;
-  BFCAllocator::Chunk* c = ChunkFromHandle(h);
+  const BFCAllocator::Chunk* c = ChunkFromHandle(h);
   return c->requested_size;
 }
 
-size_t BFCAllocator::AllocatedSize(const void* ptr) {
+size_t BFCAllocator::AllocatedSize(const void* ptr) const {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocated size of pointer we never allocated: " << ptr;
-  BFCAllocator::Chunk* c = ChunkFromHandle(h);
+  const BFCAllocator::Chunk* c = ChunkFromHandle(h);
   return c->size;
 }
 
-int64 BFCAllocator::AllocationId(const void* ptr) {
+int64 BFCAllocator::AllocationId(const void* ptr) const {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocation id of pointer we never allocated: " << ptr;
-  BFCAllocator::Chunk* c = ChunkFromHandle(h);
+  const BFCAllocator::Chunk* c = ChunkFromHandle(h);
   return c->allocation_id;
 }
 

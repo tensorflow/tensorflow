@@ -676,10 +676,11 @@ class FunctionLibraryRuntime {
   // NOTE(mrry): This method assumes that the runtime is associated with a
   // default function library, and looks up `function_name` in that library.
   // It does not support overriding the function library.
-  virtual bool IsStateful(const string& function_name) = 0;
+  virtual bool IsStateful(const string& function_name) const = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
+  virtual const Device* device() const = 0;
 
   // Returns the default runner in which the ops should be launched. If the
   // device on which the function executes has a private thread pool, return
@@ -706,7 +707,7 @@ class FunctionLibraryRuntime {
   virtual string DebugString(Handle handle) = 0;
 
   // Returns the graph version number.
-  virtual int graph_def_version() = 0;
+  virtual int graph_def_version() const = 0;
 
   typedef uint64 LocalHandle;
 
