@@ -161,6 +161,12 @@ bool IsReductionToVector(const HloInstruction& reduce) {
   if (HloOpcode::kReduce != reduce.opcode()) {
     return false;
   }
+
+  // TODO(b/129698548): Remove this check after fixing the bug.
+  if (reduce.shape().element_type() == C128) {
+    return false;
+  }
+
   const HloInstruction* input = reduce.operand(0);
   std::vector<int64> dims_to_keep;
   for (int64 dim = 0; dim < input->shape().dimensions().size(); ++dim) {
