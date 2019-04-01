@@ -221,7 +221,7 @@ Status BaseVisitor::HandleRng(HloInstruction* inst) {
   }
   for (auto* op : inst->operands()) {
     if (op->opcode() != HloOpcode::kConstant) {
-      LOG(FATAL) << "Operand " << op->ToString() << " is not a constant.";
+      LOG(FATAL) << "RNG operand " << op->ToString() << " is not a constant.";
     }
   }
   poplar::program::Program prog;
