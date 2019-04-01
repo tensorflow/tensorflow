@@ -476,7 +476,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   return py_func_common(func, inp, Tout, stateful, name=name)
 
 
-py_func.__doc__ = py_func_common.__doc__
+py_func.__doc__ = "%s" % py_func_common.__doc__
 
 
 @tf_export("numpy_function", v1=[])
