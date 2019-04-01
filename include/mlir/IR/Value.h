@@ -52,6 +52,9 @@ public:
 
   Type getType() { return typeAndKind.getPointer(); }
 
+  /// Utility to get the associated MLIRContext that this value is defined in.
+  MLIRContext *getContext() { return getType().getContext(); }
+
   /// Mutate the type of this Value to be of the specified type.
   ///
   /// Note that this is an extremely dangerous operation which can create
