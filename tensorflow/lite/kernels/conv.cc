@@ -90,7 +90,7 @@ struct OpData {
   bool have_weights_been_transposed;
   bool need_im2col;
 
-  bool run_multithreaded_kernel;
+  bool supports_multithreaded_kernel;
 };
 
 inline PaddingType RuntimePaddingType(TfLitePadding padding) {
@@ -153,14 +153,6 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   int filter_width = filter->dims->data[2];
   int filter_height = filter->dims->data[1];
 
-  // We don't always need to allocate im2col. It is only used in some versions
-  // of the optimized Conv. This test just mimics something that happens inside
-  // optimized_ops.h, in order to avoid a DCHECK(!im2col_data).
-  data->need_im2col =
-      (params->stride_width != 1 || params->stride_height != 1 ||
-       params->dilation_width_factor != 1 ||
-       params->dilation_height_factor != 1 || filter_width != 1 ||
-       filter_height != 1);
   // If we're using the optimized multithreaded EigenTensor implementation of
   // convolution, it expects the filter weights to be transposed compared to
   // the normal TF Lite buffer format. Typical TF Lite weights are
@@ -171,7 +163,17 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   // This path is only used for float processing, so only create the buffer if
   // we're running with that data type.
   data->need_hwcn_weights = (input->type == kTfLiteFloat32 &&
-                             data->run_multithreaded_kernel && !is_hybrid);
+                             data->supports_multithreaded_kernel && !is_hybrid);
+
+  // We don't always need to allocate im2col. It is only used in some versions
+  // of the optimized Conv. This test just mimics something that happens inside
+  // optimized_ops.h, in order to avoid a DCHECK(!im2col_data).
+  data->need_im2col =
+      !data->need_hwcn_weights &&
+      (params->stride_width != 1 || params->stride_height != 1 ||
+       params->dilation_width_factor != 1 ||
+       params->dilation_height_factor != 1 || filter_width != 1 ||
+       filter_height != 1);
 
   int temporaries_count = 0;
   if (data->need_im2col) {
@@ -214,7 +216,8 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
+                     TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
@@ -260,11 +263,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       (input->type == kTfLiteFloat32 &&
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8));
 
-  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
-  // Hybrid kernels don't support multithreading yet.
-  if (is_hybrid) {
-    data->run_multithreaded_kernel = false;
-  }
+  // The multi-threaded kernel supports neither dilation nor hybrid kernels.
+  data->supports_multithreaded_kernel =
+      (kernel_type == kMultithreadOptimized) &&
+      (context->recommended_num_threads != 1) && !is_hybrid &&
+      (params->dilation_width_factor == 1) &&
+      (params->dilation_height_factor == 1);
 
   TF_LITE_ENSURE_STATUS(
       AllocateTemporaryTensorsIfRequired(context, node, is_hybrid));
@@ -419,6 +423,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <KernelType kernel_type>
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  return Prepare(kernel_type, context, node);
+}
+
+template <KernelType kernel_type>
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
                    TfLiteTensor* filter, TfLiteTensor* bias,
@@ -547,18 +556,10 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
   KernelType effective_kernel_type = kernel_type;
-  if (kernel_type == kMultithreadOptimized) {
-    if (context->recommended_num_threads == 1) {
-      // Use of kMultithreadOptimized is precomputed during |Prepare()|, whereas
-      // the actual thread count can change at any time. If the client requests
-      // a single thread (after Prepare()), fall back to optimized.
-      effective_kernel_type = kGenericOptimized;
-    } else if ((params->dilation_width_factor != 1) ||
-               (params->dilation_height_factor != 1)) {
-      // kMultithreadOptimized does not support dilation.
-      // Therefore, fallback to optimized.
-      effective_kernel_type = kGenericOptimized;
-    }
+  // Fall back to the optimized path if multi-threaded conv is unsupported.
+  if ((kernel_type == kMultithreadOptimized) &&
+      !data->supports_multithreaded_kernel) {
+    effective_kernel_type = kGenericOptimized;
   }
   ConvParams op_params;
   op_params.padding_type = RuntimePaddingType(params->padding);
@@ -714,7 +715,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       if (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8) {
         EvalHybrid<kernel_type>(context, node, params, data, input, filter,
                                 bias, im2col, hwcn_weights, output);
-      } else if (data->run_multithreaded_kernel) {
+      } else if (data->supports_multithreaded_kernel) {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
                                im2col, hwcn_weights, output);
       } else {
@@ -741,25 +742,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONVOLUTION_REF() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
+  static TfLiteRegistration r = {conv::Init, conv::Free,
+                                 conv::Prepare<conv::kReference>,
                                  conv::Eval<conv::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_GENERIC_OPT() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
+  static TfLiteRegistration r = {conv::Init, conv::Free,
+                                 conv::Prepare<conv::kGenericOptimized>,
                                  conv::Eval<conv::kGenericOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_MULTITHREADED_OPT() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
+  static TfLiteRegistration r = {conv::Init, conv::Free,
+                                 conv::Prepare<conv::kMultithreadOptimized>,
                                  conv::Eval<conv::kMultithreadOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
+  static TfLiteRegistration r = {conv::Init, conv::Free,
+                                 conv::Prepare<conv::kCblasOptimized>,
                                  conv::Eval<conv::kCblasOptimized>};
   return &r;
 }
