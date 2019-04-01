@@ -23,6 +23,7 @@ import json
 import os
 
 import numpy as np
+import tensorflow
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
@@ -171,7 +172,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
     raise ImportError('`load_model` requires h5py.')
 
   if not custom_objects:
-    custom_objects = {}
+    custom_objects = {'tf': tensorflow, 'tensorflow': tensorflow}
 
   def convert_custom_objects(obj):
     """Handles custom object lookup.
