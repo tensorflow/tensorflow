@@ -369,7 +369,7 @@ class AssertNoneEqualTest(test.TestCase):
       assert x is None
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_none_equal(1, 1, message="Custom error message")
@@ -581,7 +581,7 @@ class AssertLessTest(test.TestCase):
       assert x is None
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_less(1, 1, message="Custom error message")
@@ -651,7 +651,7 @@ class AssertLessEqualTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_less_equal(1, 0, message="Custom error message")
@@ -720,7 +720,7 @@ class AssertGreaterTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_greater(0, 1, message="Custom error message")
@@ -792,7 +792,7 @@ class AssertGreaterEqualTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_greater_equal(0, 1, message="Custom error message")
@@ -839,7 +839,7 @@ class AssertNegativeTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_negative(1, message="Custom error message")
@@ -886,7 +886,7 @@ class AssertPositiveTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_positive(-1, message="Custom error message")
@@ -1433,7 +1433,7 @@ class AssertNonNegativeTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_non_negative(-1, message="Custom error message")
@@ -1470,7 +1470,7 @@ class AssertNonPositiveTest(test.TestCase):
     self.evaluate(out)
 
   def test_static_check_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
         check_ops.assert_non_positive(1, message="Custom error message")
