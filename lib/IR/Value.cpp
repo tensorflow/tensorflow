@@ -38,6 +38,13 @@ Function *Value::getFunction() {
   }
 }
 
+Location Value::getLoc() {
+  if (auto *op = getDefiningOp()) {
+    return op->getLoc();
+  }
+  return UnknownLoc::get(getContext());
+}
+
 //===----------------------------------------------------------------------===//
 // IRObjectWithUseList implementation.
 //===----------------------------------------------------------------------===//

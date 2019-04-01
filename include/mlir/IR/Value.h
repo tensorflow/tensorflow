@@ -77,6 +77,10 @@ public:
   /// defines it.
   Operation *getDefiningOp();
 
+  /// If this value is the result of an operation, use it as a location,
+  /// otherwise return an unknown location.
+  Location getLoc();
+
   using use_iterator = ValueUseIterator<OpOperand>;
   using use_range = llvm::iterator_range<use_iterator>;
 
