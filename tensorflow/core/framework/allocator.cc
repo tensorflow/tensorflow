@@ -94,6 +94,12 @@ void EnableCPUAllocatorFullStats(bool enable) {
 }
 bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
+string AllocatorAttributes::DebugString() const {
+  return strings::StrCat("AllocatorAttributes(on_host=", on_host(),
+                         " nic_compatible=", nic_compatible(),
+                         " gpu_compatible=", gpu_compatible(), ")");
+}
+
 namespace {
 // A default Allocator for CPU devices.  ProcessState::GetCPUAllocator() will
 // return a different version that may perform better, but may also lack the

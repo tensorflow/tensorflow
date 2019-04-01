@@ -654,6 +654,9 @@ class FunctionLibraryRuntime {
 
     // If True, allow returning dead tensors.
     bool allow_dead_tensors = false;
+
+    // Returns a human readable representation of this.
+    string DebugString() const;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

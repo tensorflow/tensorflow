@@ -383,6 +383,9 @@ struct AllocatorAttributes {
   // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
   // a named special-purpose allocator on the same device.
   int32 scope_id = 0;
+
+  // Returns a human readable representation of this.
+  string DebugString() const;
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.
