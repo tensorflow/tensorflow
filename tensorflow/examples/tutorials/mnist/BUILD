@@ -106,6 +106,7 @@ py_test(
         ":mnist",
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 py_test(
@@ -121,7 +122,10 @@ py_test(
     ],
     main = "mnist_with_summaries.py",
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/29184009
+    tags = [
+        "notsan",  # http://b/29184009
+	"no_rocm_v2",
+    ],
     deps = [
         ":input_data",
         "//tensorflow:tensorflow_py",
