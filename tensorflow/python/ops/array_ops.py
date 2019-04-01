@@ -865,7 +865,7 @@ def strided_slice(input_,
           name = parent_name + "_strided_slice_update"
 
         return gen_array_ops.tensor_strided_slice_update(
-            ref=var,
+            input=var,
             begin=begin,
             end=end,
             strides=strides,
