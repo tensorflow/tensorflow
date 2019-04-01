@@ -247,6 +247,7 @@ ScalarComputationsTest.MinPropagatesNan POPLAR // NaN passing
 ScalarComputationsTest.MaxPropagatesNan POPLAR
 ArrayElementwiseOpTest.MinF32s POPLAR
 ArrayElementwiseOpTest.MaxF32s POPLAR
+VecOpsSimpleTest.ClampFloatEdgeCases POPLAR
 
 MatOpsSimpleTest_F16F32.ExpTwoByTwoValues POPLAR // Precision error
 
