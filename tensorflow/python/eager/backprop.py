@@ -211,7 +211,7 @@ def implicit_val_and_grad(f):
     variables = this_tape.watched_variables()
     if not variables:
       raise ValueError("No trainable variables were accessed while the "
-                        "function was being computed.")
+                       "function was being computed.")
     for v in variables:
       if not is_floating(v):
         raise ValueError("Gradient Calculations support only float types.")
