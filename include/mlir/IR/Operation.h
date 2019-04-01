@@ -554,18 +554,15 @@ public:
 };
 
 /// This class implements the result type iterators for the Operation
-/// class in terms of getResult(idx)->getType().
+/// class in terms of result_iterator->getType().
 class ResultTypeIterator final
-    : public IndexedAccessorIterator<ResultTypeIterator, Operation, Value> {
-public:
-  /// Initializes the result type iterator to the specified index.
-  ResultTypeIterator(Operation *object, unsigned index)
-      : IndexedAccessorIterator<ResultTypeIterator, Operation, Value>(object,
-                                                                      index) {}
+    : public llvm::mapped_iterator<ResultIterator, Type (*)(Value *)> {
+  static Type unwrap(Value *value) { return value->getType(); }
 
-  Type operator*() const {
-    return this->object->getResult(this->index)->getType();
-  }
+public:
+  /// Initializes the result type iterator to the specified result iterator.
+  ResultTypeIterator(ResultIterator it)
+      : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
 };
 
 // Implement the inline result iterator methods.
@@ -582,11 +579,11 @@ inline auto Operation::getResults() -> llvm::iterator_range<result_iterator> {
 }
 
 inline auto Operation::result_type_begin() -> result_type_iterator {
-  return result_type_iterator(this, 0);
+  return result_type_iterator(result_begin());
 }
 
 inline auto Operation::result_type_end() -> result_type_iterator {
-  return result_type_iterator(this, getNumResults());
+  return result_type_iterator(result_end());
 }
 
 inline auto Operation::getResultTypes()
