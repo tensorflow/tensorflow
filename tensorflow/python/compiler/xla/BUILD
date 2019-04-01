@@ -81,6 +81,9 @@ cuda_py_test(
     ],
     tags = [
         "no_mac",
+        # TODO(b/129692303): Re-enable pip after dependence of tpu_lib is
+        # migrated out of contrib.
+        "no_pip",
         "no_windows",
     ],
     xla_enabled = True,
