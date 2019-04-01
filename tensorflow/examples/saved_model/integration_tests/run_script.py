@@ -12,34 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Load and use RNN model stored as a SavedModel."""
+"""Utility to create a single py_binary that can call multiple py_binaries.
+
+This simulates executing a python script by importing a module name by the
+environment 'SCRIPT_NAME' and executing its main via `app.run`.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
+import os
+import sys
+
 from absl import app
-from absl import flags
-import tensorflow.compat.v2 as tf
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string("model_dir", None, "Directory to load SavedModel from.")
 
 
-def main(argv):
-  del argv
-
-  sentences = [
-      "<S> sentence <E>", "<S> second sentence <E>", "<S> third sentence<E>"
-  ]
-
-  model = tf.saved_model.load(FLAGS.model_dir)
-  model.train(tf.constant(sentences))
-  decoded = model.decode_greedy(
-      sequence_length=10, first_word=tf.constant("<S>"))
-  _ = [d.numpy() for d in decoded]
-
-
-if __name__ == "__main__":
-  app.run(main)
+if __name__ == '__main__':
+  # Append current path to import path and execute `SCRIPT_NAME` main.
+  sys.path.extend([os.path.dirname(__file__)])
+  module_name = os.environ['SCRIPT_NAME']
+  app.run(importlib.import_module(module_name).main)

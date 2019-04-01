@@ -23,53 +23,45 @@ import subprocess
 
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 
-class SavedModelPart1Test(tf.test.TestCase):
+class SavedModelTest(tf.test.TestCase):
 
-  def assertCommandSucceeded(self, binary, **flags):
-    command_parts = [binary]
+  def assertCommandSucceeded(self, script_name, **flags):
+    """Runs a test script via run_script."""
+    run_script = resource_loader.get_path_to_datafile("run_script")
+    command_parts = [run_script]
     for flag_key, flag_value in flags.items():
       command_parts.append("--%s=%s" % (flag_key, flag_value))
+    env = dict(TF2_BEHAVIOR="enabled", SCRIPT_NAME=script_name)
+    logging.info("Running: %s with environment flags %s" % (command_parts, env))
+    subprocess.check_call(command_parts, env=dict(os.environ, **env))
 
-    logging.info("Running: %s" % command_parts)
-    subprocess.check_call(
-        command_parts, env=dict(os.environ, TF2_BEHAVIOR="enabled"))
-
-  @test_util.run_v2_only
   def test_text_rnn(self):
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile(
-        "export_text_rnn_model")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+    self.assertCommandSucceeded("export_text_rnn_model", export_dir=export_dir)
+    self.assertCommandSucceeded("use_text_rnn_model", model_dir=export_dir)
 
-    use_binary = resource_loader.get_path_to_datafile("use_text_rnn_model")
-    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
-
-  @test_util.run_v2_only
   def test_rnn_cell(self):
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile(
-        "export_rnn_cell")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+    self.assertCommandSucceeded("export_rnn_cell", export_dir=export_dir)
+    self.assertCommandSucceeded("use_rnn_cell", model_dir=export_dir)
 
-    use_binary = resource_loader.get_path_to_datafile("use_rnn_cell")
-    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
-
-  @test_util.run_v2_only
   def test_text_embedding_in_sequential_keras(self):
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile(
-        "export_simple_text_embedding")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "export_simple_text_embedding", export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "use_model_in_sequential_keras", model_dir=export_dir)
 
-    use_binary = resource_loader.get_path_to_datafile(
-        "use_model_in_sequential_keras")
-    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
+  def test_mnist_cnn(self):
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
+    self.assertCommandSucceeded(
+        "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
 
 if __name__ == "__main__":
-  tf.enable_v2_behavior()
   tf.test.main()
