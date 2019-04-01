@@ -1518,7 +1518,7 @@ renames = {
     'tf.where':
         'tf.compat.v1.where',
     'tf.where_v2':
-        'tf.where',
+        'tf.compat.v2.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':
