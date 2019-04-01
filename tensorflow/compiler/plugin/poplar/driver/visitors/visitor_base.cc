@@ -81,7 +81,8 @@ const Shape& BaseVisitor::GetOutputShape(HloInstruction* inst) const {
 }
 
 Status BaseVisitor::Unimplemented(HloInstruction* inst) {
-  return xla::Unimplemented("%s not implemented", inst->name().c_str());
+  return xla::Unimplemented("%s (%s) not implemented",  inst->name().c_str(),
+                            HloOpcodeString(inst->opcode()).c_str());
 }
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
