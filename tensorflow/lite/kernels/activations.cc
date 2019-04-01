@@ -764,9 +764,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DFloat(input, output, params);
         return kTfLiteOk;
       }
-      context->ReportError(
-          context, "Only 1D, 2D and 4D tensors supported currently, got %dD.",
-          NumDimensions(input));
+      context->ReportError(context,
+                           "Only 1D, 2D, 3D and 4D tensors supported currently "
+                           "Float32 kernels, got %dD.",
+                           NumDimensions(input));
       return kTfLiteError;
     }
     case kTfLiteUInt8: {
@@ -786,9 +787,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DQuantizedUint8(input, output, params, data);
         return kTfLiteOk;
       }
-      context->ReportError(
-          context, "Only 2D and 4D tensors supported currently, got %dD.",
-          NumDimensions(input));
+      context->ReportError(context,
+                           "Only 1D, 2D, 3D and 4D tensors supported currently "
+                           "for Uint8 kernels, got %dD.",
+                           NumDimensions(input));
       return kTfLiteError;
     }
     case kTfLiteInt8: {
@@ -808,16 +810,17 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DQuantizedInt8(input, output, params, data);
         return kTfLiteOk;
       }
-      context->ReportError(
-          context,
-          "Only 4D tensors supported currently for Int8 kernels, got %dD.",
-          NumDimensions(input));
+      context->ReportError(context,
+                           "Only 1D, 2D, 3D and 4D tensors supported currently "
+                           "for Int8 kernels, got %dD.",
+                           NumDimensions(input));
       return kTfLiteError;
     }
 
     default:
       context->ReportError(
-          context, "Only float32 and uint8_t are supported currently, got %s.",
+          context,
+          "Only float32, uint8_t and int8_t are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
