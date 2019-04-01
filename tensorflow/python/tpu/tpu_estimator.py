@@ -1488,8 +1488,14 @@ class _ModelFnWrapper(object):
             tpu_embedding_gradient.get_gradients_through_dummy_table_variables(
                 tpu_embedding_)
         )
+        grad_multiplier = self._ctx.embedding_config.get_grad_multiplier()
+        if grad_multiplier is not None:
+          scaled_gradients = collections.OrderedDict(
+              (k, v * grad_multiplier) for k, v in six.iteritems(gradients))
+        else:
+          scaled_gradients = gradients
         apply_sparse_grads = [
-            tpu_embedding_.generate_send_gradients_op(gradients)
+            tpu_embedding_.generate_send_gradients_op(scaled_gradients)
         ]
 
       # We must run train_op to update the variables prior to running the
