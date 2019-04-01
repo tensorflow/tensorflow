@@ -34,6 +34,8 @@ limitations under the License.
 #include <Accelerate/Accelerate.h>
 #endif
 
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/common.h"
@@ -51,8 +53,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tflite {
 namespace optimized_ops {
