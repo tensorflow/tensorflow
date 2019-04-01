@@ -723,8 +723,14 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
         summary_ops.flush(writer=writer._resource)  # pylint:disable=protected-access
         self.assertEqual(5, get_total())
 
+  @test_util.assert_no_new_tensors
+  def testNoMemoryLeak_graphMode(self):
+    logdir = self.get_temp_dir()
+    with context.graph_mode(), ops.Graph().as_default():
+      summary_ops.create_file_writer_v2(logdir)
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testEagerMemory(self):
+  def testNoMemoryLeak_eagerMode(self):
     logdir = self.get_temp_dir()
     with summary_ops.create_file_writer_v2(logdir).as_default():
       summary_ops.write('tag', 1, step=0)

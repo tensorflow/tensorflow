@@ -105,6 +105,18 @@ class LivenessTest(test.TestCase):
 
     self.assertHasLiveOut(fn_body[0], 'x')
 
+  def test_live_out_for_iterate(self):
+
+    def test_fn(x, a):
+      for i in range(a):
+        x += i
+      return x, i  # pylint:disable=undefined-loop-variable
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[0], ('x', 'i'))
+
   def test_live_out_attributes(self):
 
     def test_fn(x, a):

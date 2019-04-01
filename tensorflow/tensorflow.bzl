@@ -641,7 +641,7 @@ def tf_gen_op_wrappers_cc(
         op_gen = clean_dep("//tensorflow/cc:cc_op_gen_main"),
         include_internal_ops = 0,
         visibility = None,
-        # ApiDefs will be loaded in the order apecified in this list.
+        # ApiDefs will be loaded in the order specified in this list.
         api_def_srcs = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]
@@ -2216,8 +2216,8 @@ def tensorflow_opensource_extra_deps():
 def tf_pybind_extension(
         name,
         srcs,
-        hdrs,
         module_name,
+        hdrs = [],
         features = [],
         srcs_version = "PY2AND3",
         data = [],
@@ -2250,7 +2250,7 @@ def tf_pybind_extension(
     native.genrule(
         name = name + "_exported_symbols",
         outs = [exported_symbols_file],
-        cmd = "echo '%s\n%s\n%s' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '_%s\n_%s\n_%s' >$@" % (symbol, symbol2, symbol3),
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
@@ -2271,6 +2271,10 @@ def tf_pybind_extension(
         copts = copts,
         nocopts = nocopts,
         linkopts = linkopts + select({
+            "@local_config_cuda//cuda:darwin": [
+                "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+            ],
+            clean_dep("//tensorflow:windows"): [],
             "//conditions:default": [
                 "-Wl,--version-script",
                 "$(location %s)" % version_script_file,

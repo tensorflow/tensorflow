@@ -2,6 +2,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 cc_library(
     name = "preprocessor",
     srcs = ["preprocessor.cc"],
@@ -17,6 +19,7 @@ cc_test(
     srcs = ["preprocessor_test.cc"],
     tags = [
         "local",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":preprocessor",
@@ -43,6 +46,7 @@ cc_test(
     srcs = ["parameter_accessor_test.cc"],
     tags = [
         "local",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":parameter_accessor",
@@ -190,3 +194,5 @@ cc_library(
         "@com_google_absl//absl/types:variant",
     ],
 )
+
+tflite_portable_test_suite()

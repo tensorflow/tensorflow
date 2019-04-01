@@ -652,6 +652,30 @@ string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
   return op_name_a.substr(0, last_scope_separator);
 }
 
+// Verifies that shapes of the given inputs match after masking the specified
+// dimension.
+Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
+                         int masked_dim, absl::string_view node_name) {
+  size_t num_inputs = inputs.size();
+  if (num_inputs <= 1) return Status::OK();
+
+  const nvinfer1::Dims dims_0 = inputs.at(0).GetTrtDims();
+  for (size_t i = 1; i < num_inputs; ++i) {
+    const nvinfer1::Dims dim_i = inputs.at(i).GetTrtDims();
+    if (dim_i.nbDims != dims_0.nbDims) {
+      return errors::InvalidArgument(
+          "Received inputs with inconsistent rank, at ", node_name);
+    }
+    for (size_t j = 0; j < dims_0.nbDims; ++j) {
+      if (dim_i.d[j] != dims_0.d[j] && j != masked_dim) {
+        return errors::InvalidArgument(
+            "Received inputs with inconsistent shape, at ", node_name);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 TRT_ShapedWeights::TRT_ShapedWeights(DataType type) : type_(type) {
   shape_.nbDims = 0;
 }
@@ -3388,6 +3412,80 @@ Status ConvertReduce(OpConverterParams* params) {
   return Status::OK();
 }
 
+// TensorRT does not support the Pack op natively. Therefore, Pack op is
+// converted by first expanding input tensors by adding a new dimension of size
+// one at the specified axis and then concatenating the tensors at the same
+// axis.
+Status ConvertPack(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  TFAttrs attrs(node_def);
+  const int num_inputs = attrs.get<int64>("N");
+  if (num_inputs != inputs.size()) {
+    return errors::InvalidArgument(
+        "Number of inputs for Pack is inconsistent with N attribute, at ",
+        node_def.name());
+  }
+
+  // Validate inputs. Values must be tensors for now.
+  std::vector<std::pair<string, bool>> inputs_is_weight;
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs_is_weight.push_back({StrCat("values_", i), false});
+  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
+
+  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  if (num_inputs > 1) {
+    // Verify that inputs are compatible for concatenation after the expansion.
+    TF_RETURN_IF_ERROR(
+        VerifyShapesMatch(inputs, /*masked_dim=*/-1, node_def.name()));
+  }
+
+  // Convert axis from the TensorFlow format to TensorRT format.
+  const nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  const int64 tf_axis = attrs.get<int64>("axis");
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(), &trt_axis));
+
+  // Compute expanded dimensions and then reshape input tensors.
+  std::vector<int> tensor_dims(dims.d, dims.d + dims.nbDims);
+  tensor_dims.insert(tensor_dims.begin() + trt_axis, 1);
+  nvinfer1::Dims expanded_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(tensor_dims, &expanded_dims));
+  std::vector<nvinfer1::ITensor*> expanded_tensors;
+  for (const TRT_TensorOrWeights& tensor : inputs) {
+    nvinfer1::ITensor* expanded_tensor = nullptr;
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        tensor, expanded_dims, params->validation_only, &expanded_tensor));
+    if (!params->validation_only) {
+      expanded_tensors.push_back(expanded_tensor);
+    }
+  }
+  if (params->validation_only) return Status::OK();
+
+  // If there is only one tensor in the input, return the expanded tensor.
+  if (num_inputs == 1) {
+    params->outputs->push_back(TRT_TensorOrWeights(expanded_tensors[0]));
+    return Status::OK();
+  }
+
+  // Otherwise, concatenate expanded tensors.
+  nvinfer1::IConcatenationLayer* layer =
+      params->converter->network()->addConcatenation(
+          const_cast<nvinfer1::ITensor**>(expanded_tensors.data()),
+          expanded_tensors.size());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  // Note that trt_axis stays the same even after expanding tensors at the axis.
+  layer->setAxis(trt_axis);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+}
+
 Status ConvertPad(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3492,6 +3590,113 @@ Status ConvertPad(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertSplitHelper(OpConverterParams* params,
+                          const TRT_TensorOrWeights& input, int tf_axis,
+                          int num_splits, bool squeeze_after) {
+  const auto& node_def = params->node_def;
+  const nvinfer1::Dims dims = input.GetTrtDims();
+  // Convert axis.
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+  // Dimension must equal num_splits for Unstack (when squeeze_after is true)
+  if (squeeze_after && dims.d[trt_axis] != num_splits) {
+    return errors::InvalidArgument(
+        "Dimension ", tf_axis, " has size ", dims.d[trt_axis],
+        " which is not equal to num of ", num_splits, ", at ", node_def.name());
+  }
+  // Dimension must be evenly divisible by num_splits.
+  if (dims.d[trt_axis] % num_splits != 0) {
+    return errors::InvalidArgument(
+        "Dimension ", tf_axis, " of size ", dims.d[trt_axis],
+        " is not evenly divisble by ", num_splits, ", at ", node_def.name());
+  }
+
+  // Create parameters for StridedSliceHelper.
+  // Slice will begin on zero for all dims, except the one being split which
+  // will change.
+  std::vector<int> begin(dims.nbDims, 0);
+  // Determine size of split. Slice will get the full length of all dims, except
+  // the one being split.
+  std::vector<int> size(dims.d, dims.d + dims.nbDims);
+  const int split_size_on_axis = dims.d[trt_axis] / num_splits;
+  size[trt_axis] = split_size_on_axis;
+  // Stride will always be 1
+  std::vector<int> stride(dims.nbDims, 1);
+  // Add dummy batch dimension
+  begin.insert(begin.begin(), 0);
+  size.insert(size.begin(), 1);
+  stride.insert(stride.begin(), 1);
+
+  // Slice the input. ConvertStridedSliceHelper will push the outputs onto
+  // params->outputs.
+  for (int i = 0; i < num_splits; ++i) {
+    begin[trt_axis + 1] = i * split_size_on_axis;
+    TF_RETURN_IF_ERROR(
+        ConvertStridedSliceHelper(params, input, begin, size, stride));
+  }
+  if (params->validation_only) return Status::OK();
+
+  // For Unpack/Unstack, remove axis that we split upon.
+  if (squeeze_after) {
+    // Create the new shape.
+    size.erase(size.begin() + trt_axis + 1);
+    nvinfer1::Dims new_dims;
+    TF_RETURN_IF_ERROR(
+        TensorShapeArrayToTrtDims(size, &new_dims, /*ignore_frst_dim=*/true));
+    // Reshape each slice.
+    for (int i = 0; i < params->outputs->size(); i++) {
+      nvinfer1::ITensor* output_tensor = nullptr;
+      TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+          params->outputs->at(i), new_dims, /*validation_only=*/false,
+          &output_tensor));
+      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
+    }
+  }
+  return Status::OK();
+}
+
+Status ConvertSplit(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"axis", true}, {"value", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {
+    DataType::DT_FLOAT, DataType::DT_HALF,
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+        DataType::DT_INT32,
+#endif
+  }));
+  int tf_axis = inputs.at(0).weights().GetSpan<int>()[0];
+  TFAttrs attrs(node_def);
+  const int num_split = attrs.get<int64>("num_split");
+
+  return ConvertSplitHelper(params, inputs.at(1), tf_axis, num_split, false);
+}
+
+Status ConvertUnpack(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"value", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {
+    DataType::DT_FLOAT, DataType::DT_HALF,
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+        DataType::DT_INT32,
+#endif
+  }));
+  // Input must be rank 1 or higher, since we can't unpack on axis 0.
+  if (inputs.at(0).GetTrtDims().nbDims == 0) {
+    return errors::Unimplemented(
+        "Input \"value\" for Unpack must be rank 2 or greater, at ",
+        node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const int tf_axis = attrs.get<int64>("axis");
+  const int num = attrs.get<int64>("num");
+
+  return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
+}
+
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3524,21 +3729,9 @@ Status ConvertConcat(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       ConvertAxis(axis[0], dim.nbDims, node_def.name(), &trt_axis));
   // Check that dimensions match on non-concatenate axis.
-  for (int i = 0; i < num_inputs; i++) {
-    auto dim_i = inputs.at(i).GetTrtDims();
-    if (dim_i.nbDims != dim.nbDims) {
-      return errors::InvalidArgument(
-          "ConcatV2 received inputs with inconsistent rank, at ",
-          node_def.name());
-    }
-    for (int j = 0; j < dim.nbDims; j++) {
-      if (j != trt_axis && dim_i.d[j] != dim.d[j]) {
-        return errors::InvalidArgument(
-            "ConcatV2 received inputs with inconsistent shape, at ",
-            node_def.name());
-      }
-    }
-  }
+  TF_RETURN_IF_ERROR(VerifyShapesMatch(
+      absl::Span<const TRT_TensorOrWeights>(inputs).first(num_inputs), trt_axis,
+      node_def.name()));
   if (params->validation_only) return Status::OK();
 
   // Gather inputs as tensors
@@ -4128,6 +4321,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
+  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
   (*registration)["BiasAdd"] = ConvertBiasAdd;
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
@@ -4139,30 +4333,24 @@ static void RegisterValidatableOpConverters(
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
+  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
+  (*registration)["Pack"] = ConvertPack;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
+  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
+  (*registration)["Softmax"] = ConvertSoftmax;
+  (*registration)["Split"] = ConvertSplit;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
-  (*registration)["Transpose"] = ConvertTranspose;
   (*registration)["TopKV2"] = ConvertTopK;
-
-  // TODO(ben,jie): this is a temp hack.
-  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
-  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
-
-  (*registration)["Sum"] = ConvertReduce;
-  (*registration)["Prod"] = ConvertReduce;
-  (*registration)["Max"] = ConvertReduce;
-  (*registration)["Min"] = ConvertReduce;
-  (*registration)["Mean"] = ConvertReduce;
-  (*registration)["Softmax"] = ConvertSoftmax;
-  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
+  (*registration)["Transpose"] = ConvertTranspose;
+  (*registration)["Unpack"] = ConvertUnpack;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
@@ -4184,6 +4372,9 @@ static void RegisterValidatableOpConverters(
   }
   for (auto unary_op_pair : *UnaryOperationMap()) {
     (*registration)[unary_op_pair.first] = ConvertUnary;
+  }
+  for (auto reduce_op_type : {"Sum", "Prod", "Max", "Min", "Mean"}) {
+    (*registration)[reduce_op_type] = ConvertReduce;
   }
 }
 

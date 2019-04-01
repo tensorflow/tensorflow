@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <mutex>  // NOLINT
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -32,13 +34,38 @@ IntroduceFloatingPointJitterPassFlags* jitter_flags;
 std::vector<Flag>* flag_list;
 std::once_flag flags_init;
 
+bool SetterForXlaAutoJitFlag(const string& value) {
+  int32 opt_level;
+  if (absl::SimpleAtoi(value, &opt_level)) {
+    mark_for_compilation_flags->xla_auto_jit_flag
+        .optimization_level_single_gpu = opt_level;
+    mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general =
+        opt_level;
+    return true;
+  }
+
+  absl::string_view value_sv(value);
+  if (!absl::ConsumePrefix(&value_sv, "single-gpu(") ||
+      !absl::ConsumeSuffix(&value_sv, ")") ||
+      !absl::SimpleAtoi(value_sv, &opt_level)) {
+    return false;
+  }
+
+  mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
+      opt_level;
+  return true;
+}
+
 void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   std::vector<Flag> new_flags = {
-      Flag("tf_xla_auto_jit", &mark_for_compilation_flags->tf_xla_auto_jit,
+      Flag("tf_xla_auto_jit", SetterForXlaAutoJitFlag, "0",
            "Control compilation of operators into XLA computations on CPU and "
            "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
            "things very likely to be improved; 2 = on for everything.  "
-           "Experimental."),
+           "If set to single-gpu(<N>) then this resolves to <N> for single-GPU "
+           "graphs (graphs that have at least one node placed on a GPU and no "
+           "more than one GPU is in use through the entire graph) and 0 "
+           "otherwise.  Experimental."),
       Flag("tf_xla_min_cluster_size",
            &mark_for_compilation_flags->tf_xla_min_cluster_size,
            "Minimum number of operators in an XLA compilation. Ignored for "
@@ -71,7 +98,9 @@ void AllocateAndParseFlags() {
   build_ops_flags->tf_xla_print_cluster_outputs = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
-  mark_for_compilation_flags->tf_xla_auto_jit = 0;
+  mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
+      0;
+  mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general = 0;
   mark_for_compilation_flags->tf_xla_min_cluster_size = 4;
   mark_for_compilation_flags->tf_xla_max_cluster_size =
       std::numeric_limits<int32>::max();

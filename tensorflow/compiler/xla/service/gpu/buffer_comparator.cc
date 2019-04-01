@@ -251,6 +251,9 @@ Status HostCompare(se::Stream* stream, se::DeviceMemoryBase lhs,
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
     if (std::is_same<ElementType, Eigen::half>::value && a) {
       constexpr float kMaxFp16Value = 65504.;
+      if (std::isnan(a)) {
+        return a;
+      }
       if (a < 0) {
         return -(kMaxFp16Value + 1);
       }

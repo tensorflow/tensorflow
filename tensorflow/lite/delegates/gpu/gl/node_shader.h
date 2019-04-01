@@ -102,8 +102,6 @@ class NodeShader {
                               GeneratedCode* generated_code) const = 0;
 };
 
-using UniqueNodeShader = std::unique_ptr<NodeShader>;
-
 }  // namespace gl
 }  // namespace gpu
 }  // namespace tflite

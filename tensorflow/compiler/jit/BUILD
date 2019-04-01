@@ -518,6 +518,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":device_info_cache",
         ":encapsulate_util",
         ":flags",
         ":shape_inference_helpers",
@@ -555,7 +556,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -580,6 +580,21 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "device_info_cache",
+    srcs = ["device_info_cache.cc"],
+    hdrs = ["device_info_cache.h"],
+    deps = [
+        ":xla_cluster_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 

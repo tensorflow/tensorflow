@@ -17,25 +17,13 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
-// All EvaluationStage sub-classes must add a value here.
-// A corresponding entry must also be present in EvaluationStage.FromConfig
-enum ProcessClass {
-  // Default/Unknown
-  UNKNOWN = 0;
-  IDENTITY = 1;
-  IMAGE_PREPROCESSING = 2;
-  TOPK_ACCURACY_EVAL = 3;
-}
-
 // Defines the functionality executed by an EvaluationStage.
 //
-// Next ID: 4
+// Next ID: 3
 message ProcessSpecification {
-  optional ProcessClass process_class = 1;
-
   oneof params {
-    ImagePreprocessingParams image_preprocessing_params = 2;
-    TopkAccuracyEvalParams topk_accuracy_eval_params = 3;
+    ImagePreprocessingParams image_preprocessing_params = 1;
+    TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
   }
 }
 

@@ -183,6 +183,7 @@ class FuncGraph(ops.Graph):
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
+    self._watched_variables = weakref.WeakSet()
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
@@ -228,6 +229,12 @@ class FuncGraph(ops.Graph):
 
   def __str__(self):
     return "FuncGraph(name=%s, id=%s)" % (self.name, id(self))
+
+  def watch_variable(self, v):
+    """Marks the variable v as accessed while building this graph."""
+    while self is not None and isinstance(self, FuncGraph):
+      self._watched_variables.add(v)
+      self = self.outer_graph
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -671,7 +678,6 @@ def func_graph_from_py_func(name,
         x = a.mark_as_return(x)
       return x
 
-    this_tape = tape.push_new_tape()
     try:
       if autograph:
         from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
@@ -707,12 +713,11 @@ def func_graph_from_py_func(name,
       check_mutation(func_args_before, func_args)
       check_mutation(func_kwargs_before, func_kwargs)
     finally:
-      tape.pop_tape(this_tape)
       current_scope.set_use_resource(default_use_recource)
 
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
-    tape_variables = this_tape.watched_variables()
+    graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
     arg_variables = set()
     inputs = []
     for arg in nest.flatten(func_args) + nest.flatten(func_kwargs):
@@ -727,7 +732,7 @@ def func_graph_from_py_func(name,
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
-    variables = [v for v in tape_variables if v not in arg_variables]
+    variables = [v for v in graph_variables if v not in arg_variables]
     func_graph.inputs = inputs + list(func_graph.captures.values())
 
     func_graph.structured_outputs = func_outputs

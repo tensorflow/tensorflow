@@ -25,6 +25,16 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_management",
+    srcs = ["memory_management.cc"],
+    hdrs = ["memory_management.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "model",
     hdrs = ["model.h"],
     deps = [
@@ -149,6 +159,15 @@ cc_test(
     srcs = ["util_test.cc"],
     deps = [
         ":util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_management_test",
+    srcs = ["memory_management_test.cc"],
+    deps = [
+        ":memory_management",
         "@com_google_googletest//:gtest_main",
     ],
 )

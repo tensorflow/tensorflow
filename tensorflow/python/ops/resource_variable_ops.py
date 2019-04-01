@@ -852,7 +852,10 @@ class ResourceVariable(variables.VariableV1):
                                               T=self.dtype)
 
   def _read_variable_op(self):
-    if self.trainable:
+    if hasattr(ops.get_default_graph(), "watch_variable"):
+      ops.get_default_graph().watch_variable(self)
+
+    if  self.trainable:
       tape.variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)

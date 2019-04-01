@@ -91,6 +91,10 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     raise ValueError('Expected `model` argument '
                      'to be a functional `Model` instance, '
                      'got a `Sequential` instance instead:', model)
+  if not model._is_graph_network:
+    raise ValueError('Expected `model` argument '
+                     'to be a functional `Model` instance, '
+                     'but got a subclass model instead.')
 
   layer_map = {}  # Cache for created layers.
   tensor_map = {}  # Map {reference_tensor: corresponding_tensor}

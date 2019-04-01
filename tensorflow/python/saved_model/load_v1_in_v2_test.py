@@ -31,6 +31,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder_impl
@@ -38,6 +39,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import simple_save
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 
 
@@ -288,6 +290,48 @@ class LoadTest(test.TestCase):
     self.assertAllClose({"output": 20}, function(constant_op.constant(4)))
     self.assertAllClose({"output": 35}, function(constant_op.constant(5)))
 
+  def _no_signatures_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={},
+            assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
+        b.save()
+    return path
+
+  def test_no_signature(self):
+    path = self._no_signatures_model()
+    imported = load.load(path)
+    self.assertEqual([], list(imported.signatures.keys()))
+
+  def _signature_with_no_inputs(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      array_ops.placeholder(name="x", shape=[], dtype=dtypes.float32)
+      output = random_ops.random_normal([2])
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        b = builder_impl.SavedModelBuilder(path)
+        b.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={
+                "key": signature_def_utils.build_signature_def(
+                    {}, dict(value=utils_impl.build_tensor_info(output)))})
+        b.save()
+    return path
+
+  def test_signature_with_no_inputs(self):
+    path = self._signature_with_no_inputs()
+    imported = load.load(path)
+    self.assertEqual([2], imported.signatures["key"]()["value"].shape)
 
 if __name__ == "__main__":
   test.main()
