@@ -2830,8 +2830,9 @@ T FloorMod(T input1, T input2) {
                                             std::modulus<T>, FloatMod>::type;
   ModFunc mod_func;
   T trunc_mod = mod_func(input1, input2);
-  return trunc_mod != 0 && (input2 < 0 != trunc_mod < 0) ? trunc_mod + input2
-                                                         : trunc_mod;
+  return trunc_mod != 0 && ((input2 < 0) != (trunc_mod < 0))
+             ? trunc_mod + input2
+             : trunc_mod;
 }
 
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
