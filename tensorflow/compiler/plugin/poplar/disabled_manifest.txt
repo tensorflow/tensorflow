@@ -60,3 +60,4 @@ WhileTest.testNestedWhileLoopWithMaxItersFromOuterContext # badly constructed te
 BinaryOpsTest.testNextAfter # Unsigned int
 SelfAdjointEigOpTest # seg fault
 SvdOpTest # Seg fault
+CondTest.testCondConstPropagation # Switch node in cluster
