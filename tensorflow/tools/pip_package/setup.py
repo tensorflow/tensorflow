@@ -45,6 +45,8 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
+# Also update tensorflow/tensorflow.bzl and
+# tensorflow/core/public/version.h
 _VERSION = '1.13.1'
 
 REQUIRED_PACKAGES = [

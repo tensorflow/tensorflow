@@ -577,7 +577,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       saver = trackable_utils.frozen_saver(checkpoint)
       with ops.device("cpu:0"):
         prefix_tensor = constant_op.constant(prefix)
-      save_path = self.evaluate(saver.save(prefix_tensor))
+      self.evaluate(saver.save(prefix_tensor))
       self.evaluate(v.assign(10))
       # Use the frozen saver to restore the same object graph
       self.evaluate(saver.restore(prefix_tensor))
@@ -594,7 +594,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       # Restore as an object-based checkpoint
       del v, checkpoint, saver
       checkpoint = trackable_utils.Checkpoint()
-      status = checkpoint.restore(save_path)
+      status = checkpoint.restore(prefix)
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
       if context.executing_eagerly():
         self.assertEqual(12, self.evaluate(checkpoint.save_counter))
@@ -1055,12 +1055,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     expected_filenames = ["checkpoint"]
     for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
-      expected_filenames.append(
-          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
-    six.assertCountEqual(
-        self,
-        expected_filenames,
-        os.listdir(checkpoint_directory))
+    self.assertEmpty(
+        set(expected_filenames)
+        - set(os.listdir(checkpoint_directory)))
 
   @test_util.run_in_graph_and_eager_modes
   def testCheckpointStateChangingVarList(self):
@@ -1082,12 +1079,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # be consistent. Nothing gets deleted.
     for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
-      expected_filenames.append(
-          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
-    six.assertCountEqual(
-        self,
-        expected_filenames,
-        os.listdir(checkpoint_directory))
+    self.assertEmpty(
+        set(expected_filenames)
+        - set(os.listdir(checkpoint_directory)))
     self.assertEqual(
         checkpoint_prefix + "-10",
         checkpoint_management.latest_checkpoint(checkpoint_directory))

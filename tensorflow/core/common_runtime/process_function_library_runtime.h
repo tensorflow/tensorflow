@@ -185,23 +185,23 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            const FunctionLibraryDefinition& overlay_lib,
+                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
+          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
-          overlay_lib_(overlay_lib),
           ret_types_(std::move(ret_types)) {}
 
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
+    // A library that contains definitions of component functions and their
+    // transitive dependencies.
+    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
-    // The overlay library holding component function definitions as well as
-    // the definitions of functions they call.
-    FunctionLibraryDefinition overlay_lib_;
     DataTypeVector ret_types_;
 
     // Maps the device name to the information about the component function
@@ -249,7 +249,9 @@ class ProcessFunctionLibraryRuntime {
   // access these resources to the appropriate devices.
   Status PinArgsAndRets(const std::vector<string>& input_devices,
                         const std::vector<string>& output_devices,
-                        const DeviceSet& device_set, Graph* graph) const;
+                        const DeviceSet& device_set,
+                        const std::vector<Node*>& arg_nodes,
+                        const std::vector<Node*>& ret_nodes) const;
 
   void RunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                       FunctionLibraryRuntime::Handle handle,

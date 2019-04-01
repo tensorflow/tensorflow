@@ -59,7 +59,7 @@ def _format_origin_stack(origin_stack, call_traceback_proto):
     call_traceback_proto: A `CallTraceback` proto whose fields are to be
       populated.
   """
-  string_to_id = dict()
+  string_to_id = {}
   string_to_id[None] = 0
   for frame in origin_stack:
     file_path, lineno, func_name, line_text = frame

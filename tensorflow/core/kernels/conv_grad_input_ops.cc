@@ -969,19 +969,15 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                   conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
-      if (cudnn_launch_status) {
-        if (profile_result.is_valid()) {
-          results.emplace_back();
-          auto& result = results.back();
-          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-          result.mutable_conv()->set_tensor_ops_enabled(
-              profile_algorithm.tensor_ops_enabled());
-          result.mutable_success()->set_scratch_bytes(
-              scratch_allocator.TotalByteSize());
-          *result.mutable_success()->mutable_run_time() =
-              proto_utils::ToDurationProto(
-                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-        }
+      if (cudnn_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
     LogConvAutotuneResults(ctx->op_kernel().def(), pre_transformed_in_backprop,

@@ -2808,6 +2808,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         }
       }
     }
+
+    if (inferred_shape.IsTuple()) {
+      return InvalidArgument(
+          "Select operation is not supported for tuples: %s."
+          " Use tuple-select instead.",
+          ShapeUtil::HumanString(inferred_shape));
+    }
     return inferred_shape;
   }
   return InvalidArgument(

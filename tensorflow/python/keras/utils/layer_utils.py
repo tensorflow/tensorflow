@@ -75,7 +75,7 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(sum(np.prod(p.get_shape().as_list()) for p in set(weights)))
+  return int(sum(np.prod(p.shape.as_list()) for p in set(weights)))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):

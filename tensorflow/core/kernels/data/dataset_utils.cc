@@ -30,9 +30,7 @@ Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
   GraphDefBuilder b;
   DatasetBase::DatasetGraphDefBuilder db(&b);
   Node* input_node = nullptr;
-  SerializationContext::Params params;
-  params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
-  SerializationContext serialization_ctx(params);
+  SerializationContext serialization_ctx({});
   TF_RETURN_IF_ERROR(
       db.AddInputDataset(&serialization_ctx, dataset, &input_node));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));

@@ -177,6 +177,9 @@ cc_library(
         "optimized/depthwiseconv_uint8_3x3_filter.h",
         "optimized/im2col_utils.h",
         "optimized/integer_ops/conv.h",
+        "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/pooling.h",
+        "optimized/integer_ops/softmax.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
@@ -314,6 +317,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
@@ -359,6 +363,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
@@ -650,7 +655,7 @@ cc_test(
     srcs = [
         "softmax_quantized_test.cc",
     ],
-    shard_count = 3,
+    shard_count = 4,
     deps = [
         ":optimized_base",
         ":quantization_util",
@@ -673,6 +678,40 @@ cc_test(
         "nomac",
         "tflite_not_portable",
     ],
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "//tensorflow/lite:string",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "averagepool_quantized_test",
+    timeout = "long",
+    srcs = [
+        "averagepool_quantized_test.cc",
+    ],
+    shard_count = 1,
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "//tensorflow/lite:string",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "maxpool_quantized_test",
+    timeout = "long",
+    srcs = [
+        "maxpool_quantized_test.cc",
+    ],
+    shard_count = 1,
     deps = [
         ":optimized_base",
         ":quantization_util",

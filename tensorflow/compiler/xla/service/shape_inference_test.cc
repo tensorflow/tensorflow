@@ -112,8 +112,9 @@ TEST_F(ShapeInferenceTest, SelectScalarPredBetweenTuples) {
   Shape tuple = ShapeUtil::MakeTupleShape({s32_, f32_});
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kSelect, pred_, tuple, tuple);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(tuple, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Use tuple-select"));
 }
 
 TEST_F(ShapeInferenceTest, SelectScalarPredBetweenArrays) {

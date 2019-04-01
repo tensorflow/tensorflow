@@ -108,9 +108,15 @@ class SymbolicGradientOp : public AsyncOpKernel {
 };
 
 REGISTER_XLA_OP(Name(kGradientOp), SymbolicGradientOp);
-REGISTER_XLA_OP(Name("PartitionedCall").AllowResourceTypes(),
+REGISTER_XLA_OP(Name("PartitionedCall")
+                    .AllowResourceTypes()
+                    .AllowVariantTypes()
+                    .AllowStringType(),
                 PartitionedCallOp);
-REGISTER_XLA_OP(Name("StatefulPartitionedCall").AllowResourceTypes(),
+REGISTER_XLA_OP(Name("StatefulPartitionedCall")
+                    .AllowResourceTypes()
+                    .AllowVariantTypes()
+                    .AllowStringType(),
                 PartitionedCallOp);
 
 }  // namespace

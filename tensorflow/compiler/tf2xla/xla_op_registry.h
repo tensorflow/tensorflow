@@ -216,6 +216,10 @@ class XlaOpRegistry {
     // allow TensorList which is of type DT_VARIANT.
     bool allow_variant_types = false;
 
+    // Should we allow string type for type attributes? Used by PartitionedCall
+    // to allow DT_STRING.
+    bool allow_string_type = false;
+
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
@@ -299,6 +303,9 @@ class XlaOpRegistrationBuilder {
 
   // Allow DT_VARIANT types for type parameters.
   XlaOpRegistrationBuilder& AllowVariantTypes();
+
+  // Allow DT_STRING type for type parameters.
+  XlaOpRegistrationBuilder& AllowStringType();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
   XlaOpRegistrationBuilder& CompileTimeConstantInput(

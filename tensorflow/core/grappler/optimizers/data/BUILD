@@ -257,6 +257,7 @@ cc_library(
         ":graph_utils",
         ":optimizer_base",
         "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/kernels/data:stats_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",

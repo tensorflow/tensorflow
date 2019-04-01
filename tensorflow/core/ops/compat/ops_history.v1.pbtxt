@@ -9395,6 +9395,51 @@ op {
   }
 }
 op {
+  name: "BatchMatMulV2"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "adj_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "BatchMatrixBandPart"
   input_arg {
     name: "input"
@@ -22506,6 +22551,21 @@ op {
     default_value {
       s: ""
     }
+  }
+}
+op {
+  name: "EncodeJpegVariableQuality"
+  input_arg {
+    name: "images"
+    type: DT_UINT8
+  }
+  input_arg {
+    name: "quality"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "contents"
+    type: DT_STRING
   }
 }
 op {
@@ -48387,6 +48447,113 @@ op {
     type: "list(int)"
     default_value {
       list {
+      }
+    }
+  }
+}
+op {
+  name: "QuantizedConv2DPerChannel"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "Tfilter"
+  }
+  input_arg {
+    name: "min_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_filter"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_filter"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_output"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "Tfilter"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
       }
     }
   }
@@ -80685,7 +80852,108 @@ op {
   is_stateful: true
 }
 op {
+  name: "StatefulStandardNormal"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "shape_dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    name: "shape_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+  }
+  deprecation {
+    version: 29
+  }
+  is_stateful: true
+}
+op {
   name: "StatefulStandardNormalV2"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "algorithm"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "shape_dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    name: "shape_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatefulTruncatedNormal"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "algorithm"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "shape_dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    name: "shape_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatefulUniform"
   input_arg {
     name: "resource"
     type: DT_RESOURCE
@@ -81475,6 +81743,40 @@ op {
       b: true
     }
   }
+}
+op {
+  name: "StatsAggregatorHandleV2"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatsAggregatorSetSummaryWriter"
+  input_arg {
+    name: "stats_aggregator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "summary"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
 }
 op {
   name: "StopGradient"

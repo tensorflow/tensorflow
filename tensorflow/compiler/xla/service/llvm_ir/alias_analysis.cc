@@ -63,7 +63,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
   }
 
   if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
-    llvm::MDNode*& noalias_md = noalias_metadata_[buffer_slice];
+    llvm::MDNode*& noalias_md = noalias_metadata_[{buffer_slice, &hlo}];
     if (noalias_md == nullptr) {
       noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
                                                assignment_, hlo);

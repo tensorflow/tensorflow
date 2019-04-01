@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -442,23 +442,23 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     effective_kernel_type = kernel_type;
   }
 
+  ConvParams op_params;
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = data->padding.width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = filter_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
   switch (effective_kernel_type) {
     case kReference: {
-      ConvParams op_params;
-      op_params.padding_type = PaddingType::kSame;
-      op_params.padding_values.width = data->padding.width;
-      op_params.padding_values.height = data->padding.height;
-      op_params.stride_width = params->stride_width;
-      op_params.stride_height = params->stride_height;
-      op_params.dilation_width_factor = params->dilation_width_factor;
-      op_params.dilation_height_factor = params->dilation_height_factor;
-      op_params.input_offset = input_offset;
-      op_params.weights_offset = filter_offset;
-      op_params.output_offset = output_offset;
-      op_params.output_multiplier = data->output_multiplier;
-      op_params.output_shift = -data->output_shift;
-      op_params.quantized_activation_min = data->output_activation_min;
-      op_params.quantized_activation_max = data->output_activation_max;
       reference_ops::Conv(
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(filter), GetTensorData<uint8_t>(filter),
@@ -471,21 +471,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     case kMultithreadOptimized:
     case kCblasOptimized: {
       // There is only one optimized implementation for Quantized Conv.
-      ConvParams op_params;
-      op_params.padding_type = PaddingType::kSame;
-      op_params.padding_values.width = data->padding.width;
-      op_params.padding_values.height = data->padding.height;
-      op_params.stride_width = params->stride_width;
-      op_params.stride_height = params->stride_height;
-      op_params.dilation_width_factor = params->dilation_width_factor;
-      op_params.dilation_height_factor = params->dilation_height_factor;
-      op_params.input_offset = input_offset;
-      op_params.weights_offset = filter_offset;
-      op_params.output_offset = output_offset;
-      op_params.output_multiplier = data->output_multiplier;
-      op_params.output_shift = -data->output_shift;
-      op_params.quantized_activation_min = data->output_activation_min;
-      op_params.quantized_activation_max = data->output_activation_max;
       optimized_ops::Conv(
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(filter), GetTensorData<uint8_t>(filter),
@@ -512,18 +497,18 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   effective_kernel_type = kReference;
 #endif
 
+  ConvParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+
   switch (effective_kernel_type) {
     case kReference: {
-      ConvParams op_params;
-      op_params.input_offset = -input->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.stride_height = params->stride_height;
-      op_params.stride_width = params->stride_width;
-      op_params.dilation_height_factor = params->dilation_height_factor;
-      op_params.dilation_width_factor = params->dilation_width_factor;
-      op_params.padding_values.height = data->padding.height;
-      op_params.padding_values.width = data->padding.width;
-
       reference_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
           data->per_channel_output_shift.data(), GetTensorShape(input),
@@ -539,16 +524,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 #ifdef GEMMLOWP_NEON
       gemmlowp::GemmContext* gemm_context =
           gemm_support::GetFromContext(context);
-      ConvParams op_params;
-      op_params.input_offset = -input->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.stride_height = params->stride_height;
-      op_params.stride_width = params->stride_width;
-      op_params.dilation_height_factor = params->dilation_height_factor;
-      op_params.dilation_width_factor = params->dilation_width_factor;
-      op_params.padding_values.height = data->padding.height;
-      op_params.padding_values.width = data->padding.width;
-
       optimized_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
           data->per_channel_output_shift.data(), GetTensorShape(input),

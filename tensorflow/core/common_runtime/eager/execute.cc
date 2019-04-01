@@ -272,6 +272,12 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
           tensorflow::FingerprintCat64(a.high64, b.high64)};
 }
 
+inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
+                                               const int64 b) {
+  auto x = tensorflow::FingerprintCat64(a.low64, b);
+  return {x, tensorflow::FingerprintCat64(a.high64, x)};
+}
+
 Status FindDeviceFromName(const EagerContext* ctx, const char* device_name,
                           Device** device) {
   *device = ctx->HostCPU();
@@ -345,6 +351,94 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
       input_dev_ptrs->push_back(device == nullptr ? cpu_device : device);
     }
     *cache_key = FingerprintCat128(*cache_key, Fingerprint128(device_name));
+  }
+  return Status::OK();
+}
+
+// Appends a TensorShape object to Fprint128 hash.
+// For best performance, we would like to avoid dynamic memory allocation in
+// this function.
+// If "shape" has unknown rank, we attach "?" to hashed content; otherwise we
+// attach every dim size to hashed content.
+void AppendTensorShapeToFingerprint(const TensorShape& shape,
+                                    Fprint128* fingerprint) {
+  if (shape.unknown_rank()) {
+    char c = '?';
+    *fingerprint = FingerprintCat128(*fingerprint, c);
+  } else {
+    for (int i = 0; i < shape.dims(); i++) {
+      int64 dim = shape.dim_size(i);
+      *fingerprint = FingerprintCat128(*fingerprint, dim);
+    }
+  }
+}
+
+Status AddInputTensorShapesToCacheKey(
+    const EagerContext* ctx, const EagerOperation* op,
+    std::unordered_map<int, TensorShape>* input_tensor_shapes,
+    Fprint128* cache_key) {
+  for (int i = 0; i < op->Inputs().size(); i++) {
+    TensorHandle* tensor_handle = op->Inputs()[i];
+
+    // Remote tensor is not supported yet.
+    if (tensor_handle->IsRemote()) {
+      return errors::Unimplemented("Remote tensor is not supported yet.");
+    }
+
+    // Skip resource input.
+    if (tensor_handle->dtype == DT_RESOURCE) {
+      continue;
+    }
+
+    TensorShape shape;
+    Status s = tensor_handle->Shape(&shape);
+    if (!s.ok()) {
+      return errors::Internal("Can not get shape from input TensorHandle: ",
+                              s.error_message());
+    }
+
+    // Save tensor shape to "input_tensor_shapes".
+    (*input_tensor_shapes)[i] = shape;
+
+    // Add both _Arg index and shape to "cache_key".
+    *cache_key = FingerprintCat128(*cache_key, i);
+    AppendTensorShapeToFingerprint(shape, cache_key);
+  }
+  return Status::OK();
+}
+
+Status AddInputResourceDtypesAndShapesToCacheKey(
+    const EagerContext* ctx, const EagerOperation* op,
+    std::unordered_map<int, std::pair<DataType, TensorShape>>*
+        input_resource_dtypes_shapes,
+    Fprint128* cache_key) {
+  for (int i = 0; i < op->Inputs().size(); i++) {
+    TensorHandle* tensor_handle = op->Inputs()[i];
+
+    // Remote tensor is not supported yet.
+    if (tensor_handle->IsRemote()) {
+      return errors::Unimplemented("Remote tensor is not supported yet.");
+    }
+
+    // Skip non-resource input.
+    if (tensor_handle->dtype != DT_RESOURCE) {
+      continue;
+    }
+
+    std::pair<DataType, TensorShape> resource_dtype_and_shape;
+    if (!tensor_handle
+             ->GetResourceVariableDtypeAndShape(&resource_dtype_and_shape)
+             .ok()) {
+      continue;
+    }
+
+    (*input_resource_dtypes_shapes)[i] = resource_dtype_and_shape;
+
+    // Add _Arg index, dtype and shape to "cache_key".
+    *cache_key = FingerprintCat128(*cache_key, i);
+    DataType dtype = resource_dtype_and_shape.first;
+    *cache_key = FingerprintCat128(*cache_key, dtype);
+    AppendTensorShapeToFingerprint(resource_dtype_and_shape.second, cache_key);
   }
   return Status::OK();
 }
@@ -426,9 +520,19 @@ Status EagerLocalExecute(EagerOperation* op,
       ctx->FindFunctionDef(op->Name()), maybe_unspecified_device_name);
 
   std::vector<Device*> input_dev_ptrs;
+  // `input_tensor_shapes` contains (potentially a subset of) non DT_RESOURCE
+  // arguments, and `input_resource_variable_dtypes_and_shapes` contains shapes
+  // and underlying types for (potentially a subset) of DT_RESOURCE arguments.
+  std::unordered_map<int, TensorShape> input_tensor_shapes;
+  std::unordered_map<int, std::pair<DataType, TensorShape>>
+      input_resource_variable_dtypes_and_shapes;
   if (is_multi_device_function) {
     TF_RETURN_IF_ERROR(
         AddInputDevicesToCacheKey(ctx, op, &input_dev_ptrs, &cache_key));
+    TF_RETURN_IF_ERROR(AddInputTensorShapesToCacheKey(
+        ctx, op, &input_tensor_shapes, &cache_key));
+    TF_RETURN_IF_ERROR(AddInputResourceDtypesAndShapesToCacheKey(
+        ctx, op, &input_resource_variable_dtypes_and_shapes, &cache_key));
   }
 
   KernelAndDevice* kernel = ctx->GetCachedKernel(cache_key);
@@ -488,7 +592,9 @@ Status EagerLocalExecute(EagerOperation* op,
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
       kernel = new KernelAndDeviceFunc(
-          flr, ctx->pflr(), std::move(input_dev_ptrs), runner,
+          flr, ctx->pflr(), std::move(input_dev_ptrs),
+          std::move(input_tensor_shapes),
+          std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
@@ -982,9 +1088,13 @@ Status EagerKernelExecute(EagerContext* ctx,
     TF_RETURN_IF_ERROR(op_inputs[i]->TensorValue(&input_vector[i]));
   }
 
-  //  TODO(apassos) figure out how to record stats for ops which are a part of
-  //  functions.
+  // TODO(apassos) figure out how to record stats for ops which are a part of
+  // functions.
   // TODO(agarwal): change Run to take vector of handles ?
+  // TODO(b/111859745): When we support recovering from kernel/device errors, we
+  // would need to call XlaDevice::EnsureDeviceContextOk() before using an XLA
+  // device. We don't call it now because it is an unneeded overhead (it
+  // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
     TF_RETURN_IF_ERROR(kernel->Run(input_vector, &outputs, maybe_stats,

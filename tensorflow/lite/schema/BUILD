@@ -31,8 +31,6 @@ py_library(
     ],
 )
 
-# TODO(wvo): re-enable this test once latest FlatBuffers has landed.
-
 py_test(
     name = "upgrade_schema_test",
     size = "small",

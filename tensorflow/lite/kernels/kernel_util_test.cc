@@ -287,9 +287,12 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   int32_t two_pow_neg_31 = 0x30000000;  // 2^-31 so shift = -30.
   int32_t two_pow_neg_32 = 0x2F800000;  // 2^-32 so shift = -31.
   int32_t two_pow_neg_33 = 0x2F000000;  // 2^-33 so shift = -32.
-  filter_params->scale->data[0] = *reinterpret_cast<float*>(&two_pow_neg_31);
-  filter_params->scale->data[1] = *reinterpret_cast<float*>(&two_pow_neg_32);
-  filter_params->scale->data[2] = *reinterpret_cast<float*>(&two_pow_neg_33);
+  float* scale_date = reinterpret_cast<float*>(&two_pow_neg_31);
+  filter_params->scale->data[0] = *scale_date;
+  scale_date = reinterpret_cast<float*>(&two_pow_neg_32);
+  filter_params->scale->data[1] = *scale_date;
+  scale_date = reinterpret_cast<float*>(&two_pow_neg_33);
+  filter_params->scale->data[2] = *scale_date;
   filter_params->zero_point = TfLiteIntArrayCreate(3);
   filter_params->zero_point->data[0] = 0;
   filter_params->zero_point->data[1] = 0;

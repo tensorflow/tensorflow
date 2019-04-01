@@ -397,7 +397,6 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":types",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -852,6 +851,14 @@ cc_library(
             "//tensorflow/core:framework_internal",
             "@com_google_absl//absl/strings",
         ],
+)
+
+cc_library(
+    name = "cpu_function_runtime",
+    srcs = ["cpu_function_runtime.cc"],
+    hdrs = ["cpu_function_runtime.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core:framework_lite"],
 )
 
 tf_cc_test(

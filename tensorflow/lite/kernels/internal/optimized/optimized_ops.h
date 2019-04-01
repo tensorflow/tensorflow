@@ -47,6 +47,7 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
+using reference_ops::AffineQuantize;
 using reference_ops::ArgMax;
 using reference_ops::ArgMinMax;
 using reference_ops::Broadcast4DSlowGreater;
@@ -1119,8 +1120,8 @@ inline void FullyConnectedAsGEMV(
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
   std::vector<gemmlowp::Task*> tasks(thread_count);
-  const int kRowsPerWorker =
-      gemmlowp::RoundUp<kKernelRows>(output_rows / thread_count);
+  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
+      gemmlowp::CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
@@ -1738,8 +1739,8 @@ inline void ShuffledFullyConnected(
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
   std::vector<gemmlowp::Task*> tasks(thread_count);
-  const int kRowsPerWorker =
-      gemmlowp::RoundUp<kKernelRows>(output_depth / thread_count);
+  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
+      gemmlowp::CeilQuotient(output_depth, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);

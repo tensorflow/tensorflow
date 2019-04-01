@@ -714,8 +714,25 @@ cc_library(
 #   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #   #include "third_party/tensorflow/core/kernels/eigen_contraction_kernel.h"
 #   #endif
+#
+# We define a two-level target because if we just add
+#   ":no_mkldnn_contraction_kernel": []
+# in the same select list with //third_party/tensorflow:{android,arm,ios,ppc},
+# there can be more than one match, e.g., when building for android and MKL-DNN
+# contraction kernel is disabled. Bazel doesn't allow multiple matches.
+# See more details in
+#   https://github.com/tensorflow/tensorflow/issues/24414
 cc_library(
     name = "eigen_contraction_kernel",
+    hdrs = ["eigen_contraction_kernel.h"],
+    deps = select({
+        ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
+        "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
+    }),
+)
+
+cc_library(
+    name = "eigen_contraction_kernel_with_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
@@ -723,7 +740,6 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
-        ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
@@ -736,9 +752,15 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
-        ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
+)
+
+cc_library(
+    name = "eigen_contraction_kernel_no_mkl",
+    srcs = ["eigen_contraction_kernel.cc"],
+    hdrs = ["eigen_contraction_kernel.h"],
+    deps = ["//third_party/eigen3"],
 )
 
 cc_library(
@@ -765,6 +787,25 @@ cc_library(
     ],
     deps = [
         ":eigen_contraction_kernel",
+        ":eigen_spatial_convolutions-inl",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "eigen_helpers_no_mkl",
+    hdrs = [
+        "eigen_activations.h",
+        "eigen_attention.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_backward_spatial_convolutions.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_pooling.h",
+        "eigen_softmax.h",
+        "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
+    ],
+    deps = [
         ":eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
@@ -2190,16 +2231,6 @@ tf_kernel_library(
 )
 
 cc_library(
-    name = "string_view_variant_wrapper",
-    hdrs = ["string_view_variant_wrapper.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "checkpoint_ops",
     deps = [
         ":generate_vocab_remapping_op",
@@ -3582,12 +3613,26 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "batch_matmul_op_common_test",
+    size = "small",
+    srcs = ["batch_matmul_op_common_test.cc"],
+    deps = [
+        ":batch_matmul_op",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "batch_matmul_op_test",
     size = "small",
     srcs = ["batch_matmul_op_test.cc"],
     deps = [
         ":batch_matmul_op",
+        ":broadcast_to_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -5428,6 +5473,8 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
+        "batch_matmul_op_common.cc",
+        "batch_matmul_op_common.h",
         "batch_util.h",
         "cwise_ops.h",
         "cwise_ops_common.h",
@@ -5620,6 +5667,8 @@ filegroup(
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
+        "matrix_diag_op.h",
+        "matrix_set_diag_op.h",
         "maxpooling_op.h",
         "mfcc.h",
         "mfcc_dct.h",
@@ -5778,6 +5827,8 @@ filegroup(
         "lookup_table_op.cc",
         "lookup_util.cc",
         "lrn_op.cc",
+        "matrix_diag_op.cc",
+        "matrix_set_diag_op.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
         "mfcc_dct.cc",
@@ -5918,6 +5969,7 @@ filegroup(
             "*_3d*",
             "*.cu.*",
             # Ops already in android_srcs
+            "batch_matmul_op_common.cc",
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
@@ -5965,7 +6017,12 @@ filegroup(
             "cwise_ops_sycl_common.h",
             "nextafter_op.cc",
         ] + ANDROID_TEXTUAL_HDRS,
-    ),
+    ) + [
+        # Referenced by stateful_random_ops.cc but excluded with the *gpu*
+        # rule above. Seems to have only have worked before because of
+        # hdrs_check loose.
+        "stateful_random_ops_cpu_gpu.h",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -6382,10 +6439,9 @@ tf_cc_test(
 )
 
 tf_cc_test_mkl(
-    name = "mkl_quantized_conv_ops_test",
+    name = "mkl_quantized_conv_ops_perchannel_test",
     size = "small",
-    srcs = ["mkl_quantized_conv_ops_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
+    srcs = ["mkl_quantized_conv_ops_perchannel_test.cc"],
     deps = [
         ":mkl_conv_op",
         ":mkl_input_conversion_op",
@@ -6513,6 +6569,43 @@ tf_cc_test(
         ":ops_util",
         ":quantization_utils",
         ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_quantize_op",
+    srcs = ["mkl_quantize_op.cc"],
+    hdrs = [
+        "meta_support.h",
+        "reference_gemm.h",
+    ],
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@gemmlowp",
+    ] + mkl_deps(),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_quantize_op_test",
+    size = "small",
+    srcs = ["mkl_quantize_op_test.cc"],
+    deps = [
+        ":mkl_quantize_op",
+        ":ops_testutil",
+        ":ops_util",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:math_ops_op_lib",
@@ -6928,6 +7021,55 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + mkl_deps(),
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_dequantize_op",
+    srcs = ["mkl_dequantize_op.cc"],
+    hdrs = [
+        "meta_support.h",
+        "reference_gemm.h",
+    ],
+    deps = [
+        ":concat_lib_hdrs",
+        ":conv_ops",
+        ":cwise_op",
+        ":eigen_helpers",
+        ":image_resizer_state",
+        ":ops_util",
+        ":pooling_ops",
+        ":quantization_utils",
+        ":quantized_ops",
+        ":transpose_functor",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+        "@gemmlowp",
+    ] + mkl_deps(),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_dequantize_op_test",
+    size = "small",
+    srcs = ["mkl_dequantize_op_test.cc"],
+    deps = [
+        ":mkl_dequantize_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_array_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_mkl_kernel_library(

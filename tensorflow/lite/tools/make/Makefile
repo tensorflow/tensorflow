@@ -131,6 +131,9 @@ endif
 ifeq ($(TARGET),ios)
 	BUILD_WITH_NNAPI=false
 endif
+ifeq ($(TARGET),rpi)
+	BUILD_WITH_NNAPI=false
+endif
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate_disabled.cc
 else

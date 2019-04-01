@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 #include "tensorflow/compiler/jit/increase_dynamism_for_auto_jit_pass.h"
+#include "tensorflow/compiler/jit/introduce_floating_point_jitter_pass.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -30,6 +31,9 @@ namespace tensorflow {
 // xla.compile() Python code into XlaLaunch nodes.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 26,
                       EncapsulateXlaComputationsPass);
+
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
+                      IntroduceFloatingPointJitterPass);
 
 // from
 // third_party/tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc

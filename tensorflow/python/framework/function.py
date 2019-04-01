@@ -262,7 +262,7 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
-    self._sub_functions = dict()  # Constructed with _definition or _c_func
+    self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access

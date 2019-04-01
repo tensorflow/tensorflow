@@ -443,6 +443,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tensor": "data",
             "family": None,
         },
+        "tf.nn.weighted_cross_entropy_with_logits": {
+            "targets": "labels",
+        },
     }
 
     # pylint: disable=line-too-long
@@ -883,6 +886,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.conv2d_transpose",
         "tf.test.compute_gradient":
             "tf.compat.v1.test.compute_gradient",
+        "tf.xla.experimental.compile":
+            "tf.xla.experimental.compile",
+        "tf.xla.experimental.jit_scope":
+            "tf.xla.experimental.jit_scope",
     }
     # pylint: enable=line-too-long
 

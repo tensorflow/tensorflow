@@ -61,13 +61,13 @@ class BFCAllocator : public Allocator {
 
   void DeallocateRaw(void* ptr) override;
 
-  bool TracksAllocationSizes() override;
+  bool TracksAllocationSizes() const override;
 
-  size_t RequestedSize(const void* ptr) override;
+  size_t RequestedSize(const void* ptr) const override;
 
-  size_t AllocatedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) const override;
 
-  int64 AllocationId(const void* ptr) override;
+  int64 AllocationId(const void* ptr) const override;
 
   absl::optional<AllocatorStats> GetStats() override;
 
@@ -169,7 +169,8 @@ class BFCAllocator : public Allocator {
     // All chunks in this bin have >= bin_size memory.
     size_t bin_size = 0;
 
-    struct ChunkComparator {
+    class ChunkComparator {
+     public:
       explicit ChunkComparator(BFCAllocator* allocator)
           : allocator_(allocator) {}
       // Sort first by size and then use pointer address as a tie breaker.
@@ -223,9 +224,9 @@ class BFCAllocator : public Allocator {
     }
 
     AllocationRegion() = default;
-    AllocationRegion(AllocationRegion&& other) { Swap(other); }
+    AllocationRegion(AllocationRegion&& other) { Swap(&other); }
     AllocationRegion& operator=(AllocationRegion&& other) {
-      Swap(other);
+      Swap(&other);
       return *this;
     }
 
@@ -239,11 +240,11 @@ class BFCAllocator : public Allocator {
     void erase(const void* p) { set_handle(p, kInvalidChunkHandle); }
 
    private:
-    void Swap(AllocationRegion& other) {
-      std::swap(ptr_, other.ptr_);
-      std::swap(memory_size_, other.memory_size_);
-      std::swap(end_ptr_, other.end_ptr_);
-      std::swap(handles_, other.handles_);
+    void Swap(AllocationRegion* other) {
+      std::swap(ptr_, other->ptr_);
+      std::swap(memory_size_, other->memory_size_);
+      std::swap(end_ptr_, other->end_ptr_);
+      std::swap(handles_, other->handles_);
     }
 
     int IndexFor(const void* p) const {
@@ -368,6 +369,8 @@ class BFCAllocator : public Allocator {
   void DeallocateChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   Chunk* ChunkFromHandle(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  const Chunk* ChunkFromHandle(ChunkHandle h) const
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Information about a Bin that is useful for debugging.
   struct BinDebugInfo {

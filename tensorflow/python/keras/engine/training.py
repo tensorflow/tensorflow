@@ -34,10 +34,10 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import training_distributed
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
-from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils

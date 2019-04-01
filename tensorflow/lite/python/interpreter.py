@@ -38,7 +38,7 @@ try:
   del LazyLoader
 except ImportError:
   # When full Tensorflow Python PIP is not available do not use lazy load
-  # and instead uf the tflite_runtime path.
+  # and instead of the tflite_runtime path.
   from tflite_runtime.lite.python import interpreter_wrapper as _interpreter_wrapper
 
   def tf_export_dummy(*x, **kwargs):
@@ -49,8 +49,18 @@ except ImportError:
 
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
-  """Interpreter inferace for TF-Lite Models."""
+  """Interpreter interface for TensorFlow Lite Models.
 
+  This makes the TensorFlow Lite interpreter accessible in Python.
+  It is possible to use this interpreter in a multithreaded Python environment,
+  but you must be sure to call functions of a particular instance from only
+  one thread at a time. So if you want to have 4 threads running different
+  inferences simultaneously, create  an interpreter for each one as thread-local
+  data. Similarly, if you are calling invoke() in one thread on a single
+  interpreter but you want to use tensor() on another thread once it is done,
+  you must use a synchronization primitive between the threads to ensure invoke
+  has returned before calling tensor().
+  """
   def __init__(self, model_path=None, model_content=None):
     """Constructor.
 
@@ -282,7 +292,10 @@ class Interpreter(object):
     """Invoke the interpreter.
 
     Be sure to set the input sizes, allocate tensors and fill values before
-    calling this.
+    calling this. Also, note that this function releases the GIL so heavy
+    computation can be done in the background while the Python interpreter
+    continues. No other function on this object should be called while the
+    invoke() call has not finished.
 
     Raises:
       ValueError: When the underlying interpreter fails raise ValueError.

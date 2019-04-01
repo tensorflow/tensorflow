@@ -145,12 +145,10 @@ class WorkerHeartbeatManager(object):
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
         watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
-        shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR)
+        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT)
     self.configure(req)
 
-    # Wait for workers to shutdown. If we continue immediately, we can create a
-    # new heartbeat manager before the workers shutdown: this keeps the workers
-    # alive and can introduce confusing behavior.
+    # Wait for workers to shutdown.
     sleep_sec = 10.0 + timeout_ms / 1000
     logging.info('Waiting %.2f seconds for worker shutdown.', sleep_sec)
     time.sleep(sleep_sec)

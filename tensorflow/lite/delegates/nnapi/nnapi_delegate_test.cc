@@ -725,13 +725,12 @@ TEST(FullyConnectedOpTest, QuantizedOutputMultiplierGreaterThan1) {
 
 class SoftmaxOpModel : public SingleOpModelWithNNAPI {
  public:
-  SoftmaxOpModel(int batches, int size, float beta)
-      : batches_(batches), input_size_(size), beta_(beta) {
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
+  SoftmaxOpModel(const TensorData& input, float beta) {
+    input_ = AddInput(input);
+    output_ = AddOutput(input);
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
-                 CreateSoftmaxOptions(builder_, beta_).Union());
-    BuildInterpreter({{batches_, input_size_}});
+                 CreateSoftmaxOptions(builder_, beta).Union());
+    BuildInterpreter({GetShape(input_)});
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -747,17 +746,13 @@ class SoftmaxOpModel : public SingleOpModelWithNNAPI {
  private:
   int input_;
   int output_;
-
-  int batches_;
-  int input_size_;
-  float beta_;
 };
 
-TEST(NNAPIDelegate, SoftmaxSimpleTest) {
-  SoftmaxOpModel m(/*batches=*/2, /*size=*/5, /*beta=*/1.0);
+TEST(SoftmaxOpTest, SimpleTest) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {2, 5}}, /*beta=*/1.0);
   m.SetInput({
       1.0, 2.0, 3.0, 4.0, 5.0,       // b = 0
-      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 1
   });
 
   m.Invoke();
@@ -767,6 +762,63 @@ TEST(NNAPIDelegate, SoftmaxSimpleTest) {
       ElementsAreArray(ArrayFloatNear(
           {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
            0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231},
+          1e-6)));
+}
+
+TEST(SoftmaxOpTest, Beta2) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {1, 5}}, /*beta=*/2.0);
+  m.SetInput({
+      1.0, 2.0, 3.0, 4.0, 5.0,  // b = 0
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.000290076, 0.002143387, 0.015837606, 0.117024957, 0.864703974},
+          1e-6)));
+}
+
+TEST(SoftmaxOpTest, 3dInput) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {2, 2, 5}}, /*beta=*/1.0);
+  m.SetInput({
+      1.0,  2.0,  3.0,  4.0,  5.0,   // b = 0
+      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      5.0,  1.0,  2.0,  3.0,  4.0,   // b = 1
+      -5.0, -1.0, -2.0, -3.0, -4.0,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
+           0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231,
+           0.636408647, 0.011656231, 0.031684921, 0.086128544, 0.234121657,
+           0.011656231, 0.636408647, 0.234121657, 0.086128544, 0.031684921},
+          1e-6)));
+}
+
+TEST(SoftmaxOpTest, 4dInput) {
+  SoftmaxOpModel m({TensorType_FLOAT32, {2, 2, 1, 5}}, /*beta=*/1.0);
+  m.SetInput({
+      1.0,  2.0,  3.0,  4.0,  5.0,   // b = 0
+      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      5.0,  1.0,  2.0,  3.0,  4.0,   // b = 1
+      -5.0, -1.0, -2.0, -3.0, -4.0,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
+           0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231,
+           0.636408647, 0.011656231, 0.031684921, 0.086128544, 0.234121657,
+           0.011656231, 0.636408647, 0.234121657, 0.086128544, 0.031684921},
           1e-6)));
 }
 
@@ -830,7 +882,8 @@ class SqueezeOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, SqueezeSimpleTest) {
+// TODO(b/215935381): Enable after resolving issues with flakiness.
+TEST(NNAPIDelegate, DISABLED_SqueezeSimpleTest) {
   std::initializer_list<float> data = {
       1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
       13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};

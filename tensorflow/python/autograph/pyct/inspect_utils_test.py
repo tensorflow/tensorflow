@@ -33,6 +33,9 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
+future_import_module_statements = ('absolute_import', 'division',
+                                   'print_function', 'with_statement')
+
 
 def decorator(f):
   return f
@@ -416,16 +419,17 @@ class InspectUtilsTest(test.TestCase):
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
   def test_getfutureimports_functions(self):
-    expected_imports = ('absolute_import', 'division', 'print_function',
-                        'with_statement')
     self.assertEqual(inspect_utils.getfutureimports(future_import_module.f),
-                     expected_imports)
+                     future_import_module_statements)
+
+  def test_getfutureimports_lambdas(self):
+    self.assertEqual(
+        inspect_utils.getfutureimports(future_import_module.lambda_f),
+        future_import_module_statements)
 
   def test_getfutureimports_methods(self):
-    expected_imports = ('absolute_import', 'division', 'print_function',
-                        'with_statement')
     self.assertEqual(inspect_utils.getfutureimports(future_import_module.Foo.f),
-                     expected_imports)
+                     future_import_module_statements)
 
   def test_super_wrapper_for_dynamic_attrs(self):
 

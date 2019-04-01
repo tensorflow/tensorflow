@@ -155,6 +155,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testCaptureNonTrainableVariable(self):
+
+    v = variables.Variable(1.0, trainable=False)
+
+    @def_function.function
+    def f():
+      return v + 1
+
+    c = f.get_concrete_function()
+    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
@@ -680,19 +691,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       fn2 = lambda: array_ops.ones([10]) * 2
 
-      def fn3(x=2):
+      def fn3(x=3):
         return array_ops.ones([10]) * x
-      fn3 = functools.partial(fn3, x=3)
+      fn4 = functools.partial(fn3, x=4)
+      fn5 = functools.partial(fn3, 5)
 
       return gen_functional_ops.case(val, [], [dtypes.float32],
                                      [function.defun(f).get_concrete_function()
-                                      for f in (fn1, fn2, fn3)])
+                                      for f in (fn1, fn2, fn3, fn4, fn5)])
 
     ones = array_ops.ones([10])
     self.assertAllEqual([ones], test_function(0))
     self.assertAllEqual([ones * 2], test_function(1))
     self.assertAllEqual([ones * 3], test_function(2))
-    self.assertAllEqual([ones * 3], test_function(22))  # default branch
+    self.assertAllEqual([ones * 4], test_function(3))
+    self.assertAllEqual([ones * 5], test_function(4))
+    self.assertAllEqual([ones * 5], test_function(22))  # default branch
 
   @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
@@ -2563,6 +2577,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Tracing more than twice per input doesn't make sense.
     self.assertLess(trace_count[0], 13)
 
+  def test_concrete_function_shape_mismatch(self):
+
+    @def_function.function
+    def f(argument_name):
+      return argument_name + 1.
+
+    f_concrete = f.get_concrete_function(constant_op.constant([1.]))
+
+    # Calling a function from eager doesn't do any shape checking above what
+    # kernels do while executing.
+    self.assertAllEqual(
+        [2., 3.],
+        f_concrete(constant_op.constant([1., 2.])).numpy())
+
+    @def_function.function
+    def g():
+      f_concrete(constant_op.constant([1., 2.]))
+
+    with self.assertRaisesRegexp(ValueError, 'argument_name'):
+      g()
+
   @test_util.run_in_graph_and_eager_modes
   def test_shape_inference_with_symbolic_shapes(self):
 
@@ -2865,6 +2900,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     dataset = (
         dataset_ops.DatasetV2.from_tensors(
             (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
+        .map(lambda x, y: (x, y))
         .repeat(10)
         .batch(32))
     optimizer = adam.Adam()

@@ -47,6 +47,7 @@ tf_kernel_library(
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",
+        "in_topk_op.cc",
         "index_ops.cc",
         "l2loss_op.cc",
         "listdiff_op.cc",
@@ -71,6 +72,7 @@ tf_kernel_library(
         "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
+        "replica_id_op.cc",
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
@@ -258,11 +260,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "if_while_utils",
+    srcs = ["if_while_utils.cc"],
+    hdrs = ["if_while_utils.h"],
+)
+
 tf_kernel_library(
     name = "while_op",
     srcs = ["while_op.cc"],
     hdrs = ["while_op.h"],
     deps = [
+        ":if_while_utils",
         ":tensor_list_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -283,6 +292,7 @@ tf_kernel_library(
     srcs = ["if_op.cc"],
     hdrs = ["if_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",

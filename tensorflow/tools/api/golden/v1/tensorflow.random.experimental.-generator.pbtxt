@@ -17,12 +17,24 @@ tf_class {
     argspec: "args=[\'self\', \'copy_from\', \'seed\', \'algorithm\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "make_seeds"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
     name: "normal"
     argspec: "args=[\'self\', \'shape\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "reset"
     argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "split"
+    argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
+    name: "truncated_normal"
+    argspec: "args=[\'self\', \'shape\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "uniform"

@@ -174,7 +174,10 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   @reset_eager
   def testSoftPlacement(self):
-    self.assertEqual(config.get_soft_device_placement(), True)
+    if context.executing_eagerly():
+      self.assertTrue(config.get_soft_device_placement())
+    else:
+      self.assertFalse(config.get_soft_device_placement())
 
     @def_function.function
     def mod():
@@ -182,6 +185,12 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         a = constant_op.constant(1.0)
         b = constant_op.constant(1.0)
         return math_ops.mod(a, b)
+
+    config.set_soft_device_placement(True)
+    self.assertEqual(config.get_soft_device_placement(), True)
+    self.assertEqual(
+        config.get_soft_device_placement(),
+        context.context().soft_device_placement)
 
     # Since soft placement is enabled, the mod operation should work with CPU
     mod()
@@ -196,18 +205,9 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       mod()
 
-    config.set_soft_device_placement(True)
-    self.assertEqual(config.get_soft_device_placement(), True)
-    self.assertEqual(
-        config.get_soft_device_placement(),
-        context.context().soft_device_placement)
-
-    # Since soft placement is re-enabled, the mod operation should work with CPU
-    mod()
-
   @reset_eager
   def testLogDevicePlacement(self):
-    self.assertEqual(context.get_log_device_placement(), False)
+    self.assertFalse(context.get_log_device_placement())
 
     context.set_log_device_placement(True)
     self.assertEqual(context.get_log_device_placement(), True)

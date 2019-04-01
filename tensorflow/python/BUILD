@@ -1211,6 +1211,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )
@@ -2781,6 +2782,7 @@ py_library(
         ":state_ops_gen",
         ":tensor_shape",
         ":util",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
@@ -2993,6 +2995,7 @@ cuda_py_test(
         ":logging_ops",
         ":random_ops_gen",
         "//tensorflow/python/kernel_tests/random:util",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -4697,6 +4700,7 @@ tf_py_test(
     additional_deps = [
         ":array_ops",
         ":client",
+        ":config",
         ":control_flow_ops",
         ":data_flow_ops",
         ":errors",

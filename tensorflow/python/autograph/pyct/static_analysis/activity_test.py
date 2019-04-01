@@ -112,13 +112,9 @@ class ScopeTest(test.TestCase):
 class ActivityAnalyzerTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, _, source = parser.parse_entity(test_fn, future_imports=())
+    node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source,
-        source_file=None,
-        namespace={},
-        arg_values=None,
-        arg_types=None)
+        source_code=source, source_file=None, future_features=(), namespace={})
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)
@@ -240,6 +236,8 @@ class ActivityAnalyzerTest(test.TestCase):
 
     node, _ = self._parse_and_analyze(test_fn)
     for_node = node.body[1]
+    self.assertScopeIs(
+        anno.getanno(for_node, NodeAnno.ITERATE_SCOPE), (), ('_'))
     self.assertScopeIs(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'))
     self.assertScopeIs(

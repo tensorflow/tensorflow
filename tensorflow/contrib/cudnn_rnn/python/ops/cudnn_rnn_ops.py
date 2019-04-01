@@ -768,7 +768,8 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         component_names=self._param_names,
         component_dtypes=(dtype,) * len(self._param_names),
         fill_save_buffer_fn=self._trackable_save,
-        consume_restore_buffer_fn=self._trackable_restore)
+        consume_restore_buffer_fn=self._trackable_restore,
+        device=self._variables[0].device)
     self._trackable_track_params(trackable, split_dependencies)
 
   def _trackable_track_params(self, trackable, params):

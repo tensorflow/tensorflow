@@ -71,10 +71,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/core:tflite_portable_logging",

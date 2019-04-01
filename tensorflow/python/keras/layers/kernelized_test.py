@@ -119,7 +119,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
         name='random_fourier_features')
     inputs = random_ops.random_uniform((3, 2), seed=1)
     outputs = rff_layer(inputs)
-    self.assertListEqual([3, 10], outputs.get_shape().as_list())
+    self.assertListEqual([3, 10], outputs.shape.as_list())
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
     if not context.executing_eagerly():
@@ -141,7 +141,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim=7, name='random_fourier_features', trainable=True)
     outputs = rff_layer(inputs)
-    self.assertEqual([3, 7], outputs.get_shape().as_list())
+    self.assertEqual([3, 7], outputs.shape.as_list())
 
   @parameterized.named_parameters(
       ('gaussian', 'gaussian'), ('laplacian', 'laplacian'),
@@ -251,7 +251,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
 
     inputs = random_ops.random_uniform((3, 2), seed=1)
     outputs = rff_layer(inputs)
-    self.assertListEqual([3, output_dim], outputs.get_shape().as_list())
+    self.assertListEqual([3, output_dim], outputs.shape.as_list())
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.trainable_variables, num_trainable_vars)
     if trainable:

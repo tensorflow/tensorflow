@@ -26,6 +26,9 @@ def f():
   print('foo')
 
 
+lambda_f = lambda: None
+
+
 class Foo(object):
 
   def f(self):

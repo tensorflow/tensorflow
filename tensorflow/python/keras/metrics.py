@@ -1570,7 +1570,8 @@ class AUC(Metric):
   (computed using the aforementioned variables). The `num_thresholds` variable
   controls the degree of discretization with larger numbers of thresholds more
   closely approximating the true AUC. The quality of the approximation may vary
-  dramatically depending on `num_thresholds`.
+  dramatically depending on `num_thresholds`. The `thresholds` parameter can be
+  used to manually specify thresholds which split the predictions more evenly.
 
   For best results, `predictions` should be distributed approximately uniformly
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
@@ -1608,7 +1609,8 @@ class AUC(Metric):
                curve='ROC',
                summation_method='interpolation',
                name=None,
-               dtype=None):
+               dtype=None,
+               thresholds=None):
     """Creates an `AUC` instance.
 
     Args:
@@ -1625,10 +1627,14 @@ class AUC(Metric):
           'majoring' that does the opposite.
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
+      thresholds: (Optional) A list of floating point values to use as the
+        thresholds for discretizing the curve. If set, the `num_thresholds`
+        parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
+        equal to {-epsilon, 1+epsilon} for a small positive epsilon value will
+        be automatically included with these to correctly handle predictions
+        equal to exactly 0 or 1.
     """
     # Validate configurations.
-    if num_thresholds <= 1:
-      raise ValueError('`num_thresholds` must be > 1.')
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
         metrics_utils.AUCCurve):
       raise ValueError('Invalid curve: "{}". Valid options are: "{}"'.format(
@@ -1642,7 +1648,24 @@ class AUC(Metric):
               summation_method, list(metrics_utils.AUCSummationMethod)))
 
     # Update properties.
-    self.num_thresholds = num_thresholds
+    if thresholds is not None:
+      # If specified, use the supplied thresholds.
+      self.num_thresholds = len(thresholds) + 2
+      thresholds = sorted(thresholds)
+    else:
+      if num_thresholds <= 1:
+        raise ValueError('`num_thresholds` must be > 1.')
+
+      # Otherwise, linearly interpolate (num_thresholds - 2) thresholds in
+      # (0, 1).
+      self.num_thresholds = num_thresholds
+      thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                    for i in range(num_thresholds - 2)]
+
+    # Add an endpoint "threshold" below zero and above one for either
+    # threshold method to account for floating point imprecisions.
+    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
+
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
     else:
@@ -1657,27 +1680,20 @@ class AUC(Metric):
     # Create metric variables
     self.true_positives = self.add_weight(
         'true_positives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
     self.true_negatives = self.add_weight(
         'true_negatives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
     self.false_positives = self.add_weight(
         'false_positives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
     self.false_negatives = self.add_weight(
         'false_negatives',
-        shape=(num_thresholds,),
+        shape=(self.num_thresholds,),
         initializer=init_ops.zeros_initializer)
-
-    # Compute `num_thresholds` thresholds in [0, 1]
-    thresholds = [
-        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
-    ]
-    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
-    # epsilon - to account for floating point imprecisions.
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates confusion matrix statistics.
@@ -1804,15 +1820,18 @@ class AUC(Metric):
         name=self.name)
 
   def reset_states(self):
-    num_thresholds = len(self.thresholds)
     K.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+        [(v, np.zeros((self.num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
         'num_thresholds': self.num_thresholds,
         'curve': self.curve.value,
         'summation_method': self.summation_method.value,
+        # We remove the endpoint thresholds as an inverse of how the thresholds
+        # were initialized. This ensures that a metric initialized from this
+        # config has the same thresholds.
+        'thresholds': self.thresholds[1:-1],
     }
     base_config = super(AUC, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -2394,7 +2413,7 @@ class MeanTensor(Metric):
     elif values.shape != self._shape:
       raise ValueError('MeanTensor input values must always have the same '
                        'shape. Expected shape (set during the first call): {}. '
-                       'Got: {}'.format(self._shape, values.get_shape()))
+                       'Got: {}'.format(self._shape, values.shape))
 
     num_values = array_ops.ones_like(values)
     if sample_weight is not None:
@@ -2690,7 +2709,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
-  y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
+  y_pred.shape.assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
@@ -2713,8 +2732,8 @@ def categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
-  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
+  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -2737,8 +2756,8 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
-  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
+  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
