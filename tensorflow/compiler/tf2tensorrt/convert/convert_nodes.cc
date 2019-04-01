@@ -1354,9 +1354,14 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   // CreateConstantLayer. So we can treat it as a tensor for
   // AreDimsStaticWithDifferentSize(). This really only matters for 0-D tensors.
   if (AreDimsStaticWithDifferentSize(input_dims, dims, /*is_tensor=*/true)) {
-    return errors::InvalidArgument(
-        "Incompatible shapes: ", DebugString(input_dims), " vs. ",
-        DebugString(dims));
+    return errors::InvalidArgument("Incompatible shapes: ",
+                                   DebugString(input_dims), " vs. ",
+                                   DebugString(dims));
+  }
+  // ConstantLayer requires static shapes (cannot infer -1).
+  if (input.is_weights() && !HasStaticShape(dims)) {
+    return errors::InvalidArgument("Shape is not fully defined: ",
+                                   DebugString(dims));
   }
   if (validation_only) {
     *tensor = nullptr;
