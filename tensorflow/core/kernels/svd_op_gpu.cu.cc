@@ -195,15 +195,17 @@ class SvdOpGpu : public AsyncOpKernel {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
-      Gpu2DLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
-      ComputeValueOfVKernel<<<cfg2D.block_count, cfg2D.thread_per_block, 0,
-                              d.stream()>>>(
-          cfg2D, m, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(),
-          outputU_ptr, outputS_ptr, outputV_ptr);
+      GpuLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
+      GPU_LAUNCH_KERNEL(ComputeValueOfVKernel<Scalar>,
+                        dim3(cfg2D.block_count), dim3(cfg2D.thread_per_block), 0,
+                        d.stream(), cfg2D, m, full_matrices_ ? m : p,
+                        input_copy.flat<Scalar>().data(),
+                        outputU_ptr, outputS_ptr, outputV_ptr);
       // 2. clamp V to -1 or +1
       GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
-      ExtractSignOfVKernel<<<cfg1D.block_count, cfg1D.thread_per_block, 0,
-                             d.stream()>>>(cfg1D, outputV_ptr);
+      GPU_LAUNCH_KERNEL(ExtractSignOfVKernel<Scalar>,
+                        dim3(cfg1D.block_count), dim3(cfg1D.thread_per_block), 0,
+                        d.stream(), cfg1D, outputV_ptr);
     }
 
     if (compute_uv_) {

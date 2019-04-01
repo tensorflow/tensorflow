@@ -89,7 +89,7 @@ struct FunctionBody {
 
 // Debugging facility.  Returns a debug string for a graph
 // representing an instantiated function.
-string DebugString(const Graph* instantiated_func_graph);
+string DebugString(const Graph* g);
 
 // A few hand-crafted optimization on the instantiated function body
 // (a Graph*).
@@ -292,7 +292,7 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
 // `call_def` can be a native function call (where the op type is the function
 // name) or a call through PartitionedCall/StatefulPartitionedCall.
 Status InstantiateFunctionCall(const NodeDef& call_def,
-                               FunctionLibraryRuntime& flr,
+                               FunctionLibraryRuntime* flr,
                                FunctionLibraryRuntime::Handle* handle);
 
 // Returns true iff `n` represents a function call. `n` can be a native

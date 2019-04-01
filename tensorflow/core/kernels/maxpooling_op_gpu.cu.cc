@@ -431,6 +431,23 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
         output_size, bottom_data, height, width, channels, pooled_height,
         pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
         top_data, mask, include_batch_in_index);
+=======
+    TF_CHECK_OK(CudaLaunchKernel(
+        MaxPoolForwardNHWC<true, T>,
+        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+        kThreadsPerBlock, 0, d.stream(), output_size, bottom_data, height,
+        width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+        stride_h, stride_w, pad_t, pad_l, top_data, mask,
+        include_batch_in_index));
+  } else {
+    TF_CHECK_OK(CudaLaunchKernel(
+        MaxPoolForwardNHWC<false, T>,
+        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+        kThreadsPerBlock, 0, d.stream(), output_size, bottom_data, height,
+        width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+        stride_h, stride_w, pad_t, pad_l, top_data, mask,
+        include_batch_in_index));
+>>>>>>> upstream/master
   }
   return d.ok();
 }
@@ -457,7 +474,7 @@ bool MaxPoolBackwardNoMask<T>::operator()(
       dim3(kThreadsPerBlock), 0, d.stream(),
       top_size, bottom_data, height, width, channels, pooled_height,
       pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-      top_diff, bottom_diff);
+      top_diff, bottom_diff));
   return d.ok();
 }
 

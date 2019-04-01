@@ -115,7 +115,7 @@ struct ReluGrad<Device, Eigen::half> {
 };
 
 #endif  // TF_HAS_GPU_FP16
-  
+
 #if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
                                    int32* output) {

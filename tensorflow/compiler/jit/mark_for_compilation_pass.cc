@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/device_info_cache.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/union_find.h"
@@ -260,7 +261,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   }
 
   FunctionLibraryRuntime::Handle handle;
-  Status status = InstantiateFunctionCall(call_def, *lib_runtime, &handle);
+  Status status = InstantiateFunctionCall(call_def, lib_runtime, &handle);
   if (!status.ok()) {
     VLOG(2) << "Rejecting " << call_def.DebugString()
             << ": could not instantiate: " << status;
@@ -484,6 +485,7 @@ class MarkForCompilationPassImpl {
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
   absl::flat_hash_map<int, bool> should_compile_cluster_cache_;
+  DeviceInfoCache device_info_cache_;
 };
 
 StatusOr<bool>
@@ -620,9 +622,9 @@ MarkForCompilationPassImpl::FindCompilationCandidates() {
       break;
     }
 
-    DeviceType device_type("");
-    TF_RETURN_IF_ERROR(
-        DeviceToDeviceType(node->assigned_device_name(), &device_type));
+    TF_ASSIGN_OR_RETURN(
+        const DeviceType& device_type,
+        device_info_cache_.GetDeviceTypeFor(node->assigned_device_name()));
     VLOG(4) << "Device type for " << node->name() << ": "
             << device_type.type_string();
 
@@ -760,7 +762,8 @@ bool IsShapeConsumerOp(const Node& node) {
          node.type_string() == "Size";
 }
 
-Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
+Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
+                                         const Node& n, bool* ignore) {
   // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
   // ignore it during resource operation safety analysis.  We need this hack
   // because of two reasons:
@@ -784,12 +787,12 @@ Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
     *ignore = false;
     return Status::OK();
   }
-  DeviceType device_type("");
-  TF_RETURN_IF_ERROR(
-      DeviceToDeviceType(n.assigned_device_name(), &device_type));
 
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
+  TF_ASSIGN_OR_RETURN(
+      const XlaOpRegistry::DeviceRegistration* registration,
+      device_info_cache->GetCompilationDevice(n.assigned_device_name()));
+
+  if (!registration) {
     *ignore = true;
   } else {
     *ignore = registration->compile_all_resource_ops;
@@ -824,8 +827,12 @@ Status MarkForCompilationPassImpl::Run() {
     return Status::OK();
   }
 
+  auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
+    return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
+  };
+
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
-      graph_, flib_def_, IgnoreResourceOpForSafetyAnalysis, &cycles));
+      graph_, flib_def_, ignore_resource_ops, &cycles));
 
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative names the node in the 'cycles' graph that represents the
@@ -1226,14 +1233,11 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
   //
   // TODO(b/126629785): It is possible that this is just papering over O(n^2)
   // behavior in our clustering algorithm.
-  const XlaOpRegistry::DeviceRegistration* registration;
-  DeviceType device_type("");
-  TF_RETURN_IF_ERROR(DeviceToDeviceType(chosen_device, &device_type));
-  TF_RET_CHECK(
-      XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration))
-      << "chosen device = " << chosen_device
-      << "; device type = " << device_type.type() << "; devices ("
-      << devices.size() << ") = " << absl::StrJoin(devices, ", ");
+  TF_ASSIGN_OR_RETURN(const XlaOpRegistry::DeviceRegistration* registration,
+                      device_info_cache_.GetCompilationDevice(chosen_device));
+  TF_RET_CHECK(registration)
+      << "chosen device = " << chosen_device << "; devices (" << devices.size()
+      << ") = " << absl::StrJoin(devices, ", ");
 
   return cluster_a.has_xla_compile_attr || cluster_b.has_xla_compile_attr ||
          registration->autoclustering_policy ==
@@ -1254,11 +1258,11 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
   TF_RETURN_IF_ERROR(PickDeviceForXla(
       devices, /*allow_mixing_unknown_and_cpu=*/false, &chosen_device));
 
-  const XlaOpRegistry::DeviceRegistration* registration;
-  DeviceType device_type("");
-  TF_RETURN_IF_ERROR(DeviceToDeviceType(chosen_device, &device_type));
-  TF_RET_CHECK(
-      XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration))
+  TF_ASSIGN_OR_RETURN(const DeviceType& device_type,
+                      device_info_cache_.GetDeviceTypeFor(chosen_device));
+  TF_ASSIGN_OR_RETURN(const XlaOpRegistry::DeviceRegistration* registration,
+                      device_info_cache_.GetCompilationDevice(chosen_device));
+  TF_RET_CHECK(registration)
       << "chosen device = " << chosen_device
       << "; device type = " << device_type.type() << "; devices ("
       << devices.size() << ") = " << absl::StrJoin(devices, ", ");
@@ -1335,7 +1339,7 @@ Status MarkForCompilation(
                                     options.session_options != nullptr
                                         ? options.session_options->env
                                         : Env::Default(),
-                                    GetGlobalJitLevel(options)}
+                                    GetGlobalJitLevelForGraph(options)}
       .Run();
 }
 

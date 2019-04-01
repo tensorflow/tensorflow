@@ -284,6 +284,26 @@ def broadcast_static_shape(shape_x, shape_y):
 @tf_export("shape", v1=[])
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
+  """Returns the shape of a tensor.
+
+  This operation returns a 1-D integer tensor representing the shape of `input`.
+
+  For example:
+
+  ```python
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  tf.shape(t)  # [2, 2, 3]
+  ```
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    out_type: (Optional) The specified output type of the operation (`int32` or
+      `int64`). Defaults to `tf.int32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `out_type`.
+  """
   return shape(input, name, out_type)
 
 

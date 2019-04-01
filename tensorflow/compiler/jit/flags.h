@@ -23,14 +23,24 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Flags associated with the XLA bridge's mark_for_compilation_pass module.
-struct MarkForCompilationPassFlags {
+struct XlaAutoJitFlag {
   // Control compilation of operators into XLA computations on CPU and GPU
   // devices.  0 = use ConfigProto setting; -1 = off; 1 = on for things very
   // likely to be improved; 2 = on for everything.
   //
+  // If all non-CPU ops in the graph being optimized are placed on a single GPU
+  // and there is at least one node placed on that GPU then
+  // `optimization_level_single_gpu` applies.  Otherwise
+  // `optimization_level_general` applies.
+  //
   // Experimental.
-  int32 tf_xla_auto_jit;
+  int32 optimization_level_single_gpu;
+  int32 optimization_level_general;
+};
+
+// Flags associated with the XLA bridge's mark_for_compilation_pass module.
+struct MarkForCompilationPassFlags {
+  XlaAutoJitFlag xla_auto_jit_flag;
 
   // Minimum number of operators in an XLA compilation. Ignored for operators
   // placed on an XLA device or operators explicitly marked for compilation.
@@ -82,6 +92,17 @@ struct BuildXlaOpsPassFlags {
   bool tf_xla_print_cluster_outputs;
 };
 
+// Flags for the IntroduceFloatingPointJitter pass.
+struct IntroduceFloatingPointJitterPassFlags {
+  // The amount of jitter to introduce.  This amount is added to each element in
+  // the tensors named in `tensor_names.
+  float jitter_amount;
+
+  // The Tensors to add the jitter to.  The tensors are named in the TensorId
+  // format of <node name>:<output idx>.
+  std::vector<string> tensor_names;
+};
+
 // Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
@@ -93,6 +114,9 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
+
+const IntroduceFloatingPointJitterPassFlags&
+GetIntroduceFloatingPointJitterPassFlags();
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.

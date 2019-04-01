@@ -585,10 +585,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
 
       // Constrain the output and the operand of the while instruction to match
       // the computations.
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
-          body_layout.result_shape(), instruction));
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           body_layout.result_shape(), instruction, 0));
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          body_layout.result_shape(), instruction));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       // Find the conditional branch with the most instructions and force all
       // other computations to match that layout. A potentially better decison
@@ -1227,7 +1227,8 @@ namespace {
 bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kReshape:
-      return std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
+      return hlo.operand(0)->shape().rank() == 1 ||
+             std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
     case HloOpcode::kTranspose:
       return true;
     default:
@@ -1593,18 +1594,6 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     LayoutUtil::ClearLayout(instruction->mutable_shape());
 
-    // Create a copy of an operand if the operand instruction's layout does not
-    // match the use constraint (OperandLayoutConstraint).
-    for (int64 operand_no = 0; operand_no < instruction->operand_count();
-         ++operand_no) {
-      const ShapeLayout* operand_layout =
-          constraints.OperandLayout(instruction, operand_no);
-      if (operand_layout != nullptr) {
-        TF_RETURN_IF_ERROR(CopyOperandIfLayoutsDiffer(*operand_layout,
-                                                      instruction, operand_no));
-      }
-    }
-
     // Set the layouts of the array shapes this instruction defines as indicated
     // by the respective BufferLayoutConstraints. Any array shapes in the output
     // of the instruction which are not defined by the instruction (eg, array
@@ -1646,6 +1635,18 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
                                                instruction, index));
           return Status::OK();
         }));
+
+    // Create a copy of an operand if the operand instruction's layout does not
+    // match the use constraint (OperandLayoutConstraint).
+    for (int64 operand_no = 0; operand_no < instruction->operand_count();
+         ++operand_no) {
+      const ShapeLayout* operand_layout =
+          constraints.OperandLayout(instruction, operand_no);
+      if (operand_layout != nullptr) {
+        TF_RETURN_IF_ERROR(CopyOperandIfLayoutsDiffer(*operand_layout,
+                                                      instruction, operand_no));
+      }
+    }
 
     // Fusion instructions require some layouts to be set on fused instructions
     // inside the fusion instruction.

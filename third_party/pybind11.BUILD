@@ -19,4 +19,7 @@ cc_library(
         "-Xgcc-only=-Wno-error",  # no way to just disable the pragma-once warning in gcc
     ],
     includes = ["include"],
+    deps = [
+        "@org_tensorflow//third_party/python_runtime:headers",
+    ],
 )

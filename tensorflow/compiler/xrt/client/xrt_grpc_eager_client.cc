@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/client/xrt_grpc_eager_client.h"
 
-#include "net/grpc/public/include/grpcpp/generic/generic_stub.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"

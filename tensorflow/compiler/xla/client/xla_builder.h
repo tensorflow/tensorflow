@@ -1931,7 +1931,11 @@ XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
 
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values) {
-  return ConstantLiteral(builder, LiteralUtil::CreateR1<NativeT>(values));
+  BorrowingLiteral literal(
+      reinterpret_cast<const char*>(values.begin()),
+      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
+                           {static_cast<int64>(values.size())}));
+  return ConstantLiteral(builder, literal);
 }
 
 template <typename NativeT>

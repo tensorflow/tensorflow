@@ -102,6 +102,7 @@ adam_optimizer_v1_fn = combinations.NamedObject(
 rmsprop_optimizer_v1_fn = combinations.NamedObject(
     "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 
+# TODO(shiningsun): consider adding the other v1 optimizers
 optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
 
 gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
@@ -112,6 +113,13 @@ adam_optimizer_keras_v2_fn = combinations.NamedObject(
     "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
 rmsprop_optimizer_keras_v2_fn = combinations.NamedObject(
     "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
+
+# TODO(shiningsun): consider adding the other v2 optimizers
+optimizers_v2 = [
+    gradient_descent_optimizer_keras_v2_fn, adagrad_optimizer_keras_v2_fn
+]
+
+optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -125,6 +133,28 @@ def distributions_and_v1_optimizers():
           mirrored_strategy_with_two_gpus,
       ],
       optimizer_fn=optimizers_v1)
+
+
+def distributions_and_v2_optimizers():
+  """A common set of combination with DistributionStrategies and Optimizers."""
+  return combinations.combine(
+      distribution=[
+          one_device_strategy,
+          mirrored_strategy_with_gpu_and_cpu,
+          mirrored_strategy_with_two_gpus,
+      ],
+      optimizer_fn=optimizers_v2)
+
+
+def distributions_and_v1_and_v2_optimizers():
+  """A common set of combination with DistributionStrategies and Optimizers."""
+  return combinations.combine(
+      distribution=[
+          one_device_strategy,
+          mirrored_strategy_with_gpu_and_cpu,
+          mirrored_strategy_with_two_gpus,
+      ],
+      optimizer_fn=optimizers_v1_and_v2)
 
 
 strategies_minus_tpu = [
