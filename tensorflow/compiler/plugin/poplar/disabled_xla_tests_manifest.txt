@@ -119,6 +119,7 @@ ConvertTest.ConvertR1F32ToR1U32 POPLAR
 ArrayElementwiseOpTest.NegConstantS64 POPLAR // S64
 ArrayElementwiseOpTest.SubTwoConstantS64s POPLAR
 ArrayElementwiseOpTest.ClzS64s POPLAR
+ArrayElementwiseOpTest.PopcntS64 POPLAR
 ScalarComputationsTest.AddTwoScalarsS64      POPLAR
 DynamicUpdateSliceTest.Int64R3 POPLAR
 DynamicUpdateSliceTest.Int64R2 POPLAR

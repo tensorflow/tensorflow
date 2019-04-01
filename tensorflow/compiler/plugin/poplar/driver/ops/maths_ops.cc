@@ -61,6 +61,8 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction* inst) {
       return popops::expr::UnaryOpType::LOGARITHM_ONE_PLUS;
     case HloOpcode::kNegate:
       return popops::expr::UnaryOpType::NEGATE;
+    case HloOpcode::kPopulationCount:
+      return popops::expr::UnaryOpType::POPCOUNT;
     case HloOpcode::kRoundNearestAfz:
       return popops::expr::UnaryOpType::ROUND;
     case HloOpcode::kRsqrt:
