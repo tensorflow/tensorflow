@@ -21,6 +21,7 @@ namespace ops {
 
 namespace custom {
 
+TfLiteRegistration* Register_SWITCH();
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
@@ -383,6 +384,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
+  AddCustom("Experimental_Switch", tflite::ops::custom::Register_SWITCH());
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());

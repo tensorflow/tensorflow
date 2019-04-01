@@ -38,6 +38,7 @@ TfLiteRegistration* Register_LESS_EQUAL();
 namespace custom {
 TfLiteRegistration* Register_IF();
 TfLiteRegistration* Register_WHILE();
+TfLiteRegistration* Register_SWITCH();
 }  // namespace custom
 }  // namespace ops
 
@@ -310,6 +311,41 @@ void SubgraphBuilder::BuildPadLoopBodySubgraph(Subgraph* subgraph,
       ::tflite::ops::builtin::Register_PAD(), &node_index);
 }
 
+void SubgraphBuilder::BuildSwitchSubgraph(Subgraph* subgraph,
+                                          TfLiteType inputtype) {
+  const int kInput = 0;
+  const int kCondInput = 1;
+  const int kOutput1 = 2;
+  const int kOutput2 = 3;
+  const int kTensorCount = 4;
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput, kCondInput}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput1, kOutput2}), kTfLiteOk);
+
+  SetupTensor(subgraph, kInput, inputtype);
+  SetupTensor(subgraph, kCondInput, kTfLiteBool);
+  SetupTensor(subgraph, kOutput1, inputtype);
+  SetupTensor(subgraph, kOutput2, inputtype);
+
+  flexbuffers::Builder fbb;
+  fbb.Map([&]() {
+    fbb.Int("output_false_index", 1);
+    fbb.Int("output_true_index", 2);
+  });
+  fbb.Finish();
+  const auto& buffer = fbb.GetBuffer();
+
+  int node_index;
+  subgraph->AddNodeWithParameters(
+      {kInput, kCondInput}, {kOutput1, kOutput2},
+      reinterpret_cast<const char*>(buffer.data()), buffer.size(), nullptr,
+      ::tflite::ops::custom::Register_SWITCH(), &node_index);
+}
+
 void SubgraphBuilder::BuildWhileSubgraph(Subgraph* subgraph) {
   const int kInput1 = 0;
   const int kInput2 = 1;
@@ -379,6 +415,22 @@ void FillIntTensor(TfLiteTensor* tensor, const std::vector<int32_t>& data) {
   }
 }
 
+void FillBoolTensor(TfLiteTensor* tensor, const std::vector<bool>& data) {
+  int count = NumElements(tensor);
+  ASSERT_EQ(count, data.size());
+  for (int i = 0; i < count; ++i) {
+    tensor->data.b[i] = data[i];
+  }
+}
+
+void FillFloatTensor(TfLiteTensor* tensor, const std::vector<float>& data) {
+  int count = NumElements(tensor);
+  ASSERT_EQ(count, data.size());
+  for (int i = 0; i < count; ++i) {
+    tensor->data.f[i] = data[i];
+  }
+}
+
 void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                     const std::vector<int32_t>& data) {
   ASSERT_EQ(tensor->dims->size, shape.size());
@@ -390,6 +442,20 @@ void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
   ASSERT_EQ(count, data.size());
   for (int i = 0; i < count; ++i) {
     EXPECT_EQ(tensor->data.i32[i], data[i]);
+  }
+}
+
+void CheckFloatTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
+                      const std::vector<float>& data) {
+  ASSERT_EQ(tensor->dims->size, shape.size());
+  for (int i = 0; i < tensor->dims->size; ++i) {
+    ASSERT_EQ(tensor->dims->data[i], shape[i]);
+  }
+  ASSERT_EQ(tensor->type, kTfLiteFloat32);
+  int count = NumElements(tensor);
+  ASSERT_EQ(count, data.size());
+  for (int i = 0; i < count; ++i) {
+    EXPECT_EQ(tensor->data.f[i], data[i]);
   }
 }
 

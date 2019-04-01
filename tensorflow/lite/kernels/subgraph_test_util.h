@@ -76,6 +76,13 @@ class SubgraphBuilder {
   void BuildPadLoopBodySubgraph(Subgraph* subgraph,
                                 const std::vector<int> padding);
 
+  // Build a subgraph with a single Switch op.
+  // 2 inputs:
+  //   The 1st input  tensor to be forwarded to the appropriate output..
+  //   The 2nd input is condition with boolean type.
+  // 2 output.
+  void BuildSwitchSubgraph(Subgraph* subgraph, TfLiteType inputtype);
+
   // Build a subgraph with a single While op.
   // 2 inputs, 2 outputs.
   void BuildWhileSubgraph(Subgraph* subgraph);
@@ -110,9 +117,16 @@ class ControlFlowOpTest : public ::testing::Test {
 //   the vector.
 void FillIntTensor(TfLiteTensor* tensor, const std::vector<int32_t>& data);
 
+void FillBoolTensor(TfLiteTensor* tensor, const std::vector<bool>& data);
+
+void FillFloatTensor(TfLiteTensor* tensor, const std::vector<float>& data);
+
 // Check if the shape and int32 data of a tensor is as expected.
 void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                     const std::vector<int32_t>& data);
+// Check if the shape and float data of a tensor is as expected.
+void CheckFloatTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
+                      const std::vector<float>& data);
 // Check if the shape and bool data of a tensor is as expected.
 void CheckBoolTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                      const std::vector<bool>& data);

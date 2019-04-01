@@ -223,6 +223,7 @@ cc_library(
         "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
+        "switch.cc",
         "tile.cc",
         "topk_v2.cc",
         "transpose.cc",
@@ -1202,6 +1203,23 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "switch_test",
+    size = "small",
+    srcs = ["switch_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        ":subgraph_test_util",
+        ":test_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
