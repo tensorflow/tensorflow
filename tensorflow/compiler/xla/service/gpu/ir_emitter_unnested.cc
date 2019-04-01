@@ -2582,10 +2582,22 @@ class ReductionCodegenInfo : public IrEmitterUnnested::KernelCodegenInfo {
                             : llvm_ir::KernelMappingScheme::DimY;
   }
 
-  // Return the dimension that is being ketp between DimX and DimY.
-  int GetKeptDimensionEnum() const {
-    return IsRowReduction() ? llvm_ir::KernelMappingScheme::DimY
-                            : llvm_ir::KernelMappingScheme::DimX;
+  // Given the IrArray index of a reduction input, return the linear address of
+  // the reduction output as if the reduction were going the keep the input
+  // shape with the dimensions being reduced moved.
+  llvm::Value* GetUntransposedOutputLinearAddress(
+      llvm::IRBuilder<>* b, const llvm_ir::IrArray::Index& index) const {
+    if (IsRowReduction()) {
+      return index[llvm_ir::KernelMappingScheme::DimY];
+    }
+    absl::Span<const int64> dims_in_elem =
+        GetKernelMappingScheme()->GetDimensionsInElements();
+    llvm::Value* x_dim_size = index.GetConstantWithIndexType(
+        dims_in_elem[llvm_ir::KernelMappingScheme::DimX]);
+    llvm::Value* x_block_offset =
+        b->CreateMul(index[llvm_ir::KernelMappingScheme::DimZ], x_dim_size);
+    return b->CreateAdd(x_block_offset,
+                        index[llvm_ir::KernelMappingScheme::DimX]);
   }
 
   int GetNumberOfPartialResults() const {
@@ -2896,14 +2908,14 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   tiled_param_info->set_y(y_loc);
   tiled_param_info->set_x(x_loc);
 
-  // Record the linear address for the current reduction.
+  // Record the untransposed output linear address for the reduction.
   const ReductionCodegenInfo* reduction_info =
       dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
   int partial_result_index = reduction_info->IsRowReduction() ? 0 : x_iter_num;
-
-  Store(index[reduction_info->GetKeptDimensionEnum()],
+  Store(reduction_info->GetUntransposedOutputLinearAddress(&b_, index),
         InBoundsGEP(reduction_info->GetCurrentOutputLinearIndexAddress(),
                     {b_.getInt32(partial_result_index)}));
+
   if (!reduction_info->IsRowReduction()) {
     llvm::Type* bool_ty = b_.getInt1Ty();
     llvm::AllocaInst* output_inbound_addr =
@@ -3533,70 +3545,103 @@ Status AreFusedReductionOutputsConsistent(
   return Status::OK();
 }
 
-// Finds the dimensions to keep for the reduction, sorts and returns the
-// dimensions from minor to major.
-DimensionVector GetDimensionsToKeepMinorToMajor(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
-  DimensionVector input_dims(input_shape.rank(), 0);
-  absl::c_iota(input_dims, 0);
-  DimensionVector input_dims_to_keep;
-  for (int input_dim : input_dims) {
-    auto it = absl::c_find_if(dims_to_reduce, [&](int64 dim_to_reduce) {
-      return dim_to_reduce == input_dim;
-    });
-    if (it == dims_to_reduce.end()) {
-      input_dims_to_keep.push_back(input_dim);
-    }
-  }
+// Given a shape and a group of contiguous dimensions in the shape, returns
+// a tuple of three values (major, middle, minor), where major is the size of
+// the dimensions more major then the given dimensions, minor is the size of
+// dimensions more minor then the given dimensions, and middle is the size of
+// the given dimensions.
+std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
+    const Shape& shape, DimensionVector dims_middle) {
+  CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
 
-  // Sort the dimensions to keep from minor to major.
-  absl::c_sort(input_dims_to_keep, [&input_shape](int64 dim_a, int64 dim_b) {
-    return PositionInContainer(LayoutUtil::MinorToMajor(input_shape), dim_a) <
-           PositionInContainer(LayoutUtil::MinorToMajor(input_shape), dim_b);
+  absl::Span<const int64> minor_to_major = LayoutUtil::MinorToMajor(shape);
+  int64 values[3] = {1, 1, 1};
+  enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
+  Segment cur_segment = kMinor;
+
+  // Iterate through the dimensions for the three segments in the order of
+  // minor, middle and major to accumulate the size of each segment.
+  absl::c_for_each(minor_to_major, [&](int64 cur_dim) {
+    if (cur_segment != kMajor) {
+      // Handle change of segments.
+      bool cur_dim_in_middle = absl::c_any_of(
+          dims_middle, [&](int64 dim) { return dim == cur_dim; });
+      if (cur_segment == kMinor) {
+        if (cur_dim_in_middle) {
+          cur_segment = kMiddle;
+        }
+      } else if (cur_segment == kMiddle) {
+        if (!cur_dim_in_middle) {
+          cur_segment = kMajor;
+        }
+      }
+    }
+
+    values[cur_segment] *= shape.dimensions(cur_dim);
   });
 
-  VLOG(10) << "dims to keep minor to major"
-           << absl::StrJoin(input_dims_to_keep, ",");
-  return input_dims_to_keep;
+  return std::make_tuple(values[kMajor], values[kMiddle], values[kMinor]);
 }
 
-// Given the input shape and dimensions to reduce for the reduction to vector,
-// returns <num_reduced_major, num_kept, num_reduced_minor>:
-// num_kept: the number of elements in the contiguous dimensions to keep.
-// num_reduced_major: the number of elements in the dimensions to reduce that
-//   are more major than the dimensions to keep.
-// num_reduced_minor: the number of elements in the dimensions to reduce that
-//   are more minor than the dimensions to kept.
-std::tuple<int64, int64, int64> GetReductionToVectorDimensions(
+// Given the input shape and dimensions to reduce for a reduction, returns
+// <is_row_reduction, DimensionVector>:
+// is_row_reduction:  indicates whether the reduction is a row reduction or a
+//   column reduction.
+// DimensionVector: contains the size of the three contiguous components for the
+//   reduction [depth, height, width]. For row reduction, height is the size of
+//   the dimensions to keep, depth is the size of the dimensions to reduce that
+//   are more major than the dimensions to keep, and width is the size of the
+//   dimensions to reduce that are more minor than the dimensions to keep. For
+//   column reduction, height is the size of dimensions to reduce, depth is the
+//   the size of the dimensions to keep that are more major than the dimensions
+//   to reduce, and width is the size of the dimensions to keep that are more
+//   minor than the dimensions to reduce.
+//
+// Prerequisite: the reduction instruction passes the check IsReductionToVector,
+// which guarantees either the dimensions to reduce or the dimensions to keep
+// are consecutive.
+std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
-  DimensionVector input_dims_to_keep_minor_to_major =
-      GetDimensionsToKeepMinorToMajor(input_shape, dims_to_reduce);
-  CHECK(LayoutUtil::AreDimensionsConsecutive(
-      input_shape.layout(), input_dims_to_keep_minor_to_major));
-  int num_reduced_major = 1, num_kept = 1, num_reduced_minor = 1;
-  if (input_dims_to_keep_minor_to_major.empty()) {
-    return std::make_tuple(num_reduced_major, num_kept, num_reduced_minor);
-  }
-  DimensionVector input_dims(input_shape.rank(), 0);
-  absl::c_iota(input_dims, 0);
-  absl::Span<const int64> minor_to_major =
-      LayoutUtil::MinorToMajor(input_shape);
-  for (int input_dim : input_dims) {
-    int64 curr_dim_size = input_shape.dimensions(input_dim);
-    if (PositionInContainer(minor_to_major, input_dim) >
-        PositionInContainer(minor_to_major,
-                            input_dims_to_keep_minor_to_major.back())) {
-      num_reduced_major *= curr_dim_size;
-    } else if (PositionInContainer(minor_to_major, input_dim) <
-               PositionInContainer(minor_to_major,
-                                   input_dims_to_keep_minor_to_major.front())) {
-      num_reduced_minor *= curr_dim_size;
-    } else {
-      num_kept *= curr_dim_size;
+  DimensionVector dims_to_keep;
+  for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
+    if (!absl::c_linear_search(dims_to_reduce, dim)) {
+      dims_to_keep.push_back(dim);
     }
   }
 
-  return std::make_tuple(num_reduced_major, num_kept, num_reduced_minor);
+  if (dims_to_keep.empty()) {
+    return std::make_pair(
+        true, DimensionVector{1, 1, ShapeUtil::ElementsIn(input_shape)});
+  }
+
+  if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
+                                           dims_to_keep)) {
+    int64 num_reduced_major = 1, num_kept = 1, num_reduced_minor = 1;
+    std::tie(num_reduced_major, num_kept, num_reduced_minor) =
+        PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
+    if (num_kept == 1) {
+      return std::make_pair(
+          true, DimensionVector{1, 1, num_reduced_minor * num_reduced_major});
+    }
+    if (num_reduced_minor == 1) {
+      return std::make_pair(false,
+                            DimensionVector{1, num_reduced_major, num_kept});
+    }
+    return std::make_pair(
+        true, DimensionVector{num_reduced_major, num_kept, num_reduced_minor});
+  }
+
+  int64 num_kept_major = 1, num_reduced = 1, num_kept_minor = 1;
+  std::tie(num_kept_major, num_reduced, num_kept_minor) =
+      PartitionShapeByMiddleDimensions(
+          input_shape,
+          DimensionVector(dims_to_reduce.begin(), dims_to_reduce.end()));
+  if (num_kept_minor == 1) {
+    return std::make_pair(true,
+                          DimensionVector{1, num_kept_major, num_reduced});
+  }
+  return std::make_pair(
+      false, DimensionVector{num_kept_major, num_reduced, num_kept_minor});
 }
 
 // Returns true if all the transitive users of hlo before hitting users in
@@ -3642,10 +3687,10 @@ int64 NumInputsWithMoreElementsThan(const HloInstruction* unnested_hlo,
 // unrolling is beneficial for the given kInput fusion.
 bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
                                           const Shape& input_shape,
-                                          int64 num_kept) {
+                                          int64 num_kept_minor) {
   // TODO(b/122468062): Need further investigate to see whether we can
   // remove the constraint on IsPowerOfTwo.
-  if (!IsPowerOfTwo(static_cast<uint64>(num_kept))) {
+  if (!IsPowerOfTwo(static_cast<uint64>(num_kept_minor))) {
     return false;
   }
 
@@ -3694,35 +3739,41 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
 std::tuple<KernelMappingScheme, bool>
 IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     const HloInstruction* unnested_hlo, const HloInstruction* first_reduce) {
-  int64 depth = 1;
-  int64 height = 1;
-  int64 width = 1;
-  bool is_row_reduction = true;
+  const Shape& input_shape = first_reduce->operand(0)->shape();
+  bool is_row_reduction;
+  DimensionVector dims_in_elem;
+  std::tie(is_row_reduction, dims_in_elem) =
+      GetReductionKindAndContiguousComponents(input_shape,
+                                              first_reduce->dimensions());
+  VLOG(10) << "is_row_reduction " << is_row_reduction << " " << dims_in_elem[0]
+           << " " << dims_in_elem[1] << " " << dims_in_elem[2];
+
   int64 tile_size_x = 1;
   int64 tile_size_y = 1;
   int64 block_size_z = 1;
   int64 num_threads_x = 1;
   int64 num_threads_y = 1;
-  const Shape& input_shape = first_reduce->operand(0)->shape();
-  int64 num_input_elems = ShapeUtil::ElementsIn(input_shape);
-  int64 num_output_elems = ShapeUtil::ElementsIn(first_reduce->shape());
-  int64 num_reduced_major, num_kept, num_reduced_minor;
-  std::tie(num_reduced_major, num_kept, num_reduced_minor) =
-      GetReductionToVectorDimensions(input_shape, first_reduce->dimensions());
-  CHECK_EQ(num_output_elems, num_kept);
   bool dilated_x = true;
-
-  if (num_kept == 1) {
-    // Scalar reduction is a special row reduction with depth = height = 1.
-    width = num_input_elems;
-    tile_size_x = kWarpSize * 16;
-    num_threads_x = kWarpSize;
-  } else if (num_reduced_minor == 1) {
-    // Column reduction reduces inputs with dimension [height, width], where
-    // width is the minor dimension, to dimension [width].
-    height = num_reduced_major;
-    width = num_kept;
-    is_row_reduction = false;
+  if (is_row_reduction) {
+    if (dims_in_elem[1] == 1) {
+      // Scalar reduction is handled differently than the other kind of row
+      // reduction.
+      CHECK_EQ(dims_in_elem[0], 1);
+      tile_size_x = kWarpSize * 16;
+      num_threads_x = kWarpSize;
+    } else {
+      num_threads_x = kWarpSize;
+      if (dims_in_elem[2] % (kWarpSize * 64) == 0) {
+        tile_size_x = kWarpSize * 64;
+      } else {
+        tile_size_x = kWarpSize * 8;
+        block_size_z = 8;
+        while (dims_in_elem[0] % block_size_z != 0) {
+          block_size_z -= 1;
+        }
+      }
+    }
+  } else {
     // Column reduction without transpose doesn't require communication among
     // threads processing elements in the same tile. The current implementation
     // only support the use of one hardware thread block to process one block of
@@ -3732,38 +3783,18 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     int64 hw_threads_per_block_limit =
         ThreadsPerBlockLimit(ir_emitter_context_->device_description());
     if (IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
-                                             num_kept)) {
-      tile_size_x = std::min(2 * hw_threads_per_block_limit, num_kept);
+                                             dims_in_elem[2])) {
+      tile_size_x = std::min(2 * hw_threads_per_block_limit, dims_in_elem[2]);
       num_threads_x = tile_size_x / 2;
       dilated_x = false;
     } else {
-      tile_size_x = std::min(hw_threads_per_block_limit, num_kept);
+      tile_size_x = std::min(hw_threads_per_block_limit, dims_in_elem[2]);
       num_threads_x = tile_size_x;
     }
     int64 kNumElementsPerPartialSum = 128;
     tile_size_y = kNumElementsPerPartialSum;
-  } else {
-    // Row reduction reduces inputs with dimension [depth, height, width],
-    // where width is the most minor dimension, to dimension [height] .
-    depth = num_reduced_major;
-    height = num_kept;
-    width = num_reduced_minor;
-    num_threads_x = kWarpSize;
-    if (width % (kWarpSize * 64) == 0) {
-      tile_size_x = kWarpSize * 64;
-    } else {
-      tile_size_x = kWarpSize * 8;
-      block_size_z = 8;
-      while (depth % block_size_z != 0) {
-        block_size_z -= 1;
-      }
-    }
   }
-  DCHECK_EQ(depth * height * width, num_input_elems);
-  VLOG(10) << "is_row_reduction " << is_row_reduction << depth << " " << height
-           << " " << width;
 
-  DimensionVector dims_in_elem{depth, height, width};
   DimensionVector req_block_sizes{block_size_z, 1, 1};
   llvm_ir::KernelMappingScheme mapping_scheme(
       dims_in_elem, tile_size_y, tile_size_x, req_block_sizes, num_threads_y,

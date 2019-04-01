@@ -169,7 +169,9 @@ bool IsReductionToVector(const HloInstruction& reduce) {
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                              dims_to_keep);
+                                              dims_to_keep) ||
+         LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
+                                              reduce.dimensions());
 }
 
 // This emits a device-side call to
