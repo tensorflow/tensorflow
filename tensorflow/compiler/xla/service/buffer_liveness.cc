@@ -147,15 +147,20 @@ bool IsEntryParameter(const HloInstruction* instruction) {
 
 bool BufferLiveness::MayInterfere(const LogicalBuffer& a,
                                   const LogicalBuffer& b) const {
-  // Entry parameters live at the entry of the execution, thus always interfere
-  // with all other instructions executing before them in the ordering.
+  // Parameters live at the entry of the computation, thus always interfere with
+  // all other instructions inside the computation executing before them in the
+  // ordering.
   const HloInstruction* a_instruction = a.instruction();
   const HloInstruction* b_instruction = b.instruction();
-  if (IsEntryParameter(a_instruction) &&
+  if (a_instruction->opcode() == HloOpcode::kParameter &&
+      hlo_ordering_->call_graph().InstructionIsNestedIn(
+          b_instruction, a_instruction->parent()) &&
       hlo_ordering_->ExecutesBefore(b_instruction, a_instruction)) {
     return true;
   }
-  if (IsEntryParameter(b_instruction) &&
+  if (b_instruction->opcode() == HloOpcode::kParameter &&
+      hlo_ordering_->call_graph().InstructionIsNestedIn(
+          a_instruction, b_instruction->parent()) &&
       hlo_ordering_->ExecutesBefore(a_instruction, b_instruction)) {
     return true;
   }
