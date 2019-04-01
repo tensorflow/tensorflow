@@ -592,7 +592,9 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
       hardware_configured_ = true;
     }
 
-    if (getenv(s_force_ipu_model) == nullptr) {
+    const bool force_ipu_model = getenv(s_force_ipu_model) != nullptr;
+
+    if (!force_ipu_model) {
       auto device_list = GetDeviceManager().getDevices();
       for (const auto& d : device_list) {
         if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
@@ -669,7 +671,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
           option_flags_.set("debug.executionProfile", "compute_sets");
         }
       }
-    } else {
+    } else if (force_ipu_model) {
       if (current_config_.ipu_model_config().enable_ipu_model()) {
         // Poplar IPU Model device
 
