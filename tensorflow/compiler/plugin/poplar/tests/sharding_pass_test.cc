@@ -552,7 +552,7 @@ cond {
   cp = (s32[], f16[4], f16[4]) parameter(0)
   gte = f16[4] get-tuple-element(cp), index=0
   cc = s32[] constant(10)
-  ROOT lt = pred[] less-than(gte, cc)
+  ROOT lt = pred[] compare(gte, cc), direction=LT
 }
 
 body {
