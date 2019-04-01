@@ -368,7 +368,8 @@ void LoopTiling::getTileSizes(ArrayRef<AffineForOp> band,
       (*tileSizes)[i] = tSize;
     else
       // Set last tile size to cover the balance.
-      (*tileSizes)[i] = std::max(1UL, excessFactor / cumulProductOfTileSizes);
+      (*tileSizes)[i] = std::max(
+          1U, static_cast<unsigned>(excessFactor / cumulProductOfTileSizes));
     cumulProductOfTileSizes *= (*tileSizes)[i];
   }
   if (avoidMaxMinBounds)
