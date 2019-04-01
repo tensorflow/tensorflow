@@ -18,15 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
+
 from tensorflow.python.client import session as session_lib
 from tensorflow.compiler.plugin.poplar.ops import gen_popnn_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -34,8 +33,6 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import standard_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -290,4 +287,6 @@ class LSTMTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
+                                os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

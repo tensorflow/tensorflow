@@ -115,7 +115,6 @@ def get_compute_sets_from_report(report):
 
 
 def get_maximum_tile_size_from_events(report):
-  print(report)
   lines = report.split('\n')
   found = False
   for l in lines:
