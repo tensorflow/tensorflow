@@ -52,9 +52,8 @@ all_strategies = [
 
 
 def eager_mode_test_configuration():
-  return combinations.combine(mode='eager',
-                              use_numpy=False,
-                              use_validation_data=False)
+  return combinations.combine(
+      mode='eager', use_numpy=[True, False], use_validation_data=[True, False])
 
 
 def graph_mode_test_configuration():
@@ -368,14 +367,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def skip_unsupported_test_configuration(self, distribution):
     if should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
-
-    if context.executing_eagerly() and self.use_numpy:
-      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
-
-    if context.executing_eagerly() and self.use_validation_data:
-      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
-                    'data for eager execution.')
-    return
 
   def run_correctness_test(self,
                            distribution,
