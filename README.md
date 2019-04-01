@@ -9,9 +9,9 @@ bring up new hardware, and improve usability for existing TensorFlow users.
 
 ## What is this doc?
 
-Whereas the [MLIR draft specification](LangRef.md) discusses the details of the
-IR in a dry style intended to be a long-lived reference document, this document
-discusses higher level issues. This includes:
+Whereas the [MLIR draft specification](g3doc/LangRef.md) discusses the details
+of the IR in a dry style intended to be a long-lived reference document, this
+document discusses higher level issues. This includes:
 * How we see the IR being used
 * How the compiler will be implemented
 * What capabilities the IR enables
@@ -20,9 +20,10 @@ discusses higher level issues. This includes:
 
 For more information on MLIR, please see:
 
-*   [The MLIR draft specification](LangRef.md), which describes the IR itself,
-*   [The MLIR rationale document](Rationale.md), covering motivation behind some
-    decisions,
+*   [The MLIR draft specification](g3doc/LangRef.md), which describes the IR
+    itself,
+*   [The MLIR rationale document](g3doc/Rationale.md), covering motivation
+    behind some decisions,
 *   previous external [talks](#talks),
 
 or join the [MLIR mailing list](https://groups.google.com/a/tensorflow.org/forum/#!forum/mlir).
@@ -80,14 +81,16 @@ and by making references explicit with function_ref.
 
 # Getting started with MLIR
 
+MLIR has been tested on Linux and MacOS, with a recent clang or with gcc 7.
+
 ```
 git clone https://github.com/llvm/llvm-project.git
-cd llvm/projects/
+cd llvm-projects/llvm/projects/
 git clone https://github.com/tensorflow/mlir
 cd ../../
 mkdir build
 cd build
-env CC=clang CXX=clang++ cmake -G Ninja -DLLVM_ENABLE_RTTI=1 ../llvm/
+cmake -G Ninja ../llvm/ 
 ninja check-mlir
 ```
 
