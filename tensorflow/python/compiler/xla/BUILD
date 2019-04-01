@@ -68,7 +68,7 @@ cuda_py_test(
         ":xla",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -81,9 +81,6 @@ cuda_py_test(
     ],
     tags = [
         "no_mac",
-        # TODO(b/129692303): Re-enable pip after dependence of tpu_lib is
-        # migrated out of contrib.
-        "no_pip",
         "no_windows",
     ],
     xla_enabled = True,
