@@ -854,6 +854,14 @@ cc_library(
         ],
 )
 
+cc_library(
+    name = "cpu_function_runtime",
+    srcs = ["cpu_function_runtime.cc"],
+    hdrs = ["cpu_function_runtime.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core:framework_lite"],
+)
+
 tf_cc_test(
     name = "debug_options_parsers_test",
     size = "small",

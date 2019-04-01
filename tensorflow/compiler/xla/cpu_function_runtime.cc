@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
 #include "tensorflow/core/platform/dynamic_annotations.h"
 
-namespace tensorflow {
+namespace xla {
 namespace {
 // Inline memory allocation routines here, because depending on '//base' brings
 // in libraries which use c++ streams, which adds considerable code size on
@@ -105,4 +105,4 @@ void FreeContiguous(void* contiguous) {
   }
 }
 }  // namespace cpu_function_runtime
-}  // namespace tensorflow
+}  // namespace xla
