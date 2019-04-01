@@ -1415,6 +1415,21 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def _get_transitive_headers(hdrs, deps):
+    """Obtain the header files for a target and its transitive dependencies.
+
+    Args:
+      hdrs: a list of header files
+      deps: a list of targets that are direct dependencies
+
+    Returns:
+      a collection of the transitive headers
+    """
+    return depset(
+        hdrs,
+        transitive = [dep[CcInfo].compilation_context.headers for dep in deps],
+    )
+
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
     srcs = ctx.files.srcs
@@ -1422,14 +1437,11 @@ def _py_wrap_cc_impl(ctx):
         fail("Exactly one SWIG source file label must be specified.", "srcs")
     module_name = ctx.attr.module_name
     src = ctx.files.srcs[0]
-    inputs = depset([src])
-    inputs += ctx.files.swig_includes
-    for dep in ctx.attr.deps:
-        inputs += dep.cc.transitive_headers
-    inputs += ctx.files._swiglib
-    inputs += ctx.files.toolchain_deps
+    inputs = _get_transitive_headers([src] + ctx.files.swig_includes, ctx.attr.deps)
+    inputs = depset(ctx.files._swiglib, transitive = [inputs])
+    inputs = depset(ctx.files.toolchain_deps, transitive = [inputs])
     swig_include_dirs = depset(_get_repository_roots(ctx, inputs))
-    swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
+    swig_include_dirs = depset(sorted([f.dirname for f in ctx.files._swiglib]), transitive = [swig_include_dirs])
     args = [
         "-c++",
         "-python",
@@ -1465,7 +1477,7 @@ _py_wrap_cc = rule(
         ),
         "deps": attr.label_list(
             allow_files = True,
-            providers = ["cc"],
+            providers = [CcInfo],
         ),
         "toolchain_deps": attr.label_list(
             allow_files = True,
@@ -1501,7 +1513,7 @@ def _get_repository_roots(ctx, files):
     compiler, because includes have quadratic complexity.
     """
     result = {}
-    for f in files:
+    for f in files.to_list():
         root = f.root.path
         if root:
             if root not in result:
@@ -1520,16 +1532,14 @@ def _get_repository_roots(ctx, files):
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
-    outputs = depset()
-    for dep in ctx.attr.deps:
-        outputs += dep.cc.transitive_headers
+    outputs = _get_transitive_headers([], ctx.attr.deps)
     return struct(files = outputs)
 
 _transitive_hdrs = rule(
     attrs = {
         "deps": attr.label_list(
             allow_files = True,
-            providers = ["cc"],
+            providers = [CcInfo],
         ),
     },
     implementation = _transitive_hdrs_impl,
