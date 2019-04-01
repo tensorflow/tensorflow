@@ -39,7 +39,7 @@ def get_single_while_op_body(g):
   while_ops = list(filter(lambda x: x.type == 'While', outer_ops))
   assert (len(while_ops) == 1)
   body = g._get_function(while_ops[0].get_attr('body').name)
-  return body._graph
+  return body.graph
 
 
 class AutoshardTest(test_util.TensorFlowTestCase):
