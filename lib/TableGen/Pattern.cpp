@@ -266,11 +266,13 @@ std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
 }
 
 int tblgen::Pattern::getBenefit() const {
-  // The default benefit value is a heristic with number of ops in the source
+  // The initial benefit value is a heuristic with number of ops in the source
   // pattern.
-  int defaultBenefit = getSourcePattern().getNumOps();
+  int initBenefit = getSourcePattern().getNumOps();
   llvm::DagInit *delta = def.getValueAsDag("benefitDelta");
-  if (delta->getNumArgs() != 1 || !isa<llvm::IntInit>(delta->getArg(0)))
-    PrintFatalError(def.getLoc(), "The 'AddedBenefit' can only be an integer");
-  return defaultBenefit + dyn_cast<llvm::IntInit>(delta->getArg(0))->getValue();
+  if (delta->getNumArgs() != 1 || !isa<llvm::IntInit>(delta->getArg(0))) {
+    PrintFatalError(def.getLoc(),
+                    "The 'addBenefit' takes and only takes one integer value");
+  }
+  return initBenefit + dyn_cast<llvm::IntInit>(delta->getArg(0))->getValue();
 }
