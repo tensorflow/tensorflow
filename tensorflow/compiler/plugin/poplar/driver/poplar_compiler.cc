@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/casts_elimination.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/combine_all_reduce.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/computation_flattener.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/constant_slice_folding.h"
@@ -516,6 +517,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
           size_function, CreateSyncListMemoryScheduler(
                              poplarExecutor->GetMaxAllReduceBufferSize()));
     }
+    pipeline.AddPass<CombineAllReduce>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
   }
