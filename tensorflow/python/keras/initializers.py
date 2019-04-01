@@ -84,6 +84,9 @@ class TruncatedNormal(TFTruncatedNormal):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
+    
+  Returns:
+    A TruncatedNormal instance.
   """
 
   def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
@@ -105,6 +108,9 @@ class RandomUniform(TFRandomUniform):
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
     dtype: The data type.
+    
+  Returns:
+    A RandomUniform instance.
   """
 
   def __init__(self, minval=-0.05, maxval=0.05, seed=None,

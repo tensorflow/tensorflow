@@ -40,10 +40,9 @@ def auto_shard_dataset(dataset, num_shards, index):
     dataset: A `tf.data.Dataset` instance, typically the result of a bunch of
       dataset transformations.
     num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        shards operating in parallel. Same usage as in
-        `tf.data.experimental.filter_for_shard`.
+        shards operating in parallel. Same usage as in `tf.data.Dataset.shard`.
     index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
-      Same usage as in `Dataset.shard`.
+      Same usage as in `tf.data.Dataset.shard`.
 
   Returns:
     A modified `Dataset` obtained by updating the pipeline sharded by the

@@ -191,8 +191,10 @@ def confusion_matrix(labels,
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
     cm_sparse = sparse_tensor.SparseTensor(
-        indices=indices, values=values, dense_shape=math_ops.to_int64(shape))
-    zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtype)
+        indices=indices,
+        values=values,
+        dense_shape=math_ops.cast(shape, dtypes.int64))
+    zero_matrix = array_ops.zeros(math_ops.cast(shape, dtypes.int32), dtype)
 
     return sparse_ops.sparse_add(zero_matrix, cm_sparse)
 

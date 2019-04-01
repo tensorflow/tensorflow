@@ -646,7 +646,10 @@ def list_directory_v2(path):
     errors.NotFoundError if directory doesn't exist
   """
   if not is_directory(path):
-    raise errors.NotFoundError(None, None, "Could not find directory")
+    raise errors.NotFoundError(
+        node_def=None,
+        op=None,
+        message="Could not find directory {}".format(path))
   with errors.raise_exception_on_not_ok_status() as status:
     # Convert each element to string, since the return values of the
     # vector of string should be interpreted as strings, not bytes.

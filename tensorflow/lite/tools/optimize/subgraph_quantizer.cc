@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/subgraph_quantizer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 
 #include "flatbuffers/flexbuffers.h"
@@ -191,18 +192,21 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
                                uint8_buffer, buffer_size, TensorType_INT32,
                                model, tensor);
 }
+
 }  // namespace
 
-TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeTensor(
-    BuiltinOperator op_code, int32_t tensor_idx) {
+TfLiteStatus SubgraphQuantizer::QuantizeTensor(BuiltinOperator op_code,
+                                               int32_t tensor_idx) {
   TensorT* tensor = subgraph_->tensors[tensor_idx].get();
   if (tensor->type != TensorType_FLOAT32) {
     return kTfLiteOk;
   }
 
   if (model_->buffers[tensor->buffer]->data.data() != nullptr) {
-    return kTfLiteError;
+    TF_LITE_ENSURE_STATUS(utils::SymmetricQuantizeTensor(model_, tensor));
+    return kTfLiteOk;
   }
+
   if (!tensor->quantization || tensor->quantization->min.empty() ||
       tensor->quantization->max.empty()) {
     error_reporter_->Report(
@@ -233,8 +237,8 @@ TfLiteStatus SubgraphQuantizer::QuantizeOpWithBias(BuiltinOperator op_code,
     return kTfLiteError;
   }
   auto input_tensor_idx = op->inputs[op_tensor_info->activation_input_index];
-  if (IsSubgraphInput(input_tensor_idx)) {
-    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, input_tensor_idx));
+  if (IsFloat32TypeTensor(input_tensor_idx)) {
+    TF_LITE_ENSURE_STATUS(QuantizeTensor(op_code, input_tensor_idx));
   }
   auto weights_tensor_idx = op->inputs[op_tensor_info->weights_input_index];
 
@@ -259,7 +263,7 @@ TfLiteStatus SubgraphQuantizer::QuantizeOpWithBias(BuiltinOperator op_code,
     return kTfLiteError;
   }
   auto output_tensor_idx = op->outputs[0];
-  TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, output_tensor_idx));
+  TF_LITE_ENSURE_STATUS(QuantizeTensor(op_code, output_tensor_idx));
 
   return kTfLiteOk;
 }
@@ -268,8 +272,8 @@ TfLiteStatus SubgraphQuantizer::PropagateMinMaxForAvgAndMaxPool(
     BuiltinOperator op_code, OperatorT* op) {
   TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
 
-  if (IsSubgraphInput(op->inputs[0])) {
-    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->inputs[0]));
+  if (IsFloat32TypeTensor(op->inputs[0])) {
+    TF_LITE_ENSURE_STATUS(QuantizeTensor(op_code, op->inputs[0]));
   }
 
   auto output_tensor = subgraph_->tensors[op->outputs[0]].get();
@@ -312,8 +316,8 @@ TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSoftmax(
   TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
   TF_LITE_ENSURE_EQ(this->error_reporter_, op->outputs.size(), 1);
 
-  if (IsSubgraphInput(op->inputs[0])) {
-    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->inputs[0]));
+  if (IsFloat32TypeTensor(op->inputs[0])) {
+    TF_LITE_ENSURE_STATUS(QuantizeTensor(op_code, op->inputs[0]));
   }
 
   auto output_tensor = subgraph_->tensors[op->outputs[0]].get();
@@ -328,32 +332,27 @@ TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSoftmax(
   return kTfLiteOk;
 }
 
-TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeInputsAndOutputs(
+TfLiteStatus SubgraphQuantizer::QuantizeInputsAndOutputs(
     BuiltinOperator op_code, OperatorT* op) {
   TF_LITE_ENSURE(this->error_reporter_, !op->inputs.empty());
   TF_LITE_ENSURE(this->error_reporter_, !op->outputs.empty());
   for (size_t input_idx = 0; input_idx < op->inputs.size(); ++input_idx) {
-    auto input_tensor = subgraph_->tensors[op->inputs[input_idx]].get();
-    if (IsSubgraphInput(op->inputs[input_idx]) &&
-        input_tensor->type == TensorType_FLOAT32) {
-      TF_LITE_ENSURE_STATUS(
-          AsymmetricQuantizeTensor(op_code, op->inputs[input_idx]));
+    if (IsFloat32TypeTensor(op->inputs[input_idx])) {
+      TF_LITE_ENSURE_STATUS(QuantizeTensor(op_code, op->inputs[input_idx]));
     }
   }
 
   for (size_t output_idx = 0; output_idx < op->outputs.size(); ++output_idx) {
     auto output_tensor = subgraph_->tensors[op->outputs[output_idx]].get();
     if (output_tensor->type == TensorType_FLOAT32) {
-      TF_LITE_ENSURE_STATUS(
-          AsymmetricQuantizeTensor(op_code, op->outputs[output_idx]));
+      TF_LITE_ENSURE_STATUS(QuantizeTensor(op_code, op->outputs[output_idx]));
     }
   }
   return kTfLiteOk;
 }
 
-bool SubgraphQuantizer::IsSubgraphInput(int32_t tensor_idx) const {
-  return std::find(subgraph_->inputs.begin(), subgraph_->inputs.end(),
-                   tensor_idx) != subgraph_->inputs.end();
+bool SubgraphQuantizer::IsFloat32TypeTensor(int32_t tensor_idx) const {
+  return subgraph_->tensors.at(tensor_idx)->type == TensorType_FLOAT32;
 }
 
 TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
@@ -370,7 +369,10 @@ TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
     case BuiltinOperator_SQUEEZE:
     case BuiltinOperator_RESHAPE:
     case BuiltinOperator_ADD:
-      return AsymmetricQuantizeInputsAndOutputs(op_code, op);
+    case BuiltinOperator_MUL:
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_MEAN:
+      return QuantizeInputsAndOutputs(op_code, op);
     case BuiltinOperator_SOFTMAX:
       return AsymmetricQuantizeSoftmax(op_code, op);
     default:

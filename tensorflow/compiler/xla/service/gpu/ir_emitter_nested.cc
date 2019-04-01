@@ -77,10 +77,10 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
   llvm::Function* function = llvm::Function::Create(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
-      llvm_ir::AsStringRef(ir_emitter_context_->name_uniquer()->GetUniqueName(
+      ir_emitter_context_->name_uniquer()->GetUniqueName(
           llvm_ir::SanitizeFunctionName(
-              nested_computation.name()))),  // The name of the function.
-      ir_emitter_context_->llvm_module());   // The parent LLVM module.
+              nested_computation.name())),  // The name of the function.
+      ir_emitter_context_->llvm_module());  // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
     int64 arg_size = argument_dereferenceable_bytes[arg_no];
@@ -123,7 +123,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
         ConstructIrArrayForOutputs(hlo);
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
-    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_, module_);
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
     return Status::OK();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)

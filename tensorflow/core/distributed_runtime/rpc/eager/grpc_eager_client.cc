@@ -71,6 +71,9 @@ class GrpcEagerClientCache : public EagerClientCache {
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
+      // TODO(b/129072590): The check here is to prevent a segfault if 'target'
+      // is unknown. Return a Status here instead.
+      CHECK(shared) << "Unknown gRPC target " << target;
       auto worker = std::unique_ptr<EagerClient>(new GrpcEagerClient(
           shared, threads_[AssignClientToThread(target)].completion_queue()));
 
@@ -88,7 +91,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   size_t AssignClientToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {

@@ -48,6 +48,7 @@ py_library(
         ":debug_py",
         ":grpc_debug_test_server",
         ":grpc_tensorflow_server",
+        ":grpc_tensorflow_server_lib",
         ":offline_analyzer_lib",
         ":session_debug_testlib",
         ":source_remote",

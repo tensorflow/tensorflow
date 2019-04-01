@@ -56,6 +56,8 @@ class Wrapper(Layer):
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
+    if not self.layer.built:
+      self.layer.build(input_shape)
     self.built = True
 
   @property
@@ -197,13 +199,7 @@ class TimeDistributed(Wrapper):
     # Don't enforce the batch or time dimension.
     self.input_spec = InputSpec(shape=[None, None] + input_shape[2:])
     child_input_shape = [input_shape[0]] + input_shape[2:]
-    if not self.layer.built:
-      # The base layer class calls a conversion function on the input shape to
-      # convert it to a TensorShape. The conversion function requires a
-      # tuple which is why we cast the shape.
-      self.layer.build(tuple(child_input_shape))
-      self.layer.built = True
-    super(TimeDistributed, self).build()
+    super(TimeDistributed, self).build(tuple(child_input_shape))
     self.built = True
 
   def compute_output_shape(self, input_shape):

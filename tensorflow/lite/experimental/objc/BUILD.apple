@@ -64,6 +64,7 @@ objc_library(
     srcs = SOURCES,
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
+    module_map = "apis/module.modulemap",
     tags = DEFAULT_TAGS,
     deps = [
         "//tensorflow/lite/experimental/c:c_api",

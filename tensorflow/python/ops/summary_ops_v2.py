@@ -52,19 +52,35 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-# A global dictionary mapping graph keys to a list of summary writer init ops.
-_SUMMARY_WRITER_INIT_OP = {}
+# Name for graph collection of summary writer init ops, which is only exposed
+# as a legacy API for tf.contrib.summary in TF 1.x.
+_SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
 _EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
 _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
 _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 
 
-def _should_record_summaries_internal():
-  """Returns boolean Tensor if summaries should/shouldn't be recorded, or None.
+def _should_record_summaries_internal(default_state):
+  """Returns boolean Tensor if summaries should/shouldn't be recorded.
+
+  Now the summary condition is decided by logical "and" of two conditions:
+  ctx.summary_recording and ctx.summary_recording_distribution_strategy. The
+  former one is usually set by user, and the latter one is controlled by
+  DistributionStrategy (tf.distribute.ReplicaContext).
+
+  Args:
+    default_state: can be True or False. The default summary behavior when user
+      does not specify ctx.summary_recording and
+      ctx.summary_recording_distribution_strategy is True.
   """
-  condition = context.context().summary_recording
-  return condition() if callable(condition) else condition
+  ctx = context.context()
+  resolve = lambda x: x() if callable(x) else x
+  cond_distributed = resolve(ctx.summary_recording_distribution_strategy)
+  cond = resolve(ctx.summary_recording)
+  if cond is None:
+    cond = default_state
+  return math_ops.logical_and(cond_distributed, cond)
 
 
 def _should_record_summaries_v2():
@@ -73,14 +89,12 @@ def _should_record_summaries_v2():
   If no recording status has been set, this defaults to True, unlike the public
   should_record_summaries().
   """
-  result = _should_record_summaries_internal()
-  return True if result is None else result
+  return _should_record_summaries_internal(default_state=True)
 
 
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
-  result = _should_record_summaries_internal()
-  return False if result is None else result
+  return _should_record_summaries_internal(default_state=False)
 
 
 @tf_export("summary.record_if", v1=[])
@@ -203,9 +217,7 @@ class ResourceSummaryWriter(SummaryWriter):
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
     else:
-      global _SUMMARY_WRITER_INIT_OP
-      key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-      _SUMMARY_WRITER_INIT_OP.setdefault(key, []).append(self._init_op)
+      ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
   def set_as_default(self):
     """Enables this summary writer for the current thread."""
@@ -524,9 +536,7 @@ def summary_writer_initializer_op():
     raise RuntimeError(
         "tf.contrib.summary.summary_writer_initializer_op is only "
         "supported in graph mode.")
-  global _SUMMARY_WRITER_INIT_OP
-  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  return _SUMMARY_WRITER_INIT_OP.setdefault(key, [])
+  return ops.get_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME)
 
 
 _INVALID_SCOPE_CHARACTERS = re.compile(r"[^-_/.A-Za-z0-9]")

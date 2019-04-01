@@ -417,6 +417,79 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       self.assertIn("switch to the schedules in "
                     "`tf.keras.optimizers.schedules`", report)
 
+  def verify_compat_v1_rename_correctness(self, values, ns_prefix=""):
+    if ns_prefix:
+      ns_prefix += "."
+    for v in values:
+      text = "tf." + ns_prefix + v + "(a, b)"
+      _, _, _, new_text = self._upgrade(text)
+      self.assertEqual("tf.compat.v1." + ns_prefix + v + "(a, b)", new_text)
+
+  def testIntializers(self):
+    initializers = [
+        "zeros",
+        "ones",
+        "constant",
+        "random_uniform",
+        "random_normal",
+        "truncated_normal",
+        "variance_scaling",
+        "orthogonal",
+        "glorot_uniform",
+        "glorot_normal",
+        "identity",
+        "lecun_normal",
+        "lecun_uniform",
+        "he_normal",
+        "he_uniform",
+    ]
+    self.verify_compat_v1_rename_correctness(
+        initializers, ns_prefix="initializers")
+
+    initializers = [
+        "zeros_initializer",
+        "ones_initializer",
+        "constant_initializer",
+        "random_uniform_initializer",
+        "random_normal_initializer",
+        "truncated_normal_initializer",
+        "variance_scaling_initializer",
+        "orthogonal_initializer",
+        "glorot_uniform_initializer",
+        "glorot_normal_initializer",
+    ]
+    self.verify_compat_v1_rename_correctness(initializers)
+
+    initializers = [
+        "zeros",
+        "ones",
+        "Ones",
+        "Zeros",
+        "constant",
+        "Constant",
+        "VarianceScaling",
+        "Orthogonal",
+        "orthogonal",
+        "Identity",
+        "identity",
+        "glorot_uniform",
+        "glorot_normal",
+        "lecun_normal",
+        "lecun_uniform",
+        "he_normal",
+        "he_uniform",
+        "TruncatedNormal",
+        "truncated_normal",
+        "RandomUniform",
+        "uniform",
+        "random_uniform",
+        "RandomNormal",
+        "normal",
+        "random_normal",
+    ]
+    self.verify_compat_v1_rename_correctness(
+        initializers, ns_prefix="keras.initializers")
+
   def testMetrics(self):
     metrics = [
         "accuracy",
@@ -517,6 +590,32 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
                      "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def testBaseEstimatorPartitioner(self):
+    classes = ["LinearEstimator", "DNNLinearCombinedEstimator", "DNNEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST)"
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testCannedEstimatorPartitioner(self):
+    classes = [
+        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier"
+    ]
+
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST)"
+      text = ns + suffix
+      suffix = ("(input_layer_partitioner=TEST, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
 
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
@@ -1372,16 +1471,14 @@ def _log_prob(self, x):
 
   def test_uniform_unit_scaling_initializer(self):
     text = "tf.uniform_unit_scaling_initializer(0.5)"
-    expected_text = (
-        "tf.keras.initializers.VarianceScaling(" +
-        "scale=0.5, distribution=\"uniform\")")
+    expected_text = ("tf.compat.v1.keras.initializers.VarianceScaling("
+                     "scale=0.5, distribution=\"uniform\")")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = "tf.initializers.uniform_unit_scaling(0.5)"
-    expected_text = (
-        "tf.keras.initializers.VarianceScaling(" +
-        "scale=0.5, distribution=\"uniform\")")
+    expected_text = ("tf.compat.v1.keras.initializers.VarianceScaling("
+                     "scale=0.5, distribution=\"uniform\")")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -1406,6 +1503,60 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade(text)
     self.assertIn("name_scope call with neither name nor default_name",
                   errors[0])
+
+  def test_string_split(self):
+    text = "tf.string_split('test', delimiter=' ')"
+    expected_text = "tf.strings.split(source='test', sep=' ')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.string_split('test', ' ', True)"
+    expected_text = "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"  # pylint: disable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.string_split('test', ' ', skip_empty=False)"
+    expected_text = "tf.strings.split(source='test', sep=' ')"  # pylint: disable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_sdca_to_raw_ops(self):
+    text = "tf.train.sdca_fprint(input_tensor)"
+    expected_text = "tf.raw_ops.SdcaFprint(input=input_tensor)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.train.sdca_fprint(input, name=n)"
+    expected_text = "tf.raw_ops.SdcaFprint(input=input, name=n)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.train.sdca_shrink_l1(w, l, ll)"
+    expected_text = "tf.raw_ops.SdcaShrinkL1(weights=w, l1=l, l2=ll)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = (
+        "tf.train.sdca_optimizer(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)")
+    expected_text = (
+        "tf.raw_ops.SdcaOptimizer(sparse_example_indices=a, "
+        "sparse_feature_indices=b, sparse_feature_values=c, dense_features=d, "
+        "example_weights=e, example_labels=f, sparse_indices=g, "
+        "sparse_weights=h, dense_weights=i, example_state_data=j, loss_type=k, "
+        "l1=l, l2=m, num_loss_partitions=n, num_inner_iterations=o)")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testXlaExperimental(self):
+    text = "tf.xla.experimental.jit_scope(0)"
+    expected_text = "tf.xla.experimental.jit_scope(0)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.xla.experimental.compile(0)"
+    expected_text = "tf.xla.experimental.compile(0)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

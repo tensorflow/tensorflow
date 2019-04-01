@@ -30,6 +30,7 @@ from tensorflow.contrib.tensor_forest.python.ops import data_ops
 from tensorflow.contrib.tensor_forest.python.ops import model_ops
 from tensorflow.contrib.tensor_forest.python.ops import stats_ops
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -540,7 +541,8 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.variables.device_dummies[i].device):
         sizes.append(self.trees[i].size())
-    return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
+    return math_ops.reduce_mean(
+        math_ops.cast(array_ops.stack(sizes), dtypes.float32))
 
   # pylint: disable=unused-argument
   def training_loss(self, features, labels, name='training_loss'):
@@ -603,7 +605,7 @@ class RandomTreeGraphs(object):
       The last op in the random tree training graph.
     """
     # TODO(gilberth): Use this.
-    unused_epoch = math_ops.to_int32(get_epoch_variable())
+    unused_epoch = math_ops.cast(get_epoch_variable(), dtypes.int32)
 
     if input_weights is None:
       input_weights = []

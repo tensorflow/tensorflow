@@ -85,6 +85,5 @@ class DatasetBenchmarkBase(test.Benchmark):
     if extras is None:
       extras = {}
     extras["num_elements"] = num_elements
-    # 'mode' represents the mechanism used for iterating over dataset elements.
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)

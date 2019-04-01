@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/range_sampler.h"
 
+#include <cmath>
 #include <unordered_set>
 #include <vector>
 
@@ -69,7 +70,7 @@ static float ExpectedCountHelper(float p, int batch_size, int num_tries) {
     return p * batch_size;
   }
   // numerically stable version of (1 - (1-p)^num_tries)
-  return -expm1(num_tries * log1p(-p));
+  return -expm1(num_tries * std::log1p(-p));
 }
 
 }  // namespace
@@ -298,7 +299,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
         return errors::InvalidArgument("Wrong vocabulary format at line: ",
                                        line);
       }
-      w = pow(w, distortion);
+      w = std::pow(w, distortion);
       total_weight_ += w;
       weights_.push_back(w);
     }
@@ -313,7 +314,7 @@ void FixedUnigramSampler::LoadFromUnigrams(const std::vector<float>& unigrams,
   for (float w : unigrams) {
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
-      w = pow(w, distortion);
+      w = std::pow(w, distortion);
       total_weight_ += w;
       weights_.push_back(w);
     }

@@ -17,6 +17,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("StatsAggregatorSetSummaryWriter")
+    .Input("stats_aggregator: resource")
+    .Input("summary: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("ExperimentalAutoShardDataset")
     .Input("input_dataset: variant")
     .Input("num_workers: int64")
@@ -37,6 +42,20 @@ REGISTER_OP("ExperimentalBytesProducedStatsDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &tag_shape));
       return shape_inference::ScalarShape(c);
     });
+
+REGISTER_OP("ChooseFastestBranchDataset")
+    .Input("input_dataset: variant")
+    .Input("ratio_numerator: int64")
+    .Input("ratio_denominator: int64")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("num_elements_per_branch: int >= 1")
+    .Attr("branches: list(func) >= 1")
+    .Attr("other_arguments_lengths: list(int) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalCSVDataset")
     .Input("filenames: string")
@@ -364,6 +383,12 @@ REGISTER_OP("ExperimentalSqlDataset")
     });
 
 REGISTER_OP("ExperimentalStatsAggregatorHandle")
+    .Output("handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''");
+
+REGISTER_OP("StatsAggregatorHandleV2")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Attr("container: string = ''")

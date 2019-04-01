@@ -374,7 +374,7 @@ class FakeClockEnv : public EnvWrapper {
   void AdvanceByMillis(const uint64 millis) { current_millis_ += millis; }
 
   // Method that this environment specifically overrides.
-  uint64 NowMicros() override { return current_millis_ * 1000; }
+  uint64 NowMicros() const override { return current_millis_ * 1000; }
 
  private:
   uint64 current_millis_;

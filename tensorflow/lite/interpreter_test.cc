@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/interpreter.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -51,13 +52,25 @@ TfLiteRegistration* Register_NEG();
 }  // namespace ops
 namespace {
 
+using ::testing::IsEmpty;
+
 // Make an interpreter that has no tensors and no nodes
 TEST(BasicInterpreter, ZeroInterpreter) {
+  testing::internal::CaptureStderr();
+
   Interpreter interpreter;
+  EXPECT_THAT(testing::internal::GetCapturedStderr(),
+              testing::HasSubstr("INFO: Initialized TensorFlow Lite runtime"));
+
   interpreter.SetInputs({});
   interpreter.SetOutputs({});
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Creating a new interpreter should not redundantly log runtime init.
+  testing::internal::CaptureStderr();
+  Interpreter interpreter2;
+  EXPECT_THAT(testing::internal::GetCapturedStderr(), IsEmpty());
 }
 
 // Test various error conditions.
@@ -213,10 +226,8 @@ TEST(BasicInterpreter, CheckQuantization) {
   ASSERT_EQ(interpreter.tensor(0)->params.scale, scale);
   ASSERT_EQ(interpreter.tensor(0)->params.zero_point, zero_point);
   ASSERT_EQ(interpreter.tensor(0)->quantization.type, rw_quantization.type);
-  ASSERT_EQ(interpreter.tensor(0)->quantization.type, rw_quantization.type);
   ASSERT_EQ(interpreter.tensor(1)->params.scale, scale);
   ASSERT_EQ(interpreter.tensor(1)->params.zero_point, zero_point);
-  ASSERT_EQ(interpreter.tensor(1)->quantization.type, ro_quantization.type);
   ASSERT_EQ(interpreter.tensor(1)->quantization.type, ro_quantization.type);
 }
 
@@ -1218,6 +1229,20 @@ TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
   ASSERT_NE(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
+
+  // Deliberately try to set tensor params with quantization while immutable,
+  // ensuring quantization is properly freed.
+  TfLiteQuantization quant = {};
+  quant.type = kTfLiteAffineQuantization;
+  auto quant_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  quant_params->scale = nullptr;
+  quant_params->zero_point = nullptr;
+  quant_params->quantized_dimension = 0;
+  quant.params = quant_params;
+  ASSERT_NE(interpreter_->SetTensorParametersReadWrite(0, kTfLiteInt8, "", {3},
+                                                       quant),
+            kTfLiteOk);
 }
 
 TEST_F(TestDelegate, ComplexDelegate) {

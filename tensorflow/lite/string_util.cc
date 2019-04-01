@@ -86,7 +86,7 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
 
   // Set offset of strings.
   int32_t start = sizeof(int32_t) * (num_strings + 2);
-  for (int i = 0; i < offset_.size(); i++) {
+  for (size_t i = 0; i < offset_.size(); i++) {
     int32_t offset = start + offset_[i];
     memcpy(*buffer + sizeof(int32_t) * (i + 1), &offset, sizeof(int32_t));
   }

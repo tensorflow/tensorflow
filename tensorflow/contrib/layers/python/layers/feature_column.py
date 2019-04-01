@@ -840,7 +840,7 @@ class _WeightedSparseColumn(
       # The weight tensor can be a regular Tensor. In such case, sparsify it.
       weight_tensor = contrib_sparse_ops.dense_to_sparse_tensor(weight_tensor)
     if not self.dtype.is_floating:
-      weight_tensor = math_ops.to_float(weight_tensor)
+      weight_tensor = math_ops.cast(weight_tensor, dtypes.float32)
     return tuple([id_tensor, weight_tensor])
 
   def insert_transformed_feature(self, columns_to_tensors):
@@ -1731,7 +1731,7 @@ class _RealValuedVarLenColumn(_FeatureColumn, collections.namedtuple(
     """
     # Transform the input tensor according to the normalizer function.
     input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
-    columns_to_tensors[self] = math_ops.to_float(input_tensor)
+    columns_to_tensors[self] = math_ops.cast(input_tensor, dtypes.float32)
 
   # pylint: disable=unused-argument
   def _to_dnn_input_layer(self,
@@ -1871,7 +1871,7 @@ class _RealValuedColumn(
     """
     # Transform the input tensor according to the normalizer function.
     input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
-    columns_to_tensors[self] = math_ops.to_float(input_tensor)
+    columns_to_tensors[self] = math_ops.cast(input_tensor, dtypes.float32)
 
   # pylint: disable=unused-argument
   def _to_dnn_input_layer(self,
@@ -1881,7 +1881,7 @@ class _RealValuedColumn(
                           output_rank=2):
     input_tensor = self._to_dense_tensor(input_tensor)
     if input_tensor.dtype != dtypes.float32:
-      input_tensor = math_ops.to_float(input_tensor)
+      input_tensor = math_ops.cast(input_tensor, dtypes.float32)
     return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):
@@ -1897,8 +1897,8 @@ class _RealValuedColumn(
     return inputs.get(self)
 
   def _transform_feature(self, inputs):
-    return math_ops.to_float(
-        self._normalized_input_tensor(inputs.get(self.name)))
+    return math_ops.cast(
+        self._normalized_input_tensor(inputs.get(self.name)), dtypes.float32)
 
   @property
   def _parse_example_spec(self):
@@ -2104,7 +2104,7 @@ class _BucketizedColumn(
       raise ValueError("BucketizedColumn currently only supports output_rank=2")
     return array_ops.reshape(
         array_ops.one_hot(
-            math_ops.to_int64(input_tensor),
+            math_ops.cast(input_tensor, dtypes.int64),
             self.length,
             1.,
             0.,
@@ -2136,8 +2136,10 @@ class _BucketizedColumn(
       i2 = array_ops.zeros([batch_size], dtype=dtypes.int32, name="zeros")
       bucket_indices = array_ops.reshape(input_tensor, [-1], name="reshape")
 
-    indices = math_ops.to_int64(array_ops.transpose(array_ops.stack((i1, i2))))
-    shape = math_ops.to_int64(array_ops.stack([batch_size, dimension]))
+    indices = math_ops.cast(array_ops.transpose(array_ops.stack((i1, i2))),
+                            dtypes.int64)
+    shape = math_ops.cast(array_ops.stack([batch_size, dimension]),
+                          dtypes.int64)
     sparse_id_values = sparse_tensor_py.SparseTensor(
         indices, bucket_indices, shape)
 
@@ -2527,7 +2529,7 @@ class DataFrameColumn(_FeatureColumn,
                           trainable=True,
                           output_rank=2):
     if input_tensor.dtype != dtypes.float32:
-      input_tensor = math_ops.to_float(input_tensor)
+      input_tensor = math_ops.cast(input_tensor, dtypes.float32)
     return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):

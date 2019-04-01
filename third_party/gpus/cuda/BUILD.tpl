@@ -197,6 +197,19 @@ cc_library(
 )
 
 cc_library(
+    name = "cusparse",
+    srcs = ["cuda/lib/%{cusparse_lib}"],
+    data = ["cuda/lib/%{cusparse_lib}"],
+    includes = [
+        ".",
+        "cuda/include",
+    ],
+    linkopts = ["-lgomp"],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
     visibility = ["//visibility:public"],

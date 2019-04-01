@@ -414,6 +414,14 @@ def _ragged_gather_v1(params, indices, validate_indices=None, name=None,
       name=name)
 
 
+def _ragged_gather_nd_v1(params, indices, name=None, batch_dims=0):
+  return ragged_gather_ops.gather_nd(
+      params=params,
+      indices=indices,
+      batch_dims=batch_dims,
+      name=name)
+
+
 def _ragged_expand_dims_v1(input, axis=None, name=None, dim=None):  # pylint: disable=redefined-builtin
   if dim is not None:
     axis = dim
@@ -433,7 +441,9 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.expand_dims_v2, ragged_array_ops.expand_dims, ['input']),
     (array_ops.gather, _ragged_gather_v1, ['params', 'indices']),
     (array_ops.gather_v2, ragged_gather_ops.gather, ['params', 'indices']),
-    (array_ops.gather_nd, ragged_gather_ops.gather_nd, ['params', 'indices']),
+    (array_ops.gather_nd, _ragged_gather_nd_v1, ['params', 'indices']),
+    (array_ops.gather_nd_v2, ragged_gather_ops.gather_nd,
+     ['params', 'indices']),
     (array_ops.rank, ragged_array_ops.rank, ['input']),
     (array_ops.size, _ragged_size_v1, ['input']),
     (array_ops.size_v2, ragged_array_ops.size, ['input']),

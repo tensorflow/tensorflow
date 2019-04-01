@@ -54,6 +54,10 @@ class XlaIfOp : public XlaOpKernel {
   DataTypeVector output_types_;
   bool has_token_input_output_;
   std::vector<string> token_input_nodes_;
+  // Whether to propagate compile time consts into the cond branches.
+  // This is not supported by default now since it may cause HBM memory
+  // overheads.
+  bool propagate_compile_time_consts_ = false;
 };
 
 }  // namespace tensorflow

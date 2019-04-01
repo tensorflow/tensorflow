@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
@@ -30,7 +32,7 @@ DATA_DIM = 5
 NUM_CLASSES = 2
 
 
-class KerasRegularizersTest(test.TestCase, parameterized.TestCase):
+class KerasRegularizersTest(keras_parameterized.TestCase):
 
   def create_model(self, kernel_regularizer=None, activity_regularizer=None):
     model = keras.models.Sequential()
@@ -79,10 +81,16 @@ class KerasRegularizersTest(test.TestCase, parameterized.TestCase):
       model.fit(x_train, y_train, batch_size=10,
                 epochs=1, verbose=0)
 
+  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_zero_regularization(self):
-    inputs = keras.backend.ones(shape=(10, 10))
-    layer = keras.layers.Dense(3, kernel_regularizer=keras.regularizers.l2(0))
-    layer(inputs)
+    # Verifies that training with zero regularization works.
+    x, y = np.ones((10, 10)), np.ones((10, 3))
+    model = testing_utils.get_model_from_layers(
+        [keras.layers.Dense(3, kernel_regularizer=keras.regularizers.l2(0))],
+        input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=5, epochs=1)
 
 
 if __name__ == '__main__':

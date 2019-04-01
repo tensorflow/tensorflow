@@ -615,15 +615,17 @@ def central_crop(image, central_fraction):
     # bounding boxes depend on the `image` tensor's rank and whether / not the
     # dimensions are statically defined.
     if dynamic_h:
-      img_hd = math_ops.to_double(img_h)
-      bbox_h_start = math_ops.to_int32((img_hd - img_hd * central_fraction) / 2)
+      img_hd = math_ops.cast(img_h, dtypes.float64)
+      bbox_h_start = math_ops.cast(
+          (img_hd - img_hd * central_fraction) / 2, dtypes.int32)
     else:
       img_hd = float(img_h)
       bbox_h_start = int((img_hd - img_hd * central_fraction) / 2)
 
     if dynamic_w:
-      img_wd = math_ops.to_double(img_w)
-      bbox_w_start = math_ops.to_int32((img_wd - img_wd * central_fraction) / 2)
+      img_wd = math_ops.cast(img_w, dtypes.float64)
+      bbox_w_start = math_ops.cast(
+          (img_wd - img_wd * central_fraction) / 2, dtypes.int32)
     else:
       img_wd = float(img_w)
       bbox_w_start = int((img_wd - img_wd * central_fraction) / 2)
@@ -990,15 +992,21 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
       _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
 
       # do the computation to find the right scale and height/width.
-      scale_factor_height = (math_ops.to_float(new_height_const) /
-                             math_ops.to_float(current_height))
-      scale_factor_width = (math_ops.to_float(new_width_const) /
-                            math_ops.to_float(current_width))
+      scale_factor_height = (
+          math_ops.cast(new_height_const, dtypes.float32) /
+          math_ops.cast(current_height, dtypes.float32))
+      scale_factor_width = (
+          math_ops.cast(new_width_const, dtypes.float32) /
+          math_ops.cast(current_width, dtypes.float32))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_height)))
-      scaled_width_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_width)))
+      scaled_height_const = math_ops.cast(
+          math_ops.round(
+              scale_factor * math_ops.cast(current_height, dtypes.float32)),
+          dtypes.int32)
+      scaled_width_const = math_ops.cast(
+          math_ops.round(
+              scale_factor * math_ops.cast(current_width, dtypes.float32)),
+          dtypes.int32)
 
       # NOTE: Reset the size and other constants used later.
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
@@ -1146,8 +1154,8 @@ def resize_images_v2(images,
     Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
-    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
-    sigma = 1.5 / 3.]
+    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3, 
+    sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
     'antialias' has no effect when used with nearest neighbor interpolation.
@@ -1869,8 +1877,15 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   if min_jpeg_quality >= max_jpeg_quality:
     raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
 
-  np.random.seed(seed)
-  jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
+  if compat.forward_compatible(2019, 4, 4):
+    jpeg_quality = random_ops.random_uniform([],
+                                             min_jpeg_quality,
+                                             max_jpeg_quality,
+                                             seed=seed,
+                                             dtype=dtypes.int32)
+  else:
+    np.random.seed(seed)
+    jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
   return adjust_jpeg_quality(image, jpeg_quality)
 
 
@@ -1887,7 +1902,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
-    jpeg_quality: int.  jpeg encoding quality.
+    jpeg_quality: Python int or Tensor of type int32.  jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
@@ -1900,7 +1915,14 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     # Convert to uint8
     image = convert_image_dtype(image, dtypes.uint8)
     # Encode image to jpeg with given jpeg quality
-    image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+    if compat.forward_compatible(2019, 4, 4):
+      if not _is_tensor(jpeg_quality):
+        # If jpeg_quality is a int (not tensor).
+        jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
+      image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
+    else:
+      image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+
     # Decode jpeg image
     image = gen_image_ops.decode_jpeg(image)
     # Convert back to original dtype and return
