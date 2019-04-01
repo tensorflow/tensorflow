@@ -77,11 +77,18 @@ public:
   // Returns true if this DAG leaf is specifying a constant attribute.
   bool isConstantAttr() const;
 
+  // Returns true if this DAG leaf is specifying an enum attribute case.
+  bool isEnumAttrCase() const;
+
   // Returns this DAG leaf as a constraint. Asserts if fails.
   Constraint getAsConstraint() const;
 
   // Returns this DAG leaf as an constant attribute. Asserts if fails.
   ConstantAttr getAsConstantAttr() const;
+
+  // Returns this DAG leaf as an enum attribute case.
+  // Precondition: isEnumAttrCase()
+  EnumAttrCase getAsEnumAttrCase() const;
 
   // Returns the matching condition template inside this DAG leaf. Assumes the
   // leaf is an operand/attribute matcher and asserts otherwise.
@@ -92,6 +99,10 @@ public:
   std::string getTransformationTemplate() const;
 
 private:
+  // Returns true if the TableGen Init `def` in this DagLeaf is a DefInit and
+  // also a subclass of the given `superclass`.
+  bool isSubClassOf(StringRef superclass) const;
+
   const llvm::Init *def;
 };
 

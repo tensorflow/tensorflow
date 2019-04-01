@@ -30,33 +30,29 @@ using namespace mlir;
 using mlir::tblgen::Operator;
 
 bool tblgen::DagLeaf::isUnspecified() const {
-  return !def || isa<llvm::UnsetInit>(def);
+  return dyn_cast_or_null<llvm::UnsetInit>(def);
 }
 
 bool tblgen::DagLeaf::isOperandMatcher() const {
-  if (!def || !isa<llvm::DefInit>(def))
-    return false;
   // Operand matchers specify a type constraint.
-  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("TypeConstraint");
+  return isSubClassOf("TypeConstraint");
 }
 
 bool tblgen::DagLeaf::isAttrMatcher() const {
-  if (!def || !isa<llvm::DefInit>(def))
-    return false;
   // Attribute matchers specify an attribute constraint.
-  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("AttrConstraint");
+  return isSubClassOf("AttrConstraint");
 }
 
 bool tblgen::DagLeaf::isAttrTransformer() const {
-  if (!def || !isa<llvm::DefInit>(def))
-    return false;
-  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("tAttr");
+  return isSubClassOf("tAttr");
 }
 
 bool tblgen::DagLeaf::isConstantAttr() const {
-  if (!def || !isa<llvm::DefInit>(def))
-    return false;
-  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("ConstantAttr");
+  return isSubClassOf("ConstantAttr");
+}
+
+bool tblgen::DagLeaf::isEnumAttrCase() const {
+  return isSubClassOf("EnumAttrCase");
 }
 
 tblgen::Constraint tblgen::DagLeaf::getAsConstraint() const {
@@ -70,6 +66,11 @@ tblgen::ConstantAttr tblgen::DagLeaf::getAsConstantAttr() const {
   return ConstantAttr(cast<llvm::DefInit>(def));
 }
 
+tblgen::EnumAttrCase tblgen::DagLeaf::getAsEnumAttrCase() const {
+  assert(isEnumAttrCase() && "the DAG leaf must be an enum attribute case");
+  return EnumAttrCase(cast<llvm::DefInit>(def));
+}
+
 std::string tblgen::DagLeaf::getConditionTemplate() const {
   return getAsConstraint().getConditionTemplate();
 }
@@ -80,6 +81,12 @@ std::string tblgen::DagLeaf::getTransformationTemplate() const {
       ->getDef()
       ->getValueAsString("attrTransform")
       .str();
+}
+
+bool tblgen::DagLeaf::isSubClassOf(StringRef superclass) const {
+  if (auto *defInit = dyn_cast_or_null<llvm::DefInit>(def))
+    return defInit->getDef()->isSubClassOf(superclass);
+  return false;
 }
 
 bool tblgen::DagNode::isAttrTransformer() const {

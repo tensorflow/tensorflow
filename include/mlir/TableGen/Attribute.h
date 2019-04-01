@@ -120,6 +120,32 @@ private:
   const llvm::Record *def;
 };
 
+// Wrapper class providing helper methods for accessing enum attribute cases
+// defined in TableGen. This class should closely reflect what is defined as
+// class `EnumAttrCase` in TableGen.
+class EnumAttrCase : public Attribute {
+public:
+  explicit EnumAttrCase(const llvm::DefInit *init);
+
+  // Returns the symbol of this enum attribute case.
+  StringRef getSymbol() const;
+};
+
+// Wrapper class providing helper methods for accessing enum attributes defined
+// in TableGen. This class should closely reflect what is defined as class
+// `EnumAttr` in TableGen.
+class EnumAttr : public Attribute {
+public:
+  explicit EnumAttr(const llvm::Record *record);
+  explicit EnumAttr(const llvm::DefInit *init);
+
+  // Returns the enum class name.
+  StringRef getEnumClassName() const;
+
+  // Returns all allowed cases for this enum attribute.
+  std::vector<EnumAttrCase> getAllCases() const;
+};
+
 } // end namespace tblgen
 } // end namespace mlir
 

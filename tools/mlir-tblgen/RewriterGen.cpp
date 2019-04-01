@@ -98,8 +98,9 @@ private:
   // result value name.
   std::string emitOpCreate(DagNode tree, int resultIndex, int depth);
 
-  // Returns the string value of constant attribute as an argument.
-  std::string handleConstantAttr(ConstantAttr constAttr);
+  // Returns the C++ expression to construct a constant attribute of the given
+  // `value` for the given attribute kind `attr`.
+  std::string handleConstantAttr(Attribute attr, StringRef value);
 
   // Returns the C++ expression to build an argument from the given DAG `leaf`.
   // `patArgName` is used to bound the argument to the source pattern.
@@ -128,16 +129,15 @@ PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
     : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper), nextValueId(0),
       os(os) {}
 
-std::string PatternEmitter::handleConstantAttr(ConstantAttr constAttr) {
-  auto attr = constAttr.getAttribute();
-
+std::string PatternEmitter::handleConstantAttr(Attribute attr,
+                                               StringRef value) {
   if (!attr.isConstBuildable())
     PrintFatalError(loc, "Attribute " + attr.getTableGenDefName() +
                              " does not have the 'constBuilderCall' field");
 
   // TODO(jpienaar): Verify the constants here
   return formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
-                 constAttr.getConstantValue());
+                 value);
 }
 
 static Twine resultName(const StringRef &name) { return Twine("res_") + name; }
@@ -448,7 +448,13 @@ void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
 std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
                                              llvm::StringRef argName) {
   if (leaf.isConstantAttr()) {
-    return handleConstantAttr(leaf.getAsConstantAttr());
+    auto constAttr = leaf.getAsConstantAttr();
+    return handleConstantAttr(constAttr.getAttribute(),
+                              constAttr.getConstantValue());
+  }
+  if (leaf.isEnumAttrCase()) {
+    auto enumCase = leaf.getAsEnumAttrCase();
+    return handleConstantAttr(enumCase, enumCase.getSymbol());
   }
   pattern.ensureArgBoundInSourcePattern(argName);
   std::string result = boundArgNameInRewrite(argName).str();
@@ -587,7 +593,7 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
       auto leaf = tree.getArgAsLeaf(i);
       // The argument in the result DAG pattern.
       auto patArgName = tree.getArgName(i);
-      if (leaf.isConstantAttr()) {
+      if (leaf.isConstantAttr() || leaf.isEnumAttrCase()) {
         // TODO(jpienaar): Refactor out into map to avoid recomputing these.
         auto argument = resultOp.getArg(i);
         if (!argument.is<NamedAttribute *>())

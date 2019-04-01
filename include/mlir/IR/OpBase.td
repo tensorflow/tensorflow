@@ -445,6 +445,26 @@ class StringBasedAttr<Pred condition, string descr> :
 
 def StrAttr : StringBasedAttr<CPred<"true">, "string">;
 
+// An enum attribute case.
+class EnumAttrCase<string sym> : StringBasedAttr<
+    CPred<"{0}.cast<StringAttr>().getValue() == \"" # sym # "\"">,
+    "case " # sym> {
+  // The C++ enumerant symbol
+  string symbol = sym;
+}
+
+// An enum attribute. Its value can only be one from the given list of `cases`.
+// Enum attributes are emulated via mlir::StringAttr, plus extra verification
+// on the string: only the symbols of the allowed cases are permitted as the
+// string value.
+class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
+    StringBasedAttr<AnyOf<!foreach(case, cases, case.predicate)>, description> {
+  // The C++ enum class name
+  string className = name;
+  // List of all accepted cases
+  list<EnumAttrCase> enumerants = cases;
+}
+
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];

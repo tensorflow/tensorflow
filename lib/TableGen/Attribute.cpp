@@ -130,3 +130,38 @@ tblgen::Attribute tblgen::ConstantAttr::getAttribute() const {
 StringRef tblgen::ConstantAttr::getConstantValue() const {
   return def->getValueAsString("value");
 }
+
+tblgen::EnumAttrCase::EnumAttrCase(const llvm::DefInit *init)
+    : Attribute(init) {
+  assert(def->isSubClassOf("EnumAttrCase") &&
+         "must be subclass of TableGen 'EnumAttrCase' class");
+}
+
+StringRef tblgen::EnumAttrCase::getSymbol() const {
+  return def->getValueAsString("symbol");
+}
+
+tblgen::EnumAttr::EnumAttr(const llvm::Record *record) : Attribute(record) {
+  assert(def->isSubClassOf("EnumAttr") &&
+         "must be subclass of TableGen 'EnumAttr' class");
+}
+
+tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
+    : EnumAttr(init->getDef()) {}
+
+StringRef tblgen::EnumAttr::getEnumClassName() const {
+  return def->getValueAsString("className");
+}
+
+std::vector<tblgen::EnumAttrCase> tblgen::EnumAttr::getAllCases() const {
+  const auto *inits = def->getValueAsListInit("enumerants");
+
+  std::vector<tblgen::EnumAttrCase> cases;
+  cases.reserve(inits->size());
+
+  for (const llvm::Init *init : *inits) {
+    cases.push_back(tblgen::EnumAttrCase(cast<llvm::DefInit>(init)));
+  }
+
+  return cases;
+}
