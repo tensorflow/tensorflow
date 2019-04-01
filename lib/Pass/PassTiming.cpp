@@ -138,7 +138,7 @@ struct Timer {
   }
 
   /// Raw timing information.
-  std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+  std::chrono::time_point<std::chrono::system_clock> startTime;
   std::chrono::nanoseconds wallTime = std::chrono::nanoseconds(0);
   std::chrono::nanoseconds userTime = std::chrono::nanoseconds(0);
 
