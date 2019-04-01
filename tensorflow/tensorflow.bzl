@@ -413,11 +413,12 @@ def tf_shared_library_deps():
     suffix = "." + VERSION.split(".")[0]
 
     return select({
-        clean_dep("//tensorflow:macos"): [
+        clean_dep("//tensorflow:macos_with_framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow.dylib"),
             clean_dep("//tensorflow:libtensorflow%s.dylib" % suffix),
             clean_dep("//tensorflow:libtensorflow%s.dylib" % longsuffix),
         ],
+        clean_dep("//tensorflow:macos"): [],
         clean_dep("//tensorflow:windows"): [
             clean_dep("//tensorflow:tensorflow.dll"),
         ],
