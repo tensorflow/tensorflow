@@ -310,15 +310,15 @@ uint64 GetHashValue(miopenTensorDescriptor_t tensor_desc) {
 uint64 GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   miopenConvolutionMode_t c_mode = miopenConvolution;
   int nd = 0;
-  wrap::miopenGetConvolutionNdDescriptor(conv_desc, &c_mode, &nd,
-      nullptr, nullptr, nullptr);
+  wrap::miopenGetConvolutionNdDescriptor(conv_desc, 0, &nd,
+      nullptr, nullptr, nullptr, &c_mode);
 
   std::vector<int> stride(nd);
   std::vector<int> pad(nd);
   std::vector<int> dilation(nd);
 
-  wrap::miopenGetConvolutionNdDescriptor(conv_desc, &c_mode, &nd,
-      pad.data(), stride.data(), dilation.data());
+  wrap::miopenGetConvolutionNdDescriptor(conv_desc, nd, &nd,
+      pad.data(), stride.data(), dilation.data(), &c_mode);
 
   uint64 hashValue = tensorflow::hash<int>()(c_mode);
   auto hash64Combine = [&hashValue](int element){
@@ -698,8 +698,8 @@ class ScopedConvolutionDescriptor {
                    &CheckedNarrowing<int64, int>);
 
     status = wrap::miopenInitConvolutionNdDescriptor(
-        handle_, miopenConvolution, convolution_descriptor.ndims(),
-        padding.data(), strides.data(), upscale.data());
+        handle_, convolution_descriptor.ndims(), padding.data(),
+        strides.data(), upscale.data(), miopenConvolution);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "could not set miopen convolution descriptor: "
                  << ToString(status);

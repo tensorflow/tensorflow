@@ -2866,7 +2866,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        "no_rocm",
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
@@ -3228,7 +3227,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 30,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3367,7 +3365,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
-    flaky = 1,  # test fails on rocm (on rare occasions) 
+    flaky = 1,  # test fails on rocm (on rare occasions)
     tags = [
         "no_windows",
     ],
