@@ -191,7 +191,9 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
   // with any other instruction.
   // Note that scatter cannot be the root of a multi-output fusion because
   // its emitter doesn't support it.
-  return IsInputFusibleReduction(instr) || IsLoopFusible(instr);
+  return instr->IsFusible() &&
+         (IsInputFusibleReduction(*instr) || instr->IsLoopFusion() ||
+          instr->IsElementwise());
 }
 }  // namespace gpu
 }  // namespace xla
