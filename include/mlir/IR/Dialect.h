@@ -49,6 +49,11 @@ public:
 
   StringRef getNamespace() const { return name; }
 
+  /// Returns true if this dialect allows for unregistered operations, i.e.
+  /// operations prefixed with the dialect namespace but not registered with
+  /// addOperation.
+  bool allowsUnknownOperations() const { return allowUnknownOps; }
+
   /// Registered fallback constant fold hook for the dialect. Like the constant
   /// fold hook of each operation, it attempts to constant fold the operation
   /// with the specified constant operand values - the elements in "operands"
@@ -188,6 +193,9 @@ protected:
   // Register a type with its given unqiue type identifer.
   void addType(const TypeID *const typeID);
 
+  // Enable support for unregistered operations.
+  void allowUnknownOperations(bool allow = true) { allowUnknownOps = allow; }
+
 private:
   Dialect(const Dialect &) = delete;
   void operator=(Dialect &) = delete;
@@ -201,6 +209,11 @@ private:
 
   /// This is the context that owns this Dialect object.
   MLIRContext *context;
+
+  /// Flag that toggles if this dialect supports unregistered operations, i.e.
+  /// operations prefixed with the dialect namespace but not registered with
+  /// addOperation.
+  bool allowUnknownOps;
 };
 
 using DialectAllocatorFunction = std::function<void(MLIRContext *)>;

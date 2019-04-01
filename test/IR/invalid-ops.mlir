@@ -76,6 +76,14 @@ func @unknown_custom_op() {
 
 // -----
 
+func @unknown_std_op() {
+  // expected-error@+1 {{unregistered operation 'std.foo_bar_op' found in dialect ('std') that does not allow unknown operations}}
+  %0 = "std.foo_bar_op"() : () -> index
+  return
+}
+
+// -----
+
 func @bad_alloc_wrong_dynamic_dim_count() {
 ^bb0:
   %0 = "std.constant"() {value: 7} : () -> index

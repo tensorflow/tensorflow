@@ -69,6 +69,9 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/LLVMIR/LLVMOps.cpp.inc"
       >();
+
+  // Support unknown operations because not all LLVM operations are registered.
+  allowUnknownOperations();
 }
 
 #define GET_OP_CLASSES

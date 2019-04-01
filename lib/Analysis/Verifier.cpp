@@ -70,9 +70,7 @@ public:
   }
 
   /// Returns the registered dialect for a dialect-specific attribute.
-  template <typename ErrorContext>
-  Dialect *getDialectForAttribute(const NamedAttribute &attr,
-                                  const ErrorContext &ctx) {
+  Dialect *getDialectForAttribute(const NamedAttribute &attr) {
     assert(attr.first.strref().contains('.') && "expected dialect attribute");
     auto dialectNamePair = attr.first.strref().split('.');
     return fn.getContext()->getRegisteredDialect(dialectNamePair.first);
@@ -124,6 +122,10 @@ private:
 
   /// Regex checker for attribute names.
   llvm::Regex identifierRegex;
+
+  /// Mapping between dialect namespace and if that dialect supports
+  /// unregistered operations.
+  llvm::StringMap<bool> dialectAllowsUnknownOps;
 };
 } // end anonymous namespace
 
@@ -149,7 +151,7 @@ bool FuncVerifier::verify() {
       return failure("functions may only have dialect attributes", fn);
 
     // Verify this attribute with the defining dialect.
-    if (auto *dialect = getDialectForAttribute(attr, fn))
+    if (auto *dialect = getDialectForAttribute(attr))
       if (dialect->verifyFunctionAttribute(&fn, attr))
         return true;
   }
@@ -172,7 +174,7 @@ bool FuncVerifier::verify() {
                        fn);
 
       // Verify this attribute with the defining dialect.
-      if (auto *dialect = getDialectForAttribute(attr, fn))
+      if (auto *dialect = getDialectForAttribute(attr))
         if (dialect->verifyFunctionArgAttribute(&fn, i, attr))
           return true;
     }
@@ -283,22 +285,49 @@ bool FuncVerifier::verifyOperation(Operation &op) {
     // Check for any optional dialect specific attributes.
     if (!attr.first.strref().contains('.'))
       continue;
-    if (auto *dialect = getDialectForAttribute(attr, op))
+    if (auto *dialect = getDialectForAttribute(attr))
       if (dialect->verifyOperationAttribute(&op, attr))
         return true;
   }
 
   // If we can get operation info for this, check the custom hook.
-  if (auto *opInfo = op.getAbstractOperation()) {
-    if (opInfo->verifyInvariants(&op))
-      return true;
-  }
+  auto *opInfo = op.getAbstractOperation();
+  if (opInfo && opInfo->verifyInvariants(&op))
+    return true;
 
   // Verify that all child blocks are ok.
   for (auto &region : op.getRegions())
     for (auto &b : region)
       if (verifyBlock(b, /*isTopLevel=*/false))
         return true;
+
+  // If this is a registered operation, there is nothing left to do.
+  if (opInfo)
+    return false;
+
+  // Otherwise, verify that the parent dialect allows un-registered operations.
+  auto opName = op.getName().getStringRef();
+  auto dialectPrefix = opName.split('.').first;
+
+  // Check for an existing answer for the operation dialect.
+  auto it = dialectAllowsUnknownOps.find(dialectPrefix);
+  if (it == dialectAllowsUnknownOps.end()) {
+    // If the operation dialect is registered, query it directly.
+    if (auto *dialect = fn.getContext()->getRegisteredDialect(dialectPrefix))
+      it = dialectAllowsUnknownOps
+               .try_emplace(dialectPrefix, dialect->allowsUnknownOperations())
+               .first;
+    // Otherwise, conservatively allow unknown operations.
+    else
+      it = dialectAllowsUnknownOps.try_emplace(dialectPrefix, true).first;
+  }
+
+  if (!it->second) {
+    return failure("unregistered operation '" + opName +
+                       "' found in dialect ('" + dialectPrefix +
+                       "') that does not allow unknown operations",
+                   op);
+  }
 
   return false;
 }
