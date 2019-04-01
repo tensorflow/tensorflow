@@ -31,6 +31,11 @@ def test_op():
   pass
 
 
+@tf_export('foo', v1=['test.foo'])
+def deprecated_test_op():
+  pass
+
+
 @tf_export('TestClass', 'NewTestClass')
 class TestClass(object):
   pass
@@ -46,6 +51,7 @@ class CreatePythonApiTest(test.TestCase):
     # Add fake op to a module that has 'tensorflow' in the name.
     sys.modules[_MODULE_NAME] = imp.new_module(_MODULE_NAME)
     setattr(sys.modules[_MODULE_NAME], 'test_op', test_op)
+    setattr(sys.modules[_MODULE_NAME], 'deprecated_test_op', deprecated_test_op)
     setattr(sys.modules[_MODULE_NAME], 'TestClass', TestClass)
     test_op.__module__ = _MODULE_NAME
     TestClass.__module__ = _MODULE_NAME
@@ -76,6 +82,25 @@ class CreatePythonApiTest(test.TestCase):
     # Also check that compat.v1 is not added to imports.
     self.assertFalse('compat.v1' in imports,
                      msg='compat.v1 in %s' % str(imports.keys()))
+
+  def testDeprecatedAliasIsAdded(self):
+    imports = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
+        output_package='tensorflow',
+        api_name='tensorflow',
+        api_version=1)
+    expected_import = (
+        'from tensorflow.python.test_module '
+        'import deprecated_test_op as _deprecated_test_op')
+    self.assertTrue(
+        expected_import in str(imports),
+        msg='%s not in %s' % (expected_import, str(imports)))
+    expected_import = (
+        'foo = _deprecated_alias(\'tf.test.foo\', \'tf.foo\', '
+        '_deprecated_test_op)')
+    self.assertTrue(
+        expected_import in str(imports),
+        msg='%s not in %s' % (expected_import, str(imports)))
 
   def testClassImportIsAdded(self):
     imports = create_python_api.get_api_init_text(

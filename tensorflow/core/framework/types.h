@@ -83,12 +83,12 @@ struct DeviceName<Eigen::ThreadPoolDevice> {
   static const std::string value;
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 struct DeviceName<Eigen::GpuDevice> {
   static const std::string value;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <>

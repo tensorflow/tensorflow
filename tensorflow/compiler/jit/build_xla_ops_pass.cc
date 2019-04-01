@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/logging_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -74,7 +75,8 @@ Operation DataToControl(const Scope& scope, Output data) {
 
 // Replaces each outgoing edge from `old_node` with a merge node that merges in
 // the corresponding output from `new_node`.
-void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node) {
+void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node,
+                            bool insert_print_nodes) {
   if (!s.status().ok()) {
     return;
   }
@@ -91,7 +93,21 @@ void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node) {
     if (merged_output.node() == nullptr) {
       ops::Merge merge_op(s.WithOpName(absl::StrCat("merge_oidx_", oidx)),
                           {Output(old_node, oidx), Output(new_node, oidx)});
-      merged_output = merged_outputs[oidx] = merge_op.output;
+      if (insert_print_nodes) {
+        string cpu_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+        ops::Print print_op(s.WithOpName(absl::StrCat("print_", oidx))
+                                .WithDevice(cpu_device)
+                                .WithAssignedDevice(cpu_device),
+                            merge_op.output, {merge_op.output},
+                            ops::Print::Attrs{}
+                                .Message(absl::StrCat("output ", oidx, " from ",
+                                                      old_node->name(), " is "))
+                                .FirstN(1000)
+                                .Summarize(-1));
+        merged_output = merged_outputs[oidx] = print_op;
+      } else {
+        merged_output = merged_outputs[oidx] = merge_op.output;
+      }
     }
 
     Node* dst = e->dst();
@@ -310,7 +326,7 @@ Status InferDeviceForCluster(Node* n, const string& function_name,
 Status ReplaceNodeWithXlaCompileAndXlaRun(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, bool lazy_compilation_enabled,
-    Graph* g, Node* n) {
+    bool insert_print_nodes, Graph* g, Node* n) {
   XlaClusterInfo cluster_info;
   TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
 
@@ -378,7 +394,8 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
                               /*new_node=*/xla_run.operation.node());
 
     MergeOutgoingDataEdges(root, /*old_node=*/n,
-                           /*new_node=*/xla_run.operation.node());
+                           /*new_node=*/xla_run.operation.node(),
+                           insert_print_nodes);
 
     TF_RETURN_IF_ERROR(root.status());
 
@@ -419,10 +436,13 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
       enable_lazy_compilation_
           ? *enable_lazy_compilation_
           : GetBuildXlaOpsPassFlags().tf_xla_enable_lazy_compilation;
+  bool insert_print_nodes =
+      GetBuildXlaOpsPassFlags().tf_xla_print_cluster_outputs;
 
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(
-        options, *options.flib_def, lazy_compilation_enabled, graph, n));
+        options, *options.flib_def, lazy_compilation_enabled,
+        insert_print_nodes, graph, n));
   }
 
   if (VLOG_IS_ON(1)) {

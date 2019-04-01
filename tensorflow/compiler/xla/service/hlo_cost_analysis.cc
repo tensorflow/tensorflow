@@ -718,8 +718,10 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
 }
 
 Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
+  // Scatter accesses the equivalent of 3 update shapes (input, output, and
+  // updates), and the scatter indices.
   current_properties_[kBytesAccessedKey] =
-      GetShapeSize(scatter->operand(2)->shape()) * 2 +
+      GetShapeSize(scatter->operand(2)->shape()) * 3 +
       GetShapeSize(scatter->operand(1)->shape());
   const int64 element_count =
       ShapeUtil::ElementsIn(scatter->operand(2)->shape());

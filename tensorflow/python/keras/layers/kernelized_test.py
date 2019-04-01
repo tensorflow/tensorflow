@@ -119,7 +119,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
         name='random_fourier_features')
     inputs = random_ops.random_uniform((3, 2), seed=1)
     outputs = rff_layer(inputs)
-    self.assertListEqual([3, 10], outputs.get_shape().as_list())
+    self.assertListEqual([3, 10], outputs.shape.as_list())
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
     if not context.executing_eagerly():
@@ -141,7 +141,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim=7, name='random_fourier_features', trainable=True)
     outputs = rff_layer(inputs)
-    self.assertEqual([3, 7], outputs.get_shape().as_list())
+    self.assertEqual([3, 7], outputs.shape.as_list())
 
   @parameterized.named_parameters(
       ('gaussian', 'gaussian'), ('laplacian', 'laplacian'),
@@ -251,7 +251,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
 
     inputs = random_ops.random_uniform((3, 2), seed=1)
     outputs = rff_layer(inputs)
-    self.assertListEqual([3, output_dim], outputs.get_shape().as_list())
+    self.assertListEqual([3, output_dim], outputs.shape.as_list())
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.trainable_variables, num_trainable_vars)
     if trainable:
@@ -356,21 +356,23 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
       self.assertLess(abs_error, 0.5)
 
   @parameterized.named_parameters(
-      ('gaussian', 'gaussian', 10.0, _exact_gaussian(stddev=10.0)),
-      ('laplacian', 'laplacian', 50.0, _exact_laplacian(stddev=50.0)))
+      ('gaussian', 'gaussian', 5.0, _exact_gaussian(stddev=5.0)),
+      ('laplacian', 'laplacian', 10.0, _exact_laplacian(stddev=10.0)))
   @test_util.run_in_graph_and_eager_modes()
   def test_good_kernel_approximation_multiple_inputs(self, initializer, scale,
                                                      exact_kernel_fn):
     # Parameters.
     input_dim = 5
-    output_dim = 5000
+    output_dim = 2000
     x_rows = 20
     y_rows = 30
 
-    random_seed.set_random_seed(1234)
-    x = random_ops.random_uniform(shape=(x_rows, input_dim), maxval=1.0)
-    y = random_ops.random_uniform(shape=(y_rows, input_dim), maxval=1.0)
+    x = constant_op.constant(
+        np.random.uniform(size=(x_rows, input_dim)), dtype=dtypes.float32)
+    y = constant_op.constant(
+        np.random.uniform(size=(y_rows, input_dim)), dtype=dtypes.float32)
 
+    random_seed.set_random_seed(1234)
     rff_layer = kernel_layers.RandomFourierFeatures(
         output_dim=output_dim,
         kernel_initializer=initializer,
@@ -384,7 +386,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
 
     approx_kernel_matrix = kernelized_utils.inner_product(output_x, output_y)
     exact_kernel_matrix = exact_kernel_fn(x, y)
-    self._assert_all_close(approx_kernel_matrix, exact_kernel_matrix, atol=0.1)
+    self._assert_all_close(approx_kernel_matrix, exact_kernel_matrix, atol=0.05)
 
 
 if __name__ == '__main__':

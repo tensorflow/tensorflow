@@ -391,7 +391,7 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithDynamicTensor) {
                   },
                   {3});
 
-  // Make #1 dynaic so it does not get allocated.
+  // Make #1 dynamic so it does not get allocated.
   (*graph.tensors())[1].allocation_type = kTfLiteDynamic;
 
   SetGraph(&graph);

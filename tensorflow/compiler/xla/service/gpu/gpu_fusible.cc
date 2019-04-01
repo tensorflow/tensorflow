@@ -65,7 +65,7 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
     for (const HloInstruction* operand :
          instr.fused_expression_root()->operands()) {
       if (IsReductionToVector(*operand)) {
-        CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+        CHECK(instr.IsInputFusion())
             << " Multi-output fusion rooted at reduction-to-vector ops must be "
                "of kind kInput: "
             << instr.ToString();
@@ -74,7 +74,7 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
     }
   } else if (instr.opcode() == HloOpcode::kFusion &&
              IsReductionToVector(*instr.fused_expression_root())) {
-    CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+    CHECK(instr.IsInputFusion())
         << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
         << instr.ToString();
     return true;

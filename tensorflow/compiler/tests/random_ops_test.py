@@ -36,7 +36,7 @@ class RandomOpsTest(xla_test.XLATestCase):
 
   def _random_types(self):
     return set(self.numeric_types) - set(
-        self.complex_types) - {np.uint8, np.int8}
+        self.complex_types) - {np.uint64, np.int64, np.uint8, np.int8}
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.

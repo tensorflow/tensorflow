@@ -243,7 +243,7 @@ class NodeStepper(object):
     done = set()  # Keep track of visited graph elements.
 
     # A list of str: Names of the topologically-sorted graph elements.
-    node_inputs = dict()  # New: Input map of nodes in the transitive closure.
+    node_inputs = {}  # New: Input map of nodes in the transitive closure.
 
     elem_stack = copy.copy(elem_list)
 

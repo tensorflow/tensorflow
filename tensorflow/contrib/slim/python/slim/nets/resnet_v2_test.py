@@ -54,18 +54,20 @@ def create_test_input(batch_size, height, width, channels):
     return array_ops.placeholder(dtypes.float32,
                                  (batch_size, height, width, channels))
   else:
-    return math_ops.to_float(
+    return math_ops.cast(
         np.tile(
             np.reshape(
                 np.reshape(np.arange(height), [height, 1]) + np.reshape(
                     np.arange(width), [1, width]), [1, height, width, 1]),
-            [batch_size, 1, 1, channels]))
+            [batch_size, 1, 1, channels]),
+        dtypes.float32)
 
 
 class ResnetUtilsTest(test.TestCase):
 
   def testSubsampleThreeByThree(self):
-    x = array_ops.reshape(math_ops.to_float(math_ops.range(9)), [1, 3, 3, 1])
+    x = array_ops.reshape(math_ops.cast(math_ops.range(9), dtypes.float32),
+                          [1, 3, 3, 1])
     x = resnet_utils.subsample(x, 2)
     expected = array_ops.reshape(
         constant_op.constant([0, 2, 6, 8]), [1, 2, 2, 1])
@@ -73,7 +75,8 @@ class ResnetUtilsTest(test.TestCase):
       self.assertAllClose(x.eval(), expected.eval())
 
   def testSubsampleFourByFour(self):
-    x = array_ops.reshape(math_ops.to_float(math_ops.range(16)), [1, 4, 4, 1])
+    x = array_ops.reshape(math_ops.cast(math_ops.range(16), dtypes.float32),
+                          [1, 4, 4, 1])
     x = resnet_utils.subsample(x, 2)
     expected = array_ops.reshape(
         constant_op.constant([0, 2, 8, 10]), [1, 2, 2, 1])
@@ -95,19 +98,22 @@ class ResnetUtilsTest(test.TestCase):
     variable_scope.get_variable_scope().reuse_variables()
 
     y1 = layers.conv2d(x, 1, [3, 3], stride=1, scope='Conv')
-    y1_expected = math_ops.to_float([[14, 28, 43, 26], [28, 48, 66, 37],
-                                     [43, 66, 84, 46], [26, 37, 46, 22]])
+    y1_expected = math_ops.cast([[14, 28, 43, 26],
+                                 [28, 48, 66, 37],
+                                 [43, 66, 84, 46],
+                                 [26, 37, 46, 22]],
+                                dtypes.float32)
     y1_expected = array_ops.reshape(y1_expected, [1, n, n, 1])
 
     y2 = resnet_utils.subsample(y1, 2)
-    y2_expected = math_ops.to_float([[14, 43], [43, 84]])
+    y2_expected = math_ops.cast([[14, 43], [43, 84]], dtypes.float32)
     y2_expected = array_ops.reshape(y2_expected, [1, n2, n2, 1])
 
     y3 = resnet_utils.conv2d_same(x, 1, 3, stride=2, scope='Conv')
     y3_expected = y2_expected
 
     y4 = layers.conv2d(x, 1, [3, 3], stride=2, scope='Conv')
-    y4_expected = math_ops.to_float([[48, 37], [37, 22]])
+    y4_expected = math_ops.cast([[48, 37], [37, 22]], dtypes.float32)
     y4_expected = array_ops.reshape(y4_expected, [1, n2, n2, 1])
 
     with self.cached_session() as sess:
@@ -132,17 +138,19 @@ class ResnetUtilsTest(test.TestCase):
     variable_scope.get_variable_scope().reuse_variables()
 
     y1 = layers.conv2d(x, 1, [3, 3], stride=1, scope='Conv')
-    y1_expected = math_ops.to_float([[14, 28, 43, 58, 34],
-                                     [28, 48, 66, 84, 46],
-                                     [43, 66, 84, 102, 55],
-                                     [58, 84, 102, 120, 64],
-                                     [34, 46, 55, 64, 30]])
+    y1_expected = math_ops.cast([[14, 28, 43, 58, 34],
+                                 [28, 48, 66, 84, 46],
+                                 [43, 66, 84, 102, 55],
+                                 [58, 84, 102, 120, 64],
+                                 [34, 46, 55, 64, 30]],
+                                dtypes.float32)
     y1_expected = array_ops.reshape(y1_expected, [1, n, n, 1])
 
     y2 = resnet_utils.subsample(y1, 2)
-    y2_expected = math_ops.to_float([[14, 43, 34],
-                                     [43, 84, 55],
-                                     [34, 55, 30]])
+    y2_expected = math_ops.cast([[14, 43, 34],
+                                 [43, 84, 55],
+                                 [34, 55, 30]],
+                                dtypes.float32)
     y2_expected = array_ops.reshape(y2_expected, [1, n2, n2, 1])
 
     y3 = resnet_utils.conv2d_same(x, 1, 3, stride=2, scope='Conv')

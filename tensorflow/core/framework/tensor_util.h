@@ -175,14 +175,12 @@ template <typename RealType>
 struct CopyHelper<std::complex<RealType>> {
   template <typename SrcIter>
   static void ToArray(SrcIter begin, SrcIter end, std::complex<RealType>* dst) {
-    using SrcType = typename std::iterator_traits<SrcIter>::value_type;
     RealType* real_dst = reinterpret_cast<RealType*>(dst);
     std::copy(begin, end, real_dst);
   }
 
   template <typename SrcIter, typename DstIter>
   static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
-    using DstType = typename std::iterator_traits<DstIter>::value_type;
     size_t n = std::distance(begin, end);
     const RealType* real_begin = reinterpret_cast<const RealType*>(&(*begin));
     std::copy_n(real_begin, 2 * n, dst);

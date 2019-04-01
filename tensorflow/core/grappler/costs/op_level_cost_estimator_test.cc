@@ -119,6 +119,22 @@ OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
   return op_context;
 }
 
+// Returns an OpInfo for a SparseTensorDenseMatMul
+OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
+                                          const std::vector<int>& dims_b,
+                                          const std::vector<int>& dims_out) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("SparseTensorDenseMatMul");
+
+  DescribeArbitraryRankInput({nnz_a, 2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankInput({nnz_a}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankOutput(dims_out, DT_FLOAT, &op_context.op_info);
+  return op_context;
+}
+
 // Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
 // estimation purposes.
 void DescribeTensor1D(int dim0, OpInfo::TensorProperties* tensor) {
@@ -852,6 +868,58 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                 DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {
+  // Unknown shape cases
+  {
+    auto cost =
+        PredictCosts(DescribeSparseTensorDenseMatMul(-1, {1, 1}, {1, 1}));
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+  }
+  {
+    auto cost =
+        PredictCosts(DescribeSparseTensorDenseMatMul(1, {-1, 1}, {1, 1}));
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+  }
+  {
+    auto cost =
+        PredictCosts(DescribeSparseTensorDenseMatMul(1, {1, -1}, {1, -1}));
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+  }
+  {
+    auto cost =
+        PredictCosts(DescribeSparseTensorDenseMatMul(1, {1, 1}, {-1, 1}));
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+  }
+  // Known shape cases
+  {
+    auto cost = PredictCosts(
+        DescribeSparseTensorDenseMatMul(10, {1000, 100}, {50, 100}));
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    EXPECT_EQ(Costs::Duration(200), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(2422), cost.memory_time);
+  }
+  {
+    // Same cost as above case because cost does not depend on k_dim
+    auto cost = PredictCosts(
+        DescribeSparseTensorDenseMatMul(10, {100000, 100}, {50, 100}));
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    EXPECT_EQ(Costs::Duration(200), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(2422), cost.memory_time);
+  }
 }
 
 void ExpectTensorShape(const std::vector<int64>& expected,

@@ -20,10 +20,10 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -34,23 +34,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 
-def get_first_tpu_host_device(cluster_resolver):
-  """Get the device spec for the first TPU host."""
-  if context.executing_eagerly():
-    tpu_devices = sorted(
-        [x for x in context.list_devices() if "device:TPU:" in x])
-    if not tpu_devices:
-      raise RuntimeError("Could not find any TPU devices")
-    spec = tf_device.DeviceSpec.from_string(tpu_devices[0])
-    task_id = spec.task
-  else:
-    # Session master needs to be configured and the coordinator is not part
-    # of the cluster.
-    task_id = 0
-  if cluster_resolver.get_master() in ("", "local"):
-    return "/replica:0/task:0/device:CPU:0"
-  job_name = cluster_resolver.get_job_name() or "tpu_worker"
-  return "/job:%s/task:%d/device:CPU:0" % (job_name, task_id)
+_INITIALIZED_TPU_SYSTEMS = {}
 
 
 @tf_export("tpu.experimental.initialize_tpu_system")
@@ -62,9 +46,19 @@ def initialize_tpu_system(cluster_resolver=None):
         which provides information about the TPU cluster.
   Returns:
     The tf.tpu.Topology object for the topology of the TPU cluster.
+
+  Raises:
+    RuntimeError: If no TPU devices found for eager execution.
   """
   if cluster_resolver is None:
     cluster_resolver = TPUClusterResolver("")
+  assert isinstance(cluster_resolver, TPUClusterResolver)
+
+  tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
+  if tpu_name in _INITIALIZED_TPU_SYSTEMS:
+    logging.warning("TPU system %s has already been initialized. "
+                    "Reinitializing the TPU can cause previously created "
+                    "variables on TPU to be lost.")
 
   logging.info("Initializing the TPU system.")
 
@@ -88,7 +82,13 @@ def initialize_tpu_system(cluster_resolver=None):
     func_name = compat.as_str(graph_func._inference_function.name)
     # pylint: enable=protected-access
 
-    with ops.device(get_first_tpu_host_device(cluster_resolver)):
+    tpu_devices = sorted(
+        [x for x in context.list_devices() if "device:TPU:" in x])
+
+    if not tpu_devices:
+      raise RuntimeError("Could not find any TPU devices")
+
+    with ops.device(device_util.get_host_for_device(tpu_devices[0])):
       output = tpu_functional_ops.TPUPartitionedCall(
           args=[], device_ordinal=0, Tout=[dtypes.string], f=func_name)
     serialized_topology = output[0].numpy()
@@ -100,4 +100,7 @@ def initialize_tpu_system(cluster_resolver=None):
         serialized_topology = sess.run(tpu.initialize_system())
 
   logging.info("Finished initializing TPU system.")
-  return topology.Topology(serialized=serialized_topology)
+  tpu_topology = topology.Topology(serialized=serialized_topology)
+  _INITIALIZED_TPU_SYSTEMS[tpu_name] = tpu_topology
+
+  return tpu_topology

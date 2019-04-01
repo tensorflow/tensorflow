@@ -55,6 +55,7 @@ def _run_inline_graph_optimization(func):
   # Initialize RewriterConfig with everything disabled except function inlining.
   config = config_pb2.ConfigProto()
   rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.min_graph_nodes = -1  # do not skip small graphs
   rewrite_options.optimizers.append("function")
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 

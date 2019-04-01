@@ -164,7 +164,6 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_RepeatedInput) {
   item.graph.Swap(&output);
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
@@ -469,31 +468,31 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
     EXPECT_NE("id_b", node.name());
     EXPECT_NE("id_c", node.name());
     if (node.name() == "a_a" || node.name() == "a_b") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("x", node.input(0));
       ++found;
     }
     if (node.name() == "a_c" || node.name() == "a_d") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("z", node.input(0));
       EXPECT_EQ("^x", node.input(1));
       ++found;
     }
     if (node.name() == "b_a") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("^y", node.input(1));
       EXPECT_EQ("^z", node.input(2));
       ++found;
     }
     if (node.name() == "c_a") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("^y", node.input(1));
       ++found;
     }
     if (node.name() == "c_b") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("z", node.input(0));
       EXPECT_EQ("^x", node.input(1));
       EXPECT_EQ("^y", node.input(2));
@@ -774,7 +773,6 @@ TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
   EXPECT_EQ(3, output.node_size());
   for (const auto& node : output.node()) {
     EXPECT_NE("x_on_2", node.name());

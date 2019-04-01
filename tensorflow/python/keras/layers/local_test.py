@@ -27,12 +27,9 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LocallyConnected1DLayersTest(test.TestCase):
-  # TODO(fchollet): investigate why LocallyConnected1D
-  # fails inside a graph function in an eager context (fails with error
-  # "Incompatible shapes between op input and calculated input gradient").
 
-  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_1d(self):
     with self.cached_session():
       num_samples = 2
@@ -116,12 +113,9 @@ class LocallyConnected1DLayersTest(test.TestCase):
               self.assertEqual(layer.bias.constraint, b_constraint)
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LocallyConnected2DLayersTest(test.TestCase):
-  # TODO(fchollet): investigate why LocallyConnected2D
-  # fails inside a graph function in an eager context (fails with error
-  # "Incompatible shapes between op input and calculated input gradient").
 
-  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_2d(self):
     with self.cached_session():
       num_samples = 8
@@ -157,7 +151,6 @@ class LocallyConnected2DLayersTest(test.TestCase):
                   kwargs=kwargs,
                   input_shape=(num_samples, num_row, num_col, stack_size))
 
-  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_2d_channels_first(self):
     with self.cached_session():
       num_samples = 8
@@ -233,9 +226,9 @@ class LocallyConnected2DLayersTest(test.TestCase):
             self.assertEqual(layer.bias.constraint, b_constraint)
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LocallyConnectedImplementationModeTest(test.TestCase):
 
-  @tf_test_util.run_deprecated_v1
   def test_locallyconnected_implementation(self):
     with self.cached_session():
       num_samples = 4
@@ -297,7 +290,6 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                         self.assertAllCloseAccordingToType(
                             out_1, out_2, atol=2e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_make_2d(self):
     input_shapes = [
         (0,),

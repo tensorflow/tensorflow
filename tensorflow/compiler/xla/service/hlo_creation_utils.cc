@@ -274,15 +274,37 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
-                                        HloInstruction* on_false) {
+                                        HloInstruction* on_false,
+                                        HloInstruction* derived_from) {
   HloComputation* computation = pred->parent();
   DCHECK_EQ(computation, on_true->parent());
   DCHECK_EQ(computation, on_false->parent());
+  Shape op_shape = on_true->shape();
+  if (ShapeUtil::IsScalar(pred->shape())) {
+    if (!ShapeUtil::IsScalar(op_shape) && !op_shape.IsTuple()) {
+      // If the output is not scalar, we need to broadcast the condition
+      // to match the contract of kSelect. For tuples, we use kTupleSelect
+      // which expects the condition to be a scalar.
+      pred = computation->AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::ChangeElementType(op_shape, PrimitiveType::PRED), pred,
+          {}));
+      if (derived_from) {
+        derived_from->SetupDerivedInstruction(pred);
+      }
+    }
+  }
+  HloOpcode select_op_code =
+      op_shape.IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
   TF_ASSIGN_OR_RETURN(Shape select_shape,
-                      ShapeInference::InferTernaryOpShape(
-                          HloOpcode::kSelect, pred, on_true, on_false));
-  return computation->AddInstruction(HloInstruction::CreateTernary(
-      select_shape, HloOpcode::kSelect, pred, on_true, on_false));
+                      ShapeInference::InferTernaryOpShape(select_op_code, pred,
+                                                          on_true, on_false));
+  HloInstruction* select =
+      computation->AddInstruction(HloInstruction::CreateTernary(
+          select_shape, select_op_code, pred, on_true, on_false));
+  if (derived_from) {
+    derived_from->SetupDerivedInstruction(select);
+  }
+  return select;
 }
 
 StatusOr<HloInstruction*> MakeSortHlo(

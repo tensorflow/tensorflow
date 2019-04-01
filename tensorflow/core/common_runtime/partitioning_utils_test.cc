@@ -68,8 +68,7 @@ class PartitioningUtilsTest : public ::testing::Test {
     TF_ASSERT_OK(s.ToGraph(graph));
 
     if (assign_device) {
-      Placer placer(graph, &device_set_, nullptr, /* No session options */
-                    device0_);
+      Placer placer(graph, &device_set_, device0_);
       TF_ASSERT_OK(placer.Run());
     }
   }
@@ -85,8 +84,7 @@ class PartitioningUtilsTest : public ::testing::Test {
     auto dx_retval = ops::_Retval(s2.WithOpName("retval1"), id_y, 0);
     auto dy_retval = ops::_Retval(s1.WithOpName("retval2"), id_x, 1);
     TF_ASSERT_OK(s.ToGraph(graph));
-    Placer placer(graph, &device_set_, nullptr, /* No session options */
-                  device0_);
+    Placer placer(graph, &device_set_, device0_);
     TF_ASSERT_OK(placer.Run());
   }
 
@@ -100,8 +98,7 @@ class PartitioningUtilsTest : public ::testing::Test {
     auto id_x = ops::Identity(s1.WithOpName("id_x"), x);
     auto dx_retval = ops::_Retval(s1.WithOpName("retval1"), id_x, ret_index);
     TF_ASSERT_OK(s.ToGraph(subgraph));
-    Placer placer(subgraph, &device_set_, nullptr, /* No session options */
-                  device0_);
+    Placer placer(subgraph, &device_set_, device0_);
     TF_ASSERT_OK(placer.Run());
   }
 

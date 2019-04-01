@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
+from tensorflow.lite.python import util as _util
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import constant_op
@@ -157,10 +158,8 @@ def evaluate_frozen_graph(filename, input_arrays, output_arrays):
     graph_def.ParseFromString(file_content)
     _import_graph_def(graph_def, name="")
 
-    inputs = _convert_saved_model.get_tensors_from_tensor_names(
-        sess.graph, input_arrays)
-    outputs = _convert_saved_model.get_tensors_from_tensor_names(
-        sess.graph, output_arrays)
+    inputs = _util.get_tensors_from_tensor_names(sess.graph, input_arrays)
+    outputs = _util.get_tensors_from_tensor_names(sess.graph, output_arrays)
 
     return lambda input_data: sess.run(outputs, dict(zip(inputs, input_data)))
 

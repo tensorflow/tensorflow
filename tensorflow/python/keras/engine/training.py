@@ -34,13 +34,13 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import training_distributed
+from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
-from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -54,7 +54,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.models.Model', 'keras.Model')
-class Model(Network):
+class Model(network.Network):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -140,6 +140,15 @@ class Model(Network):
       with self._distribution_strategy.scope():
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
+
+  def load_weights(self, filepath, by_name=False):
+    """Loads all layer weights, either from a TensorFlow or an HDF5 file."""
+    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+      if (self._distribution_strategy.extended.steps_per_run > 1 and
+          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+        raise ValueError('Load weights is not yet supported with TPUStrategy '
+                         'with steps_per_run greater than 1.')
+    return super(Model, self).load_weights(filepath, by_name)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
@@ -820,11 +829,10 @@ class Model(Network):
       y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
       sample_weights, val_sample_weights = (slice_arrays(
           sample_weights, 0, split_at), slice_arrays(sample_weights, split_at))
-    elif validation_steps:
-      val_x = []
-      val_y = []
-      val_sample_weights = []
     else:
+      if validation_steps:
+        raise ValueError('`validation_steps` should not be specified if '
+                         '`validation_data` is None.')
       val_x = None
       val_y = None
       val_sample_weights = None
@@ -2151,7 +2159,7 @@ class Model(Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=True,
+                                          repeat=False,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
@@ -2603,7 +2611,7 @@ class Model(Network):
           'However we received `validation_data=%s`' % validation_data)
     return val_x, val_y, val_sample_weight
 
-  @trackable.no_automatic_dependency_tracking
+  # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):
     """Set model's input and output specs based on the input data received.
 
@@ -2630,6 +2638,22 @@ class Model(Network):
       ValueError: If dict inputs are passed to a Sequential Model where the
         first layer isn't FeatureLayer.
     """
+    inputs = self._set_input_attrs(inputs)
+
+    if outputs is None:
+      kwargs = {'training': training} if self._expects_training_arg else {}
+      try:
+        outputs = self(inputs, **kwargs)
+      except NotImplementedError:
+        # This Model or a submodel is dynamic and hasn't overridden
+        # `compute_output_shape`.
+        outputs = None
+
+    self._set_output_attrs(outputs)
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_input_attrs(self, inputs):
+    """Sets attributes related to the inputs of the Model."""
     if self.inputs:
       raise ValueError('Model inputs are already set.')
 
@@ -2666,33 +2690,11 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_shapes.append(K.int_shape(v))
 
-    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
-    if outputs is None:
-      if not self._dynamic:
-        # The network may include dynamic layers but its `call`
-        # itself isn't dynamic.
-        # Obtain symbolic outputs by calling the model.
-        with K.get_graph().as_default():
-          contains_symbolic_tensors = getattr(
-              self, '_contains_symbolic_tensors', False)
-          if self._expects_training_arg:
-            outputs = self.call(inputs, training=training)
-          else:
-            outputs = self.call(inputs)
-          # Reset to the previously saved value. If `call()` had `add_metric`
-          # or `add_loss`, then `_contains_symbolic_tensors` will have been set
-          # to True since we are not in `__call__` context. Hence we are
-          # resetting to the old value here.
-          self._contains_symbolic_tensors = contains_symbolic_tensors
-      else:
-        # Case: network's `call` is dynamic.
-        try:
-          outputs = self._symbolic_call(inputs)
-        except NotImplementedError:
-          # Static shape inference was not implemented for this dynamic net.
-          # Do not specify symbolic outputs.
-          outputs = None
+    return inputs
 
+  @trackable.no_automatic_dependency_tracking
+  def _set_output_attrs(self, outputs):
+    """Sets attributes related to the outputs of the Model."""
     outputs = nest.flatten(outputs)
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)

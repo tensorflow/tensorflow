@@ -221,7 +221,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     size_500 = _construct_graph_of_size(500)
 
     # Check construction time grows approx. linearly with size.
-    e = 2  # Fudge factor to prevent flakiness.
+    e = 3  # Fudge factor to prevent flakiness.
     self.assertLess(size_500, (10 * e) * size_50)
 
   def test_no_mask_tracking(self):

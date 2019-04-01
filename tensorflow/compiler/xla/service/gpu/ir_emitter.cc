@@ -115,7 +115,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           get_tuple_element->shape(), get_tuple_element->tuple_index(),
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
-          /*alignment=*/1, GetBasePointer(*operand), &b_, module_));
+          /*alignment=*/1, GetBasePointer(*operand), &b_));
   return Status::OK();
 }
 
@@ -144,7 +144,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   for (const HloInstruction* operand : tuple->operands()) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
-  llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_, module_);
+  llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
   return Status::OK();
 }
 
@@ -434,7 +434,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   llvm_ir::EmitTupleSelect(GetIrArray(*tuple_select, *tuple_select),
                            GetIrArray(*pred, *tuple_select),
                            GetBasePointer(*on_true), GetBasePointer(*on_false),
-                           &b_, module_);
+                           &b_);
   return Status::OK();
 }
 
@@ -528,16 +528,18 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
   llvm_ir::ForLoopNest loop_nest(IrName(dot), &b_);
-  llvm_ir::IrArray::Index lhs_index = loop_nest.EmitOperandArrayLoopNest(
-      lhs_array, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
-  llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
-      rhs_array, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
+  std::vector<llvm::Value*> lhs_multi_index =
+      loop_nest.EmitOperandArrayLoopNest(
+          lhs_array, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
+  std::vector<llvm::Value*> rhs_multi_index =
+      loop_nest.EmitOperandArrayLoopNest(
+          rhs_array, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
 
   // We don't have to iterate over the batch dimensions in both arrays, simplify
   // the loop nest of the rhs.
   for (int i = 0; i != dnums.lhs_batch_dimensions_size(); ++i) {
     DCHECK(absl::c_linear_search(dnums.lhs_batch_dimensions(), i));
-    rhs_index[i] = lhs_index[i];
+    rhs_multi_index[i] = lhs_multi_index[i];
   }
 
   // Create the reduction loop which does the sum of products reduction.
@@ -548,8 +550,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   // The final entry in the rhs and lhs indexes is the indvar of the reduction
   // loop.
-  lhs_index[lhs_reduction_dimension] = reduction_loop->GetIndVarValue();
-  rhs_index[rhs_reduction_dimension] = reduction_loop->GetIndVarValue();
+  lhs_multi_index[lhs_reduction_dimension] = reduction_loop->GetIndVarValue();
+  rhs_multi_index[rhs_reduction_dimension] = reduction_loop->GetIndVarValue();
 
   // For computing the sum of products we alloca a single location to store the
   // dot product result as we accumulate it within the reduction loop. After the
@@ -574,7 +576,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   TF_RET_CHECK(!reduction_loop->GetBodyBasicBlock()->empty());
   b_.SetInsertPoint(
       &*reduction_loop->GetBodyBasicBlock()->getFirstInsertionPt());
+  llvm_ir::IrArray::Index lhs_index(lhs_multi_index, lhs_array.GetShape(),
+                                    b_.getInt64Ty());
   llvm::Value* lhs_element = lhs_array.EmitReadArrayElement(lhs_index, &b_);
+  llvm_ir::IrArray::Index rhs_index(rhs_multi_index, rhs_array.GetShape(),
+                                    b_.getInt64Ty());
   llvm::Value* rhs_element = rhs_array.EmitReadArrayElement(rhs_index, &b_);
   llvm::Value* accum = Load(accum_address);
   llvm::Value* updated_accum;
@@ -600,20 +606,22 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // address. The index into the target address is the concatenation of the rhs
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
-  llvm_ir::IrArray::Index target_index(index_type);
+  std::vector<llvm::Value*> target_multi_index;
   for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
-      target_index.push_back(lhs_index[dimension]);
+      target_multi_index.push_back(lhs_index[dimension]);
     }
   }
   // Skip over the batch dimensions to not have them in the index twice.
   for (size_t dimension = dnums.lhs_batch_dimensions_size();
        dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
-      target_index.push_back(rhs_index[dimension]);
+      target_multi_index.push_back(rhs_index[dimension]);
     }
   }
   SetToFirstInsertPoint(reduction_loop->GetExitBasicBlock(), &b_);
+  llvm_ir::IrArray::Index target_index(target_multi_index,
+                                       target_array.GetShape(), index_type);
   target_array.EmitWriteArrayElement(
       target_index,
       Load(accum_address),  // The value written to the target array.
@@ -678,7 +686,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
         // Value*s are placed for each dimension in dimensions, and all the rest
         // are nullptrs.
         llvm_ir::ForLoopNest loops(IrName(reduce, "inner"), &b_);
-        const llvm_ir::IrArray::Index reduced_dims_index =
+        std::vector<llvm::Value*> input_multi_index =
             loops.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
                                                "reduction_dim");
 
@@ -689,17 +697,18 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
         // filled in. We fill in the rest of the dimensions with induction
         // Value*s taken from 'index' which iterates over the target array.
         // See the high-level description in the XLA documentation for details.
-        llvm_ir::IrArray::Index input_index = reduced_dims_index;
         llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-        for (size_t i = 0; i < input_index.size(); ++i) {
-          if (input_index[i] == nullptr) {
-            input_index[i] = *it++;
+        for (auto& i : input_multi_index) {
+          if (i == nullptr) {
+            i = *it++;
           }
         }
         CHECK(index.end() == it);
 
         // Apply the reduction function to the loaded value.
+        llvm_ir::IrArray::Index input_index(input_multi_index, arg->shape(),
+                                            b_.getInt64Ty());
         llvm::Value* input_address =
             GetIrArray(*arg, *reduce).EmitArrayElementAddress(input_index, &b_);
         TF_RETURN_IF_ERROR(EmitCallToNestedComputation(

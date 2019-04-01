@@ -89,7 +89,7 @@ class EagerContext {
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
-  FunctionLibraryRuntime* func_lib(Device* d) const {
+  FunctionLibraryRuntime* func_lib(const Device* d) const {
     return pflr_->GetFLR(d->name());
   }
 

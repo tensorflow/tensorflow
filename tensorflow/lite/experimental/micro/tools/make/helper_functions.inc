@@ -87,6 +87,72 @@ generate_$(3)_$(1)_project: $(addprefix $(PRJDIR)$(3)/$(1)/, $(4) $(5) $(2))
 ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
 
+# Creates a set of rules to build a standalone Arduino project for an
+# executable, including all of the source and header files required in a
+# separate folder and a simple makefile.
+# Arguments are:
+# 1 - Project file template names.
+# 2 - Name of executable.
+# 3 - List of C/C++ source files needed to build the target.
+# 4 - List of C/C++ header files needed to build the target.
+# 5 - Linker flags required.
+# 6 - C++ compilation flags needed.
+# 7 - C compilation flags needed.
+# Calling eval on the output will create a <Name>_makefile target that you
+# can invoke to create the standalone project.
+define generate_arduino_project
+
+ARDUINO_SRCS := $(patsubst tensorflow/lite/experimental/micro/tools/make/downloads/%,third_party/%,$(patsubst %.cc,%.cpp,$(3)))
+ARDUINO_HDRS := $(patsubst tensorflow/lite/experimental/micro/tools/make/downloads/,third_party/,$(4))
+
+$(PRJDIR)$(2)/arduino/src/%.cpp: %.cc
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/arduino/src/%: %
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/arduino/src/third_party/%: tensorflow/lite/experimental/micro/tools/make/downloads/%
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/arduino/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
+        --third_party_headers="$(4)" < $$< | \
+        sed -E 's/utility\.h/utility/g' > $$@
+
+$(PRJDIR)$(2)/arduino/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
+        --third_party_headers="$(4)" < $$< | \
+        sed -E 's/<string.h>/<string.h>\n#include <stdint.h>/g' > $$@
+
+$(PRJDIR)$(2)/arduino/%: tensorflow/lite/experimental/micro/tools/make/templates/%
+	@mkdir -p $$(dir $$@)
+	sed -E 's#\%\{SRCS\}\%#$(3)#g' $$< | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(1)#g' | \
+	sed -E 's#\%\{LINKER_FLAGS\}\%#$(5)#g' | \
+	sed -E 's#\%\{CXX_FLAGS\}\%#$(6)#g' | \
+	sed -E 's#\%\{CC_FLAGS\}\%#$(7)#g' > $$@
+
+$(PRJDIR)$(2)/arduino/examples/$(2)/$(2).ino: tensorflow/lite/experimental/micro/tools/make/templates/arduino_example.ino
+	@mkdir -p $$(dir $$@)
+	cp $$< $$@
+
+$(PRJDIR)$(2)/arduino/src/TensorFlowLite.h: tensorflow/lite/experimental/micro/tools/make/templates/TensorFlowLite.h
+	@mkdir -p $$(dir $$@)
+	cp $$< $$@
+
+generate_$(2)_arduino_project: $(addprefix $(PRJDIR)$(2)/arduino/src/,$(ARDUINO_SRCS) $(ARDUINO_HDRS)) $(addprefix $(PRJDIR)$(2)/arduino/,$(1)) $(PRJDIR)$(2)/arduino/examples/$(2)/$(2).ino $(PRJDIR)$(2)/arduino/src/TensorFlowLite.h
+
+ALL_PROJECT_TARGETS += generate_$(1)_arduino_project
+endef
+
 # Specialized version of generate_project for TF Lite Micro test targets that
 # automatically includes standard library files, so you just need to pass the
 # test name and any extra source files required.
@@ -100,8 +166,8 @@ define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_project,mbed,$(MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 $(call generate_project,keil,$(KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
+    $(call generate_arduino_project,$(ARDUINO_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 endef
-
 
 # Handles the details of generating a binary target, including specializing
 # for the current platform, and generating project file targets.

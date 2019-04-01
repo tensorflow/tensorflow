@@ -338,7 +338,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     sum = scan(lambda a, x: a + x, elems)
     # sum == [1, 3, 6, 10, 15, 21]
     sum = scan(lambda a, x: a + x, elems, reverse=True)
-    # sum == [22, 21, 18, 15, 11, 6]
+    # sum == [21, 20, 18, 15, 11, 6]
     ```
 
     ```python

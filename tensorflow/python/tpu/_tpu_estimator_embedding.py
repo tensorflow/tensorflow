@@ -20,14 +20,19 @@ from __future__ import print_function
 
 import collections
 
+import six
+
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.feature_column import feature_column as core_fc
 from tensorflow.python.feature_column import feature_column_lib as core_fc_lib
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.tpu import feature_column as tpu_fc
 from tensorflow.python.tpu import tpu_embedding
 from tensorflow.python.tpu.tpu_embedding import AdagradParameters
 from tensorflow.python.tpu.tpu_embedding import AdamParameters
 from tensorflow.python.tpu.tpu_embedding import StochasticGradientDescentParameters
+from tensorflow.python.training import training
 
 # pylint: disable=protected-access
 _TPU_EMBEDDING_COLUMN_CLASSES = (tpu_fc._TPUEmbeddingColumn,
@@ -78,7 +83,7 @@ def _get_slot_variable_names(scope_name, var_name, optimization_parameters):
 
 
 def get_full_variable_names(
-    graph, table_to_config_dict, optimization_parameters):
+    graph, table_to_config_dict, optimization_parameters=None):
   """Return embedding variable names and slot variables which are consistent with CPU runs."""
   collection = graph.get_collection_ref(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   if not collection:
@@ -94,8 +99,9 @@ def get_full_variable_names(
     (scope_name, var_name) = collection[0][embedding_var_name]
     embedding_variable_name_by_table[table_name] = (
         _get_embedding_variable_name(scope_name, var_name))
-    slot_variable_names_by_table[table_name] = _get_slot_variable_names(
-        scope_name, var_name, optimization_parameters)
+    if optimization_parameters:
+      slot_variable_names_by_table[table_name] = _get_slot_variable_names(
+          scope_name, var_name, optimization_parameters)
 
   graph.clear_collection(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   return embedding_variable_name_by_table, slot_variable_names_by_table
@@ -147,13 +153,17 @@ def get_tpu_embedding_config_from_feature_columns(feature_columns):
 class EmbeddingConfigSpec(
     collections.namedtuple('EmbeddingConfigSpec', [
         'feature_columns', 'optimization_parameters', 'clipping_limit',
+        'pipeline_execution_with_tensor_core',
+        'experimental_gradient_multiplier_fn'
     ])):
   """Class to keep track of embedding config specification."""
 
   def __new__(cls,
               feature_columns,
               optimization_parameters,
-              clipping_limit=None):
+              clipping_limit=None,
+              pipeline_execution_with_tensor_core=False,
+              experimental_gradient_multiplier_fn=None):
     """Creates an EmbeddingConfigSpec instance.
 
     Args:
@@ -163,6 +173,12 @@ class EmbeddingConfigSpec(
         optimizer will be applied to all embedding variables specified by
         `feature_columns`.
       clipping_limit: (Optional) Clipping limit (absolute value).
+      pipeline_execution_with_tensor_core: setting this to `True` makes training
+        faster, but trained model will be different if step N and step N+1
+        involve the same set of embedding IDs. Please see
+        `tpu_embedding_configuration.proto` for details.
+      experimental_gradient_multiplier_fn: (Optional) A Fn taking global step as
+        input returning the current multiplier for all embedding gradients.
 
     Returns:
       An EmbeddingConfigSpec instance.
@@ -198,7 +214,9 @@ class EmbeddingConfigSpec(
         cls,
         feature_columns=feature_columns,
         optimization_parameters=optimization_parameters,
-        clipping_limit=clipping_limit)
+        clipping_limit=clipping_limit,
+        pipeline_execution_with_tensor_core=pipeline_execution_with_tensor_core,
+        experimental_gradient_multiplier_fn=experimental_gradient_multiplier_fn)
 
 
 class EmbeddingConfig(object):
@@ -211,6 +229,9 @@ class EmbeddingConfig(object):
 
   def __init__(self, embedding_config_spec, train_batch_size, eval_batch_size,
                num_hosts, num_cores, run_config):
+    if not embedding_config_spec:
+      raise ValueError('embedding_config_spec cannot be None.')
+
     self._embedding_config_spec = embedding_config_spec
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
@@ -224,6 +245,15 @@ class EmbeddingConfig(object):
     self._mode_to_tpu_embedding_dict = {}
     self.dummy_table_variables = None
 
+    self._grad_multiplier_fn = (
+        embedding_config_spec.experimental_gradient_multiplier_fn)
+
+  def get_grad_multiplier(self):
+    if self._grad_multiplier_fn:
+      return ops.convert_to_tensor(
+          self._grad_multiplier_fn(training.get_global_step()),
+          dtype=dtypes.float32)
+
   def has_embedding_tables(self):
     return bool(self._table_to_config_dict)
 
@@ -236,26 +266,34 @@ class EmbeddingConfig(object):
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       tpu_embedding_mode = tpu_embedding.TRAINING
+      optimization_parameters = (
+          self._embedding_config_spec.optimization_parameters)
     elif (mode == model_fn_lib.ModeKeys.EVAL or
           mode == model_fn_lib.ModeKeys.PREDICT):
       tpu_embedding_mode = tpu_embedding.INFERENCE
+      optimization_parameters = None
     else:
       raise ValueError('Mode {} is not supported.'.format(mode))
 
-    master = (
-        self._run_config.evaluation_master
-        if mode == model_fn_lib.ModeKeys.EVAL else self._run_config.master)
-    cluster_def = (self._run_config.session_config.cluster_def
-                   if self._run_config.session_config else None)
+    if self._run_config.cluster:
+      master = self._run_config.cluster.master()
+      cluster_spec = self._run_config.cluster.cluster_spec()
+      cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
+    else:
+      master = (
+          self._run_config.evaluation_master
+          if mode == model_fn_lib.ModeKeys.EVAL else self._run_config.master)
+      cluster_def = None
     tpu_embedding_ = tpu_embedding.TPUEmbedding(
         self._table_to_config_dict,
         self._feature_to_table_dict,
         batch_size,
         tpu_embedding_mode,
         master,
-        self._embedding_config_spec.optimization_parameters,
+        optimization_parameters,
         cluster_def,
-    )
+        pipeline_execution_with_tensor_core=self._embedding_config_spec
+        .pipeline_execution_with_tensor_core)
     return tpu_embedding_
 
   def get_tpu_embedding(self, mode):
@@ -272,5 +310,14 @@ def split_inputs(ctx, features, labels):
     tpu_embedding_ = ctx.embedding_config.tpu_embedding
     for feature_key in tpu_embedding_.feature_to_table_dict:
       sparse_features[feature_key] = features.pop(feature_key)
+
+  for v in six.itervalues(sparse_features):
+    if not v.dtype.is_integer:
+      raise ValueError('SparseTensor with string as values are not supported. '
+                       'If you are using vocabulary_file_categorical_column or '
+                       'vocabulary_list_categorical_column, please call '
+                       'your_column.categorical_column._transform_feature({'
+                       'your_column.key: features[your_column.key]}) in'
+                       'your input_fn() to convert string to int.')
 
   return features, labels, sparse_features

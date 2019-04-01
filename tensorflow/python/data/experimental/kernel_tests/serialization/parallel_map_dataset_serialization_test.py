@@ -74,7 +74,7 @@ class ParallelMapDatasetSerializationTest(
 
       def _map_fn(x):
         return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
+            (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
 
       return dataset_ops.Dataset.range(100).map(
           _map_fn, num_parallel_calls=2).prefetch(2)
@@ -108,7 +108,7 @@ class ParallelMapDatasetSerializationTest(
 
       @function.Defun(dtypes.int64)
       def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.to_int32(x)
+        return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=2).prefetch(2)
@@ -125,9 +125,10 @@ class ParallelMapDatasetSerializationTest(
 
         @function.Defun(dtypes.int32)
         def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
+          return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
-        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
+        return constant_op.constant(11000) + defun_fn_deep(
+            math_ops.cast(x, dtypes.int32))
 
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=2).prefetch(2)

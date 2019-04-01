@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include <bitset>
 #include <cmath>
 #include <type_traits>
 
@@ -937,7 +938,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
-          if (std::isnan(low) || std::isnan(high)) {
+          if (std::isnan(low) || std::isnan(high) || std::isnan(value)) {
             return static_cast<ElementwiseT>(NAN);
           }
           return static_cast<ElementwiseT>(
@@ -1681,178 +1682,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return UnsupportedTypeError(sort);
   }
 
-  Status HandleReduce(HloInstruction* hlo) override {
-    HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
-    int64 num_args = reduce->inputs().size();
-    bool has_tuple_output = reduce->shape().IsTuple();
-    absl::Span<const int64> dimensions(reduce->dimensions());
-    HloComputation* function = reduce->to_apply();
-
-    absl::InlinedVector<const Shape*, 1> operand_shapes;
-    for (const HloInstruction* operand : reduce->operands()) {
-      operand_shapes.push_back(&operand->shape());
-    }
-    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
-                        ShapeInference::InferReduceShape(
-                            operand_shapes,
-                            /*dimensions_to_reduce=*/dimensions,
-                            /*to_apply=*/function->ComputeProgramShape()));
-    TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))
-        << "return shape is set to: " << ShapeUtil::HumanString(reduce->shape())
-        << " but is inferred to be: "
-        << ShapeUtil::HumanString(inferred_return_shape);
-
-    absl::InlinedVector<const Literal*, 1> arg_literals(num_args);
-    absl::InlinedVector<const Literal*, 1> init_literals(num_args);
-    for (int64 i = 0; i < num_args; ++i) {
-      arg_literals[i] = &parent_->GetEvaluatedLiteralFor(reduce->inputs()[i]);
-      VLOG(3) << "HandleReduce arg_literal: " << arg_literals[i]->ToString();
-      init_literals[i] =
-          &parent_->GetEvaluatedLiteralFor(reduce->init_values()[i]);
-      VLOG(3) << "HandleReduce init_literal: " << init_literals[i]->ToString();
-      TF_RET_CHECK(ShapeUtil::IsScalar(init_literals[i]->shape()));
-    }
-
-    // All args and results have the same dimensions, so pick an arbitrary one.
-    const Shape& arg_shape = arg_literals[0]->shape();
-    const Shape& result_shape = reduce->shape().IsTuple()
-                                    ? reduce->shape().tuple_shapes(0)
-                                    : reduce->shape();
-    const auto arg_dimensions = AsInt64Slice(arg_shape.dimensions());
-    std::vector<int64> arg_dim_steps(arg_dimensions.size());
-    std::vector<int64> arg_dim_counts(arg_dimensions.size());
-    for (const int64 dim : dimensions) {
-      arg_dim_steps[dim] = 1;
-      arg_dim_counts[dim] = arg_dimensions[dim];
-    }
-
-    // Map each dimension in the result to a dimension in arg that isn't
-    // being reduced.
-    std::vector<int64> result_to_arg_index;
-    for (int64 i = 0; i < arg_dimensions.size(); ++i) {
-      if (arg_dim_steps[i] == 0) {
-        result_to_arg_index.push_back(i);
-      }
-    }
-
-    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
-    absl::InlinedVector<Literal, 1> results(num_args);
-    for (int64 i = 0; i < num_args; ++i) {
-      results[i] = Literal(result_shape);
-    }
-
-    Status eval_status;
-    // For each resulting dimension, calculate and assign computed values.
-    // This is really wasteful when num_args > 1, since we re-run the
-    // reduction num_args time. The alternative is to teach Populate() about
-    // tuples, which we should probably do.
-    absl::InlinedVector<ReturnT, 1> init_scalars(num_args);
-    for (int i = 0; i < num_args; ++i) {
-      init_scalars[i] = init_literals[i]->Get<ReturnT>({});
-    }
-
-    for (int64 input = 0; input < num_args; ++input) {
-      TF_RETURN_IF_ERROR(results[input].Populate<ReturnT>(
-          [&](absl::Span<const int64> multi_index) {
-            if (!eval_status.ok()) {
-              return init_scalars[input];
-            }
-            absl::InlinedVector<ReturnT, 1> result_values(init_scalars.begin(),
-                                                          init_scalars.end());
-            std::vector<int64> base(arg_dimensions.size());
-            for (int64 i = 0; i < multi_index.size(); ++i) {
-              base[result_to_arg_index[i]] = multi_index[i];
-            }
-
-            // When the reduction is addition of floats, accumulate in a double
-            // for better precision. Also, avoid creating Literals for the
-            // intermediate results; it's much faster.
-            if (ShapeUtil::ElementIsFloating(init_literals[0]->shape()) &&
-                IsScalarAdd(function)) {
-              CHECK_EQ(num_args, 1);
-              double computed_result = 0;
-              auto func = [&](absl::Span<const int64> input_index) {
-                computed_result +=
-                    GetAsDouble<ReturnT>(*arg_literals[0], input_index);
-                return true;
-              };
-              ShapeUtil::ForEachIndex(arg_literals[0]->shape(), base,
-                                      arg_dim_counts, arg_dim_steps, func);
-              return static_cast<ReturnT>(computed_result);
-            }
-            auto func =
-                [&](absl::Span<const int64> input_index) -> StatusOr<bool> {
-              absl::InlinedVector<ReturnT, 1> arg_values(num_args);
-              for (int64 i = 0; i < num_args; ++i) {
-                arg_values[i] = arg_literals[i]->Get<ReturnT>(input_index);
-              }
-
-              // Evaluate computation with specified literal operands.
-              absl::InlinedVector<Literal, 1> embedded_operands;
-              for (ReturnT value : result_values) {
-                embedded_operands.push_back(
-                    LiteralUtil::CreateR0<ReturnT>(value));
-              }
-              for (ReturnT value : arg_values) {
-                embedded_operands.push_back(
-                    LiteralUtil::CreateR0<ReturnT>(value));
-              }
-              absl::InlinedVector<Literal*, 1> embedded_operands_ptrs(
-                  embedded_operands.size());
-              std::transform(embedded_operands.begin(), embedded_operands.end(),
-                             embedded_operands_ptrs.begin(),
-                             [](Literal& literal) { return &literal; });
-
-              TF_ASSIGN_OR_RETURN(Literal computed_result,
-                                  embedded_evaluator.Evaluate(
-                                      *function, embedded_operands_ptrs));
-              // Clear visit states so that we can use the evaluator again on
-              // the same computation.
-              embedded_evaluator.ResetVisitStates();
-              // Assign computed result to result_val.
-              if (!has_tuple_output) {
-                result_values[0] = computed_result.Get<ReturnT>({});
-              } else {
-                for (int64 i = 0; i < num_args; ++i) {
-                  result_values[i] = computed_result.Get<ReturnT>(
-                      /*multi_index=*/{}, /*shape_index=*/{i});
-                }
-              }
-              return true;
-            };
-            // Computes one element of the result, reducing all dimensions that
-            // contribute to that element.
-            eval_status = ShapeUtil::ForEachIndexWithStatus(
-                arg_shape, base, arg_dim_counts, arg_dim_steps, func);
-            return result_values[input];
-          }));
-    }
-    if (!has_tuple_output) {
-      parent_->evaluated_[reduce] = std::move(results[0]);
-    } else {
-      Literal tuple_result(reduce->shape());
-      for (int64 i = 0; i < num_args; ++i) {
-        TF_CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
-      }
-      parent_->evaluated_[reduce] = std::move(tuple_result);
-    }
-    return eval_status;
-  }
-
-  bool IsScalarAdd(HloComputation* computation) {
-    HloInstruction* instruction = computation->root_instruction();
-    if (instruction->opcode() == HloOpcode::kAdd &&
-        computation->num_parameters() == 2) {
-      const HloInstruction* lhs = instruction->operand(0);
-      const HloInstruction* rhs = instruction->operand(1);
-      return lhs->opcode() == HloOpcode::kParameter &&
-             ShapeUtil::IsScalar(lhs->shape()) &&
-             rhs->opcode() == HloOpcode::kParameter &&
-             ShapeUtil::IsScalar(rhs->shape()) && lhs != rhs;
-    }
-    return false;
-  }
-
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {
     auto operand = select_and_scatter->operand(0);
     auto source = select_and_scatter->operand(1);
@@ -2480,6 +2309,37 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleClz(HloInstruction* clz) override {
     return HandleClz<ElementwiseT>(clz);
+  }
+
+  // Enable Popcnt only for int32, uint32, int64 and uint64.
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_same<NativeT, uint32>::value ||
+                  std::is_same<NativeT, int32>::value ||
+                  std::is_same<NativeT, uint64>::value ||
+                  std::is_same<NativeT, int64>::value)>::type* = nullptr>
+  Status HandlePopulationCount(HloInstruction* popcnt) {
+    return UnsupportedTypeError(popcnt);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, uint32>::value ||
+                std::is_same<NativeT, int32>::value ||
+                std::is_same<NativeT, uint64>::value ||
+                std::is_same<NativeT, int64>::value>::type* = nullptr>
+  Status HandlePopulationCount(HloInstruction* popcnt) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[popcnt],
+        ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
+          return std::bitset<CHAR_BIT * sizeof elem_operand>(elem_operand)
+              .count();
+        }));
+    return Status::OK();
+  }
+
+  Status HandlePopulationCount(HloInstruction* popcnt) override {
+    return HandlePopulationCount<ElementwiseT>(popcnt);
   }
 
   template <typename NativeT, typename std::enable_if<std::is_floating_point<

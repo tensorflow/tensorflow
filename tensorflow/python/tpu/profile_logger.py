@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import os.path
+
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.writer import writer
@@ -27,16 +30,17 @@ class ProfileLogger(object):
   """For logging profiling events."""
 
   def _set_summary_dir(self, model_dir):
-    """Sets the summary directory to be model_dir/profile_logger.summary."""
+    """Sets the summary directory to be model_dir."""
     if model_dir is None:
       self._summary_dir = None
       self._summary_writer = None
       logging.warning('profile_logger: model_dir is None.'
                       'So nowhere to write summaries')
       return
-    self._summary_dir = model_dir + '/profile_logger.summary'
+    self._summary_dir = os.path.join(model_dir, 'profile')
     try:
-      self._summary_writer = writer.FileWriter(self._summary_dir)
+      self._summary_writer = writer.FileWriter(
+          logdir=self._summary_dir, filename_suffix='.profile_logger')
       logging.info('profile_logger(): set the summary directory to %s',
                    self._summary_dir)
     except Exception:  # pylint: disable=broad-except
@@ -51,15 +55,15 @@ class ProfileLogger(object):
   def log_event(self, event, phase):
     """Logs the given event to the summary directory."""
 
-    event_name = event + '_' + phase
+    event_name = 'profile/' + event + '_' + phase
     if self._summary_writer is None:
       logging.warning('profile_logger: cannot log event "%s" '
                       ' because of no summary directory', event_name)
       return
 
     # For now, we only need the event timestamp. No need to pass any value.
-    s = Summary(value=[Summary.Value(tag=event_name, simple_value=0.0)])
+    s = Summary(value=[Summary.Value(tag=event_name,
+                                     simple_value=0.0)])
     self._summary_writer.add_summary(s)
     self._summary_writer.flush()
     logging.info('profile_logger: log event "%s"', event_name)
-

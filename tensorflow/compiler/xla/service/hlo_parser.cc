@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -88,6 +89,7 @@ class HloParser {
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
   StatusOr<PaddingConfig> ParsePaddingConfigOnly();
+  StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly();
 
  private:
   using InstrNameTable =
@@ -268,6 +270,7 @@ class HloParser {
   bool ParseSharding(OpSharding* sharding);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
+  bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
 
   // Parses the metadata behind a kDOmain instruction.
   bool ParseDomain(DomainData* domain);
@@ -284,6 +287,9 @@ class HloParser {
   bool ParseShapeList(std::vector<Shape>* result);
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim, std::vector<int64>* result);
+  bool ParseInt64ListList(const TokKind start, const TokKind end,
+                          const TokKind delim,
+                          std::vector<std::vector<int64>>* result);
   // 'parse_and_add_item' is an lambda to parse an element in the list and add
   // the parsed element to the result. It's supposed to capture the result.
   bool ParseList(const TokKind start, const TokKind end, const TokKind delim,
@@ -744,6 +750,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -1919,6 +1926,25 @@ bool HloParser::ParseParameterReplication(
                     "expected '}' to end parameter_replication attribute");
 }
 
+// replica_groups ::='{' int64list_elements '}'
+// int64list_elements
+//   ::= /*empty*/
+//   ::= int64list (',' int64list)*
+// int64list ::= '{' int64_elements '}'
+// int64_elements
+//   ::= /*empty*/
+//   ::= int64_val (',' int64_val)*
+bool HloParser::ParseReplicaGroupsOnly(
+    std::vector<ReplicaGroup>* replica_groups) {
+  std::vector<std::vector<int64>> result;
+  if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                          &result)) {
+    return false;
+  }
+  *replica_groups = CreateReplicaGroups(result);
+  return true;
+}
+
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
 //            'exit=' exit_sharding '}'
 bool HloParser::ParseDomain(DomainData* domain) {
@@ -2809,17 +2835,8 @@ bool HloParser::ParseAttributeHelper(
       }
       case AttrTy::kBracedInt64ListList: {
         std::vector<std::vector<int64>> result;
-        auto parse_and_add_item = [&]() {
-          std::vector<int64> item;
-          if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace,
-                              TokKind::kComma, &item)) {
-            return false;
-          }
-          result.push_back(item);
-          return true;
-        };
-        if (!ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
-                       parse_and_add_item)) {
+        if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace,
+                                TokKind::kComma, &result)) {
           return false;
         }
         static_cast<optional<std::vector<std::vector<int64>>>*>(attr_out_ptr)
@@ -3323,6 +3340,28 @@ bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
       return false;
     }
     result->push_back(i);
+    return true;
+  };
+  return ParseList(start, end, delim, parse_and_add_item);
+}
+
+// int64listlist ::= start int64list_elements end
+// int64list_elements
+//   ::= /*empty*/
+//   ::= int64list (delim int64list)*
+// int64list ::= start int64_elements end
+// int64_elements
+//   ::= /*empty*/
+//   ::= int64_val (delim int64_val)*
+bool HloParser::ParseInt64ListList(const TokKind start, const TokKind end,
+                                   const TokKind delim,
+                                   std::vector<std::vector<int64>>* result) {
+  auto parse_and_add_item = [&]() {
+    std::vector<int64> item;
+    if (!ParseInt64List(start, end, delim, &item)) {
+      return false;
+    }
+    result->push_back(item);
     return true;
   };
   return ParseList(start, end, delim, parse_and_add_item);
@@ -4007,6 +4046,18 @@ StatusOr<std::vector<bool>> HloParser::ParseParameterReplicationOnly() {
       parameter_replication.replicated_at_leaf_buffers().end());
 }
 
+StatusOr<std::vector<ReplicaGroup>> HloParser::ParseReplicaGroupsOnly() {
+  lexer_.Lex();
+  std::vector<ReplicaGroup> replica_groups;
+  if (!ParseReplicaGroupsOnly(&replica_groups)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after replica groups");
+  }
+  return replica_groups;
+}
+
 StatusOr<Window> HloParser::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
@@ -4125,6 +4176,12 @@ StatusOr<HloSharding> ParseSharding(absl::string_view str) {
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
   HloParser parser(str);
   return parser.ParseParameterReplicationOnly();
+}
+
+StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
+    absl::string_view str) {
+  HloParser parser(str);
+  return parser.ParseReplicaGroupsOnly();
 }
 
 StatusOr<Window> ParseWindow(absl::string_view str) {
