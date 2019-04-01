@@ -592,6 +592,11 @@ func @splattensorattr() -> () {
 
   // CHECK: "splatFloatVector"() {bar: splat<vector<2x1x4xf16>, -5.000000e+00>} : () -> ()
   "splatFloatVector"(){bar: splat<vector<2x1x4xf16>, -5.0>} : () -> ()
+
+  // CHECK: "splatIntScalar"() {bar: splat<tensor<i9>, 5>} : () -> ()
+  "splatIntScalar"() {bar: splat<tensor<i9>, 5>} : () -> ()
+  // CHECK: "splatFloatScalar"() {bar: splat<tensor<f16>, -5.000000e+00>} : () -> ()
+  "splatFloatScalar"() {bar: splat<tensor<f16>, -5.0>} : () -> ()
   return
 }
 
@@ -649,6 +654,11 @@ func @densetensorattr() -> () {
   "float32"(){bar: dense<tensor<2x1x4xf32>, [[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]>} : () -> ()
 // CHECK: "float64"() {bar: dense<tensor<2x1x4xf64>, {{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]>} : () -> ()
   "float64"(){bar: dense<tensor<2x1x4xf64>, [[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]>} : () -> ()
+
+// CHECK: "intscalar"() {bar: dense<tensor<i32>, 1>} : () -> ()
+  "intscalar"(){bar: dense<tensor<i32>, 1>} : () -> ()
+// CHECK: "floatscalar"() {bar: dense<tensor<f32>, 5.000000e+00>} : () -> ()
+  "floatscalar"(){bar: dense<tensor<f32>, 5.0>} : () -> ()
   return
 }
 
@@ -696,7 +706,9 @@ func @sparsetensorattr() -> () {
   "fooi64"(){bar: sparse<tensor<1xi64>, [[0]], [-1]>} : () -> ()
 // CHECK: "foo2"() {bar: sparse<tensor<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
   "foo2"(){bar: sparse<tensor<0xi32>, [], []>} : () -> ()
-  
+// CHECK: "foo3"() {bar: sparse<tensor<i32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foo3"(){bar: sparse<tensor<i32>, [], []>} : () -> ()
+
 // CHECK: "foof16"() {bar: sparse<tensor<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
   "foof16"(){bar: sparse<tensor<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
 // CHECK: "foobf16"() {bar: sparse<tensor<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
@@ -707,6 +719,8 @@ func @sparsetensorattr() -> () {
   "foof64"(){bar: sparse<tensor<1xf64>, [[0]], [-1.0]>} : () -> ()
 // CHECK: "foof320"() {bar: sparse<tensor<0xf32>, {{\[}}], {{\[}}]>} : () -> ()
   "foof320"(){bar: sparse<tensor<0xf32>, [], []>} : () -> ()
+// CHECK: "foof321"() {bar: sparse<tensor<f32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foof321"(){bar: sparse<tensor<f32>, [], []>} : () -> ()
   return
 }
 

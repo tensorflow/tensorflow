@@ -652,6 +652,12 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
   SmallVector<Attribute, 16> elements;
   attr.getValues(elements);
 
+  // Special case for 0-d tensors;
+  if (rank == 0) {
+    printAttribute(elements[0]);
+    return;
+  }
+
   // Special case for degenerate tensors.
   if (elements.empty()) {
     for (int i = 0; i < rank; ++i)

@@ -647,7 +647,7 @@ func @elementsattr_invalid() -> () {
 
 func @elementsattr_badtoken() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<1xi32>, [tf_opaque]>} : () -> () // expected-error {{expected '[' or scalar constant inside tensor literal}}
+  "foo"(){bar: dense<tensor<1xi32>, [tf_opaque]>} : () -> () // expected-error {{expected element literal of primitive type}}
 }
 
 // -----
@@ -813,19 +813,19 @@ func @complex_loops() {
 // -----
 
 func @mi() {
-  // expected-error @+1 {{expected '[' or scalar constant inside tensor literal}}
+  // expected-error @+1 {{expected element literal of primitive type}}
   "fooi64"(){bar: sparse<vector<1xi64>,[,[,1]
 
 // -----
 
 func @invalid_tensor_literal() {
-  // expected-error @+1 {{expected '[' in tensor literal list}}
+  // expected-error @+1 {{expected 1-d tensor for values}}
   "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]],  -2.0]>} : () -> ()
 
 // -----
 
 func @invalid_tensor_literal() {
-  // expected-error @+1 {{expected '[' or scalar constant inside tensor literal}}
+  // expected-error @+1 {{expected element literal of primitive type}}
   "fooi16"(){bar: sparse<tensor<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0,, [[0, 0, 0]], [-2.0]>} : () -> ()
 
 // -----

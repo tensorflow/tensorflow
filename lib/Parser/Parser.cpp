@@ -763,9 +763,10 @@ public:
   TensorLiteralParser(Parser &p, Type eltTy) : p(p), eltTy(eltTy) {}
 
   ParseResult parse() {
-    if (p.getToken().isNot(Token::l_square))
-      return p.emitError("expected '[' in tensor literal list");
-    return parseList(shape);
+    if (p.getToken().is(Token::l_square)) {
+      return parseList(shape);
+    }
+    return parseElement();
   }
 
   ArrayRef<Attribute> getValues() const { return storage; }
@@ -773,9 +774,11 @@ public:
   ArrayRef<int64_t> getShape() const { return shape; }
 
 private:
-  /// Parse either a single element or a list of elements. Return the dimensions
-  /// of the parsed sub-tensor in dims.
-  ParseResult parseElementOrList(llvm::SmallVectorImpl<int64_t> &dims);
+  /// Parse a single element, returning failure if it isn't a valid element
+  /// literal. For example:
+  /// parseElement(1) -> Success, 1
+  /// parseElement([1]) -> Failure
+  ParseResult parseElement();
 
   /// Parse a list of either lists or elements, returning the dimensions of the
   /// parsed sub-tensors in dims. For example:
@@ -792,13 +795,8 @@ private:
 };
 } // namespace
 
-/// Parse either a single element or a list of elements. Return the dimensions
-/// of the parsed sub-tensor in dims.
-ParseResult
-TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int64_t> &dims) {
+ParseResult TensorLiteralParser::parseElement() {
   switch (p.getToken().getKind()) {
-  case Token::l_square:
-    return parseList(dims);
   case Token::floatliteral:
   case Token::integer:
   case Token::minus: {
@@ -842,7 +840,7 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int64_t> &dims) {
     break;
   }
   default:
-    return p.emitError("expected '[' or scalar constant inside tensor literal");
+    return p.emitError("expected element literal of primitive type");
   }
   return ParseSuccess;
 }
@@ -870,8 +868,12 @@ TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   unsigned size = 0;
   auto parseCommaSeparatedList = [&]() {
     llvm::SmallVector<int64_t, 4> thisDims;
-    if (parseElementOrList(thisDims))
+    if (p.getToken().getKind() == Token::l_square) {
+      if (parseList(thisDims))
+        return ParseFailure;
+    } else if (parseElement()) {
       return ParseFailure;
+    }
     ++size;
     if (!first)
       return checkDims(newDims, thisDims);
@@ -1162,18 +1164,14 @@ Attribute Parser::parseAttribute(Type type) {
     if (!type)
       return nullptr;
 
-    switch (getToken().getKind()) {
-    case Token::l_square: {
-      auto attr = parseDenseElementsAttr(type);
-      if (!attr)
-        return nullptr;
-      if (parseToken(Token::greater, "expected '>'"))
-        return nullptr;
-      return attr;
-    }
-    default:
-      return (emitError("expected '[' to start dense tensor literal"), nullptr);
-    }
+    auto attr = parseDenseElementsAttr(type);
+    if (!attr)
+      return nullptr;
+
+    if (parseToken(Token::greater, "expected '>'"))
+      return nullptr;
+
+    return attr;
   }
   case Token::kw_sparse: {
     consumeToken(Token::kw_sparse);
@@ -1202,8 +1200,11 @@ Attribute Parser::parseAttribute(Type type) {
         return nullptr;
 
       /// Sanity check.
-      auto indicesType = indices.getType();
       auto valuesType = values.getType();
+      if (valuesType.getRank() != 1) {
+        return (emitError("expected 1-d tensor for values"), nullptr);
+      }
+      auto indicesType = indices.getType();
       auto sameShape = (indicesType.getRank() == 1) ||
                        (type.getRank() == indicesType.getDimSize(1));
       auto sameElementNum =
@@ -1277,6 +1278,7 @@ DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
   TensorLiteralParser literalParser(*this, eltTy);
   if (literalParser.parse())
     return nullptr;
+
   if (literalParser.getShape() != type.getShape()) {
     std::string str;
     llvm::raw_string_ostream s(str);
@@ -1287,6 +1289,7 @@ DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
     s << "])";
     return (emitError(s.str()), nullptr);
   }
+
   return builder.getDenseElementsAttr(type, literalParser.getValues())
       .cast<DenseElementsAttr>();
 }
