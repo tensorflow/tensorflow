@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import sys
 import types
 
 
@@ -46,7 +47,7 @@ class LazyLoader(types.ModuleType):
 
     # Emit a warning if one was specified
     if self._warning:
-      print(self._warning)
+      print(self._warning, file=sys.stderr)
       # Make sure to only warn once.
       self._warning = None
 
