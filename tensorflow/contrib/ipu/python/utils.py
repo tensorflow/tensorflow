@@ -688,7 +688,8 @@ def extract_compile_reports(events):
       try:
         module = evt.compile_end.module_name.decode('utf-8')
         rep = evt.compile_end.compilation_report.decode('utf-8')
-        result += [(module, rep)]
+        if len(rep) > 0:
+          result += [(module, rep)]
       except UnicodeDecodeError:
         pass
   return result

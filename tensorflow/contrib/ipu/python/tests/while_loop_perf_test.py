@@ -1,10 +1,11 @@
-# Copyright 2017 Graphcore Ltd
+# Copyright 2017, 2019 Graphcore Ltd
 #
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -58,15 +59,16 @@ class WhileLoopPerfTest(test_util.TensorFlowTestCase):
 
       rep = sess.run(report)
 
-      events = ipu.utils.extract_all_events(rep)
-
-      # Check that there is only one compile
-      self.assertEqual(
-          count_event_type(events, IpuTraceEvent.COMPILE_BEGIN), 1)
+      # Check that there is only one real compile
+      reps = ipu.utils.extract_compile_reports(rep)
+      self.assertEqual(len(reps), 1)
 
       # Check that there is only one execute
-      self.assertEqual(count_event_type(events, IpuTraceEvent.EXECUTE), 1)
+      reps = ipu.utils.extract_execute_reports(rep)
+      self.assertEqual(len(reps), 1)
 
 
 if __name__ == "__main__":
+  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
+                                os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

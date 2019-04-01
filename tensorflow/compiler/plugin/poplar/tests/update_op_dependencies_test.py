@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 import test_utils as tu
 
@@ -9,8 +10,6 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 
@@ -169,4 +168,6 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
+  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
+                                os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()
