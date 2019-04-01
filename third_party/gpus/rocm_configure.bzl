@@ -265,7 +265,7 @@ def _hipcc_is_hipclang(repository_ctx):
         A string "True" if hipcc is based on hip-clang toolchain.
         The functions returns "False" if not (ie: based on HIP/HCC toolchain).
     """
-    for name in ["HIP_CLANG_PATH", "HIP_VDI_NAME"]:
+    for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
         if name in repository_ctx.os.environ:
             return "True"
     return "False"
