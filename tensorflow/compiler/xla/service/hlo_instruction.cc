@@ -3411,6 +3411,13 @@ void HloInstruction::set_parameter_replicated_at_leaf_buffers(
           parameter_replicated_at_leaf_buffers);
 }
 
+void HloInstruction::set_parameter_replicated_at_leaf_buffers(
+    const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
+  return Cast<HloParameterInstruction>(this)
+      ->set_parameter_replicated_at_leaf_buffers(
+          parameter_replicated_at_leaf_buffers);
+}
+
 const absl::optional<std::vector<bool>>&
 HloInstruction::parameter_replicated_at_leaf_buffers() const {
   return Cast<HloParameterInstruction>(this)

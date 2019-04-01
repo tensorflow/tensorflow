@@ -1497,6 +1497,8 @@ class HloInstruction {
   // HloParameterInstruction::set_parameter_replicated_at_leaf_buffers.
   void set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool> parameter_replicated_at_leaf_buffers);
+  void set_parameter_replicated_at_leaf_buffers(
+      const std::vector<bool>& parameter_replicated_at_leaf_buffers);
 
   // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
   const absl::optional<std::vector<bool>>&
