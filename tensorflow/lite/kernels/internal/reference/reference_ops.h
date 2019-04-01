@@ -2171,34 +2171,37 @@ inline void BatchToSpaceND(
 }
 
 template <typename T>
-inline void Slice(const tflite::SliceParams& op_params,
+inline void Slice(tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   const int slice_dimensions = input_shape.DimensionsCount();
-  std::vector<int> start;
-  std::vector<int> stop;
   int start_i;
   int stop_i;
+
+  // Both begin and size should have equal num of elements
+  TFLITE_DCHECK_EQ(op_params.size_count, op_params.begin_count);
 
   for (int i = 0; i < op_params.begin_count; i++) {
     start_i = op_params.begin[i];
     stop_i = op_params.size[i] == -1 ? input_shape.Dims(i) - start_i
                                      : start_i + op_params.size[i];
-    start.emplace_back(start_i);
-    stop.emplace_back(stop_i);
+    op_params.begin[i] = start_i;
+    op_params.size[i] = stop_i;
   }
 
   std::function<void(int, int)> compute_slice =
-      [&compute_slice, slice_dimensions, writer, input_shape, start, stop,
-       op_params](int axis, int curr_indices) {
+      [&compute_slice, slice_dimensions, writer, input_shape, op_params](
+          int axis, int curr_indices) {
         if (axis == (slice_dimensions - 1)) {
-          for (int in_x = start[axis]; in_x < stop[axis]; in_x++) {
+          for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
+               in_x++) {
             int index = in_x + curr_indices;
             writer->Write(index);
           }
         } else {
-          for (int in_x = start[axis]; in_x < stop[axis]; in_x++) {
+          for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
+               in_x++) {
             int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
             compute_slice(axis + 1, indices);
           }
@@ -2209,7 +2212,7 @@ inline void Slice(const tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(const tflite::SliceParams& op_params,
+inline void Slice(tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
   SequentialTensorWriter<T> writer(input_data, output_data);
@@ -2217,7 +2220,7 @@ inline void Slice(const tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(const tflite::SliceParams& op_params,
+inline void Slice(tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const TfLiteTensor* input,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);

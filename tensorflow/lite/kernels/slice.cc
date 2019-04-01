@@ -125,6 +125,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      "Slice op only supports 1D-4D input arrays.");
   // Current implementation limits by expecting begin fills all dims of input
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), NumElements(begin));
+  TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
 
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
