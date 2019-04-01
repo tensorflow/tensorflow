@@ -93,7 +93,7 @@ class Convolution : public NodeShader {
     }
 
     // This is a hotfix for special convolution, which worked 10ms on
-    // flow textures16. With this fix it works 4ms.
+    // textures16. With this fix it works 4ms.
     // TODO(eignasheva): fix this problem in the proper way
     uint3 workgroup = uint3(0, 0, 0);
     if (weights.h == 7 && weights.w == 7 && attr.strides.h == 4 &&

@@ -13,28 +13,46 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/sigmoid.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 
-#include <map>
-#include <memory>
+#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Sigmoid(int id, ValueId input_id,
-                                              ValueId output_id) {
+std::vector<ComputeTaskDescriptorPtr> Elementwise(int id, ValueId input_id,
+                                                  ValueId output_id,
+                                                  OperationType op_type) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = true;
+
+  const std::unordered_map<OperationType, std::string> functors{
+      {OperationType::ABS, "abs(value)"},
+      {OperationType::SIN, "sin(value)"},
+      {OperationType::COS, "cos(value)"},
+      {OperationType::LOG, "log(value)"},
+      {OperationType::SQRT, "sqrt(value)"},
+      {OperationType::RSQRT, "1.0 / sqrt(value)"},
+      {OperationType::SQUARE, "value * value"},
+      {OperationType::SIGMOID, "1.0 / (1.0 + exp(-1.0 * value))"},
+      {OperationType::TANH, "tanh(value)"},
+  };
+
+  if (functors.count(op_type) == 0) {
+    return {};
+  }
+
   desc->shader_source =
-      R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
-    return FLT4(1.0f / (1.0f + exp(-value)));
-  })";
+      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {\n";
+  desc->shader_source += "    return " + functors.at(op_type) + ";\n";
+  desc->shader_source += "  }";
+
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
   return {desc};

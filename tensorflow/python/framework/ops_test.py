@@ -29,6 +29,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -3042,6 +3043,72 @@ class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "execution_mode must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, execution_mode=c)
+
+
+class _TupleTensor(composite_tensor.CompositeTensor):
+  """`Tensor`-like `tuple`-like for custom `Tensor` conversion masquerading."""
+
+  def __init__(self, components):
+    super(_TupleTensor, self).__init__()
+    self._components = tuple(ops.convert_to_tensor(c) for c in components)
+
+  def _to_components(self):
+    return self._components
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    raise NotImplementedError("CompositeTensor._shape_invariant_to_components")
+
+  def _is_graph_tensor(self):
+    return any(hasattr(t, "graph") for t in self._components)
+
+  def __getitem__(self, key):
+    return self._components[key]
+
+  def __len__(self):
+    return len(self._components)
+
+  def __iter__(self):
+    return iter(self._components)
+
+
+class _MyTuple(object):
+  """Pretend user-side class for `ConvertToCompositeTensorTest ."""
+
+  def __init__(self, components):
+    super(_MyTuple, self).__init__()
+    self._components = tuple(components)
+
+  def __getitem__(self, key):
+    return self._components[key]
+
+  def __len__(self):
+    return len(self._components)
+
+  def __iter__(self):
+    return iter(self._components)
+
+
+ops.register_tensor_conversion_function(
+    _MyTuple, conversion_func=lambda x, *_, **__: _TupleTensor(x))
+
+
+class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
+
+  def testCompositeTensorConversion(self):
+    """Tests that a user can register a CompositeTensor converter."""
+    x = _MyTuple((1, [2., 3.], [[4, 5], [6, 7]]))
+    y = ops.convert_to_tensor_or_composite(x)
+    self.assertTrue(tensor_util.is_tensor(y))
+    self.assertIsInstance(y, _TupleTensor)
+    self.assertLen(y, len(x))
+    for x_, y_ in zip(x, y):
+      self.assertIsInstance(y_, ops.Tensor)
+      self.assertTrue(tensor_util.is_tensor(y_))
+      self.assertAllEqual(x_, tensor_util.constant_value(y_))
 
 
 if __name__ == "__main__":

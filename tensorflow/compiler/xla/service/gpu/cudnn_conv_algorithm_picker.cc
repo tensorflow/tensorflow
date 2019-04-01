@@ -122,6 +122,25 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
+void PrintPlatformInfo(const se::Stream* stream) {
+  auto* se = stream->parent();
+  const auto& desc = se->GetDeviceDescription();
+  LOG(ERROR) << "Device: " << desc.name();
+  LOG(ERROR) << "Platform: " << desc.platform_version();
+  LOG(ERROR) << "Driver: " << desc.driver_version();
+  LOG(ERROR) << "Runtime: " << desc.runtime_version();
+
+  auto* dnn = se->AsDnn();
+  if (dnn) {
+    auto dnn_version = dnn->GetVersion();
+    if (dnn_version.ok()) {
+      auto v = dnn_version.ValueOrDie();
+      LOG(ERROR) << "cudnn version: " << v.major_version() << "."
+                 << v.minor_version() << "." << v.patch();
+    }
+  }
+}
+
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -152,23 +171,7 @@ bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
       name);
   LOG(ERROR) << status.ToString();
   LOG(ERROR) << "HloInstruction " << instr->ToString();
-
-  auto* se = stream->parent();
-  const auto& desc = se->GetDeviceDescription();
-  LOG(ERROR) << "Device: " << desc.name();
-  LOG(ERROR) << "Platform: " << desc.platform_version();
-  LOG(ERROR) << "Driver: " << desc.driver_version();
-  LOG(ERROR) << "Runtime: " << desc.runtime_version();
-
-  auto* dnn = se->AsDnn();
-  if (dnn) {
-    auto dnn_version = dnn->GetVersion();
-    if (dnn_version.ok()) {
-      auto v = dnn_version.ValueOrDie();
-      LOG(ERROR) << "cudnn version: " << v.major_version() << "."
-                 << v.minor_version() << "." << v.patch();
-    }
-  }
+  PrintPlatformInfo(stream);
   return false;
 }
 
@@ -352,6 +355,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
             << instr->ToString() << " for "
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
+        PrintPlatformInfo(&stream);
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         auto* reference_conv = fail->mutable_reference_conv();

@@ -92,26 +92,23 @@ inline void ResizeBilinear(int input_height, int input_width,
 }
 }  // namespace
 
-bool ImagePreprocessingStage::DoInit(
-    absl::flat_hash_map<std::string, void*>& object_map) {
+TfLiteStatus ImagePreprocessingStage::Init() {
   auto& params = config_.specification().image_preprocessing_params();
   if (params.image_height() <= 0 || params.image_width() <= 0) {
     LOG(ERROR) << "Invalid image dimensions to ImagePreprocessingStage";
-    return false;
+    return kTfLiteError;
   }
-  image_height_ = params.image_height();
-  image_width_ = params.image_width();
   cropping_fraction_ = params.cropping_fraction();
   if (cropping_fraction_ > 1.0 || cropping_fraction_ < 0) {
     LOG(ERROR) << "Invalid cropping fraction";
-    return false;
+    return kTfLiteError;
   } else if (cropping_fraction_ == 0) {
     cropping_fraction_ = 1.0;
   }
   input_mean_value_ = 0;
   scale_ = 1.0;
   output_type_ = static_cast<TfLiteType>(params.output_type());
-  total_size_ = image_height_ * image_width_ * kNumChannels;
+  total_size_ = params.image_height() * params.image_width() * kNumChannels;
   if (output_type_ == kTfLiteUInt8) {
   } else if (output_type_ == kTfLiteInt8) {
     input_mean_value_ = 128.0;
@@ -120,21 +117,23 @@ bool ImagePreprocessingStage::DoInit(
     scale_ = 1.0 / 127.5;
   } else {
     LOG(ERROR) << "Wrong TfLiteType for ImagePreprocessingStage";
-    return false;
+    return kTfLiteError;
   }
 
-  return true;
+  return kTfLiteOk;
 }
 
-bool ImagePreprocessingStage::Run(
-    absl::flat_hash_map<std::string, void*>& object_map) {
-  std::string* image_path;
-  GET_OBJECT(kImagePathTag, object_map, &image_path);
+TfLiteStatus ImagePreprocessingStage::Run() {
+  if (!image_path_) {
+    LOG(ERROR) << "Image path not set";
+    return kTfLiteError;
+  }
+  auto& params = config_.specification().image_preprocessing_params();
 
   int64_t start_us = profiling::time::NowMicros();
 
   // Read image.
-  std::ifstream t(*image_path);
+  std::ifstream t(*image_path_);
   std::string image_str((std::istreambuf_iterator<char>(t)),
                         std::istreambuf_iterator<char>());
   const int fsize = image_str.size();
@@ -151,41 +150,48 @@ bool ImagePreprocessingStage::Run(
                                   nullptr));
 
   // Central Crop.
-  const int left =
-      static_cast<int>(round(original_width * (1 - cropping_fraction_) / 2));
-  const int top =
-      static_cast<int>(round(original_height * (1 - cropping_fraction_) / 2));
+  const int left = static_cast<int>(
+      std::round(original_width * (1 - cropping_fraction_) / 2));
+  const int top = static_cast<int>(
+      std::round(original_height * (1 - cropping_fraction_) / 2));
   const int crop_width =
-      static_cast<int>(round(original_width * cropping_fraction_));
+      static_cast<int>(std::round(original_width * cropping_fraction_));
   const int crop_height =
-      static_cast<int>(round(original_height * cropping_fraction_));
+      static_cast<int>(std::round(original_height * cropping_fraction_));
   std::vector<float> cropped_image;
   Crop(original_height, original_width, top, left, crop_height, crop_width,
        original_image.get(), &cropped_image);
 
   // Billinear-Resize & apply mean & scale.
   if (output_type_ == kTfLiteUInt8) {
-    ResizeBilinear(crop_height, crop_width, cropped_image, image_height_,
-                   image_width_, total_size_, uint8_preprocessed_image_,
-                   input_mean_value_, scale_);
-    ASSIGN_OBJECT(kPreprocessedImageTag, uint8_preprocessed_image_.data(),
-                  object_map);
+    ResizeBilinear(crop_height, crop_width, cropped_image,
+                   params.image_height(), params.image_width(), total_size_,
+                   uint8_preprocessed_image_, input_mean_value_, scale_);
   } else if (output_type_ == kTfLiteInt8) {
-    ResizeBilinear(crop_height, crop_width, cropped_image, image_height_,
-                   image_width_, total_size_, int8_preprocessed_image_,
-                   input_mean_value_, scale_);
-    ASSIGN_OBJECT(kPreprocessedImageTag, int8_preprocessed_image_.data(),
-                  object_map);
+    ResizeBilinear(crop_height, crop_width, cropped_image,
+                   params.image_height(), params.image_width(), total_size_,
+                   int8_preprocessed_image_, input_mean_value_, scale_);
   } else if (output_type_ == kTfLiteFloat32) {
-    ResizeBilinear(crop_height, crop_width, cropped_image, image_height_,
-                   image_width_, total_size_, float_preprocessed_image_,
-                   input_mean_value_, scale_);
-    ASSIGN_OBJECT(kPreprocessedImageTag, float_preprocessed_image_.data(),
-                  object_map);
+    ResizeBilinear(crop_height, crop_width, cropped_image,
+                   params.image_height(), params.image_width(), total_size_,
+                   float_preprocessed_image_, input_mean_value_, scale_);
   }
 
   latency_stats_.UpdateStat(profiling::time::NowMicros() - start_us);
-  return true;
+  return kTfLiteOk;
+}
+
+void* ImagePreprocessingStage::GetPreprocessedImageData() {
+  if (latency_stats_.count() == 0) return nullptr;
+
+  if (output_type_ == kTfLiteUInt8) {
+    return uint8_preprocessed_image_.data();
+  } else if (output_type_ == kTfLiteInt8) {
+    return int8_preprocessed_image_.data();
+  } else if (output_type_ == kTfLiteFloat32) {
+    return float_preprocessed_image_.data();
+  }
+  return nullptr;
 }
 
 EvaluationStageMetrics ImagePreprocessingStage::LatestMetrics() {
@@ -200,12 +206,6 @@ EvaluationStageMetrics ImagePreprocessingStage::LatestMetrics() {
   metrics.set_num_runs(static_cast<int>(latency_stats_.count()));
   return metrics;
 }
-
-const char ImagePreprocessingStage::kImagePathTag[] = "IMAGE_PATH";
-const char ImagePreprocessingStage::kPreprocessedImageTag[] =
-    "PREPROCESSED_IMAGE";
-
-DEFINE_FACTORY(ImagePreprocessingStage, IMAGE_PREPROCESSING);
 
 }  // namespace evaluation
 }  // namespace tflite

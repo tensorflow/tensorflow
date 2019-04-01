@@ -23,14 +23,24 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Flags associated with the XLA bridge's mark_for_compilation_pass module.
-struct MarkForCompilationPassFlags {
+struct XlaAutoJitFlag {
   // Control compilation of operators into XLA computations on CPU and GPU
   // devices.  0 = use ConfigProto setting; -1 = off; 1 = on for things very
   // likely to be improved; 2 = on for everything.
   //
+  // If all non-CPU ops in the graph being optimized are placed on a single GPU
+  // and there is at least one node placed on that GPU then
+  // `optimization_level_single_gpu` applies.  Otherwise
+  // `optimization_level_general` applies.
+  //
   // Experimental.
-  int32 tf_xla_auto_jit;
+  int32 optimization_level_single_gpu;
+  int32 optimization_level_general;
+};
+
+// Flags associated with the XLA bridge's mark_for_compilation_pass module.
+struct MarkForCompilationPassFlags {
+  XlaAutoJitFlag xla_auto_jit_flag;
 
   // Minimum number of operators in an XLA compilation. Ignored for operators
   // placed on an XLA device or operators explicitly marked for compilation.

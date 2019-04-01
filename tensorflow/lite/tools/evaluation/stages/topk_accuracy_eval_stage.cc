@@ -35,85 +35,82 @@ std::vector<int> GetTopKIndices(const std::vector<float>& values, int k) {
 
 }  // namespace
 
-bool TopkAccuracyEvalStage::DoInit(
-    absl::flat_hash_map<std::string, void*>& object_map) {
+TfLiteStatus TopkAccuracyEvalStage::Init() {
   num_runs_ = 0;
   auto& params = config_.specification().topk_accuracy_eval_params();
   if (!params.has_k()) {
     LOG(ERROR) << "Value of k not provided for TopkAccuracyEvalStage";
-    return false;
+    return kTfLiteError;
   }
-  k_ = params.k();
-  accuracy_counts_ = std::vector<int>(k_, 0);
+  accuracy_counts_ = std::vector<int>(params.k(), 0);
 
-  std::vector<std::string>* ground_truth_labels;
-  GET_OBJECT(kAllLabelsTag, object_map, &ground_truth_labels);
-  // We copy ground_truth_labels to ensure we can access the data throughout the
-  // lifetime of this evaluation stage.
-  ground_truth_labels_ = *ground_truth_labels;
   if (ground_truth_labels_.empty()) {
     LOG(ERROR) << "Ground-truth labels are empty";
-    return false;
+    return kTfLiteError;
   }
   num_total_labels_ = ground_truth_labels_.size();
-  if (k_ > num_total_labels_) {
+  if (params.k() > num_total_labels_) {
     LOG(ERROR) << "k is too large";
-    return false;
+    return kTfLiteError;
   }
 
-  TfLiteIntArray* model_output_shape;
-  TfLiteType* model_output_type;
-  GET_OBJECT(kModelOutputShapeTag, object_map, &model_output_shape);
-  GET_OBJECT(kModelOutputTypeTag, object_map, &model_output_type);
-  output_type_ = *model_output_type;
+  if (!model_output_shape_) {
+    LOG(ERROR) << "Model output details not correctly set";
+    return kTfLiteError;
+  }
   // Ensure model output is of shape (1, num_total_labels_).
-  if (!(model_output_shape->size == 2) || !(model_output_shape->data[0] == 1) ||
-      !(model_output_shape->data[1] == num_total_labels_)) {
-    LOG(ERROR) << "Invalid shape of model output";
-    return false;
+  if (!(model_output_shape_->size == 2) ||
+      !(model_output_shape_->data[0] == 1) ||
+      !(model_output_shape_->data[1] == num_total_labels_)) {
+    LOG(ERROR) << "Invalid model_output_shape_";
+    return kTfLiteError;
   }
-  if (output_type_ != kTfLiteFloat32 && output_type_ != kTfLiteUInt8 &&
-      output_type_ != kTfLiteInt8) {
-    LOG(ERROR) << "Model output type not supported";
-    return false;
+  if (model_output_type_ != kTfLiteFloat32 &&
+      model_output_type_ != kTfLiteUInt8 && model_output_type_ != kTfLiteInt8) {
+    LOG(ERROR) << "model_output_type_ not supported";
+    return kTfLiteError;
   }
-  return true;
+  return kTfLiteOk;
 }
 
-bool TopkAccuracyEvalStage::Run(
-    absl::flat_hash_map<std::string, void*>& object_map) {
-  void* model_output;
-  std::string* ground_truth_label;
-  GET_OBJECT(kModelOutputTag, object_map, &model_output);
-  GET_OBJECT(kGroundTruthLabelTag, object_map, &ground_truth_label);
+TfLiteStatus TopkAccuracyEvalStage::Run() {
+  if (!model_output_) {
+    LOG(ERROR) << "model_output_ not set correctly";
+    return kTfLiteError;
+  }
+  if (!ground_truth_label_) {
+    LOG(ERROR) << "ground_truth_label_ not provided";
+    return kTfLiteError;
+  }
+  auto& params = config_.specification().topk_accuracy_eval_params();
 
   std::vector<float> probabilities;
   probabilities.reserve(num_total_labels_);
-  if (output_type_ == kTfLiteFloat32) {
-    auto probs = static_cast<float*>(model_output);
+  if (model_output_type_ == kTfLiteFloat32) {
+    auto probs = static_cast<float*>(model_output_);
     for (size_t i = 0; i < num_total_labels_; i++) {
       probabilities.push_back(probs[i]);
     }
-  } else if (output_type_ == kTfLiteUInt8) {
-    auto probs = static_cast<uint8_t*>(model_output);
+  } else if (model_output_type_ == kTfLiteUInt8) {
+    auto probs = static_cast<uint8_t*>(model_output_);
     for (size_t i = 0; i < num_total_labels_; i++) {
       probabilities.push_back(probs[i]);
     }
-  } else if (output_type_ == kTfLiteInt8) {
-    auto probs = static_cast<int8_t*>(model_output);
+  } else if (model_output_type_ == kTfLiteInt8) {
+    auto probs = static_cast<int8_t*>(model_output_);
     for (size_t i = 0; i < num_total_labels_; i++) {
       probabilities.push_back(probs[i]);
     }
   }
 
-  std::vector<int> top_k = GetTopKIndices(probabilities, k_);
-  int ground_truth_index = GroundTruthIndex(*ground_truth_label);
+  std::vector<int> top_k = GetTopKIndices(probabilities, params.k());
+  int ground_truth_index = GroundTruthIndex(*ground_truth_label_);
   if (ground_truth_index < 0) {
     LOG(ERROR) << "Invalid ground truth label";
-    return false;
+    return kTfLiteError;
   }
   UpdateCounts(top_k, ground_truth_index);
-  return true;
+  return kTfLiteOk;
 }
 
 EvaluationStageMetrics TopkAccuracyEvalStage::LatestMetrics() {
@@ -152,14 +149,6 @@ int TopkAccuracyEvalStage::GroundTruthIndex(const std::string& label) const {
   }
   return std::distance(ground_truth_labels_.cbegin(), index);
 }
-
-const char TopkAccuracyEvalStage::kAllLabelsTag[] = "ALL_LABELS";
-const char TopkAccuracyEvalStage::kModelOutputTypeTag[] = "MODEL_OUTPUT_TYPE";
-const char TopkAccuracyEvalStage::kModelOutputShapeTag[] = "MODEL_OUTPUT_SHAPE";
-const char TopkAccuracyEvalStage::kModelOutputTag[] = "MODEL_OUTPUT";
-const char TopkAccuracyEvalStage::kGroundTruthLabelTag[] = "GROUND_TRUTH_LABEL";
-
-DEFINE_FACTORY(TopkAccuracyEvalStage, TOPK_ACCURACY_EVAL);
 
 }  // namespace evaluation
 }  // namespace tflite

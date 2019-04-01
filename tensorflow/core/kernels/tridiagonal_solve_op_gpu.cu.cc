@@ -199,9 +199,10 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
     CudaLaunchConfig cfg = GetCudaLaunchConfig(1, device);
     bool* not_invertible_dev;
     cudaMalloc(&not_invertible_dev, sizeof(bool));
-    SolveForSizeOneOrTwoKernel<<<cfg.block_count, cfg.thread_per_block, 0,
-                                 device.stream()>>>(m, diagonals, rhs, k,
-                                                    output, not_invertible_dev);
+    TF_CHECK_OK(CudaLaunchKernel(SolveForSizeOneOrTwoKernel<Scalar>,
+                                 cfg.block_count, cfg.thread_per_block, 0,
+                                 device.stream(), m, diagonals, rhs, k, output,
+                                 not_invertible_dev));
     bool not_invertible_host;
     cudaMemcpy(&not_invertible_host, not_invertible_dev, sizeof(bool),
                cudaMemcpyDeviceToHost);

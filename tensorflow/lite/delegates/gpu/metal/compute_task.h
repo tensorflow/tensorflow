@@ -35,14 +35,27 @@ limitations under the License.
                             taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
                             runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
 
-/// Updates buffers for intermediate tensors only and dimensions for inputs/outputs/intermediate
-/// tensors. Returns error if out of memory or a buffer is larger than MTLDevice can support.
+/// Updates dimensions for inputs/outputs/intermediate tensors
 - (::tflite::gpu::Status)
     setInputDimensionsWithDevice:(id<MTLDevice>)device
-                       outputIDs:(const std::vector<::tflite::gpu::ValueId>&)outputIDs
-                  runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options
-                      dimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions
-                         buffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers;
+                      dimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions;
+
+/// Updates buffers for intermediate tensors only. Returns error if out of memory or a buffer is
+/// larger than MTLDevice can support.
+/// @param buffers is a map from intermediate tensors' ValueId to metal handles with corresponding
+///        buffers.
+/// @param outputIDs must match the output of added operations.
+/// @param usageRecordIds is a map from intermediate tensors' ValueId to corresponding tensor usage
+/// records ids.
+/// @param sharedBufferIds contain shared buffer id for each tensor usage record id.
+/// @param sharedBuffers contain metal handles to the allocated buffers for each shared buffer id.
+/// TODO(ypisarchyk): probably we can decrease the number of parameters here
+- (::tflite::gpu::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
+                             outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
+                        usageRecordIds:
+                            (const std::map<::tflite::gpu::ValueId, size_t>&)usageRecordIds
+                       sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
+                         sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
        inputOutputBuffers:

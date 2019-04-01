@@ -2,6 +2,7 @@
 
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -368,6 +369,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -493,6 +495,7 @@ py_library(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 
@@ -604,6 +607,8 @@ py_library(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -622,7 +627,7 @@ distribute_py_test(
     ],
     deps = [
         ":keras_test_lib",
-        "//tensorflow/python/keras:distribute_strategy_test",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     ],
 )
 
@@ -837,19 +842,5 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking:util",
-    ],
-)
-
-distribute_py_test(
-    name = "zero_batch_test",
-    srcs = ["zero_batch_test.py"],
-    main = "zero_batch_test.py",
-    deps = [
-        ":mirrored_strategy",
-        ":tpu_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

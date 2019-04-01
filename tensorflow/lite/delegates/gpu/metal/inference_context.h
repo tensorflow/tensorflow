@@ -65,7 +65,9 @@ limitations under the License.
 ///             compileModelWithDevice() must be made with the proper device parameter set.
 - (::tflite::gpu::Status)
     setInputDimensions:(const std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>&)inputDimensions
-      outputDimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)outputDimensions;
+      outputDimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)outputDimensions
+       taskDescriptors:
+           (const std::vector<::tflite::gpu::metal::ComputeTaskDescriptorPtr>&)taskDescriptors;
 
 /// Inserts all GPU compute tasks into the command encoder.
 /// @param inputOutputBuffers Must be created and passed into the method with pairs ID:buffer

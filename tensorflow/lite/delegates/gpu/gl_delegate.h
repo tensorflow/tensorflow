@@ -39,7 +39,7 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-enum TFL_CAPI_EXPORT TfLiteGlObjectType {
+enum TfLiteGlObjectType {
   TFLITE_GL_OBJECT_TYPE_FASTEST = 0,
   TFLITE_GL_OBJECT_TYPE_TEXTURE = 1,
   TFLITE_GL_OBJECT_TYPE_BUFFER = 2,

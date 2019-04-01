@@ -22,6 +22,7 @@ from tensorflow.contrib.distribute.python import step_fn
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.layers import core
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import array_ops
@@ -56,6 +57,10 @@ def minimize_loss_example(optimizer_fn,
                           create_optimizer_inside_model_fn=False):
   """Example of non-distribution-aware legacy code."""
 
+  if isinstance(optimizer_fn(), optimizer_v2.OptimizerV2):
+    # Keras optimizer v2 always uses callable loss
+    assert use_callable_loss
+
   def dataset_fn():
     dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
     # TODO(isaprykin): batch with drop_remainder causes shapes to be
@@ -77,6 +82,9 @@ def minimize_loss_example(optimizer_fn,
       return y * y
 
     optimizer = outer_optimizer or optimizer_fn()
+
+    if isinstance(optimizer, optimizer_v2.OptimizerV2):
+      return optimizer.minimize(loss_fn, lambda: layer.trainable_variables)
 
     if use_callable_loss:
       return optimizer.minimize(loss_fn)
@@ -118,6 +126,9 @@ def batchnorm_example(optimizer_fn,
             math_ops.reduce_sum(layer(y)) - constant_op.constant(1.))
       # `x` and `y` will be fetched by the gradient computation, but not `loss`.
       return loss
+
+    if isinstance(optimizer, optimizer_v2.OptimizerV2):
+      return optimizer.minimize(loss_fn, lambda: layer.trainable_variables)
 
     # Callable loss.
     return optimizer.minimize(loss_fn)

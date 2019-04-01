@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -299,18 +300,6 @@ void MetaOptimizer::InitializeVerifiers(
   }
 }
 
-#define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
-  {                                                                            \
-    const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
-                                       optimized_graph, &optimization_result); \
-    if (status.ok()) {                                                         \
-      is_optimized = true;                                                     \
-    } else if (cfg_.fail_on_optimizer_errors()) {                              \
-      VLOG(2) << "Optimizer '" << optimizer->name() << "' failed: " << status; \
-      TF_RETURN_IF_ERROR(status);                                              \
-    }                                                                          \
-  }
-
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
@@ -361,7 +350,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   GrapplerItem optimized_item = item;
   optimized_graph->Swap(&optimized_item.graph);
 
-  bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
   GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
@@ -395,7 +383,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
       }
-      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
+
+      TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &optimized_item,
+                                      optimized_graph, &optimization_result));
 
       if (VLOG_IS_ON(4)) {
         DumpGraphDefToFile(
@@ -428,16 +418,24 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   // optimizations from taking place since we don't have shape inference for
   // functions, and we can't optimize across function boundaries.
   if (fusion_optimizer != nullptr) {
-    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(fusion_optimizer);
+    TF_RETURN_IF_ERROR(RunOptimizer(fusion_optimizer, cluster, &optimized_item,
+                                    optimized_graph, &optimization_result));
   }
 
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
-    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
+    TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &optimized_item,
+                                    optimized_graph, &optimization_result));
   }
 
   // Compress the constants in the final graph.
   TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
+
+  bool is_optimized = std::find_if(optimization_result.results.begin(),
+                                   optimization_result.results.end(),
+                                   [](const OptimizerResult& result) {
+                                     return result.status.ok();
+                                   }) != optimization_result.results.end();
 
   // Record graph optimization result.
   optimization_results_.push_back(optimization_result);
@@ -453,8 +451,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-#undef RUN_OPTIMIZER_OR_RETURN_IF_ERROR
-
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
     GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
@@ -467,22 +463,32 @@ Status MetaOptimizer::RunOptimizer(
   Status status =
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
   uint64 end_us = Env::Default()->NowMicros();
+  float duration_ms = (end_us - start_us) / 1000.0f;
 
-  string result;
+  string message;
   if (!status.ok()) {
     optimized_graph->Swap(&optimized_item->graph);
-    result = status.ToString();
+    if (errors::IsDeadlineExceeded(status)) {
+      message =
+          strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
+      LOG(WARNING) << optimizer->name() << " failed: " << message;
+    } else {
+      message = status.ToString();
+      LOG(ERROR) << optimizer->name() << " failed: " << message;
+    }
   } else {
-    float duration_ms = (end_us - start_us) / 1000.0f;
-    result = strings::StrCat(
+    message = strings::StrCat(
         PrintSizesBeforeAfter(optimized_item->graph, *optimized_graph),
         ", time = ", duration_ms, "ms.");
+    VLOG(1) << optimizer->name() << ": " << message;
   }
-  VLOG(1) << optimizer->name() << ": " << result;
 
-  OptimizerResult optimizer_result{optimizer->name(), result};
+  OptimizerResult optimizer_result{optimizer->name(), message, status};
   optimization_result->results.push_back(optimizer_result);
-  return status;
+
+  if (!status.ok() && cfg_.fail_on_optimizer_errors()) return status;
+
+  return Status::OK();
 }
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -611,6 +617,25 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
           false;
 
+      // TODO(b/129545186): Shape inference in GraphProperties doesn't work well
+      // with _Arg nodes. Replace them with Placeholders with unknown shape.
+      absl::flat_hash_set<absl::string_view> input_nodes;
+      for (auto& input_arg : func_item.inputs()) {
+        input_nodes.insert(input_arg.node_name);
+      }
+      for (NodeDef& func_node : *func_item.graph.mutable_node()) {
+        if (input_nodes.contains(func_node.name())) {
+          func_node.set_op("Placeholder");
+          auto& attrs = *func_node.mutable_attr();
+          attrs["dtype"] = attrs["T"];
+          attrs.erase("index");
+          attrs.erase("T");
+          TensorShapeProto unknown_shape;
+          unknown_shape.set_unknown_rank(true);
+          *(attrs["shape"].mutable_shape()) = unknown_shape;
+        }
+      }
+
       // Optimize function body graph.
       GraphDef optimized_func_graph;
       TF_RETURN_IF_ERROR(
@@ -656,13 +681,13 @@ void MetaOptimizer::PrintResult() {
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
     LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
     for (const OptimizerResult& result : graph_result.results) {
-      LOG(INFO) << "  " << result.optimizer_name << ": " << result.result;
+      LOG(INFO) << "  " << result.optimizer_name << ": " << result.message;
     }
   }
 }
 
 void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                             const GraphDef& pruned_graph, double result) {
+                             const GraphDef& optimized_graph, double result) {
   // Nothing to do for MetaOptimizer.
 }
 

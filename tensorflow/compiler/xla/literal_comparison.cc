@@ -238,21 +238,20 @@ string FpValueToString<complex128>(complex128 value) {
   return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
 }
 
-// Returns the absolute value of the given floating point value. This function
-// is used instead of std::abs directly in order to allow type-dependent
-// implementations for NearComparator.
+// A wrapper of std::abs to include data types that are not supported by
+// std::abs, in particular, bfloat16 and half.
 template <typename NativeT>
-float FpAbsoluteValue(NativeT value) {
+double FpAbsoluteValue(NativeT value) {
   return std::abs(value);
 }
 
 template <>
-float FpAbsoluteValue(bfloat16 value) {
+double FpAbsoluteValue(bfloat16 value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
 template <>
-float FpAbsoluteValue(half value) {
+double FpAbsoluteValue(half value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
@@ -278,8 +277,8 @@ class NearComparator {
   struct Mismatch {
     NativeT actual;
     NativeT expected;
-    float rel_error;
-    float abs_error;
+    double rel_error;
+    double abs_error;
 
     // The linear index of the failure within the shape. This linear index is
     // from the 'actual' literal.
@@ -340,7 +339,7 @@ class NearComparator {
   void UpdateAbsValueBucket(NativeT value, bool is_mismatch) {
     // Adjust the bucket containing the absolute values of the 'actual'
     // elements.
-    const float abs_value = FpAbsoluteValue(value);
+    const double abs_value = FpAbsoluteValue(value);
     for (int i = 0; i < abs_value_buckets_.size(); ++i) {
       if (i == abs_value_buckets_.size() - 1 ||
           (abs_value >= kAbsValueBucketBounds[i] &&
@@ -370,8 +369,8 @@ class NearComparator {
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
   void CompareValues(T expected, T actual, int64 linear_index) {
-    float abs_error;
-    float rel_error;
+    double abs_error;
+    double rel_error;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
       abs_error = 0;
       rel_error = 0;

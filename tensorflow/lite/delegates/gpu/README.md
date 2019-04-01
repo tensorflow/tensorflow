@@ -130,6 +130,10 @@ While it is convenient to just supply `nullptr`, it is recommended to explicitly
 set the options to avoid any unexpected artifacts in case default values are
 changed.
 
+*IMPORTANT:* Note that the default option does not allow precision loss, and
+thus may not be the fastest.  For faster execution, you may want to set
+`precision_loss_allowed` to `1` for FP16 execution.
+
 ## Advanced Usage: Input/Output Buffers (C++)
 
 To do computation on the GPU, data must be made available to the GPU which often

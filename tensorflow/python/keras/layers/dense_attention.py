@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
@@ -37,6 +38,11 @@ class BaseDenseAttention(Layer):
 
   Implementations of attention mechanisms should inherit from this class, and
   reuse the `apply_attention_scores()` method.
+
+  Args:
+    causal: Boolean. Set to `True` for decoder self-attention. Adds a mask such
+      that position `i` cannot attend to positions `j > i`. This prevents the
+      flow of information from the future towards the past.
 
   Call Arguments:
 
@@ -59,6 +65,10 @@ class BaseDenseAttention(Layer):
     Attention outputs of shape `[batch_size, Tq, dim]`.
   """
 
+  def __init__(self, causal=False, **kwargs):
+    super(BaseDenseAttention, self).__init__(**kwargs)
+    self.causal = causal
+
   def _calculate_scores(self, query, key):
     """Calculates attention scores.
 
@@ -70,7 +80,7 @@ class BaseDenseAttention(Layer):
     """
     return NotImplementedError
 
-  def _apply_scores(self, scores, value, value_mask=None):
+  def _apply_scores(self, scores, value, scores_mask=None):
     """Applies attention scores to the given value tensor.
 
     To use this method in your attention layer, follow the steps:
@@ -78,24 +88,23 @@ class BaseDenseAttention(Layer):
     * Use `query` tensor of shape `[batch_size, Tq]` and `key` tensor of shape
       `[batch_size, Tv]` to calculate the attention `scores`.
     * Pass `scores` and `value` tensors to this method. The method applies
-      `value_mask`, calculates `attention_distribution = softmax(scores)`, then
+      `scores_mask`, calculates `attention_distribution = softmax(scores)`, then
       returns `matmul(attention_distribution, value).
     * Apply `query_mask` and return the result.
 
     Args:
       scores: Scores float tensor of shape `[batch_size, Tq, Tv]`.
       value: Value tensor of shape `[batch_size, Tv, dim]`.
-      value_mask: A boolean mask `Tensor` of shape `[batch_size, Tv]`.
-        If given, will apply the mask such that values at positions where
-        `mask==False` do not contribute to the result.
+      scores_mask: A boolean mask `Tensor` of shape `[batch_size, 1, Tv]` or
+        `[batch_size, Tq, Tv]`. If given, scores at positions where
+        `scores_mask==False` do not contribute to the result. It must contain
+        at least one `True` value in each line along the last dimension.
 
     Returns:
       Tensor of shape `[batch_size, Tq, dim]`.
     """
-    if value_mask is not None:
-      # Mask of shape [batch_size, 1, Tv] that is True in padding position.
-      padding_mask = array_ops.expand_dims(
-          math_ops.logical_not(value_mask), axis=1)
+    if scores_mask is not None:
+      padding_mask = math_ops.logical_not(scores_mask)
       # Bias so padding positions do not contribute to attention distribution.
       scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
     attention_distribution = nn.softmax(scores)
@@ -113,7 +122,25 @@ class BaseDenseAttention(Layer):
     if q_mask is not None:
       raise NotImplementedError('query_mask is not supported yet.')
     scores = self._calculate_scores(query=q, key=k)
-    return self._apply_scores(scores=scores, value=v, value_mask=v_mask)
+    if v_mask is not None:
+      # Mask of shape [batch_size, 1, Tv].
+      value_mask = array_ops.expand_dims(v_mask, axis=-2)
+    else:
+      value_mask = None
+    if self.causal:
+      # Creates a lower triangular mask, so position i cannot attend to
+      # positions j>i. This prevents the flow of information from the future
+      # into the past.
+      scores_shape = array_ops.shape(scores)
+      # causal_mask_shape = [1, Tq, Tv].
+      causal_mask_shape = array_ops.concat(
+          [array_ops.ones_like(scores_shape[:-2]), scores_shape[-2:]],
+          axis=0)
+      causal_mask = _lower_triangular_mask(causal_mask_shape)
+    else:
+      causal_mask = None
+    scores_mask = _merge_masks(value_mask, causal_mask)
+    return self._apply_scores(scores=scores, value=v, scores_mask=scores_mask)
 
   def _validate_call_args(self, inputs, mask):
     """Validates arguments of the call method."""
@@ -156,6 +183,9 @@ class Attention(BaseDenseAttention):
   Args:
     use_scale: If `True`, will create a scalar variable to scale the attention
       scores.
+    causal: Boolean. Set to `True` for decoder self-attention. Adds a mask such
+      that position `i` cannot attend to positions `j > i`. This prevents the
+      flow of information from the future towards the past.
 
   Call Arguments:
 
@@ -257,3 +287,20 @@ class Attention(BaseDenseAttention):
     if self.scale is not None:
       scores *= self.scale
     return scores
+
+
+def _lower_triangular_mask(shape):
+  """Creates a lower-triangular boolean mask over the last 2 dimensions."""
+  row_index = math_ops.cumsum(
+      array_ops.ones(shape=shape, dtype=dtypes.int32), axis=-2)
+  col_index = math_ops.cumsum(
+      array_ops.ones(shape=shape, dtype=dtypes.int32), axis=-1)
+  return math_ops.greater_equal(row_index, col_index)
+
+
+def _merge_masks(x, y):
+  if x is None:
+    return y
+  if y is None:
+    return x
+  return math_ops.logical_and(x, y)

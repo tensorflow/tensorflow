@@ -13,32 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/abs.h"
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_ELEMENTWISE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_ELEMENTWISE_H_
 
-#include <memory>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Abs(int id, ValueId input_id,
-                                          ValueId output_id) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  desc->shader_source =
-      R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
-    return abs(value);
-  })";
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  return {desc};
-}
+std::vector<ComputeTaskDescriptorPtr> Elementwise(int id, ValueId input_id,
+                                                  ValueId output_id,
+                                                  OperationType op_type);
 
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_ELEMENTWISE_H_
