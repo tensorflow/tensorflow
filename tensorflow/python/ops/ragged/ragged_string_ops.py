@@ -63,7 +63,7 @@ def unicode_encode(input,
   #### Example:
     ```python
       >>> input = [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
-      >>> unicode_encode(input, 'UTF8')
+      >>> unicode_encode(input, 'UTF-8')
       ['G\xc3\xb6\xc3\xb6dnight', '\xf0\x9f\x98\x8a']
     ```
   """

@@ -2638,7 +2638,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     const GraphProperties& properties, bool use_shape_info,
     GraphDef* optimized_graph, NodeDef* node, bool* success) {
   *success = false;
-  const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
+  const bool is_mul = IsAnyMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
   const bool is_quantized_matmul = IsQuantizedMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
@@ -2770,7 +2770,8 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
   // Strength reduce floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)). This in turn
   // will be constant folded to Mul(x, 1.0/const).
-  if (node->input_size() >= 2 && (IsRealDiv(*node) || IsDiv(*node))) {
+  if (node->input_size() >= 2 &&
+      (IsDiv(*node) || IsRealDiv(*node) || IsXdivy(*node))) {
     const string& const_input = node->input(1);
     const NodeDef* denom = node_map_->GetNode(const_input);
     CHECK(denom != nullptr);
@@ -2781,6 +2782,7 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
       return false;
     }
     DataType type = node->attr().at("T").type();
+    // Skip integer division.
     if (IsDiv(*node) &&
         !(DataTypeIsFloating(type) || DataTypeIsComplex(type))) {
       return false;
@@ -2790,13 +2792,21 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
     reciprocal_node->set_name(OptimizedNodeName(*node, "_recip"));
     reciprocal_node->set_op("Reciprocal");
     reciprocal_node->set_device(node->device());
-    node->set_op("Mul");
-    // Re-wire inputs and outputs.
     reciprocal_node->add_input(const_input);
     (*reciprocal_node->mutable_attr())["T"].set_type(type);
-    node->set_input(1, reciprocal_node->name());
+
+    // Re-wire inputs and outputs.
+    if (IsXdivy(*node)) {
+      node->set_op("MulNoNan");
+      node->set_input(1, node->input(0));
+      node->set_input(0, reciprocal_node->name());
+    } else {
+      node->set_op("Mul");
+      node->set_input(1, reciprocal_node->name());
+    }
     node_map_->AddNode(reciprocal_node->name(), reciprocal_node);
     node_map_->UpdateOutput(node->name(), const_input, reciprocal_node->name());
+
     return true;
   }
 
@@ -2902,7 +2912,7 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
   //                 X  C1                       C1  C2
   //
   // where C1 and C2 are constants and X is non-constant.
-  if (!IsMul(*node) || NumNonControlInputs(*node) != 2) return false;
+  if (!IsAnyMul(*node) || NumNonControlInputs(*node) != 2) return false;
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
@@ -3437,7 +3447,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   graph_contains_assign_or_inplace_op_ = false;
   for (const NodeDef& node : item.graph.node()) {
-    if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
+    if (ModifiesInputsInPlace(node) || HasRefInput(node)) {
       graph_contains_assign_or_inplace_op_ = true;
       break;
     }

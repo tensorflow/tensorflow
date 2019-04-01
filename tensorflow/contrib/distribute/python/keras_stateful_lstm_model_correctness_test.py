@@ -18,10 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import keras_correctness_test_base
 from tensorflow.python import keras
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.training import gradient_descent
 
@@ -29,8 +29,10 @@ from tensorflow.python.training import gradient_descent
 def strategies_for_stateful_embedding_model():
   """Returns TPUStrategy with single core device assignment."""
 
-  return [combinations.tpu_strategy_one_core,
-          combinations.tpu_strategy_one_step_one_core]
+  return [
+      strategy_combinations.tpu_strategy_one_core,
+      strategy_combinations.tpu_strategy_one_step_one_core
+  ]
 
 
 def test_combinations_for_stateful_embedding_model():

@@ -376,6 +376,7 @@ See below.
 *   Currently, `sequence_length` is not supported, prefer to set it to None.
 *   `num_unit_shards` & `num_proj_shards` in LSTMCell are not supported as
     well.
+*   Currently, `final_state` is not supported.
 *   Currently, `tf.lite.experimental.nn.dynamic_rnn` &
     `tf.lite.experimental.nn.bidirectional_dynamic_rnn` only takes
     `time_major=True`.

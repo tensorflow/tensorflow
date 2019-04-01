@@ -100,17 +100,21 @@ class TPUClusterResolver(ClusterResolver):
     resp = urlopen(req)
     return compat.as_bytes(resp.read())
 
+  def _isGoogleEnvironment(self):
+    return (
+        self._tpu == compat.as_bytes('') or
+        self._tpu == compat.as_bytes('local') or
+        self._tpu.startswith(compat.as_bytes('localhost:')) or
+        self._tpu.startswith(compat.as_bytes('/bns')) or
+        self._tpu.startswith(compat.as_bytes('uptc://')))
+
   def _shouldResolve(self):
     if isinstance(self._should_resolve_override, bool):
       return self._should_resolve_override
-    if (self._tpu == compat.as_bytes('') or
-        self._tpu == compat.as_bytes('local') or
-        self._tpu.startswith(compat.as_bytes('/bns')) or
-        self._tpu.startswith(compat.as_bytes('localhost:')) or
-        self._tpu.startswith(compat.as_bytes('grpc://')) or
-        self._tpu.startswith(compat.as_bytes('uptc://'))):
-      return False
-    return True
+    else:
+      return not (
+          self._tpu.startswith(compat.as_bytes('grpc://')) or
+          self._isGoogleEnvironment())
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -260,22 +264,11 @@ class TPUClusterResolver(ClusterResolver):
     self.task_type = job_name
     self.task_id = 0
 
-    if tpu.startswith('grpc://'):
-      # Cloud environment, where we are using GRPC to communicate to TPUs.
-      self._environment = ''
-    elif tpu == 'local' or not tpu:
-      # Google environment, where the TPU is attached to the host.
+    if self._isGoogleEnvironment():
       self._environment = 'google'
-    elif tpu.startswith('/bns') or tpu.startswith('uptc://'):
-      # Google environment, where we reach the TPU through BNS.
-      self._environment = 'google'
-
-    # If TPU is in the Google environment or exists locally, we don't use any
-    # RPC layer.
-    if tpu.startswith('/bns') or tpu.startswith(
-        'uptc://') or tpu == 'local' or not tpu:
       self.rpc_layer = None
     else:
+      self._environment = ''
       self.rpc_layer = 'grpc'
 
     # Setting this overrides the return value of self._shouldResolve()

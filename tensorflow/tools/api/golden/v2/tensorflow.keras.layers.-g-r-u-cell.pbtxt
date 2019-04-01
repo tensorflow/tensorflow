@@ -1,5 +1,6 @@
 path: "tensorflow.keras.layers.GRUCell"
 tf_class {
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent_v2.GRUCell\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.GRUCell\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.DropoutRNNCellMixin\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
@@ -35,6 +36,10 @@ tf_class {
   }
   member {
     name: "losses"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "metrics"
     mtype: "<type \'property\'>"
   }
   member {
@@ -87,7 +92,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'units\', \'activation\', \'recurrent_activation\', \'use_bias\', \'kernel_initializer\', \'recurrent_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'recurrent_regularizer\', \'bias_regularizer\', \'kernel_constraint\', \'recurrent_constraint\', \'bias_constraint\', \'dropout\', \'recurrent_dropout\', \'implementation\', \'reset_after\'], varargs=None, keywords=kwargs, defaults=[\'tanh\', \'hard_sigmoid\', \'True\', \'glorot_uniform\', \'orthogonal\', \'zeros\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'0.0\', \'0.0\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'units\', \'activation\', \'recurrent_activation\', \'use_bias\', \'kernel_initializer\', \'recurrent_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'recurrent_regularizer\', \'bias_regularizer\', \'kernel_constraint\', \'recurrent_constraint\', \'bias_constraint\', \'dropout\', \'recurrent_dropout\', \'implementation\', \'reset_after\'], varargs=None, keywords=kwargs, defaults=[\'tanh\', \'sigmoid\', \'True\', \'glorot_uniform\', \'orthogonal\', \'zeros\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'0.0\', \'0.0\', \'2\', \'True\'], "
   }
   member_method {
     name: "add_loss"

@@ -132,8 +132,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit code to emit the element at `index` for a reduce instruction.
   StatusOr<llvm::Value*> EmitElementalReduce(
       const HloReduceInstruction* reduce,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::ElementGenerator& initial_value_generator,
+      std::vector<llvm_ir::ElementGenerator> input_generators,
+      std::vector<llvm_ir::ElementGenerator> initial_value_generator,
       const llvm_ir::IrArray::Index& index);
 
  protected:
@@ -196,6 +196,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
  private:
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
+
+  // Emits the copying epilogue for the function,
+  // where it copies the returned value to the reserved alloca.
+  // This is only necessary for thread-local functions.
+  // Note that since the call graph is flattened, if the same function is
+  // called in both thread-local and non-thread-local it would be codegen'd
+  // twice, and we would know whether it's thread-local at codegen time.
+  void EmitThreadLocalFunctionEpilogue(HloComputation* computation);
 
   // Convenience functions to generate a GEP into the profile counter parameter
   // which would correspond to the index for a given HLO instruction or
@@ -267,12 +275,18 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits a call to a thread local function (e.g. to the computation nested
   // within a reduce or a map).  Thread local callees (by definition) only write
   // to and read from thread local allocations.
+  // Supports only functions returning scalars or tuples of scalars.
   //
   // `parameters` holds the *scalar values* that need to be passed to the
   // callee.  The return value is the scalar returned by the callee.
-  llvm::Value* EmitThreadLocalCall(const HloComputation& callee,
-                                   absl::Span<llvm::Value* const> parameters,
-                                   absl::string_view name);
+  std::vector<llvm::Value*> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name);
+
+  // Similar to EmitThreadLocal, yet assumes that the function returns a scalar.
+  llvm::Value* EmitScalarReturningThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name);
 
   // Emits a call to a "global" function (e.g. to the computation nested within
   // a kWhile or a kCall).  Buffer assignment unabiguously assignes buffers to

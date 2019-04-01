@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -135,7 +136,6 @@ py_library(
         "engine/__init__.py",
         "engine/base_layer.py",
         "engine/base_layer_utils.py",
-        "engine/distributed_training_utils.py",
         "engine/input_layer.py",
         "engine/input_spec.py",
         "engine/network.py",
@@ -144,7 +144,6 @@ py_library(
         "engine/sequential.py",
         "engine/training.py",
         "engine/training_arrays.py",
-        "engine/training_distributed.py",
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
@@ -171,6 +170,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
@@ -540,10 +540,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
-    tags = [
-        "no_windows",  # TODO(b/127888631)
-        "no_windows_gpu",  # TODO(b/127881287)
-    ],
 )
 
 tf_py_test(
@@ -800,6 +796,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -827,6 +824,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -841,6 +839,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1057,6 +1056,18 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "vis_utils_test",
+    size = "small",
+    srcs = ["utils/vis_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "conv_utils_test",
     size = "small",
     srcs = ["utils/conv_utils_test.py"],
@@ -1199,7 +1210,6 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
-        "notap",  #TODO(b/123544294): Re-enable this test.
         "notsan",
     ],
 )

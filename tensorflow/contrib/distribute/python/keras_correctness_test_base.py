@@ -21,17 +21,17 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 import six
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 
 _RANDOM_SEED = 1337
 _EVAL_STEPS = 20
@@ -42,21 +42,18 @@ _GLOBAL_BATCH_SIZE = 64
 
 
 all_strategies = [
-    combinations.default_strategy,
-    combinations.one_device_strategy,
-    combinations.mirrored_strategy_with_gpu_and_cpu,
-    combinations.mirrored_strategy_with_two_gpus,
-    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-    combinations.core_mirrored_strategy_with_two_gpus,
-    combinations.tpu_strategy,  # steps_per_run=2
-    combinations.tpu_strategy_one_step,
+    strategy_combinations.default_strategy,
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus,
+    strategy_combinations.tpu_strategy,  # steps_per_run=2
+    strategy_combinations.tpu_strategy_one_step,
 ]
 
 
 def eager_mode_test_configuration():
-  return combinations.combine(mode='eager',
-                              use_numpy=False,
-                              use_validation_data=False)
+  return combinations.combine(
+      mode='eager', use_numpy=[True, False], use_validation_data=[True, False])
 
 
 def graph_mode_test_configuration():
@@ -92,8 +89,10 @@ def test_combinations_for_embedding_model():
 
 
 def test_combinations_with_tpu_strategies():
-  tpu_strategies = [combinations.tpu_strategy,
-                    combinations.tpu_strategy_one_step]
+  tpu_strategies = [
+      strategy_combinations.tpu_strategy,
+      strategy_combinations.tpu_strategy_one_step
+  ]
 
   return (
       combinations.times(
@@ -368,14 +367,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def skip_unsupported_test_configuration(self, distribution):
     if should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
-
-    if context.executing_eagerly() and self.use_numpy:
-      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
-
-    if context.executing_eagerly() and self.use_validation_data:
-      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
-                    'data for eager execution.')
-    return
 
   def run_correctness_test(self,
                            distribution,

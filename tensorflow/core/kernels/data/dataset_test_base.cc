@@ -211,9 +211,8 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
 
 Status DatasetOpsTestBase::CreateSerializationContext(
     std::unique_ptr<SerializationContext>* context) {
-  SerializationContext::Params params;
-  params.flib_def = lib_def_.get();
-  *context = absl::make_unique<SerializationContext>(params);
+  *context =
+      absl::make_unique<SerializationContext>(SerializationContext::Params{});
   return Status::OK();
 }
 

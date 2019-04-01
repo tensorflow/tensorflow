@@ -58,7 +58,7 @@ class XlaCompilationAllocator : public Allocator {
 
   // Make sure that even tensors with 0 elements have allocated
   // buffers, so they get ids to track.
-  bool ShouldAllocateEmptyTensors() override { return true; }
+  bool ShouldAllocateEmptyTensors() const override { return true; }
 
  private:
   // Don't run any constructors or destructors for complex objects,

@@ -298,7 +298,7 @@ def getfutureimports(entity):
   Returns:
     A tuple of future strings
   """
-  if not tf_inspect.isfunction(entity):
+  if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
     return tuple()
   return tuple(sorted(name for name, value in entity.__globals__.items()
                       if getattr(value, '__module__', None) == '__future__'))

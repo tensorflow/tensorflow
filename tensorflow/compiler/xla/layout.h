@@ -127,6 +127,12 @@ class Layout {
       return *this;
     }
 
+    Equal& MinorToMajorOnly() {
+      ignore_tiles_ = true;
+      ignore_element_size_ = true;
+      return *this;
+    }
+
    private:
     bool ignore_tiles_ = false;
     bool ignore_element_size_ = false;

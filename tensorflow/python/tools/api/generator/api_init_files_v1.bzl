@@ -13,6 +13,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "config/__init__.py",
     "config/experimental/__init__.py",
     "config/gpu/__init__.py",
+    "config/optimizer/__init__.py",
     "config/threading/__init__.py",
     "data/__init__.py",
     "data/experimental/__init__.py",
@@ -82,6 +83,8 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "train/queue_runner/__init__.py",
     "user_ops/__init__.py",
     "version/__init__.py",
+    "xla/__init__.py",
+    "xla/experimental/__init__.py",
     # END GENERATED FILES
 ]
 

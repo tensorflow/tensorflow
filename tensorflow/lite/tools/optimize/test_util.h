@@ -49,6 +49,9 @@ extern const char* kModelWithSharedWeights;
 // Test model with Add followed by a reshape. Model has 2 inputs for add.
 extern const char* kMultiInputAddWithReshape;
 
+// Test gather operation with quantized input.
+extern const char* kQuantizedWithGather;
+
 // Test model with a tf.constant input to tf.add. Model has 2 inputs one
 // constant and other placeholder.
 extern const char* kConstInputAddModel;

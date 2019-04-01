@@ -152,5 +152,41 @@ TEST(PickDeviceForXla, MultipleDevicesOfSameType) {
   CheckPickDeviceHasError(false, {kXPU0, kXPU1});
   CheckPickDeviceHasError(false, {kCPU0, kCPU1, kGPU0});
 }
+
+TEST(IsSingleGpuGraph, ReturnsTrue) {
+  Scope root = Scope::NewRootScope().WithAssignedDevice(kGPU0).ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output b = ops::Add(root.WithOpName("b"), a, a);
+  Output c = ops::Add(root.WithOpName("c"), b, b);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  EXPECT_TRUE(IsSingleGpuGraph(*root.graph()));
+}
+
+TEST(IsSingleGpuGraph, ReturnsFalseForCpuGraph) {
+  Scope root = Scope::NewRootScope().WithAssignedDevice(kCPU0).ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output b = ops::Add(root.WithOpName("b"), a, a);
+  Output c = ops::Add(root.WithOpName("c"), b, b);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
+}
+
+TEST(IsSingleGpuGraph, ReturnsFalseForMultiGpuGraph) {
+  Scope root = Scope::NewRootScope().WithAssignedDevice(kGPU0).ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output b = ops::Add(root.WithOpName("b").WithAssignedDevice(kGPU1), a, a);
+  Output c = ops::Add(root.WithOpName("c"), b, b);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
+}
 }  // namespace
 }  // namespace tensorflow

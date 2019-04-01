@@ -150,6 +150,40 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  def _testClipIndexedSlicesByValue(self, values, indices, shape,
+                                    clip_value_min, clip_value_max, expected):
+    with self.session(use_gpu=True) as sess:
+      values = constant_op.constant(values)
+      indices = constant_op.constant(indices)
+      shape = constant_op.constant(shape)
+      # IndexedSlices mode
+      indixed_slices = ops.IndexedSlices(values, indices, shape)
+      clipped = clip_ops.clip_by_value(indixed_slices, clip_value_min,
+                                       clip_value_max)
+      # clipped should be IndexedSlices
+      self.assertIsInstance(clipped, ops.IndexedSlices)
+
+    self.assertAllClose(clipped.values, expected)
+
+  def testClipByValueWithIndexedSlicesClipped(self):
+    values = [[[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]],
+              [[0.0, 2.0, 0.0], [0.0, 0.0, -1.0]]]
+    indices = [2, 6]
+    shape = [10, 2, 3]
+    # [-2.0, 2.0]
+    self._testClipIndexedSlicesByValue(values, indices, shape, -2.0, 2.0,
+                                       [[[-2.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+                                        [[0.0, 2.0, 0.0], [0.0, 0.0, -1.0]]])
+    # [1.0, 2.0]
+    self._testClipIndexedSlicesByValue(values, indices, shape, 1.0, 2.0,
+                                       [[[1.0, 1.0, 1.0], [2.0, 1.0, 1.0]],
+                                        [[1.0, 2.0, 1.0], [1.0, 1.0, 1.0]]])
+    # [-2.0, -1.0]
+    self._testClipIndexedSlicesByValue(
+        values, indices, shape, -2.0, -1.0,
+        [[[-2.0, -1.0, -1.0], [-1.0, -1.0, -1.0]],
+         [[-1.0, -1.0, -1.0], [-1.0, -1.0, -1.0]]])
+
   # ClipByNorm tests
   def testClipByNormClipped(self):
     # Norm clipping when clip_norm < 5

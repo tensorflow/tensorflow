@@ -20,7 +20,8 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.contrib.distribute.python import combinations
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,10 +31,11 @@ from tensorflow.python.training import moving_averages
 
 
 all_combinations = combinations.combine(
-    distribution=[combinations.default_strategy,
-                  combinations.one_device_strategy,
-                  combinations.mirrored_strategy_with_gpu_and_cpu,
-                  combinations.core_mirrored_strategy_with_gpu_and_cpu],
+    distribution=[
+        strategy_combinations.default_strategy,
+        strategy_combinations.one_device_strategy,
+        strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    ],
     mode=["graph"])
 
 

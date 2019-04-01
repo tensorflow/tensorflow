@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -245,6 +246,24 @@ class WrapFunctionTest(test.TestCase):
     self.assertEqual(0, v0.numpy())
     self.assertEqual(0, v1.numpy())
 
+  def test_operation_returned(self):
+
+    v = variables.Variable(0)
+
+    def f():
+      v.assign(1, read_value=False, name='assign_to_v')
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    operation_to_fetch = f_wrapped.graph.get_operation_by_name('assign_to_v')
+    f_pruned = f_wrapped.prune(
+        [], operation_to_fetch)
+    self.assertEqual(
+        ['assign_to_v'],
+        [operation.name for operation in f_pruned.graph.control_outputs])
+    self.assertEqual(0, v.numpy())
+    f_pruned()
+    self.assertEqual(1, v.numpy())
+
   def test_function_from_graph_def(self):
     @def_function.function
     def make_graph_def(x):
@@ -406,6 +425,22 @@ class WrappedGraphTest(test.TestCase):
 
     self.assertAllEqual({'v:0', 'different_scope/v:0'},
                         set([v.name for v in vh.variables]))
+
+  def testReturnOp(self):
+
+    def update_var_v1(x):
+      v = variables.Variable(3, name='v')
+      update_op = state_ops.assign(v, x).op
+      return update_op
+
+    g = wrap_function.WrappedGraph()
+    signature = [tensor_spec.TensorSpec([], dtypes.int32)]
+    update_var = g.wrap_function(update_var_v1, signature)
+
+    self.assertEqual(g.variables[0].numpy(), 3)
+    update_var(constant_op.constant(12))
+    self.assertEqual(g.variables[0].numpy(), 12)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

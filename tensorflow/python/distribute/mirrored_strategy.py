@@ -177,12 +177,14 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
           # capture the name_scope from the first MRT and assume it is
           # the same for all other MRTs.
           mtt_captured_name_scope = threads[0].captured_name_scope
+          mtt_captured_var_scope = threads[0].captured_var_scope
           # Capture and merge the control dependencies from all the threads.
           mtt_captured_control_deps = set()
           for t in threads:
             mtt_captured_control_deps.update(t.captured_control_deps)
           with ops.name_scope(mtt_captured_name_scope),\
-              ops.control_dependencies(mtt_captured_control_deps):
+              ops.control_dependencies(mtt_captured_control_deps), \
+              variable_scope.variable_scope(mtt_captured_var_scope):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
@@ -823,6 +825,7 @@ class _MirroredReplicaThread(threading.Thread):
     self.merge_kwargs = None
     self.merge_result = None
     self.captured_name_scope = None
+    self.captured_var_scope = None
     # We use a thread.Event for the main thread to signal when this
     # thread should start running (`should_run`), and another for
     # this thread to transfer control back to the main thread
@@ -850,7 +853,7 @@ class _MirroredReplicaThread(threading.Thread):
       self._init_graph = ops.get_default_graph()
 
     self._variable_creator_stack = self.graph._variable_creator_stack[:]
-    self._captured_var_scope = variable_scope.get_variable_scope()
+    self._var_scope = variable_scope.get_variable_scope()
     # Adding a "/" at end lets us re-enter this scope later.
     self._name_scope = self.graph.get_name_scope()
     if self._name_scope:
@@ -879,7 +882,7 @@ class _MirroredReplicaThread(threading.Thread):
               self.replica_id]), \
           ops.name_scope(self._name_scope), \
           variable_scope.variable_scope(
-              self._captured_var_scope, reuse=self.replica_id > 0), \
+              self._var_scope, reuse=self.replica_id > 0), \
           variable_scope.variable_creator_scope(self.variable_creator_fn):
         self.main_result = self.main_fn(*self.main_args, **self.main_kwargs)
         self.done = True
@@ -889,6 +892,7 @@ class _MirroredReplicaThread(threading.Thread):
   def record_thread_local_context_fields(self):
     """Record thread local fields of context.context() in self."""
     ctx = context.context()
+    self._summary_step = ctx.summary_step
     self._summary_writer = ctx.summary_writer
     self._summary_recording = ctx.summary_recording
     self._summary_recording_distribution_strategy = (
@@ -898,6 +902,7 @@ class _MirroredReplicaThread(threading.Thread):
   def restore_thread_local_context_fields(self):
     """Restore thread local fields of context.context() from self."""
     ctx = context.context()
+    ctx.summary_step = self._summary_step
     ctx.summary_writer = self._summary_writer
     ctx.summary_recording = self._summary_recording
     ctx.summary_recording_distribution_strategy = (
@@ -926,6 +931,7 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     if t.captured_name_scope:
       t.captured_name_scope += "/"
 
+    t.captured_var_scope = variable_scope.get_variable_scope()
     t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
 
     # NOTE(priyag): Throw an error if there is a merge call in the middle of a

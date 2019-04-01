@@ -52,6 +52,13 @@ def _ArgMinGrad(op, grad):
 ops.NotDifferentiable("EuclideanNorm")
 
 
+_empty_tuple = ()
+
+
+def _IsScalar(x):
+  return x._shape_tuple() is _empty_tuple  # pylint: disable=protected-access
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
@@ -497,7 +504,10 @@ def _ExpGrad(op, grad):
   y = op.outputs[0]  # y = e^x
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    return grad * y
+    if compat.forward_compatible(2019, 4, 7):
+      return math_ops.mul_no_nan(y, grad)
+    else:
+      return grad * y
 
 
 @ops.RegisterGradient("Expm1")
@@ -507,7 +517,10 @@ def _Expm1Grad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     y = math_ops.exp(x)
-    return grad * y
+    if compat.forward_compatible(2019, 4, 7):
+      return math_ops.mul_no_nan(y, grad)
+    else:
+      return grad * y
 
 
 @ops.RegisterGradient("Log")
@@ -663,7 +676,10 @@ def _LgammaGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * math_ops.digamma(x)
+    if compat.forward_compatible(2019, 4, 7):
+      return math_ops.mul_no_nan(math_ops.digamma(x), grad)
+    else:
+      return grad * math_ops.digamma(x)
 
 
 @ops.RegisterGradient("Digamma")
@@ -672,7 +688,11 @@ def _DigammaGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
+    partial_x = math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
+    if compat.forward_compatible(2019, 4, 7):
+      return math_ops.mul_no_nan(partial_x, grad)
+    else:
+      return grad * partial_x
 
 
 @ops.RegisterGradient("BesselI0e")
@@ -681,7 +701,11 @@ def _BesselI0eGrad(op, grad):
   x = op.inputs[0]
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
-    return grad * (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
+    partial_x = (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
+    if compat.forward_compatible(2019, 4, 7):
+      return math_ops.mul_no_nan(partial_x, grad)
+    else:
+      return grad * partial_x
 
 
 @ops.RegisterGradient("BesselI1e")
@@ -701,7 +725,11 @@ def _BesselI1eGrad(op, grad):
     safe_x = array_ops.where(x_is_not_tiny, x, eps + zeros)
     dy_dx = math_ops.bessel_i0e(safe_x) - y * (
         math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
-    return grad * array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
+    dy_dx = array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
+    if compat.forward_compatible(2019, 4, 7):
+      return math_ops.mul_no_nan(dy_dx, grad)
+    else:
+      return grad * dy_dx
 
 
 @ops.RegisterGradient("Igamma")
@@ -719,8 +747,15 @@ def _IgammaGrad(op, grad):
     # and Gamma'(a) can grow large.
     partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) -
                              math_ops.lgamma(a))
-    return (array_ops.reshape(math_ops.reduce_sum(partial_a * grad, ra), sa),
-            array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
+    if compat.forward_compatible(2019, 4, 7):
+      return (array_ops.reshape(
+          math_ops.reduce_sum(math_ops.mul_no_nan(partial_a, grad), ra), sa),
+              array_ops.reshape(
+                  math_ops.reduce_sum(math_ops.mul_no_nan(partial_x, grad), rx),
+                  sx))
+    else:
+      return (array_ops.reshape(math_ops.reduce_sum(partial_a * grad, ra), sa),
+              array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Igammac")
@@ -751,10 +786,17 @@ def _BetaincGrad(op, grad):
                            (a - 1) * math_ops.log(x) - log_beta)
 
   # TODO(b/36815900): Mark None return values as NotImplemented
-  return (
-      None,  # da
-      None,  # db
-      array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
+  if compat.forward_compatible(2019, 4, 7):
+    return (
+        None,  # da
+        None,  # db
+        array_ops.reshape(
+            math_ops.reduce_sum(math_ops.mul_no_nan(partial_x, grad), rx), sx))
+  else:
+    return (
+        None,  # da
+        None,  # db
+        array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Zeta")
@@ -773,8 +815,14 @@ def _ZetaGrad(op, grad):
     q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    return (None,
-            array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
+    if compat.forward_compatible(2019, 4, 7):
+      return (None,
+              array_ops.reshape(
+                  math_ops.reduce_sum(math_ops.mul_no_nan(partial_q, grad), rq),
+                  sq))
+    else:
+      return (None,
+              array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
 
 
 @ops.RegisterGradient("Polygamma")
@@ -793,8 +841,14 @@ def _PolygammaGrad(op, grad):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    return (None,
-            array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
+    if compat.forward_compatible(2019, 4, 7):
+      return (None,
+              array_ops.reshape(
+                  math_ops.reduce_sum(math_ops.mul_no_nan(partial_x, grad), rx),
+                  sx))
+    else:
+      return (None,
+              array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Sigmoid")
@@ -931,16 +985,33 @@ def _ShapesFullySpecifiedAndEqual(x, y, grad):
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
   """Gradient for Add."""
-  x = op.inputs[0]
   y = op.inputs[1]
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      return grad, None
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+  x = op.inputs[0]
   if (isinstance(grad, ops.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return grad, grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  return (array_ops.reshape(math_ops.reduce_sum(grad, rx), sx),
-          array_ops.reshape(math_ops.reduce_sum(grad, ry), sy))
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  else:
+    gx = array_ops.reshape(math_ops.reduce_sum(grad, rx), sx)
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  else:
+    gy = array_ops.reshape(math_ops.reduce_sum(grad, ry), sy)
+  return (gx, gy)
+
 
 
 @ops.RegisterGradient("Sub")
@@ -1009,7 +1080,7 @@ def _DivGrad(op, grad):
   y = math_ops.conj(y)
   if compat.forward_compatible(2019, 4, 7):
     return (array_ops.reshape(
-        math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
+        math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
                 math_ops.reduce_sum(
                     math_ops.mul_no_nan(
@@ -1062,7 +1133,7 @@ def _RealDivGrad(op, grad):
   y = math_ops.conj(y)
   if compat.forward_compatible(2019, 4, 7):
     return (array_ops.reshape(
-        math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
+        math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
                 math_ops.reduce_sum(
                     math_ops.mul_no_nan(
@@ -1087,12 +1158,21 @@ def _DivNoNanGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(
-      math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
-          array_ops.reshape(
-              math_ops.reduce_sum(
-                  grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),
-                  ry), sy))
+  if compat.forward_compatible(2019, 4, 7):
+    return (array_ops.reshape(
+        math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
+            array_ops.reshape(
+                math_ops.reduce_sum(
+                    math_ops.mul_no_nan(
+                        math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),
+                        grad), ry), sy))
+  else:
+    return (array_ops.reshape(
+        math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
+            array_ops.reshape(
+                math_ops.reduce_sum(
+                    grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),
+                    ry), sy))
 
 
 @ops.RegisterGradient("Pow")
@@ -1132,10 +1212,31 @@ def _PowGrad(op, grad):
   return gx, gy
 
 
-def _MaximumMinimumGrad(op, grad, selector_op):
-  """Factor out the code for the gradient of Maximum or Minimum."""
+def _MaximumMinimumGradInputOnly(op, grad, selector_op):
   x = op.inputs[0]
   y = op.inputs[1]
+  zeros = array_ops.zeros_like(grad)
+  xmask = selector_op(x, y)
+  xgrad = array_ops.where(xmask, grad, zeros)
+  ygrad = None  # Return None for ygrad since the config allows that.
+  return (xgrad, ygrad)
+
+
+def _MaximumMinimumGrad(op, grad, selector_op):
+  """Factor out the code for the gradient of Maximum or Minimum."""
+  y = op.inputs[1]
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      # When we want to get gradients for the first input only, and the second
+      # input tensor is a scalar, we can do a much simpler calculation
+      return _MaximumMinimumGradInputOnly(op, grad, selector_op)
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+  x = op.inputs[0]
   gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
@@ -1143,10 +1244,18 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   zeros = array_ops.zeros(gradshape, gdtype)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  xgrad = array_ops.where(xmask, grad, zeros)
-  ygrad = array_ops.where(xmask, zeros, grad)
-  gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
-  gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  else:
+    xgrad = array_ops.where(xmask, grad, zeros)
+    gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
+
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  else:
+    ygrad = array_ops.where(xmask, zeros, grad)
+    gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
+
   return (gx, gy)
 
 
@@ -1200,9 +1309,51 @@ def _SelectGrad(op, grad):
       c, zeros, grad))
 
 
+def _MatMulGradAgainstFirstOnly(op, grad):
+  """Gradient for MatMul, only for the first input."""
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  b = math_ops.conj(op.inputs[1])
+  if not t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True)
+  elif not t_a and t_b:
+    grad_a = gen_math_ops.mat_mul(grad, b)
+  elif t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True)
+  elif t_a and t_b:
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_a=True, transpose_b=True)
+  return grad_a, None
+
+
+def _MatMulGradAgainstSecondOnly(op, grad):
+  """Gradient for MatMul, only for the second input."""
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  a = math_ops.conj(op.inputs[0])
+  if not t_a and not t_b:
+    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True)
+  elif not t_a and t_b:
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True)
+  elif t_a and not t_b:
+    grad_b = gen_math_ops.mat_mul(a, grad)
+  elif t_a and t_b:
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, transpose_b=True)
+  return None, grad_b
+
+
 @ops.RegisterGradient("MatMul")
 def _MatMulGrad(op, grad):
   """Gradient for MatMul."""
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None:
+      if 1 in skip_input_indices:
+        return _MatMulGradAgainstFirstOnly(op, grad)
+      elif 0 in skip_input_indices:
+        return _MatMulGradAgainstSecondOnly(op, grad)
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
 
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
@@ -1318,6 +1469,44 @@ def _BatchMatMul(op, grad):
     else:
       grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
       grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
+
+  return grad_x, grad_y
+
+
+@ops.RegisterGradient("BatchMatMulV2")
+def _BatchMatMulV2(op, grad):
+  """Returns the gradient of x and y given the gradient of x * y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  adj_x = op.get_attr("adj_x")
+  adj_y = op.get_attr("adj_y")
+
+  if not adj_x:
+    if not adj_y:
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=True, adjoint_b=False)
+    else:
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=False)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=False)
+  else:
+    if not adj_y:
+      grad_x = math_ops.matmul(y, grad, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=False, adjoint_b=False)
+    else:
+      grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
+
+  # Reduce along the broadcasted batch dimensions, if broadcasting is required.
+  shape_x_static = x.get_shape()
+  shape_y_static = y.get_shape()
+  if not (shape_x_static.is_fully_defined() and
+          shape_y_static.is_fully_defined() and
+          shape_x_static == shape_y_static):
+    sx = array_ops.shape(x)
+    sy = array_ops.shape(y)
+    rx, ry = gen_array_ops.broadcast_gradient_args(sx[:-2], sy[:-2])
+    grad_x = array_ops.reshape(math_ops.reduce_sum(grad_x, rx), sx)
+    grad_y = array_ops.reshape(math_ops.reduce_sum(grad_y, ry), sy)
 
   return grad_x, grad_y
 

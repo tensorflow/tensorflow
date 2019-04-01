@@ -67,16 +67,19 @@ class ErrorRendezvous(object):
     """
     _, value, _ = exc_info
     self._errors[source] = exc_info
-    logging.info('Error recorded from %s: %s', source, value)
+    logging.error('Error recorded from %s: %s', source, value)
 
     if session is not None and self._session_cancel_timer is None:
 
       def _cancel_session():
         time.sleep(5)
+        logging.error('Closing session due to error %s' % value)
         try:
           session.close()
         except:  # pylint: disable=bare-except
-          pass
+          logging.error(
+              '\n\n\nFailed to close session after error.'
+              'Other threads may hang.\n\n\n')
 
       self._session_cancel_timer = threading.Thread(target=_cancel_session,)
       self._session_cancel_timer.daemon = True
