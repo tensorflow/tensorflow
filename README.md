@@ -90,7 +90,7 @@ git clone https://github.com/tensorflow/mlir
 cd ../../
 mkdir build
 cd build
-cmake -G Ninja ../llvm/ 
+cmake -G Ninja ../llvm/  -DLLVM_BUILD_EXAMPLES=ON
 ninja check-mlir
 ```
 
