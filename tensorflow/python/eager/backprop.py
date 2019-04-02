@@ -46,7 +46,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.python.framework.dtypes import is_floating
 
 # Note that we need to lazy load the following two modules to avoid creating
 # circular dependencies.
