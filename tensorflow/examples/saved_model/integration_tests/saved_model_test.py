@@ -56,6 +56,13 @@ class SavedModelTest(tf.test.TestCase):
     self.assertCommandSucceeded(
         "use_model_in_sequential_keras", model_dir=export_dir)
 
+  def test_text_embedding_in_dataset(self):
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_simple_text_embedding", export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "use_text_embedding_in_dataset", model_dir=export_dir)
+
   def test_mnist_cnn(self):
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(

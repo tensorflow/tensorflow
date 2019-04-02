@@ -17,6 +17,7 @@ py_binary(
         "use_mnist_cnn.py",
         "use_model_in_sequential_keras.py",
         "use_rnn_cell.py",
+        "use_text_embedding_in_dataset.py",
         "use_text_rnn_model.py",
     ],
     visibility = ["//tensorflow:internal"],
