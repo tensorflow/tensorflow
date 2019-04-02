@@ -865,6 +865,8 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
+        # TODO(b/129775793): Re-enable this test on TAP.
+        "notap",
         "notsan",
     ],
     deps = [
