@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hlo_hash.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -154,6 +155,36 @@ PoplarXfeedManager* GetXfeedManager(int device_ordinal) {
 void ResetXfeedManager(int device_ordinal) {
   auto* xfeed_manager = GetXfeedManager(device_ordinal);
   xfeed_manager->Reset();
+}
+
+
+namespace {
+void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
+                                 const OutfeedInfos& outfeed_infos,
+                                 int device_ordinal) {
+  auto* xfeed_manager = GetXfeedManager(device_ordinal);
+  for (const auto& outfeed_info : outfeed_infos) {
+    if (outfeed_info->outfeed_config() == "get_last") {
+      const auto& outfeed_shape = outfeed_info->outfeed_shape();
+      if (outfeed_shape.IsTuple()) {
+        const auto num_elements = ShapeUtil::TupleElementCount(outfeed_shape);
+        xfeed_manager->outfeed()->set_size(num_elements);
+      } else {
+        xfeed_manager->outfeed()->set_size(1);
+      }
+    } else if (outfeed_info->outfeed_config() == "all") {
+      xfeed_manager->outfeed()->set_size(
+          PoplarXfeedQueueManager::DEFAULT_QUEUE_SIZE);
+    }
+  }
+
+  auto platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::PLATFORM_NAME);
+  if (platform.ok()) {
+    auto* p = static_cast<PoplarPlatform*>(platform.ValueOrDie());
+    p->ResetXfeedManagers();
+  }
+}
 }
 
 PoplarExecutor::TensorControl::TensorControl(size_t size_) {
@@ -1469,6 +1500,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
         executable.OnEngineLoaded();
         current_engine_ = engine;
+
+        ConfigurePoplarXFeedManager(executable.GetInfeedInfos(), executable.GetOutfeedInfos(), ordinal_);
 
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Load engine ]", e);

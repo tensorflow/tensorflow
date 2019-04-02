@@ -46,12 +46,6 @@ PoplarExecutable::PoplarExecutable(
       replication_factor_(replication_factor),
       infeed_infos_(std::move(infeed_infos)),
       outfeed_infos_(std::move(outfeed_infos)) {
-  auto platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::PLATFORM_NAME);
-  if (platform.ok()) {
-    auto* p = static_cast<PoplarPlatform*>(platform.ValueOrDie());
-    p->ResetXfeedManagers();
-  }
 }
 
 PoplarExecutable::~PoplarExecutable() {
