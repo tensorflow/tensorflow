@@ -66,6 +66,7 @@ static void printLLVMBinaryOp(OpAsmPrinter *p, Operation *op) {
   // Fallback to the generic form if the op is not well-formed (may happen
   // during incomplete rewrites, and used for debugging).
   const auto *abstract = op->getAbstractOperation();
+  (void)abstract;
   assert(abstract && "pretty printing an unregistered operation");
 
   auto resultType = op->getResult(0)->getType();
