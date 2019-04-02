@@ -2786,6 +2786,7 @@ def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
   Converts `IndexedSlices` objects into dense tensors prior to adding.
+
   Args:
     inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
       and type.
