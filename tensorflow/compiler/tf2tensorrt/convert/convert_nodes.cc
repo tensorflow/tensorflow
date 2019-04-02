@@ -4150,13 +4150,63 @@ Status ConvertSoftmax(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertArgMinMax(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", false}, {"dimension", true}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  // INT64 outputs are not supported by TRT.
+  TFAttrs attrs(node_def);
+  DataType output_dtype = attrs.get<DataType>("output_type");
+  if (output_dtype != DataType::DT_INT32) {
+    return errors::Unimplemented("Output type ", DataTypeString(output_dtype),
+                                 " is not supported, at ", node_def.name());
+  }
+  int tf_axis = inputs.at(1).weights().GetSpan<int>()[0];
+  int trt_axis;
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+  nvinfer1::TopKOperation topk_op;
+  if (node_def.op() == "ArgMin") {
+    topk_op = nvinfer1::TopKOperation::kMIN;
+  } else if (node_def.op() == "ArgMax") {
+    topk_op = nvinfer1::TopKOperation::kMAX;
+  } else {
+    return errors::InvalidArgument("Unsupported ArgMin/Max operation");
+  }
+  if (params->validation_only) return Status::OK();
+
+  // Use TopK with k = 1. Only indices output is needed (output 1).
+  const uint32_t reduce_axes = 1 << trt_axis;
+  nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
+      *inputs.at(0).tensor(), topk_op, 1, reduce_axes);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
+
+  // Squeeze on axis.
+  std::vector<int> size(dims.d, dims.d + dims.nbDims);
+  size.erase(size.begin() + trt_axis);
+  nvinfer1::Dims new_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(size, &new_dims));
+  nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      TRT_TensorOrWeights(output_indices_tensor), new_dims,
+      /*validation_only=*/false, &output_tensor));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
 Status ConvertTopK(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {
@@ -4411,6 +4461,9 @@ static void RegisterValidatableOpConverters(
   }
   for (auto reduce_op_type : {"Sum", "Prod", "Max", "Min", "Mean"}) {
     (*registration)[reduce_op_type] = ConvertReduce;
+  }
+  for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
+    (*registration)[arg_minmax_type] = ConvertArgMinMax;
   }
 }
 
