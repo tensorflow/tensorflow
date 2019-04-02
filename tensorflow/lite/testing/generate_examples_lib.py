@@ -3758,6 +3758,14 @@ def make_slice_tests(options):
           "begin": [[0, 0], [1, 0]],
           "size": [[2, 3], [2, 2]],
       },
+      # 4-D with size -1
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32, tf.int64],
+          "input_shape": [[4, 4, 4, 4]],
+          "begin": [[0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+          "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
+      },
   ]
 
   def build_graph(parameters):
