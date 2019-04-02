@@ -83,6 +83,26 @@ TEST(OneHotOpTest, BasicInt) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
 }
 
+TEST(OneHotOpTest, BasicInt16) {
+  const int depth = 3;
+  OneHotOpModel<int16_t> model({3}, depth, TensorType_INT16);
+  model.SetIndices({0, 1, 2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
+}
+
+TEST(OneHotOpTest, BasicInt64) {
+  const int depth = 3;
+  OneHotOpModel<int64_t> model({3}, depth, TensorType_INT64);
+  model.SetIndices({0, 1, 2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
+}
+
 TEST(OneHotOpTest, BasicBool) {
   const int depth = 3;
   OneHotOpModel<bool> model({3}, depth, TensorType_BOOL);

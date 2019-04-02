@@ -166,6 +166,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       OneHotCompute<float>(op_context);
       break;
+    case kTfLiteInt16:
+      OneHotCompute<int16_t>(op_context);
+      break;
     case kTfLiteInt32:
       OneHotCompute<int>(op_context);
       break;
