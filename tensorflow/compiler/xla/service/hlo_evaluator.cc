@@ -1083,10 +1083,10 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 
   const Shape& operand_shape = operand.shape();
 
-  auto gather_inner_loop_body = [&](
-      absl::Span<const int64> output_window_index,
-      absl::Span<const int64> input_gather_index,
-      absl::Span<const int64> output_gather_index) -> StatusOr<bool> {
+  auto gather_inner_loop_body =
+      [&](absl::Span<const int64> output_window_index,
+          absl::Span<const int64> input_gather_index,
+          absl::Span<const int64> output_gather_index) -> StatusOr<bool> {
     TF_ASSIGN_OR_RETURN(
         absl::Span<const int64> input_window_index,
         output_offset_index_to_input_index(output_window_index));
