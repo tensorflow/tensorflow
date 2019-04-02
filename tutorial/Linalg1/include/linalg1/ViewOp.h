@@ -41,7 +41,7 @@ public:
   static void build(mlir::Builder *b, mlir::OperationState *result,
                     mlir::Value *memRef,
                     llvm::ArrayRef<mlir::Value *> indexings = {});
-  bool verify();
+  mlir::LogicalResult verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 

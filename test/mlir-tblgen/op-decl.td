@@ -42,7 +42,7 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   static void build(Builder *, OperationState *tblgen_state, ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes);
 // CHECK:   static bool parse(OpAsmParser *parser, OperationState *result);
 // CHECK:   void print(OpAsmPrinter *p);
-// CHECK:   bool verify();
+// CHECK:   LogicalResult verify();
 // CHECK:   static void getCanonicalizationPatterns(OwningRewritePatternList &results, MLIRContext *context);
 // CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context);
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);

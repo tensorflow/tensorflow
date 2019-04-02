@@ -194,7 +194,7 @@ def LLVM_CallOp : LLVM_Op<"call">,
   let verifier = [{
     if (getNumResults() > 1)
       return emitOpError("must have 0 or 1 result");
-    return false;
+    return success();
   }];
 }
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
@@ -227,7 +227,7 @@ def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
   let verifier = [{
     if (getNumSuccessors() != 2)
       return emitOpError("expected exactly two successors");
-    return false;
+    return success();
   }];
 }
 def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]> {
@@ -241,7 +241,7 @@ def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]> {
   let verifier = [{
     if (getNumOperands() > 1)
       return emitOpError("expects at most 1 operand");
-    return false;
+    return success();
   }];
 }
 

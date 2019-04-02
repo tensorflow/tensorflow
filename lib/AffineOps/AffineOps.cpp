@@ -101,13 +101,13 @@ bool mlir::isValidSymbol(Value *value) {
 
 /// Utility function to verify that a set of operands are valid dimension and
 /// symbol identifiers. The operands should be layed out such that the dimension
-/// operands are before the symbol operands. This function returns true if there
-/// was an invalid operand. An operation is provided to emit any necessary
+/// operands are before the symbol operands. This function returns failure if
+/// there was an invalid operand. An operation is provided to emit any necessary
 /// errors.
 template <typename OpTy>
-static bool verifyDimAndSymbolIdentifiers(OpTy &op,
-                                          Operation::operand_range operands,
-                                          unsigned numDims) {
+static LogicalResult
+verifyDimAndSymbolIdentifiers(OpTy &op, Operation::operand_range operands,
+                              unsigned numDims) {
   unsigned opIt = 0;
   for (auto *operand : operands) {
     if (opIt++ < numDims) {
@@ -117,7 +117,7 @@ static bool verifyDimAndSymbolIdentifiers(OpTy &op,
       return op.emitOpError("operand cannot be used as a symbol");
     }
   }
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -160,7 +160,7 @@ void AffineApplyOp::print(OpAsmPrinter *p) {
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
 }
 
-bool AffineApplyOp::verify() {
+LogicalResult AffineApplyOp::verify() {
   // Check that affine map attribute was specified.
   auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
@@ -175,14 +175,15 @@ bool AffineApplyOp::verify() {
         "operand count and affine map dimension and symbol count must match");
 
   // Verify that the operands are valid dimension and symbol identifiers.
-  if (verifyDimAndSymbolIdentifiers(*this, getOperands(), map.getNumDims()))
-    return true;
+  if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
+                                           map.getNumDims())))
+    return failure();
 
   // Verify that the map only produces one result.
   if (map.getNumResults() != 1)
     return emitOpError("mapping must produce one value");
 
-  return false;
+  return success();
 }
 
 // The result of the affine apply operation can be used as a dimension id if it
@@ -691,16 +692,15 @@ void AffineApplyOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 // Check that if a "block" has a terminator, it is an `AffineTerminatorOp`.
-// Return true on success, report errors and return true on failure.
-static bool checkHasAffineTerminator(OpState &op, Block &block) {
+static LogicalResult checkHasAffineTerminator(OpState &op, Block &block) {
   if (block.empty() || block.back().isa<AffineTerminatorOp>())
-    return false;
+    return success();
 
   op.emitOpError("expects regions to end with '" +
                  AffineTerminatorOp::getOperationName() + "'");
   op.emitNote("in custom textual format, the absence of terminator implies '" +
               AffineTerminatorOp::getOperationName() + "'");
-  return true;
+  return failure();
 }
 
 // Insert `affine.terminator` at the end of the region's only block if it does
@@ -766,7 +766,7 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
   return build(builder, result, {}, lbMap, {}, ubMap, step);
 }
 
-bool AffineForOp::verify() {
+LogicalResult AffineForOp::verify() {
   auto &bodyRegion = getOperation()->getRegion(0);
 
   // The body region must contain a single basic block.
@@ -781,8 +781,8 @@ bool AffineForOp::verify() {
     return emitOpError("expected body to have a single index argument for the "
                        "induction variable");
 
-  if (checkHasAffineTerminator(*this, *body))
-    return true;
+  if (failed(checkHasAffineTerminator(*this, *body)))
+    return failure();
 
   // Verify that there are enough operands for the bounds.
   AffineMap lowerBoundMap = getLowerBoundMap(),
@@ -794,14 +794,14 @@ bool AffineForOp::verify() {
 
   // Verify that the bound operands are valid dimension/symbols.
   /// Lower bound.
-  if (verifyDimAndSymbolIdentifiers(*this, getLowerBoundOperands(),
-                                    getLowerBoundMap().getNumDims()))
-    return true;
+  if (failed(verifyDimAndSymbolIdentifiers(*this, getLowerBoundOperands(),
+                                           getLowerBoundMap().getNumDims())))
+    return failure();
   /// Upper bound.
-  if (verifyDimAndSymbolIdentifiers(*this, getUpperBoundOperands(),
-                                    getUpperBoundMap().getNumDims()))
-    return true;
-  return false;
+  if (failed(verifyDimAndSymbolIdentifiers(*this, getUpperBoundOperands(),
+                                           getUpperBoundMap().getNumDims())))
+    return failure();
+  return success();
 }
 
 /// Parse a for operation loop bounds.
@@ -1220,7 +1220,7 @@ void AffineIfOp::build(Builder *builder, OperationState *result,
   result->addRegion(nullptr);
 }
 
-bool AffineIfOp::verify() {
+LogicalResult AffineIfOp::verify() {
   // Verify that we have a condition attribute.
   auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
   if (!conditionAttr)
@@ -1233,9 +1233,9 @@ bool AffineIfOp::verify() {
                        "symbol count must match");
 
   // Verify that the operands are valid dimension/symbols.
-  if (verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                    condition.getNumDims()))
-    return true;
+  if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
+                                           condition.getNumDims())))
+    return failure();
 
   // Verify that the entry of each child region does not have arguments.
   for (auto &region : getOperation()->getRegions()) {
@@ -1246,14 +1246,15 @@ bool AffineIfOp::verify() {
     // regions.
     if (std::next(region.begin()) != region.end())
       return emitOpError("expects only one block per 'then' or 'else' regions");
-    checkHasAffineTerminator(*this, region.front());
+    if (failed(checkHasAffineTerminator(*this, region.front())))
+      return failure();
 
     for (auto &b : region)
       if (b.getNumArguments() != 0)
         return emitOpError(
             "requires that child entry blocks have no arguments");
   }
-  return false;
+  return success();
 }
 
 bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {

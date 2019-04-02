@@ -42,8 +42,8 @@ VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 // VectorTransferReadOp
 //===----------------------------------------------------------------------===//
 template <typename EmitFun>
-static bool verifyPermutationMap(AffineMap permutationMap,
-                                 EmitFun emitOpError) {
+static LogicalResult verifyPermutationMap(AffineMap permutationMap,
+                                          EmitFun emitOpError) {
   SmallVector<bool, 8> seen(permutationMap.getNumInputs(), false);
   for (auto expr : permutationMap.getResults()) {
     auto dim = expr.dyn_cast<AffineDimExpr>();
@@ -67,7 +67,7 @@ static bool verifyPermutationMap(AffineMap permutationMap,
     }
     seen[dim.getPosition()] = true;
   }
-  return false;
+  return success();
 }
 
 void VectorTransferReadOp::build(Builder *builder, OperationState *result,
@@ -169,7 +169,7 @@ bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(vectorType, result->types);
 }
 
-bool VectorTransferReadOp::verify() {
+LogicalResult VectorTransferReadOp::verify() {
   // Consistency of memref type in function type.
   if (llvm::empty(getOperands())) {
     return emitOpError(
@@ -317,7 +317,7 @@ bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(indexInfo, indexType, result->operands);
 }
 
-bool VectorTransferWriteOp::verify() {
+LogicalResult VectorTransferWriteOp::verify() {
   // Consistency of memref type in function type.
   if (llvm::empty(getOperands())) {
     return emitOpError(
@@ -410,7 +410,7 @@ void VectorTypeCastOp::print(OpAsmPrinter *p) {
      << getOperand()->getType() << ", " << getType();
 }
 
-bool VectorTypeCastOp::verify() {
+LogicalResult VectorTypeCastOp::verify() {
   auto dstMemrefType = getType().dyn_cast<MemRefType>();
   if (!dstMemrefType)
     return emitOpError("expects target type to be a memref type");
@@ -424,5 +424,5 @@ bool VectorTypeCastOp::verify() {
   if (!getOperand()->getType().isa<MemRefType>())
     return emitOpError("expects source type to be a memref type");
 
-  return false;
+  return success();
 }

@@ -116,7 +116,7 @@ public:
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 };
 
 /// VectorTransferWriteOp performs a blocking write from a super-vector to
@@ -177,7 +177,7 @@ public:
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 };
 
 /// VectorTypeCastOp performs a conversion from a memref with scalar element to
@@ -199,7 +199,7 @@ public:
                     Type dstType);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 };
 
 } // end namespace mlir

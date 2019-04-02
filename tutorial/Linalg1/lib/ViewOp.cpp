@@ -54,7 +54,7 @@ void linalg::ViewOp::build(Builder *b, OperationState *result, Value *memRef,
   result->addTypes({linalg::ViewType::get(b->getContext(), elementType, rank)});
 }
 
-bool linalg::ViewOp::verify() {
+LogicalResult linalg::ViewOp::verify() {
   if (llvm::empty(getOperands()))
     return emitOpError(
         "requires at least a memref operand followed by 'rank' indices");
@@ -86,7 +86,7 @@ bool linalg::ViewOp::verify() {
                        "indices: " +
                        Twine(rank));
   }
-  return false;
+  return success();
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.

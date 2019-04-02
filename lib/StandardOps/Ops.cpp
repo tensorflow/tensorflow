@@ -247,7 +247,7 @@ bool AllocOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-bool AllocOp::verify() {
+LogicalResult AllocOp::verify() {
   auto memRefType = getResult()->getType().dyn_cast<MemRefType>();
   if (!memRefType)
     return emitOpError("result must be a memref");
@@ -270,16 +270,15 @@ bool AllocOp::verify() {
   // Check that the total number of operands matches the number of symbols in
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
-  if (getOperation()->getNumOperands() != numDynamicDims + numSymbols) {
+  if (getOperation()->getNumOperands() != numDynamicDims + numSymbols)
     return emitOpError(
         "operand count does not equal dimension plus symbol operand count");
-  }
+
   // Verify that all operands are of type Index.
-  for (auto *operand : getOperands()) {
+  for (auto *operand : getOperands())
     if (!operand->getType().isIndex())
       return emitOpError("requires operands to be of type Index");
-  }
-  return false;
+  return success();
 }
 
 namespace {
@@ -451,7 +450,7 @@ void CallOp::print(OpAsmPrinter *p) {
   *p << " : " << getCallee()->getType();
 }
 
-bool CallOp::verify() {
+LogicalResult CallOp::verify() {
   // Check that the callee attribute was specified.
   auto fnAttr = getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
@@ -475,7 +474,7 @@ bool CallOp::verify() {
       return emitOpError("result type mismatch");
   }
 
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -545,7 +544,7 @@ void CallIndirectOp::print(OpAsmPrinter *p) {
   *p << " : " << getCallee()->getType();
 }
 
-bool CallIndirectOp::verify() {
+LogicalResult CallIndirectOp::verify() {
   // The callee must be a function.
   auto fnType = getCallee()->getType().dyn_cast<FunctionType>();
   if (!fnType)
@@ -568,7 +567,7 @@ bool CallIndirectOp::verify() {
       return emitOpError("result type mismatch");
   }
 
-  return false;
+  return success();
 }
 
 void CallIndirectOp::getCanonicalizationPatterns(
@@ -730,7 +729,7 @@ void CmpIOp::print(OpAsmPrinter *p) {
   *p << " : " << getOperand(0)->getType();
 }
 
-bool CmpIOp::verify() {
+LogicalResult CmpIOp::verify() {
   auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
   if (!predicateAttr)
     return emitOpError("requires an integer attribute named 'predicate'");
@@ -739,7 +738,7 @@ bool CmpIOp::verify() {
       predicate >= (int64_t)CmpIPredicate::NumPredicates)
     return emitOpError("'predicate' attribute value out of range");
 
-  return false;
+  return success();
 }
 
 // Compute `lhs` `pred` `rhs`, where `pred` is one of the known integer
@@ -874,10 +873,10 @@ void CondBranchOp::print(OpAsmPrinter *p) {
   p->printSuccessorAndUseList(getOperation(), falseIndex);
 }
 
-bool CondBranchOp::verify() {
+LogicalResult CondBranchOp::verify() {
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
-  return false;
+  return success();
 }
 
 void CondBranchOp::getCanonicalizationPatterns(
@@ -976,7 +975,7 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
 
 /// The constant op requires an attribute, and furthermore requires that it
 /// matches the return type.
-bool ConstantOp::verify() {
+LogicalResult ConstantOp::verify() {
   auto value = getValue();
   if (!value)
     return emitOpError("requires a 'value' attribute");
@@ -997,25 +996,25 @@ bool ConstantOp::verify() {
         return emitOpError("requires 'value' to be an integer within the range "
                            "of the integer result type");
     }
-    return false;
+    return success();
   }
 
   if (type.isa<FloatType>()) {
     if (!value.isa<FloatAttr>())
       return emitOpError("requires 'value' to be a floating point constant");
-    return false;
+    return success();
   }
 
   if (type.isa<VectorOrTensorType>()) {
     if (!value.isa<ElementsAttr>())
       return emitOpError("requires 'value' to be a vector/tensor constant");
-    return false;
+    return success();
   }
 
   if (type.isa<FunctionType>()) {
     if (!value.isa<FunctionAttr>())
       return emitOpError("requires 'value' to be a function reference");
-    return false;
+    return success();
   }
 
   auto attrType = getAttributeType(value);
@@ -1127,10 +1126,10 @@ bool DeallocOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperand(memrefInfo, type, result->operands);
 }
 
-bool DeallocOp::verify() {
+LogicalResult DeallocOp::verify() {
   if (!getMemRef()->getType().isa<MemRefType>())
     return emitOpError("operand must be a memref");
-  return false;
+  return success();
 }
 
 void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -1174,7 +1173,7 @@ bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(indexType, result->types);
 }
 
-bool DimOp::verify() {
+LogicalResult DimOp::verify() {
   // Check that we have an integer index operand.
   auto indexAttr = getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
@@ -1195,7 +1194,7 @@ bool DimOp::verify() {
     return emitOpError("requires an operand with tensor or memref type");
   }
 
-  return false;
+  return success();
 }
 
 Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
@@ -1399,7 +1398,7 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-bool DmaStartOp::verify() {
+LogicalResult DmaStartOp::verify() {
   // DMAs from different memory spaces supported.
   if (getSrcMemorySpace() == getDstMemorySpace()) {
     return emitOpError("DMA should be between different memory spaces");
@@ -1411,7 +1410,7 @@ bool DmaStartOp::verify() {
                               getDstMemRefRank() + 3 + 1 + 2) {
     return emitOpError("incorrect number of operands");
   }
-  return false;
+  return success();
 }
 
 void DmaStartOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -1521,7 +1520,7 @@ bool ExtractElementOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type.getElementType(), result->types);
 }
 
-bool ExtractElementOp::verify() {
+LogicalResult ExtractElementOp::verify() {
   if (getNumOperands() == 0)
     return emitOpError("expected an aggregate to index into");
 
@@ -1541,7 +1540,7 @@ bool ExtractElementOp::verify() {
   if (aggregateRank != -1 && aggregateRank != getNumOperands() - 1)
     return emitOpError("incorrect number of indices for extract_element");
 
-  return false;
+  return success();
 }
 
 Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
@@ -1608,7 +1607,7 @@ bool LoadOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type.getElementType(), result->types);
 }
 
-bool LoadOp::verify() {
+LogicalResult LoadOp::verify() {
   if (getNumOperands() == 0)
     return emitOpError("expected a memref to load from");
 
@@ -1630,7 +1629,7 @@ bool LoadOp::verify() {
 
   // TODO: in Function verify that the indices are parameters, IV's, or the
   // result of an affine.apply.
-  return false;
+  return success();
 }
 
 void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -1649,7 +1648,7 @@ void MemRefCastOp::print(OpAsmPrinter *p) {
      << " to " << getType();
 }
 
-bool MemRefCastOp::verify() {
+LogicalResult MemRefCastOp::verify() {
   auto opType = getOperand()->getType().dyn_cast<MemRefType>();
   auto resType = getType().dyn_cast<MemRefType>();
   if (!opType || !resType)
@@ -1679,7 +1678,7 @@ bool MemRefCastOp::verify() {
       return emitOpError("requires static dimensions to match");
   }
 
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1801,7 +1800,7 @@ void ReturnOp::print(OpAsmPrinter *p) {
   }
 }
 
-bool ReturnOp::verify() {
+LogicalResult ReturnOp::verify() {
   auto *function = getOperation()->getFunction();
 
   // The operand number and types must match the function signature.
@@ -1816,7 +1815,7 @@ bool ReturnOp::verify() {
       return emitError("type of return operand " + Twine(i) +
                        " doesn't match function result type");
 
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1857,7 +1856,7 @@ void SelectOp::print(OpAsmPrinter *p) {
   p->printOptionalAttrDict(getAttrs());
 }
 
-bool SelectOp::verify() {
+LogicalResult SelectOp::verify() {
   auto conditionType = getCondition()->getType();
   auto trueType = getTrueValue()->getType();
   auto falseType = getFalseValue()->getType();
@@ -1870,7 +1869,7 @@ bool SelectOp::verify() {
     return emitOpError("requires the condition to have the same shape as "
                        "arguments with elemental type i1");
 
-  return false;
+  return success();
 }
 
 Value *SelectOp::fold() {
@@ -1926,7 +1925,7 @@ bool StoreOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(indexInfo, affineIntTy, result->operands);
 }
 
-bool StoreOp::verify() {
+LogicalResult StoreOp::verify() {
   if (getNumOperands() < 2)
     return emitOpError("expected a value to store and a memref");
 
@@ -1950,7 +1949,7 @@ bool StoreOp::verify() {
 
   // TODO: in Function verify that the indices are parameters, IV's, or the
   // result of an affine.apply.
-  return false;
+  return success();
 }
 
 void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -2013,7 +2012,7 @@ void TensorCastOp::print(OpAsmPrinter *p) {
      << " to " << getType();
 }
 
-bool TensorCastOp::verify() {
+LogicalResult TensorCastOp::verify() {
   auto opType = getOperand()->getType().dyn_cast<TensorType>();
   auto resType = getType().dyn_cast<TensorType>();
   if (!opType || !resType)
@@ -2030,7 +2029,7 @@ bool TensorCastOp::verify() {
   auto opRType = opType.dyn_cast<RankedTensorType>();
   auto resRType = resType.dyn_cast<RankedTensorType>();
   if (!opRType || !resRType)
-    return false;
+    return success();
 
   // If they are both ranked, they have to have the same rank, and any specified
   // dimensions must match.
@@ -2043,7 +2042,7 @@ bool TensorCastOp::verify() {
       return emitOpError("requires static dimensions to match");
   }
 
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

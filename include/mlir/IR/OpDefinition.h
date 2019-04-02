@@ -105,13 +105,13 @@ public:
 
   /// Emit an error about fatal conditions with this operation, reporting up to
   /// any diagnostic handlers that may be listening.  This function always
-  /// returns true.  NOTE: This may terminate the containing application, only
-  /// use when the IR is in an inconsistent state.
-  bool emitError(const Twine &message);
+  /// returns failure.  NOTE: This may terminate the containing application,
+  /// only use when the IR is in an inconsistent state.
+  LogicalResult emitError(const Twine &message);
 
   /// Emit an error with the op name prefixed, like "'dim' op " which is
-  /// convenient for verifiers.  This always returns true.
-  bool emitOpError(const Twine &message);
+  /// convenient for verifiers.  This always returns failure.
+  LogicalResult emitOpError(const Twine &message);
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
@@ -131,7 +131,7 @@ public:
 protected:
   /// If the concrete type didn't implement a custom verifier hook, just fall
   /// back to this one which accepts everything.
-  bool verify() { return false; }
+  LogicalResult verify() { return success(); }
 
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return true on failure.
@@ -308,22 +308,22 @@ namespace OpTrait {
 // corresponding trait classes.  This avoids them being template
 // instantiated/duplicated.
 namespace impl {
-bool verifyZeroOperands(Operation *op);
-bool verifyOneOperand(Operation *op);
-bool verifyNOperands(Operation *op, unsigned numOperands);
-bool verifyAtLeastNOperands(Operation *op, unsigned numOperands);
-bool verifyOperandsAreIntegerLike(Operation *op);
-bool verifySameTypeOperands(Operation *op);
-bool verifyZeroResult(Operation *op);
-bool verifyOneResult(Operation *op);
-bool verifyNResults(Operation *op, unsigned numOperands);
-bool verifyAtLeastNResults(Operation *op, unsigned numOperands);
-bool verifySameOperandsAndResultShape(Operation *op);
-bool verifySameOperandsAndResultType(Operation *op);
-bool verifyResultsAreBoolLike(Operation *op);
-bool verifyResultsAreFloatLike(Operation *op);
-bool verifyResultsAreIntegerLike(Operation *op);
-bool verifyIsTerminator(Operation *op);
+LogicalResult verifyZeroOperands(Operation *op);
+LogicalResult verifyOneOperand(Operation *op);
+LogicalResult verifyNOperands(Operation *op, unsigned numOperands);
+LogicalResult verifyAtLeastNOperands(Operation *op, unsigned numOperands);
+LogicalResult verifyOperandsAreIntegerLike(Operation *op);
+LogicalResult verifySameTypeOperands(Operation *op);
+LogicalResult verifyZeroResult(Operation *op);
+LogicalResult verifyOneResult(Operation *op);
+LogicalResult verifyNResults(Operation *op, unsigned numOperands);
+LogicalResult verifyAtLeastNResults(Operation *op, unsigned numOperands);
+LogicalResult verifySameOperandsAndResultShape(Operation *op);
+LogicalResult verifySameOperandsAndResultType(Operation *op);
+LogicalResult verifyResultsAreBoolLike(Operation *op);
+LogicalResult verifyResultsAreFloatLike(Operation *op);
+LogicalResult verifyResultsAreIntegerLike(Operation *op);
+LogicalResult verifyIsTerminator(Operation *op);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -345,7 +345,7 @@ protected:
 
   /// Provide default implementations of trait hooks.  This allows traits to
   /// provide exactly the overrides they care about.
-  static bool verifyTrait(Operation *op) { return false; }
+  static LogicalResult verifyTrait(Operation *op) { return success(); }
   static AbstractOperation::OperationProperties getTraitProperties() {
     return 0;
   }
@@ -356,7 +356,7 @@ protected:
 template <typename ConcreteType>
 class ZeroOperands : public TraitBase<ConcreteType, ZeroOperands> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyZeroOperands(op);
   }
 
@@ -375,7 +375,9 @@ public:
 
   void setOperand(Value *value) { this->getOperation()->setOperand(0, value); }
 
-  static bool verifyTrait(Operation *op) { return impl::verifyOneOperand(op); }
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyOneOperand(op);
+  }
 };
 
 /// This class provides the API for ops that are known to have a specified
@@ -396,7 +398,7 @@ public:
       this->getOperation()->setOperand(i, value);
     }
 
-    static bool verifyTrait(Operation *op) {
+    static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyNOperands(op, N);
     }
   };
@@ -433,7 +435,7 @@ public:
       return this->getOperation()->getOperands();
     }
 
-    static bool verifyTrait(Operation *op) {
+    static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyAtLeastNOperands(op, N);
     }
   };
@@ -467,7 +469,9 @@ public:
 template <typename ConcreteType>
 class ZeroResult : public TraitBase<ConcreteType, ZeroResult> {
 public:
-  static bool verifyTrait(Operation *op) { return impl::verifyZeroResult(op); }
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyZeroResult(op);
+  }
 };
 
 /// This class provides return value APIs for ops that are known to have a
@@ -486,7 +490,9 @@ public:
     getResult()->replaceAllUsesWith(newValue);
   }
 
-  static bool verifyTrait(Operation *op) { return impl::verifyOneResult(op); }
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifyOneResult(op);
+  }
 };
 
 /// This class provides the API for ops that are known to have a specified
@@ -505,7 +511,7 @@ public:
 
     Type getType(unsigned i) { return getResult(i)->getType(); }
 
-    static bool verifyTrait(Operation *op) {
+    static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyNResults(op, N);
     }
   };
@@ -525,7 +531,7 @@ public:
 
     Type getType(unsigned i) { return getResult(i)->getType(); }
 
-    static bool verifyTrait(Operation *op) {
+    static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyAtLeastNResults(op, N);
     }
   };
@@ -562,7 +568,7 @@ template <typename ConcreteType>
 class SameOperandsAndResultShape
     : public TraitBase<ConcreteType, SameOperandsAndResultShape> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifySameOperandsAndResultShape(op);
   }
 };
@@ -577,7 +583,7 @@ template <typename ConcreteType>
 class SameOperandsAndResultType
     : public TraitBase<ConcreteType, SameOperandsAndResultType> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifySameOperandsAndResultType(op);
   }
 };
@@ -587,7 +593,7 @@ public:
 template <typename ConcreteType>
 class ResultsAreBoolLike : public TraitBase<ConcreteType, ResultsAreBoolLike> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyResultsAreBoolLike(op);
   }
 };
@@ -598,7 +604,7 @@ template <typename ConcreteType>
 class ResultsAreFloatLike
     : public TraitBase<ConcreteType, ResultsAreFloatLike> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyResultsAreFloatLike(op);
   }
 };
@@ -609,7 +615,7 @@ template <typename ConcreteType>
 class ResultsAreIntegerLike
     : public TraitBase<ConcreteType, ResultsAreIntegerLike> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyResultsAreIntegerLike(op);
   }
 };
@@ -640,7 +646,7 @@ template <typename ConcreteType>
 class OperandsAreIntegerLike
     : public TraitBase<ConcreteType, OperandsAreIntegerLike> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyOperandsAreIntegerLike(op);
   }
 };
@@ -650,7 +656,7 @@ public:
 template <typename ConcreteType>
 class SameTypeOperands : public TraitBase<ConcreteType, SameTypeOperands> {
 public:
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifySameTypeOperands(op);
   }
 };
@@ -663,7 +669,7 @@ public:
     return static_cast<AbstractOperation::OperationProperties>(
         OperationProperty::Terminator);
   }
-  static bool verifyTrait(Operation *op) {
+  static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyIsTerminator(op);
   }
 
@@ -742,9 +748,10 @@ public:
   ///
   /// On success this returns false; on failure it emits an error to the
   /// diagnostic subsystem and returns true.
-  static bool verifyInvariants(Operation *op) {
-    return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
-           op->cast<ConcreteType>().verify();
+  static LogicalResult verifyInvariants(Operation *op) {
+    return failure(
+        failed(BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op)) ||
+        failed(op->cast<ConcreteType>().verify()));
   }
 
   // Returns the properties of an operation by combining the properties of the
@@ -773,13 +780,14 @@ private:
 
   template <typename First, typename... Rest>
   struct BaseVerifier<First, Rest...> {
-    static bool verifyTrait(Operation *op) {
-      return First::verifyTrait(op) || BaseVerifier<Rest...>::verifyTrait(op);
+    static LogicalResult verifyTrait(Operation *op) {
+      return failure(failed(First::verifyTrait(op)) ||
+                     failed(BaseVerifier<Rest...>::verifyTrait(op)));
     }
   };
 
   template <typename...> struct BaseVerifier {
-    static bool verifyTrait(Operation *op) { return false; }
+    static LogicalResult verifyTrait(Operation *op) { return success(); }
   };
 
   template <typename... Types> struct BaseProperties;

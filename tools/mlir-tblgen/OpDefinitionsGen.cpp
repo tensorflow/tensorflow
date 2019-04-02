@@ -797,7 +797,7 @@ void OpEmitter::genVerifier() {
   if (!hasCustomVerify && op.getNumArgs() == 0 && op.getNumResults() == 0)
     return;
 
-  auto &method = opClass.newMethod("bool", "verify", /*params=*/"");
+  auto &method = opClass.newMethod("LogicalResult", "verify", /*params=*/"");
   auto &body = method.body();
 
   // Verify the attributes have the correct type.
@@ -887,7 +887,7 @@ void OpEmitter::genVerifier() {
   if (hasCustomVerify)
     body << codeInit->getValue() << "\n";
   else
-    body << "  return false;\n";
+    body << "  return mlir::success();\n";
 }
 
 void OpEmitter::genTraits() {

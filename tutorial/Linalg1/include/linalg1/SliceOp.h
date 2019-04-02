@@ -38,7 +38,7 @@ public:
   static llvm::StringRef getOperationName() { return "linalg.slice"; }
   static void build(mlir::Builder *b, mlir::OperationState *result,
                     mlir::Value *view, mlir::Value *indexing, unsigned dim);
-  bool verify();
+  mlir::LogicalResult verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 

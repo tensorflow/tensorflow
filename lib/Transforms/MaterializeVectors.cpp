@@ -555,7 +555,7 @@ static bool instantiateMaterialization(Operation *op,
     return false;
   }
   if (op->getNumRegions() != 0)
-    return op->emitError("NYI path Op with region");
+    return op->emitError("NYI path Op with region"), true;
 
   if (auto write = op->dyn_cast<VectorTransferWriteOp>()) {
     auto *clone = instantiate(&b, write, state->hwVectorType,
@@ -576,10 +576,10 @@ static bool instantiateMaterialization(Operation *op,
   // VectorTransferWriteOps and have been caught above. Ops with >= 2 results
   // are not yet supported. So just support 1 result.
   if (op->getNumResults() != 1) {
-    return op->emitError("NYI: ops with != 1 results");
+    return op->emitError("NYI: ops with != 1 results"), true;
   }
   if (op->getResult(0)->getType() != state->superVectorType) {
-    return op->emitError("Op does not return a supervector.");
+    return op->emitError("Op does not return a supervector."), true;
   }
   auto *clone =
       instantiate(&b, op, state->hwVectorType, state->substitutionsMap);

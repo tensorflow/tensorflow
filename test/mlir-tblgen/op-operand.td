@@ -17,6 +17,6 @@ def OneOperandOp : Op<"one_operand_op", []> {
 // CHECK:        assert(operands.size() == 1u && "mismatched number of parameters");
 // CHECK:        tblgen_state->addOperands(operands);
 
-// CHECK:      bool OneOperandOp::verify() {
+// CHECK:      LogicalResult OneOperandOp::verify() {
 // CHECK:        if (!((this->getOperation()->getOperand(0)->getType().isInteger(32))))
 // CHECK-NEXT:     return emitOpError("operand #0 must be 32-bit integer");

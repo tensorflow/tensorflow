@@ -81,7 +81,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -127,7 +127,7 @@ public:
                     int64_t step = 1);
   static void build(Builder *builder, OperationState *result, int64_t lb,
                     int64_t ub, int64_t step = 1);
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 
@@ -320,7 +320,7 @@ public:
   /// Returns the 'else' blocks.
   Region &getElseBlocks();
 
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 };

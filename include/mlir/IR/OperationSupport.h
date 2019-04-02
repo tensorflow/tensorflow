@@ -91,9 +91,9 @@ public:
   void (&printAssembly)(Operation *op, OpAsmPrinter *p);
 
   /// This hook implements the verifier for this operation.  It should emits an
-  /// error message and returns true if a problem is detected, or returns false
-  /// if everything is ok.
-  bool (&verifyInvariants)(Operation *op);
+  /// error message and returns failure if a problem is detected, or returns
+  /// success if everything is ok.
+  LogicalResult (&verifyInvariants)(Operation *op);
 
   /// This hook implements a constant folder for this operation.  It fills in
   /// `results` on success.
@@ -152,7 +152,7 @@ private:
       bool (&isClassFor)(Operation *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(Operation *op, OpAsmPrinter *p),
-      bool (&verifyInvariants)(Operation *op),
+      LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&constantFoldHook)(Operation *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results),

@@ -56,7 +56,7 @@ void linalg::SliceOp::build(Builder *b, OperationState *result, Value *view,
   }
 }
 
-bool linalg::SliceOp::verify() {
+mlir::LogicalResult linalg::SliceOp::verify() {
   unsigned dim = getSlicingDim();
   if (dim >= getParentRank())
     return emitOpError("slicing dim must be in the [0 .. parent_rank) range");
@@ -69,7 +69,7 @@ bool linalg::SliceOp::verify() {
   if (!range && !type)
     return emitOpError(
         "second operand must be of RangeType (i.e. a RangeOp) or IndexType");
-  return false;
+  return mlir::success();
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.

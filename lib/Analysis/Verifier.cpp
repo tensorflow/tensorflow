@@ -293,7 +293,7 @@ LogicalResult FuncVerifier::verifyOperation(Operation &op) {
 
   // If we can get operation info for this, check the custom hook.
   auto *opInfo = op.getAbstractOperation();
-  if (opInfo && opInfo->verifyInvariants(&op))
+  if (opInfo && failed(opInfo->verifyInvariants(&op)))
     return failure();
 
   // Verify that all child blocks are ok.

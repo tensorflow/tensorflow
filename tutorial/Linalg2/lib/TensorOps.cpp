@@ -89,7 +89,7 @@ linalg::TensorContractionBase<ConcreteOp>::getOutputs() {
 }
 
 template <class ConcreteOp>
-bool linalg::TensorContractionBase<ConcreteOp>::verify() {
+LogicalResult linalg::TensorContractionBase<ConcreteOp>::verify() {
   auto *concreteOp = static_cast<ConcreteOp *>(this)->getOperation();
   if (getNumInputs() <= 0)
     concreteOp->emitOpError("expected at least one input");
@@ -114,7 +114,7 @@ bool linalg::TensorContractionBase<ConcreteOp>::verify() {
                                      " must be of rank " +
                                      Twine(getNumParallelDims()));
   }
-  return false;
+  return success();
 }
 
 template <class ConcreteOp>
@@ -152,9 +152,9 @@ void linalg::DotOp::build(Builder *b, OperationState *result,
   result->addOperands(operands);
 }
 
-bool linalg::DotOp::verify() {
-  if (TensorContractionBaseType::verify())
-    return true;
+LogicalResult linalg::DotOp::verify() {
+  if (failed(TensorContractionBaseType::verify()))
+    return failure();
   auto *A = getOperand(0), *B = getOperand(1), *C = getOperand(2);
   unsigned index = 0;
   for (auto *v : {A, B}) {
@@ -164,7 +164,7 @@ bool linalg::DotOp::verify() {
   if (getViewRank(C) != 0)
     return emitOpError("operand 2 must be of rank 0");
   // TODO(ntv): check ranges match.
-  return false;
+  return success();
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.
@@ -185,9 +185,9 @@ void linalg::MatvecOp::build(Builder *b, OperationState *result,
   result->addOperands(operands);
 }
 
-bool linalg::MatvecOp::verify() {
-  if (TensorContractionBaseType::verify())
-    return true;
+LogicalResult linalg::MatvecOp::verify() {
+  if (failed(TensorContractionBaseType::verify()))
+    return failure();
   auto *A = getOperand(0), *B = getOperand(1), *C = getOperand(2);
   if (getViewRank(A) != 2)
     return emitOpError("operand 0 must be of rank 2");
@@ -198,7 +198,7 @@ bool linalg::MatvecOp::verify() {
                          " must be of rank 1");
   }
   // TODO(ntv): check ranges match.
-  return false;
+  return success();
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.
@@ -219,9 +219,9 @@ void linalg::MatmulOp::build(Builder *b, OperationState *result,
   result->addOperands(operands);
 }
 
-bool linalg::MatmulOp::verify() {
-  if (TensorContractionBaseType::verify())
-    return true;
+LogicalResult linalg::MatmulOp::verify() {
+  if (failed(TensorContractionBaseType::verify()))
+    return failure();
   auto *A = getOperand(0), *B = getOperand(1), *C = getOperand(2);
   unsigned index = 0;
   for (auto *v : {A, B, C}) {
@@ -229,7 +229,7 @@ bool linalg::MatmulOp::verify() {
       return emitOpError("operand " + Twine(index++) + " must be of rank 2");
   }
   // TODO(ntv): check ranges match.
-  return false;
+  return success();
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.

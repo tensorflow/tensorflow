@@ -41,14 +41,14 @@ void linalg::RangeOp::build(Builder *b, OperationState *result, Value *min,
 }
 
 // Verification is simply that a RangeOp takes 3 index ssa-value.
-bool linalg::RangeOp::verify() {
+mlir::LogicalResult linalg::RangeOp::verify() {
   if (!getMin() || !getMin()->getType().isa<IndexType>())
     return emitOpError("first operand should be of type index");
   if (!getMax() || !getMax()->getType().isa<IndexType>())
     return emitOpError("second operand should be of type index");
   if (!getStep() || !getStep()->getType().isa<IndexType>())
     return emitOpError("third operand should be of type index");
-  return false;
+  return mlir::success();
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.

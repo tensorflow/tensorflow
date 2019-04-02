@@ -326,10 +326,10 @@ void Operation::emitWarning(const Twine &message) {
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.  This function always
-/// returns true.  NOTE: This may terminate the containing application, only
+/// returns failure.  NOTE: This may terminate the containing application, only
 /// use when the IR is in an inconsistent state.
-bool Operation::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message);
+LogicalResult Operation::emitError(const Twine &message) {
+  return getContext()->emitError(getLoc(), message), failure();
 }
 
 /// Given an operation 'other' that is within the same parent block, return
@@ -550,7 +550,7 @@ LogicalResult Operation::fold(SmallVectorImpl<Value *> &results) {
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-bool Operation::emitOpError(const Twine &message) {
+LogicalResult Operation::emitOpError(const Twine &message) {
   return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
 }
 
@@ -654,13 +654,13 @@ void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getOperation()); }
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
-bool OpState::emitError(const Twine &message) {
+LogicalResult OpState::emitError(const Twine &message) {
   return getOperation()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-bool OpState::emitOpError(const Twine &message) {
+LogicalResult OpState::emitOpError(const Twine &message) {
   return getOperation()->emitOpError(message);
 }
 
@@ -680,33 +680,34 @@ void OpState::emitNote(const Twine &message) {
 // Op Trait implementations
 //===----------------------------------------------------------------------===//
 
-bool OpTrait::impl::verifyZeroOperands(Operation *op) {
+LogicalResult OpTrait::impl::verifyZeroOperands(Operation *op) {
   if (op->getNumOperands() != 0)
     return op->emitOpError("requires zero operands");
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyOneOperand(Operation *op) {
+LogicalResult OpTrait::impl::verifyOneOperand(Operation *op) {
   if (op->getNumOperands() != 1)
     return op->emitOpError("requires a single operand");
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyNOperands(Operation *op, unsigned numOperands) {
+LogicalResult OpTrait::impl::verifyNOperands(Operation *op,
+                                             unsigned numOperands) {
   if (op->getNumOperands() != numOperands) {
     return op->emitOpError("expected " + Twine(numOperands) +
                            " operands, but found " +
                            Twine(op->getNumOperands()));
   }
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyAtLeastNOperands(Operation *op,
-                                           unsigned numOperands) {
+LogicalResult OpTrait::impl::verifyAtLeastNOperands(Operation *op,
+                                                    unsigned numOperands) {
   if (op->getNumOperands() < numOperands)
     return op->emitOpError("expected " + Twine(numOperands) +
                            " or more operands");
-  return false;
+  return success();
 }
 
 /// If this is a vector type, or a tensor type, return the scalar element type
@@ -721,96 +722,97 @@ static Type getTensorOrVectorElementType(Type type) {
   return type;
 }
 
-bool OpTrait::impl::verifyOperandsAreIntegerLike(Operation *op) {
+LogicalResult OpTrait::impl::verifyOperandsAreIntegerLike(Operation *op) {
   for (auto *operand : op->getOperands()) {
     auto type = getTensorOrVectorElementType(operand->getType());
     if (!type.isIntOrIndex())
       return op->emitOpError("requires an integer or index type");
   }
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifySameTypeOperands(Operation *op) {
+LogicalResult OpTrait::impl::verifySameTypeOperands(Operation *op) {
   // Zero or one operand always have the "same" type.
   unsigned nOperands = op->getNumOperands();
   if (nOperands < 2)
-    return false;
+    return success();
 
   auto type = op->getOperand(0)->getType();
-  for (unsigned i = 1; i < nOperands; ++i) {
+  for (unsigned i = 1; i < nOperands; ++i)
     if (op->getOperand(i)->getType() != type)
       return op->emitOpError("requires all operands to have the same type");
-  }
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyZeroResult(Operation *op) {
+LogicalResult OpTrait::impl::verifyZeroResult(Operation *op) {
   if (op->getNumResults() != 0)
     return op->emitOpError("requires zero results");
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyOneResult(Operation *op) {
+LogicalResult OpTrait::impl::verifyOneResult(Operation *op) {
   if (op->getNumResults() != 1)
     return op->emitOpError("requires one result");
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyNResults(Operation *op, unsigned numOperands) {
+LogicalResult OpTrait::impl::verifyNResults(Operation *op,
+                                            unsigned numOperands) {
   if (op->getNumResults() != numOperands)
     return op->emitOpError("expected " + Twine(numOperands) + " results");
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyAtLeastNResults(Operation *op, unsigned numOperands) {
+LogicalResult OpTrait::impl::verifyAtLeastNResults(Operation *op,
+                                                   unsigned numOperands) {
   if (op->getNumResults() < numOperands)
     return op->emitOpError("expected " + Twine(numOperands) +
                            " or more results");
-  return false;
+  return success();
 }
 
-/// Returns false if the given two types have the same shape. That is,
+/// Returns success if the given two types have the same shape. That is,
 /// they are both scalars, or they are both vectors / ranked tensors with
 /// the same dimension specifications. The element type does not matter.
-static bool verifyShapeMatch(Type type1, Type type2) {
+static LogicalResult verifyShapeMatch(Type type1, Type type2) {
   // Check scalar cases
   if (type1.isIntOrIndexOrFloat())
-    return !type2.isIntOrIndexOrFloat();
+    return success(type2.isIntOrIndexOrFloat());
 
   // Check unranked tensor cases
   if (type1.isa<UnrankedTensorType>() || type2.isa<UnrankedTensorType>())
-    return true;
+    return failure();
 
   // Check normal vector/tensor cases
   if (auto vtType1 = type1.dyn_cast<VectorOrTensorType>()) {
     auto vtType2 = type2.dyn_cast<VectorOrTensorType>();
-    return !(vtType2 && vtType1.getShape() == vtType2.getShape());
+    return success(vtType2 && vtType1.getShape() == vtType2.getShape());
   }
 
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
+LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
-    return true;
+    return failure();
 
   auto type = op->getOperand(0)->getType();
   for (unsigned i = 0, e = op->getNumResults(); i < e; ++i) {
-    if (verifyShapeMatch(op->getResult(i)->getType(), type))
+    if (failed(verifyShapeMatch(op->getResult(i)->getType(), type)))
       return op->emitOpError(
           "requires the same shape for all operands and results");
   }
   for (unsigned i = 1, e = op->getNumOperands(); i < e; ++i) {
-    if (verifyShapeMatch(op->getOperand(i)->getType(), type))
+    if (failed(verifyShapeMatch(op->getOperand(i)->getType(), type)))
       return op->emitOpError(
           "requires the same shape for all operands and results");
   }
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
+LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
-    return true;
+    return failure();
 
   auto type = op->getResult(0)->getType();
   for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
@@ -823,10 +825,10 @@ bool OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
       return op->emitOpError(
           "requires the same type for all operands and results");
   }
-  return false;
+  return success();
 }
 
-static bool
+static LogicalResult
 verifyBBArguments(llvm::iterator_range<Operation::operand_iterator> operands,
                   Block *destBB, Operation *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
@@ -841,35 +843,35 @@ verifyBBArguments(llvm::iterator_range<Operation::operand_iterator> operands,
       return op->emitError("type mismatch in bb argument #" + Twine(i));
   }
 
-  return false;
+  return success();
 }
 
-static bool verifyTerminatorSuccessors(Operation *op) {
+static LogicalResult verifyTerminatorSuccessors(Operation *op) {
   // Verify that the operands lines up with the BB arguments in the successor.
   Function *fn = op->getFunction();
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
     auto *succ = op->getSuccessor(i);
     if (succ->getFunction() != fn)
       return op->emitError("reference to block defined in another function");
-    if (verifyBBArguments(op->getSuccessorOperands(i), succ, op))
-      return true;
+    if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
+      return failure();
   }
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyIsTerminator(Operation *op) {
+LogicalResult OpTrait::impl::verifyIsTerminator(Operation *op) {
   Block *block = op->getBlock();
   // Verify that the operation is at the end of the respective parent block.
   if (!block || &block->back() != op)
     return op->emitOpError("must be the last operation in the parent block");
 
   // Verify the state of the successor blocks.
-  if (op->getNumSuccessors() != 0 && verifyTerminatorSuccessors(op))
-    return true;
-  return false;
+  if (op->getNumSuccessors() != 0 && failed(verifyTerminatorSuccessors(op)))
+    return failure();
+  return success();
 }
 
-bool OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
+LogicalResult OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
   for (auto *result : op->getResults()) {
     auto elementType = getTensorOrVectorElementType(result->getType());
     bool isBoolType = elementType.isInteger(1);
@@ -877,25 +879,24 @@ bool OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
       return op->emitOpError("requires a bool result type");
   }
 
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyResultsAreFloatLike(Operation *op) {
-  for (auto *result : op->getResults()) {
+LogicalResult OpTrait::impl::verifyResultsAreFloatLike(Operation *op) {
+  for (auto *result : op->getResults())
     if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())
       return op->emitOpError("requires a floating point type");
-  }
 
-  return false;
+  return success();
 }
 
-bool OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
+LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
   for (auto *result : op->getResults()) {
     auto type = getTensorOrVectorElementType(result->getType());
     if (!type.isIntOrIndex())
       return op->emitOpError("requires an integer or index type");
   }
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

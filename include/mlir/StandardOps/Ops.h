@@ -78,7 +78,7 @@ public:
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
                     MemRefType memrefType, ArrayRef<Value *> operands = {});
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -148,7 +148,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 };
 
 /// The "call_indirect" operation represents an indirect call to a value of
@@ -181,7 +181,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 };
@@ -246,7 +246,7 @@ public:
                     Value *lhs, Value *rhs);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 };
 
@@ -283,7 +283,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -382,7 +382,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 };
 
@@ -465,7 +465,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result, Value *memref);
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -496,7 +496,7 @@ public:
   static StringRef getOperationName() { return "std.dim"; }
 
   // Hooks to customize behavior of this op.
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 };
@@ -627,7 +627,7 @@ public:
   static StringRef getOperationName() { return "std.dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -725,7 +725,7 @@ public:
   static StringRef getOperationName() { return "std.extract_element"; }
 
   // Hooks to customize behavior of this op.
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
@@ -760,7 +760,7 @@ public:
 
   static StringRef getOperationName() { return "std.load"; }
 
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -792,7 +792,7 @@ public:
 
   void print(OpAsmPrinter *p);
 
-  bool verify();
+  LogicalResult verify();
 };
 
 /// The "return" operation represents a return operation within a function.
@@ -817,7 +817,7 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 };
 
 /// The "select" operation chooses one value based on a binary condition
@@ -841,7 +841,7 @@ public:
                     Value *trueValue, Value *falseValue);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-  bool verify();
+  LogicalResult verify();
 
   Value *getCondition() { return getOperand(0); }
   Value *getTrueValue() { return getOperand(1); }
@@ -884,7 +884,7 @@ public:
 
   static StringRef getOperationName() { return "std.store"; }
 
-  bool verify();
+  LogicalResult verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
 
@@ -913,7 +913,7 @@ public:
 
   void print(OpAsmPrinter *p);
 
-  bool verify();
+  LogicalResult verify();
 };
 
 /// Prints dimension and symbol list.

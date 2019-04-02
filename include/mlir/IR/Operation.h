@@ -434,14 +434,14 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Emit an error with the op name prefixed, like "'dim' op " which is
-  /// convenient for verifiers.  This function always returns true.
-  bool emitOpError(const Twine &message);
+  /// convenient for verifiers.  This function always returns failure.
+  LogicalResult emitOpError(const Twine &message);
 
   /// Emit an error about fatal conditions with this operation, reporting up to
   /// any diagnostic handlers that may be listening.  This function always
-  /// returns true.  NOTE: This may terminate the containing application, only
-  /// use when the IR is in an inconsistent state.
-  bool emitError(const Twine &message);
+  /// returns failure.  NOTE: This may terminate the containing application,
+  /// only use when the IR is in an inconsistent state.
+  LogicalResult emitError(const Twine &message);
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.

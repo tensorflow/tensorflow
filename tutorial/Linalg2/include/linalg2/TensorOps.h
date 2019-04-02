@@ -33,7 +33,7 @@ protected:
   // Hooks to customize the behavior of this op.
   //////////////////////////////////////////////////////////////////////////////
   /// Generic implementation of hooks that should be called from `ConcreteType`s
-  bool verify();
+  mlir::LogicalResult verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
@@ -90,7 +90,7 @@ public:
                     mlir::Value *A, mlir::Value *B, mlir::Value *C) {
     return build(b, result, {A, B, C});
   }
-  bool verify();
+  mlir::LogicalResult verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
@@ -122,7 +122,7 @@ public:
                     mlir::Value *A, mlir::Value *B, mlir::Value *C) {
     return build(b, result, {A, B, C});
   }
-  bool verify();
+  mlir::LogicalResult verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
@@ -154,7 +154,7 @@ public:
                     mlir::Value *A, mlir::Value *B, mlir::Value *C) {
     return build(b, result, {A, B, C});
   }
-  bool verify();
+  mlir::LogicalResult verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
