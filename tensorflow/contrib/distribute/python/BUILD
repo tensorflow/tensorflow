@@ -851,3 +851,25 @@ tf_xla_py_test(
         "//tensorflow/python/training/tracking:util",
     ],
 )
+
+distribute_py_test(
+    name = "keras_two_input_layers_correctness_test",
+    size = "medium",
+    srcs = ["keras_two_input_layers_correctness_test.py"],
+    full_precision = True,
+    main = "keras_two_input_layers_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 1,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+    ],
+)

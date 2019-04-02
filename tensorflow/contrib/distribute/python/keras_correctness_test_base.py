@@ -69,6 +69,13 @@ def all_strategy_and_input_config_combinations():
           eager_mode_test_configuration() + graph_mode_test_configuration()))
 
 
+def all_strategies_excluding_tpu_and_input_config_combinations():
+  return (combinations.times(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu),
+      eager_mode_test_configuration() + graph_mode_test_configuration()))
+
+
 def strategies_for_embedding_models():
   """Returns distribution strategies to test for embedding models.
 
