@@ -64,7 +64,7 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
   if (instr.IsMultiOutputFusion()) {
     for (const HloInstruction* operand :
          instr.fused_expression_root()->operands()) {
-      if (IsReductionToVector(*operand)) {
+      if (IsReductionFromOrToContiguousDimensions(*operand)) {
         CHECK(instr.IsInputFusion())
             << " Multi-output fusion rooted at reduction-to-vector ops must be "
                "of kind kInput: "
@@ -73,7 +73,8 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
       }
     }
   } else if (instr.opcode() == HloOpcode::kFusion &&
-             IsReductionToVector(*instr.fused_expression_root())) {
+             IsReductionFromOrToContiguousDimensions(
+                 *instr.fused_expression_root())) {
     CHECK(instr.IsInputFusion())
         << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
         << instr.ToString();
@@ -83,7 +84,8 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
-  return IsReduceInputFusion(instr) || IsReductionToVector(instr);
+  return IsReduceInputFusion(instr) ||
+         IsReductionFromOrToContiguousDimensions(instr);
 }
 
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
@@ -98,7 +100,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
         // If possible, we want to pick a reduction-to-vector operand of the
         // fusion root, because it has the most constraints.
         for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionToVector(*inst)) {
+          if (IsReductionFromOrToContiguousDimensions(*inst)) {
             return inst;
           }
         }
@@ -114,7 +116,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
-    if (IsReductionToVector(*element_instr)) {
+    if (IsReductionFromOrToContiguousDimensions(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -127,7 +129,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
   // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-  if (IsReductionToVector(*instr_1) && IsReductionToVector(*instr_2) &&
+  if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
+      IsReductionFromOrToContiguousDimensions(*instr_2) &&
       (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
        instr_1->dimensions() != instr_2->dimensions())) {
     return false;
@@ -172,7 +175,7 @@ bool IsLoopFusible(const HloInstruction& instr) {
          instr.opcode() == HloOpcode::kIota ||
          instr.opcode() == HloOpcode::kPad ||
          (instr.opcode() == HloOpcode::kReduce &&
-          !IsReductionToVector(instr)) ||
+          !IsReductionFromOrToContiguousDimensions(instr)) ||
          instr.opcode() == HloOpcode::kReduceWindow ||
          instr.opcode() == HloOpcode::kReshape ||
          instr.opcode() == HloOpcode::kReverse ||

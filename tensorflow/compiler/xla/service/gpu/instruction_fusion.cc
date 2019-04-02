@@ -198,7 +198,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 
   // Do not fuse to-vector reduction into other consumers. They should be
   // unfused or the root of a kInput fusion.
-  if (IsReductionToVector(*producer)) {
+  if (IsReductionFromOrToContiguousDimensions(*producer)) {
     return false;
   }
 
@@ -256,6 +256,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
   auto producer = consumer->operand(operand_index);
+
+  // Don't fuse variadic reduce.
+  if (consumer->opcode() == HloOpcode::kReduce && consumer->shape().IsTuple()) {
+    return false;
+  }
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(consumer, producer)) {
     return false;
@@ -274,7 +279,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer) ||
+  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
       consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }

@@ -129,7 +129,8 @@ using ::tflite::gpu::TensorUsageRecord;
     (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
     if (bufferSize > [_device maxBufferLength]) {
       std::string error("Tensor id: ");
-      error += std::to_string(buffer.uid) + " with size: " + std::to_string(bufferSize) +
+      error += std::to_string(assignment.object_ids[i]) +
+               " with size: " + std::to_string(bufferSize) +
                " exceeds MTLDevice maxBufferLength: " + std::to_string([_device maxBufferLength]);
       return ::tflite::gpu::ResourceExhaustedError(error);
     }

@@ -157,10 +157,16 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
          IsCustomCallToDnnConvolution(hlo);
 }
 
-bool IsReductionToVector(const HloInstruction& reduce) {
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   if (HloOpcode::kReduce != reduce.opcode()) {
     return false;
   }
+
+  // TODO(b/129698548): Remove this check after fixing the bug.
+  if (reduce.shape().element_type() == C128) {
+    return false;
+  }
+
   const HloInstruction* input = reduce.operand(0);
   std::vector<int64> dims_to_keep;
   for (int64 dim = 0; dim < input->shape().dimensions().size(); ++dim) {
@@ -169,7 +175,9 @@ bool IsReductionToVector(const HloInstruction& reduce) {
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                              dims_to_keep);
+                                              dims_to_keep) ||
+         LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
+                                              reduce.dimensions());
 }
 
 // This emits a device-side call to

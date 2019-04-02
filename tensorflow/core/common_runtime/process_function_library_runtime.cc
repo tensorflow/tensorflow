@@ -844,6 +844,9 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
+  VLOG(1) << "Running multi-device function " << data->function_name_;
+  VLOG(4) << "    with " << opts.DebugString();
+
   if (data->glue_.empty()) {
     // Trivial case where the function body is empty.
     done(Status::OK());
@@ -860,8 +863,6 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const string& target = pair.first;
     const ComponentFunctionData& comp_data = pair.second;
     FunctionLibraryRuntime::Handle handle = pair.second.handle_;
-    VLOG(1) << "Running function shard on device " << target << " with handle "
-            << handle;
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs_;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
@@ -871,10 +872,15 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     // When target device has private thread pool, use the target device runner
     thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
     opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
+
     std::vector<Tensor> comp_args =
         GetArgsForIndices(comp_data.arg_indices_, args);
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
+
+    VLOG(1) << "Running component function on device " << target
+            << " with handle " << handle;
+    VLOG(4) << "    with " << opts_copy.DebugString();
     flr->Run(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {

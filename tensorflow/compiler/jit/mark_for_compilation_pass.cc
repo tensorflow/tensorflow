@@ -380,7 +380,7 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
                              XlaOpRegistry::AutoclusteringPolicy::kAlways;
 
   RecursiveCompilabilityChecker::OperationFilter op_filter;
-  op_filter.allow_non_resource_var_resource_ops =
+  op_filter.allow_resource_ops_in_called_functions =
       registration.compile_all_resource_ops;
   op_filter.allow_non_resource_var_resource_ops =
       registration.compile_all_resource_ops;

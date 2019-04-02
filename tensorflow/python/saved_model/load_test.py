@@ -57,7 +57,7 @@ from tensorflow.python.util import tf_inspect
     dict(testcase_name="ReloadThrice", cycles=3))
 class LoadTest(test.TestCase, parameterized.TestCase):
 
-  def cycle(self, obj, cycles=1, signatures=None):
+  def cycle(self, obj, cycles, signatures=None):
     to_save = obj
     # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
     # point w.r.t. saving/restoring, ideally after 2nd saving.
@@ -520,7 +520,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return x * self.var
 
     m = M()
-    self.cycle(m)
+    self.cycle(m, cycles)
     self.assertEqual(4.0, m.f(constant_op.constant(2.0)).numpy())
 
   def test_basic_backprop(self, cycles):
@@ -991,10 +991,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     exported = Exported()
     imported = self.cycle(
         exported,
+        cycles=1,
         signatures=exported.do.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32)))
     for _ in range(cycles - 1):
-      imported = self.cycle(imported, signatures=imported.signatures)
+      imported = self.cycle(imported, cycles=1, signatures=imported.signatures)
     self.assertEqual(["serving_default"], list(imported.signatures.keys()))
     imported_function = imported.signatures["serving_default"]
     two = constant_op.constant(2.)
@@ -1016,11 +1017,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     exported = Exported()
     imported = self.cycle(
-        exported, signatures=exported.do.get_concrete_function(
+        exported, cycles=1, signatures=exported.do.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32),
             tensor_spec.TensorSpec(None, dtypes.float32)))
     for _ in range(cycles - 1):
-      imported = self.cycle(imported, signatures=imported.signatures)
+      imported = self.cycle(imported, cycles=1, signatures=imported.signatures)
     with self.assertRaises(TypeError):
       imported.signatures["serving_default"](
           constant_op.constant(1.),
@@ -1233,7 +1234,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
             b=tensor_spec.TensorSpec(None, dtypes.float32, name="b")))
     obj = tracking.AutoTrackable()
     obj.__call__ = f
-    imported = self.cycle(obj)
+    imported = self.cycle(obj, cycles)
     self.assertAllClose(3.,
                         imported(NamedTupleType(a=constant_op.constant(1.),
                                                 b=constant_op.constant(2.))))
@@ -1248,7 +1249,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     obj = tracking.AutoTrackable()
     obj.__call__ = f
-    imported = self.cycle(obj)
+    imported = self.cycle(obj, cycles)
 
     self.assertEqual(4.0, imported({"a": 3.0}).numpy())
 

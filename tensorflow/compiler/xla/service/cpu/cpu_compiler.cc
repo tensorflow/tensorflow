@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -113,7 +114,7 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-using BufferInfo = ::tensorflow::cpu_function_runtime::BufferInfo;
+using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     string triple, string cpu_name, string features, string entry_point_name,

@@ -793,6 +793,25 @@ cc_library(
 )
 
 cc_library(
+    name = "eigen_helpers_no_mkl",
+    hdrs = [
+        "eigen_activations.h",
+        "eigen_attention.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_backward_spatial_convolutions.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_pooling.h",
+        "eigen_softmax.h",
+        "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
+    ],
+    deps = [
+        ":eigen_spatial_convolutions-inl",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "eigen_spatial_convolutions-inl",
     hdrs = [
         "eigen_spatial_convolutions-inl.h",

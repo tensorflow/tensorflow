@@ -210,6 +210,16 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
+  def test_supports_variable_like_objects(self):
+    m = module.Module()
+    v = VariableLike()
+    self.assertFalse(hasattr(v, "trainable"))
+    m.v = v
+    self.assertEqual(m.variables, (v,))
+    self.assertEmpty(m.trainable_variables)
+    m.v.trainable = True
+    self.assertEqual(m.trainable_variables, (v,))
+
 
 class ModuleTrackingTest(test.TestCase):
 
@@ -407,11 +417,11 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     child = parent.c
 
     self.assertEqual(
-        list(parent._flatten(recursive=False, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(parent._flatten(predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
 
   def test_attribute_traversal_key(self):
@@ -428,7 +438,7 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     mod.decoder = mod.encoder
 
     state_dict = dict(
-        mod._flatten(with_path=True, predicate=module._IS_VARIABLE))
+        mod._flatten(with_path=True, predicate=module._is_variable_like))
 
     self.assertEqual(state_dict,
                      {("w",): mod.w,
@@ -458,8 +468,10 @@ class LayerModule(module.Module):
       indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
       return indexes.get(name, 2), name
 
-    return list(self._flatten(predicate=module._IS_VARIABLE,
-                              attribute_traversal_key=key_function))
+    return list(
+        self._flatten(
+            predicate=module._is_variable_like,
+            attribute_traversal_key=key_function))
 
 
 class MemberType(object):
@@ -477,8 +489,12 @@ class SimpleModule(module.Module):
       self.c = SimpleModule(create_child=False)
 
 
-IS_MEMBER = lambda v: isinstance(v, MemberType)
-IS_MODULE = lambda v: isinstance(v, module.Module)
+class VariableLike(object):
+
+  _should_act_as_resource_variable = True
+
+
+is_member = lambda v: isinstance(v, MemberType)
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

@@ -25,9 +25,11 @@ from absl.testing import parameterized
 import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
+from tensorflow.contrib.distribute.python import collective_all_reduce_strategy as collective_strategy
 from tensorflow.contrib.distribute.python import keras_multi_worker_test_base
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.framework import ops
@@ -99,63 +101,103 @@ class SimpleBiasTest(
         results_without_ds=results_without_ds)
 
 
-class ImageModelTest(
+def make_image_model(initial_weights=None):
+  image = keras.layers.Input(shape=(28, 28, 3), name='image')
+  c1 = keras.layers.Conv2D(
+      name='conv1',
+      filters=16,
+      kernel_size=(3, 3),
+      strides=(4, 4),
+      kernel_regularizer=keras.regularizers.l2(1e-4))(
+          image)
+  c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
+  c1 = keras.layers.Flatten()(c1)
+  logits = keras.layers.Dense(10, activation='softmax', name='pred')(c1)
+  model = keras.Model(inputs=[image], outputs=[logits])
+
+  if initial_weights:
+    model.set_weights(initial_weights)
+
+  model.compile(
+      'sgd',
+      loss='sparse_categorical_crossentropy',
+      metrics=['sparse_categorical_accuracy'])
+
+  np.random.seed(99)
+  image_inputs = np.random.normal(0, 0.1, (6400, 28, 28, 3)).astype(np.float32)
+  image_targets = np.random.randint(0, 10, (6400, 1))
+  return model, image_inputs, image_targets
+
+
+def make_lstm_model(initial_weights=None):
+  inputs = keras.layers.Input(shape=(10, 20))
+  rnn1_out = keras.layers.LSTM(20, return_sequences=True)(inputs)
+  rnn2_out = keras.layers.LSTM(10)(rnn1_out)
+  outputs = keras.layers.Dense(1)(rnn2_out)
+  model = keras.Model(inputs, outputs)
+
+  if initial_weights:
+    model.set_weights(initial_weights)
+
+  model.compile('adam', 'binary_crossentropy', metrics=['mse'])
+
+  np.random.seed(99)
+  lstm_inputs = np.random.normal(0, 0.1, (6400, 10, 20)).astype(np.float32)
+  lstm_targets = np.random.normal(0, 0.1, (6400, 1)).astype(np.float32)
+  return model, lstm_inputs, lstm_targets
+
+
+def make_embedding_model(initial_weights=None):
+  inputs = keras.layers.Input(shape=(1,), dtype='int32')
+  embeddings = keras.layers.Embedding(100, 5)(inputs)
+  outputs = keras.layers.Dense(1)(embeddings)
+  model = keras.Model(inputs, outputs)
+
+  if initial_weights:
+    model.set_weights(initial_weights)
+
+  model.compile('rmsprop', 'mae', metrics=['binary_crossentropy'])
+
+  np.random.seed(99)
+  embed_inputs = np.random.randint(0, 10, (6400, 1)).astype(np.int32)
+  embed_targets = np.random.normal(0, 0.1, (6400, 1)).astype(np.float32)
+  return model, embed_inputs, embed_targets
+
+
+class ModelCorrectnessTest(
     keras_multi_worker_test_base.KerasIndependentWorkerTestBase,
     parameterized.TestCase):
 
-  inputs = np.random.normal(0, 0.1, (6400, 28, 28, 3)).astype(np.float32)
-  targets = np.random.randint(0, 10, (6400, 1))
-
-  def _get_model(self, initial_weights=None):
-    image = keras.layers.Input(shape=(28, 28, 3), name='image')
-    c1 = keras.layers.Conv2D(
-        name='conv1',
-        filters=16,
-        kernel_size=(3, 3),
-        strides=(4, 4),
-        kernel_regularizer=keras.regularizers.l2(1e-4))(
-            image)
-    c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
-    c1 = keras.layers.Flatten()(c1)
-    logits = keras.layers.Dense(10, activation='softmax', name='pred')(c1)
-    model = keras.Model(inputs=[image], outputs=[logits])
-
-    if initial_weights:
-      model.set_weights(initial_weights)
-
-    model.compile(
-        'sgd',
-        loss='sparse_categorical_crossentropy',
-        metrics=['sparse_categorical_accuracy'])
-    return model
-
-  def _get_inputs(self):
-    inputs = ImageModelTest.inputs
-    targets = ImageModelTest.targets
+  def make_dataset(self, inputs, targets, batch_size=64):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = batch_and_maybe_shard_dataset(dataset, global_batch_size=64)
+    dataset = batch_and_maybe_shard_dataset(dataset, batch_size)
     return dataset
 
-  @keras_multi_worker_test_base.run_sync_strategies
-  def test_cnn_correctness(self, strategy_cls):
-
-    model = self._get_model()
-    initial_weights = model.get_weights()
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'],
+          strategy_cls=[
+              collective_strategy.CollectiveAllReduceStrategy,
+          ],
+          make_model=[make_image_model, make_lstm_model, make_embedding_model],
+          required_gpus=[0, 1]))
+  def test_correctness(self, strategy_cls, make_model):
 
     def _worker_fn(initial_weights=None, results_without_ds=None):
-      # Make sure Session is cleared at each run.
+      # Make sure Session is cleared at each run so that it can be
+      # configured properly for the DistributionStrategy.
       keras.backend._SESSION.session = None
       results = {}
-      model = self._get_model(initial_weights)
+      model, inputs, targets = make_model(initial_weights)
 
-      data = self._get_inputs()
+      data = self.make_dataset(inputs, targets)
 
       # TODO(b/129363441): Remove `steps_per_epoch`.
       results['training'] = model.fit(
           data, steps_per_epoch=50, epochs=2).history
       results['trained_weights'] = model.get_weights()
 
-      eval_data = self._get_inputs()
+      eval_data = self.make_dataset(inputs, targets)
       results['evaluation'] = model.evaluate(eval_data, steps=50)
 
       if results_without_ds:
@@ -163,12 +205,12 @@ class ImageModelTest(
           self.assertAllClose(
               results[key],
               results_without_ds[key],
-              atol=1e-4,
-              rtol=1e-4,
               msg='Fail to assert {}'.format(key))
 
       return results
 
+    model, _, _ = make_model()
+    initial_weights = model.get_weights()
     results_without_ds = _worker_fn(initial_weights=initial_weights)
     self.run_independent_workers(
         _worker_fn,

@@ -465,9 +465,9 @@ class LayoutAssignment : public HloModulePass {
   // Creates a copy of the given operand if the operand's layout does not match
   // the given layout. This copy replaces the use in the given instruction.
   // Tuple operands will be deep-copied.
-  Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
-                                    HloInstruction* instruction,
-                                    int64 operand_no);
+  virtual Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                            HloInstruction* instruction,
+                                            int64 operand_no);
 
   // Registers a copy instruction added by the layout assignment pass.
   void RegisterAddedCopy(HloInstruction* copy) {

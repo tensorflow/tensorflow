@@ -1,5 +1,11 @@
 # -*- Python -*-
 
+# version for the shared libraries, can
+# not contain rc or alpha, only numbers.
+# Also update tensorflow/core/public/version.h
+# and tensorflow/tools/pip_package/setup.py
+VERSION = "1.13.1"
+
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -159,10 +165,10 @@ def if_emscripten(a):
         "//conditions:default": [],
     })
 
-def if_macos(a):
+def if_macos(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:macos"): a,
-        "//conditions:default": [],
+        "//conditions:default": otherwise,
     })
 
 def if_ios(a):
@@ -385,13 +391,43 @@ def _rpath_linkopts(name):
 
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
-def tf_binary_additional_srcs():
+def tf_binary_additional_srcs(fullversion = False):
+    if fullversion:
+        suffix = "." + VERSION
+    else:
+        suffix = "." + VERSION.split(".")[0]
+
     return if_static(
         extra_deps = [],
+        macos = [
+            clean_dep("//tensorflow:libtensorflow_framework%s.dylib" % suffix),
+        ],
         otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework.so"),
+            clean_dep("//tensorflow:libtensorflow_framework.so%s" % suffix),
         ],
     )
+
+# Helper function for the per-OS tensorflow libraries and their version symlinks
+def tf_shared_library_deps():
+    longsuffix = "." + VERSION
+    suffix = "." + VERSION.split(".")[0]
+
+    return select({
+        clean_dep("//tensorflow:macos"): [
+            clean_dep("//tensorflow:libtensorflow.dylib"),
+            clean_dep("//tensorflow:libtensorflow%s.dylib" % suffix),
+            clean_dep("//tensorflow:libtensorflow%s.dylib" % longsuffix),
+        ],
+        clean_dep("//tensorflow:windows"): [
+            clean_dep("//tensorflow:tensorflow.dll"),
+        ],
+        clean_dep("//tensorflow:framework_shared_object"): [
+            clean_dep("//tensorflow:libtensorflow.so"),
+            clean_dep("//tensorflow:libtensorflow.so%s" % suffix),
+            clean_dep("//tensorflow:libtensorflow.so%s" % longsuffix),
+        ],
+        "//conditions:default": [],
+    }) + tf_binary_additional_srcs()
 
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
@@ -417,9 +453,9 @@ def tf_binary_dynamic_kernel_deps(kernels):
 # TODO(pcloudy): Remove this workaround when https://github.com/bazelbuild/bazel/issues/4570
 # is done and cc_shared_library is available.
 SHARED_LIBRARY_NAME_PATTERNS = [
-    "lib%s.so",  # On Linux, shared libraries are usually named as libfoo.so
-    "lib%s.dylib",  # On macos, shared libraries are usually named as libfoo.dylib
-    "%s.dll",  # On Windows, shared libraries are usually named as foo.dll
+    "lib%s.so%s",  # On Linux, shared libraries are usually named as libfoo.so
+    "lib%s%s.dylib",  # On macos, shared libraries are usually named as libfoo.dylib
+    "%s%s.dll",  # On Windows, shared libraries are usually named as foo.dll
 ]
 
 def tf_cc_shared_object(
@@ -429,40 +465,86 @@ def tf_cc_shared_object(
         data = [],
         linkopts = [],
         framework_so = tf_binary_additional_srcs(),
+        soversion = None,
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
         visibility = None,
         **kwargs):
-    if per_os_targets:
-        names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
+    """Configure the shared object (.so) file for TensorFlow."""
+    if soversion != None:
+        suffix = "." + str(soversion).split(".")[0]
+        longsuffix = "." + str(soversion)
     else:
-        names = [name]
-    for name_os in names:
+        suffix = ""
+        longsuffix = ""
+
+    if per_os_targets:
+        names = [
+            (
+                pattern % (name, ""),
+                pattern % (name, suffix),
+                pattern % (name, longsuffix),
+            )
+            for pattern in SHARED_LIBRARY_NAME_PATTERNS
+        ]
+    else:
+        names = [(
+            name,
+            name + suffix,
+            name + longsuffix,
+        )]
+
+    for name_os, name_os_major, name_os_full in names:
+        # Windows DLLs cant be versioned
+        if name_os.endswith(".dll"):
+            name_os_major = name_os
+            name_os_full = name_os
+
+        if name_os != name_os_major:
+            native.genrule(
+                name = name_os + "_sym",
+                outs = [name_os],
+                srcs = [name_os_major],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+            native.genrule(
+                name = name_os_major + "_sym",
+                outs = [name_os_major],
+                srcs = [name_os_full],
+                output_to_bindir = 1,
+                cmd = "ln -sf $$(basename $<) $@",
+            )
+
+        soname = name_os_major.split("/")[-1]
+
         native.cc_binary(
-            name = name_os,
+            name = name_os_full,
             srcs = srcs + framework_so,
             deps = deps,
             linkshared = 1,
             data = data,
-            linkopts = linkopts + _rpath_linkopts(name_os) + select({
+            linkopts = linkopts + _rpath_linkopts(name_os_full) + select({
                 clean_dep("//tensorflow:macos"): [
-                    "-Wl,-install_name,@rpath/" + name_os.split("/")[-1],
+                    "-Wl,-install_name,@rpath/" + soname,
                 ],
                 clean_dep("//tensorflow:windows"): [],
                 "//conditions:default": [
-                    "-Wl,-soname," + name_os.split("/")[-1],
+                    "-Wl,-soname," + soname,
                 ],
             }),
             visibility = visibility,
             **kwargs
         )
-    if name not in names:
+
+    flat_names = [item for sublist in names for item in sublist]
+    if name not in flat_names:
         native.filegroup(
             name = name,
             srcs = select({
-                "//tensorflow:windows": [":%s.dll" % name],
-                "//tensorflow:macos": [":lib%s.dylib" % name],
-                "//conditions:default": [":lib%s.so" % name],
+                "//tensorflow:windows": [":%s.dll" % (name)],
+                "//tensorflow:macos": [":lib%s%s.dylib" % (name, longsuffix)],
+                "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
             }),
             visibility = visibility,
         )
@@ -493,7 +575,7 @@ def tf_cc_binary(
         added_data_deps = []
 
     if per_os_targets:
-        names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
+        names = [pattern % (name, "") for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
         names = [name]
     for name_os in names:
@@ -865,7 +947,9 @@ def tf_cc_test(
                 clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
-        data = data + tf_binary_dynamic_kernel_dsos(),
+        data = data +
+               tf_binary_dynamic_kernel_dsos() +
+               tf_binary_additional_srcs(),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
@@ -1144,7 +1228,7 @@ def tf_java_test(
     native.java_test(
         name = name,
         srcs = srcs,
-        deps = deps + tf_binary_additional_srcs() + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
+        deps = deps + tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
         *args,
         **kwargs
     )
@@ -1415,6 +1499,21 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def _get_transitive_headers(hdrs, deps):
+    """Obtain the header files for a target and its transitive dependencies.
+
+    Args:
+      hdrs: a list of header files
+      deps: a list of targets that are direct dependencies
+
+    Returns:
+      a collection of the transitive headers
+    """
+    return depset(
+        hdrs,
+        transitive = [dep[CcInfo].compilation_context.headers for dep in deps],
+    )
+
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
     srcs = ctx.files.srcs
@@ -1422,14 +1521,11 @@ def _py_wrap_cc_impl(ctx):
         fail("Exactly one SWIG source file label must be specified.", "srcs")
     module_name = ctx.attr.module_name
     src = ctx.files.srcs[0]
-    inputs = depset([src])
-    inputs += ctx.files.swig_includes
-    for dep in ctx.attr.deps:
-        inputs += dep.cc.transitive_headers
-    inputs += ctx.files._swiglib
-    inputs += ctx.files.toolchain_deps
+    inputs = _get_transitive_headers([src] + ctx.files.swig_includes, ctx.attr.deps)
+    inputs = depset(ctx.files._swiglib, transitive = [inputs])
+    inputs = depset(ctx.files.toolchain_deps, transitive = [inputs])
     swig_include_dirs = depset(_get_repository_roots(ctx, inputs))
-    swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
+    swig_include_dirs = depset(sorted([f.dirname for f in ctx.files._swiglib]), transitive = [swig_include_dirs])
     args = [
         "-c++",
         "-python",
@@ -1465,7 +1561,7 @@ _py_wrap_cc = rule(
         ),
         "deps": attr.label_list(
             allow_files = True,
-            providers = ["cc"],
+            providers = [CcInfo],
         ),
         "toolchain_deps": attr.label_list(
             allow_files = True,
@@ -1501,7 +1597,7 @@ def _get_repository_roots(ctx, files):
     compiler, because includes have quadratic complexity.
     """
     result = {}
-    for f in files:
+    for f in files.to_list():
         root = f.root.path
         if root:
             if root not in result:
@@ -1520,16 +1616,14 @@ def _get_repository_roots(ctx, files):
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
-    outputs = depset()
-    for dep in ctx.attr.deps:
-        outputs += dep.cc.transitive_headers
+    outputs = _get_transitive_headers([], ctx.attr.deps)
     return struct(files = outputs)
 
 _transitive_hdrs = rule(
     attrs = {
         "deps": attr.label_list(
             allow_files = True,
-            providers = ["cc"],
+            providers = [CcInfo],
         ),
     },
     implementation = _transitive_hdrs_impl,
@@ -1828,6 +1922,7 @@ def tf_py_wrap_cc(
         linkopts = extra_linkopts,
         linkstatic = 1,
         deps = deps + extra_deps,
+        data = tf_binary_additional_srcs() + tf_binary_additional_srcs(fullversion = True),
         **kwargs
     )
     native.genrule(

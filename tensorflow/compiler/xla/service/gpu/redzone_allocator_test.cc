@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -88,7 +89,10 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
         reinterpret_cast<char*>(redzone.opaque()) + offset, 1,
         /*is_sub_buffer=*/true);
     char old_redzone_value = 0;
-    TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+    {
+      XLA_SCOPED_LOGGING_TIMER("Checking redzones");
+      TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+    }
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
     EXPECT_FALSE(allocator.CheckRedzones(&stream).ok());

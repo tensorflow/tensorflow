@@ -186,8 +186,8 @@ void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
-  return TrtDimsEquals(lhs.shape_, rhs.shape_) && lhs.type_ == rhs.type_ &&
-         lhs.GetValues() == rhs.GetValues();
+  return TrtDimsEquals(lhs.shape_, rhs.shape_) &&
+         lhs.TrtDType() == rhs.TrtDType() && lhs.GetValues() == rhs.GetValues();
 }
 
 template <typename T>
@@ -293,7 +293,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   }
   // Test constructor with DataType argument.
   {
-    TRT_ShapedWeights weights(DT_FLOAT);
+    TRT_ShapedWeights weights(nvinfer1::DataType::kFLOAT);
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -310,7 +310,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   {
     TrtWeightStore store;
     TRT_ShapedWeights weights =
-        store.GetTempWeights(DT_FLOAT, GetTestDims({2, 5}));
+        store.GetTempWeights(nvinfer1::DataType::kFLOAT, GetTestDims({2, 5}));
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -671,7 +671,7 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
       params->outputs->emplace_back(output_tensor);
       output_tensors.push_back(output_tensor);
     }
-    TRT_ShapedWeights output_weights(DT_FLOAT);
+    TRT_ShapedWeights output_weights(nvinfer1::DataType::kFLOAT);
     params->outputs->emplace_back(output_weights);
     return Status::OK();
   };
@@ -778,8 +778,8 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
 }
 
 TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
-  TRT_ShapedWeights weights =
-      weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({2, 3, 5}));
+  TRT_ShapedWeights weights = weight_store_->GetTempWeights(
+      nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
   nvinfer1::ITensor* output_tensor = nullptr;
   for (bool validation_only : {false, true}) {
     TF_EXPECT_OK(converter_->PrepareTensorForShape(
@@ -832,8 +832,8 @@ TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
 
 template <typename T>
 void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
-  TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(DataTypeToEnum<T>::v(), GetTestDims({2, 3}));
+  TRT_ShapedWeights weights = weight_store->GetTempWeights(
+      TfDataTypeToTrt(DataTypeToEnum<T>::v()), GetTestDims({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
   memcpy(weights.GetValues(), values.data(), weights.size_bytes());
 
@@ -1002,14 +1002,14 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {
-  for (auto dtype : {DT_FLOAT, DT_INT32}) {
+  for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
         weight_store_->GetTempWeights(dtype, GetTestDims({2, 3, 5}));
     nvinfer1::ITensor* tensor =
         converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
     ASSERT_NE(nullptr, tensor);
-    EXPECT_EQ(TfDataTypeToTrt(dtype), tensor->getType())
-        << "Expected " << DebugString(TfDataTypeToTrt(dtype)) << " vs. actual "
+    EXPECT_EQ(dtype, tensor->getType())
+        << "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
     ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
   }
@@ -1246,7 +1246,7 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values) {
-    const DataType dtype = DataTypeToEnum<T>::v();
+    const nvinfer1::DataType dtype = TfDataTypeToTrt(DataTypeToEnum<T>::v());
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
     const int64_t num_elements = TrtWeightDimsNumElements(trt_dims);
     QCHECK_EQ(num_elements, values.size())
@@ -1452,6 +1452,9 @@ TEST_F(OpConverterTest, ConvertConst) {
 
   TestConvertConst<DT_FLOAT, float, float>(this);
   TestConvertConst<DT_INT8, int8, int32>(this);
+  TestConvertConst<DT_UINT8, uint8, int32>(this);
+  TestConvertConst<DT_INT16, int16, int32>(this);
+  TestConvertConst<DT_UINT16, uint16, int32>(this);
   TestConvertConst<DT_INT32, int32, int32>(this);
 }
 

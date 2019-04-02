@@ -1088,9 +1088,13 @@ Status EagerKernelExecute(EagerContext* ctx,
     TF_RETURN_IF_ERROR(op_inputs[i]->TensorValue(&input_vector[i]));
   }
 
-  //  TODO(apassos) figure out how to record stats for ops which are a part of
-  //  functions.
+  // TODO(apassos) figure out how to record stats for ops which are a part of
+  // functions.
   // TODO(agarwal): change Run to take vector of handles ?
+  // TODO(b/111859745): When we support recovering from kernel/device errors, we
+  // would need to call XlaDevice::EnsureDeviceContextOk() before using an XLA
+  // device. We don't call it now because it is an unneeded overhead (it
+  // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
     TF_RETURN_IF_ERROR(kernel->Run(input_vector, &outputs, maybe_stats,

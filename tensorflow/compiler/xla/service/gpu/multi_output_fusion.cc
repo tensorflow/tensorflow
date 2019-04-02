@@ -88,7 +88,8 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   CHECK(instr1->opcode() == HloOpcode::kFusion);
   if ((instr2->opcode() == HloOpcode::kFusion &&
        instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (IsReductionToVector(*instr2) && instr1->IsLoopFusion())) {
+      (IsReductionFromOrToContiguousDimensions(*instr2) &&
+       instr1->IsLoopFusion())) {
     return false;
   }
 

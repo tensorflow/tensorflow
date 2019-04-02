@@ -68,7 +68,7 @@ cuda_py_test(
         ":xla",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

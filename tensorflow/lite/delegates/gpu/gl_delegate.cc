@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/registry.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/best_effort_calculator.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
 #include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
@@ -430,6 +431,8 @@ TfLiteStatus DelegateCopyToBufferHandle(TfLiteContext* context,
 
 TfLiteDelegate* TfLiteGpuDelegateCreate(
     const TfLiteGpuDelegateOptions* options) {
+  TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                       "Created TensorFlow Lite delegate for GPU.");
   auto* gpu_delegate = new tflite::gpu::gl::Delegate(options);
   return gpu_delegate ? gpu_delegate->tflite_delegate() : nullptr;
 }

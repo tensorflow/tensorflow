@@ -201,7 +201,8 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
       c0 = f32[] parameter(0)
       p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
       // Reduction lowered by GpuElementalIrEmitter.
-      ROOT reduce = f32[8,512,5,1,1]{4,3,2,1,0} reduce(p1, c0), dimensions={3}, to_apply=scalar_add
+      ROOT reduce = f32[512,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={3,0},
+        to_apply=scalar_add
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
@@ -610,10 +611,13 @@ TEST_F(GpuFusibleTest,
 
     fused_reduce {
       p0.2 = f32[2,2,2]{2,1,0} parameter(0)
-      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2, f32[2,2,2]{2,1,0} p0.2)
+      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2,
+        f32[2,2,2]{2,1,0} p0.2)
+      broadcast = f32[2,2,2,2]{3,2,1,0} broadcast(mul), dimensions={3,2,1}
       c1 = f32[] constant(0)
       // Note that reduce is not a reduction-to-vector.
-      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} mul, f32[] c1), dimensions={1}, to_apply=scalar_add
+      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2,2]{3,2,1,0} broadcast,
+        f32[] c1), dimensions={1,3}, to_apply=scalar_add
     }
 
     ENTRY reduce {
