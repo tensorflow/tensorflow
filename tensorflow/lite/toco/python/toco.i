@@ -32,4 +32,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                         PyObject* input_contents_txt_raw,
                         bool extended_return = false);
 
+// Returns a list of names of all ops potentially supported by tflite.
+PyObject* TocoGetPotentiallySupportedOps();
+
 } // namespace toco

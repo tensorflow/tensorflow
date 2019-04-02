@@ -29,15 +29,20 @@ namespace xla {
 
 class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
  public:
-  explicit BFloat16NormalizationVisitor(HloComputation* computation,
-                                        const BFloat16Support* bfloat16_support)
-      : computation_(computation), bfloat16_support_(bfloat16_support) {}
+  explicit BFloat16NormalizationVisitor(
+      HloComputation* computation, const BFloat16Support* bfloat16_support,
+      BFloat16Normalization* bfloat16_normalization)
+      : computation_(computation),
+        bfloat16_support_(bfloat16_support),
+        bfloat16_normalization_(bfloat16_normalization) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
 
   static bool Run(HloComputation* computation,
-                  const BFloat16Support* bfloat16_support) {
-    BFloat16NormalizationVisitor visitor(computation, bfloat16_support);
+                  const BFloat16Support* bfloat16_support,
+                  BFloat16Normalization* bfloat16_normalization) {
+    BFloat16NormalizationVisitor visitor(computation, bfloat16_support,
+                                         bfloat16_normalization);
     TF_CHECK_OK(computation->Accept(&visitor));
     return visitor.changed_;
   }
@@ -73,6 +78,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
+  BFloat16Normalization* bfloat16_normalization_;
   bool changed_ = false;
 };
 
@@ -95,6 +101,7 @@ Status BFloat16NormalizationVisitor::InsertConvertAfterOutput(
     computation->set_root_instruction(convert);
   }
   convert->mutable_shape()->set_element_type(to);
+  bfloat16_normalization_->UpdateLayout(convert->mutable_shape());
   changed_ = true;
   return Status::OK();
 }
@@ -103,6 +110,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     HloInstruction* hlo, PrimitiveType to, HloComputation* computation) {
   auto original_type = hlo->shape().element_type();
   hlo->mutable_shape()->set_element_type(to);
+  bfloat16_normalization_->UpdateLayout(hlo->mutable_shape());
   return InsertConvertAfterOutput(hlo, original_type, computation);
 }
 
@@ -110,8 +118,10 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
     HloInstruction* hlo, int64 operand_idx, PrimitiveType to,
     HloComputation* computation) {
   auto operand = hlo->mutable_operand(operand_idx);
-  auto convert = computation->AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::ChangeElementType(operand->shape(), to), operand));
+  auto shape = ShapeUtil::ChangeElementType(operand->shape(), to);
+  bfloat16_normalization_->UpdateLayout(&shape);
+  auto convert = computation->AddInstruction(
+      HloInstruction::CreateConvert(shape, operand));
   TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(operand_idx, convert));
   changed_ = true;
   return Status::OK();
@@ -243,11 +253,13 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
       continue;
     }
     subshape->set_element_type(F32);
+    bfloat16_normalization_->UpdateLayout(subshape);
     auto gte = computation_->AddInstruction(
         HloInstruction::CreateGetTupleElement(*subshape, hlo, i));
+    auto shape = ShapeUtil::ChangeElementType(*subshape, BF16);
+    bfloat16_normalization_->UpdateLayout(&shape);
     output_elements[i] =
-        computation_->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::ChangeElementType(*subshape, BF16), gte));
+        computation_->AddInstruction(HloInstruction::CreateConvert(shape, gte));
   }
   auto tuple = computation_->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
@@ -401,7 +413,7 @@ StatusOr<bool> BFloat16Normalization::Run(HloModule* module) {
       2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeComputationPostOrder()) {
-    if (BFloat16NormalizationVisitor::Run(comp, bfloat16_support_)) {
+    if (BFloat16NormalizationVisitor::Run(comp, bfloat16_support_, this)) {
       changed = true;
     }
   }

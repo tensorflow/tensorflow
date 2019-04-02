@@ -68,6 +68,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "eigen_support_test",
+    size = "small",
+    srcs = ["eigen_support_test.cc"],
+    deps = [
+        ":eigen_support",
+        "//tensorflow/lite/kernels/internal:optimized",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "gemm_support",
     srcs = [
@@ -188,6 +199,8 @@ cc_library(
         "logical.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "matrix_diag.cc",
+        "matrix_set_diag.cc",
         "maximum_minimum.cc",
         "mfcc.cc",
         "mirror_pad.cc",
@@ -198,6 +211,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "pow.cc",
+        "quantize.cc",
         "range.cc",
         "rank.cc",
         "reduce.cc",
@@ -239,6 +253,7 @@ cc_library(
     deps = [
         ":activation_functor",
         ":eigen_support",
+        ":gemm_support",
         ":kernel_util",
         ":lstm_eval",
         ":op_macros",
@@ -246,7 +261,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/kernels:gemm_support",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
@@ -1369,9 +1383,10 @@ cc_test(
     size = "small",
     srcs = ["subgraph_test_util_test.cc"],
     deps = [
+        ":kernel_util",
         ":subgraph_test_util",
+        ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1380,6 +1395,43 @@ cc_test(
     name = "reverse_sequence_test",
     size = "small",
     srcs = ["reverse_sequence_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "matrix_diag_test",
+    size = "small",
+    srcs = ["matrix_diag_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_test",
+    size = "small",
+    srcs = ["quantize_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "matrix_set_diag_test",
+    size = "small",
+    srcs = ["matrix_set_diag_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:framework",

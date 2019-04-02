@@ -44,7 +44,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",

@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 
-class ANeuralNetworksModel;
-class ANeuralNetworksMemory;
-class ANeuralNetworksCompilation;
+struct ANeuralNetworksModel;
+struct ANeuralNetworksMemory;
+struct ANeuralNetworksCompilation;
 
 namespace tflite {
 

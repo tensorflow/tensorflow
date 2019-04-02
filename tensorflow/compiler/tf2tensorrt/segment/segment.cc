@@ -443,6 +443,10 @@ Status SegmentGraph(const Graph* tf_graph,
         unsupported_ops.emplace(node->tf_node()->type_string());
         num_unsupported_ops++;
         node = nullptr;
+      } else {
+        VLOG(2) << "Accepted as a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name();
       }
     }
     node_segments.emplace_back(node);

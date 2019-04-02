@@ -25,7 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
-#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
+#include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 
 namespace tensorflow {
 
@@ -38,8 +38,8 @@ void ConcatGPUSlice(
 
 template <typename T, typename IntType>
 void ConcatGPUImpl(const Eigen::GpuDevice& d,
-                   const CudaDeviceArrayStruct<const T*>& input_ptrs,
-                   const CudaDeviceArrayStruct<IntType>& ptr_offsets,
+                   const GpuDeviceArrayStruct<const T*>& input_ptrs,
+                   const GpuDeviceArrayStruct<IntType>& ptr_offsets,
                    bool same_size, int slice_size,
                    typename TTypes<T, 2>::Matrix* output);
 
@@ -57,13 +57,13 @@ void ConcatGPUImpl(const Eigen::GpuDevice& d,
       typename TTypes<T, 2>::Matrix* output);                                 \
   extern template void ConcatGPUImpl<T, int32>(                               \
       const Eigen::GpuDevice& d,                                              \
-      const CudaDeviceArrayStruct<const T*>& input_ptrs,                      \
-      const CudaDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size,       \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs,                       \
+      const GpuDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size,        \
       int split_size, typename TTypes<T, 2>::Matrix* output);                 \
   extern template void ConcatGPUImpl<T, int64>(                               \
       const Eigen::GpuDevice& d,                                              \
-      const CudaDeviceArrayStruct<const T*>& input_ptrs,                      \
-      const CudaDeviceArrayStruct<int64>& ptr_offsets, bool fixed_size,       \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs,                       \
+      const GpuDeviceArrayStruct<int64>& ptr_offsets, bool fixed_size,        \
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);

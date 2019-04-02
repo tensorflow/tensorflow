@@ -168,8 +168,9 @@ class InitializableLookupTableBase(LookupInterface):
     if isinstance(initializer, trackable_base.Trackable):
       self._initializer = self._track_trackable(
           initializer, "_initializer")
-    self._resource_handle = self._create_resource()
-    self._init_op = self._initialize()
+    with ops.init_scope():
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
 
   def _initialize(self):
     return self._initializer.initialize(self)
@@ -379,9 +380,10 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
-    self._values = ops.convert_to_tensor(
-        values, dtype=value_dtype, name="values")
+    with ops.init_scope():
+      self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+      self._values = ops.convert_to_tensor(
+          values, dtype=value_dtype, name="values")
     self._name = name if name is not None else "key_value_init"
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious
@@ -419,7 +421,22 @@ class KeyValueTensorInitializer(TableInitializerBase):
     return init_op
 
 
+@tf_export("lookup.TextFileIndex")
 class TextFileIndex(object):
+  """The key and value content to get from each line.
+
+  This class defines the key and value used for tf.lookup.TextFileInitializer.
+
+  The key and value content to get from each line is specified either
+  by the following, or a value `>=0`.
+  * `TextFileIndex.LINE_NUMBER` means use the line number starting from zero,
+    expects data type int64.
+  * `TextFileIndex.WHOLE_LINE` means use the whole line content, expects data
+    type string.
+
+  A value `>=0` means use the index (starting at zero) of the split line based
+      on `delimiter`.
+  """
   WHOLE_LINE = -2
   LINE_NUMBER = -1
 
@@ -584,8 +601,9 @@ class TextFileInitializer(TableInitializerBase):
           table.resource_handle, filename, self._key_index, self._value_index,
           -1 if self._vocab_size is None else self._vocab_size, self._delimiter)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
-    # If the filename tensor is anything other than a string constant (e.g., if
-    # it is a placeholder) then it does not make sense to track it as an asset.
+    # If the filename tensor is anything other than a string constant (e.g.,
+    # if it is a placeholder) then it does not make sense to track it as an
+    # asset.
     if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op

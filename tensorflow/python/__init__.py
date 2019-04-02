@@ -92,6 +92,7 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
@@ -142,6 +143,10 @@ from tensorflow.python.framework.ops import enable_eager_execution
 # the namespace management system (API decorators).
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+
+# XLA JIT compiler APIs.
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

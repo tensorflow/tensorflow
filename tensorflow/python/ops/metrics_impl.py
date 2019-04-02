@@ -635,7 +635,8 @@ def auc(labels,
         updates_collections=None,
         curve='ROC',
         name=None,
-        summation_method='trapezoidal'):
+        summation_method='trapezoidal',
+        thresholds=None):
   """Computes the approximate AUC via a Riemann sum.
 
   The `auc` function creates four local variables, `true_positives`,
@@ -657,7 +658,9 @@ def auc(labels,
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
   approximation may be poor if this is not the case. Setting `summation_method`
   to 'minoring' or 'majoring' can help quantify the error in the approximation
-  by providing lower or upper bound estimate of the AUC.
+  by providing lower or upper bound estimate of the AUC. The `thresholds`
+  parameter can be used to manually specify thresholds which split the
+  predictions more evenly.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `auc`.
@@ -691,6 +694,12 @@ def auc(labels,
       Note that 'careful_interpolation' is strictly preferred to 'trapezoidal'
       (to be deprecated soon) as it applies the same method for ROC, and a
       better one (see Davis & Goadrich 2006 for details) for the PR curve.
+    thresholds: An optional list of floating point values to use as the
+      thresholds for discretizing the curve. If set, the `num_thresholds`
+      parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
+      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will be
+      automatically included with these to correctly handle predictions equal to
+       exactly 0 or 1.
 
   Returns:
     auc: A scalar `Tensor` representing the current area-under-curve.
@@ -713,10 +722,20 @@ def auc(labels,
                                      (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
-    kepsilon = 1e-7  # to account for floating point imprecisions
-    thresholds = [
-        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
-    ]
+
+    kepsilon = 1e-7  # To account for floating point imprecisions.
+    if thresholds is not None:
+      # If specified, use the supplied thresholds.
+      thresholds = sorted(thresholds)
+      num_thresholds = len(thresholds) + 2
+    else:
+      # Otherwise, linearly interpolate (num_thresholds - 2) thresholds in
+      # (0, 1).
+      thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                    for i in range(num_thresholds - 2)]
+
+    # Add an endpoint "threshold" below zero and above one for either threshold
+    # method.
     thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
 
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -3598,7 +3617,7 @@ def specificity_at_sensitivity(labels,
 
   Returns:
     specificity: A scalar `Tensor` representing the specificity at the given
-      `specificity` value.
+      `sensitivity` value.
     update_op: An operation that increments the `true_positives`,
       `true_negatives`, `false_positives` and `false_negatives` variables
       appropriately and whose value matches `specificity`.

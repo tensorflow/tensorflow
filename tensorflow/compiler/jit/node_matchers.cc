@@ -77,6 +77,8 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
   }
 
   switch (tensor.dtype()) {
+    case DT_HALF:
+      return CompareTensor<Eigen::half>(tensor, expected_tensor, listener);
     case DT_FLOAT:
       return CompareTensor<float>(tensor, expected_tensor, listener);
     case DT_DOUBLE:

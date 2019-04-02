@@ -125,9 +125,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
     int64 other_operand_index = 1 - operand_index;
     HloInstruction* op1 = nullptr;
     HloInstruction* op2 = nullptr;
-    if (consumer->operand_count() == 1 &&
-        consumer->opcode() == HloOpcode::kFusion &&
-        consumer->fusion_kind() == HloInstruction::FusionKind::kLoop &&
+    if (consumer->operand_count() == 1 && consumer->IsLoopFusion() &&
         Match(consumer->fused_expression_root(),
               match::Op()
                   .WithOpcode(HloOpcode::kMultiply)
@@ -166,9 +164,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 
   // Only allow fusing transpose or broadcast into an output fusion that is
   // implemented as a Gemm call.
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      ImplementedAsGemm(*consumer)) {
+  if (consumer->IsOutputFusion() && ImplementedAsGemm(*consumer)) {
     auto producer_operand_index = consumer->operand_index(producer);
     auto fused_parameter = consumer->fused_parameter(producer_operand_index);
     const std::vector<HloInstruction*>& fused_parameter_users =
@@ -202,7 +198,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 
   // Do not fuse to-vector reduction into other consumers. They should be
   // unfused or the root of a kInput fusion.
-  if (IsReductionToVector(*producer)) {
+  if (IsReductionFromOrToContiguousDimensions(*producer)) {
     return false;
   }
 
@@ -260,6 +256,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
   auto producer = consumer->operand(operand_index);
+
+  // Don't fuse variadic reduce.
+  if (consumer->opcode() == HloOpcode::kReduce && consumer->shape().IsTuple()) {
+    return false;
+  }
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(consumer, producer)) {
     return false;
@@ -278,7 +279,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer) ||
+  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
       consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }

@@ -53,6 +53,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_fast_math(true);
   opts.set_xla_gpu_enable_fast_min_max(true);
 
+  opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   return opts;
 }
@@ -128,6 +129,20 @@ static void AllocateFlags() {
           flag_values->xla_cpu_enable_fast_math(),
           "Enable unsafe fast-math optimizations in the CPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
+      tensorflow::Flag(
+          "xla_cpu_fast_math_honor_nans",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_nans),
+          flag_values->xla_cpu_fast_math_honor_nans(),
+          "When xla_cpu_enable_fast_math is true then this controls whether we "
+          "allow operations to produce NaNs.  Ignored when "
+          "xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
+          "xla_cpu_fast_math_honor_infs",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_infs),
+          flag_values->xla_cpu_fast_math_honor_infs(),
+          "When xla_cpu_enable_fast_math is true then this controls whether we "
+          "allow operations to produce infinites.  Ignored when "
+          "xla_cpu_enable_fast_math is false."),
       tensorflow::Flag(
           "xla_gpu_enable_fast_min_max",
           bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
@@ -367,6 +382,11 @@ static void AllocateFlags() {
           flag_values->xla_hlo_graph_sharding_color(),
           "Assign colors based on sharding assignments when generating the "
           "HLO graphs."),
+      tensorflow::Flag(
+          "xla_allow_excess_precision",
+          bool_setter_for(&DebugOptions::set_xla_allow_excess_precision),
+          flag_values->xla_allow_excess_precision(),
+          "Allow xla to increase the output precision of an instruction."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

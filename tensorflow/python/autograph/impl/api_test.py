@@ -31,6 +31,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
@@ -45,8 +46,10 @@ tf = utils.fake_tf()
 testing_global_numeric = 2
 
 
-class TestResource(str):
-  pass
+class TestResource(object):
+
+  def __init__(self):
+    self.x = 3
 
 
 class ApiTest(test.TestCase):
@@ -469,7 +472,66 @@ class ApiTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(True, self.evaluate(x))
 
-  @test_util.run_deprecated_v1
+  def test_converted_call_defun_object_method(self):
+
+    opts = converter.ConversionOptions()
+
+    # pylint:disable=method-hidden
+    class TestClass(object):
+
+      def method(self):
+        return 1
+
+      def prepare(self):
+        self.method = function.defun(self.method)
+    # pylint:enable=method-hidden
+
+    tc = TestClass()
+    tc.prepare()
+
+    x = api.converted_call(tc.method, None, opts, (), {})
+
+    self.assertAllEqual(1, self.evaluate(x))
+
+  def assertNoMemoryLeaks(self, f):
+    object_ids_before = {id(o) for o in gc.get_objects()}
+    f()
+    gc.collect()
+    objects_after = tuple(
+        o for o in gc.get_objects() if id(o) not in object_ids_before)
+    self.assertEmpty(
+        tuple(o for o in objects_after if isinstance(o, TestResource)))
+
+  def test_converted_call_no_leaks_via_closure(self):
+
+    def test_fn():
+      res = TestResource()
+
+      def f(y):
+        return res.x + y
+
+      opts = converter.ConversionOptions()
+      api.converted_call(f, None, opts, (1,), {})
+
+    self.assertNoMemoryLeaks(test_fn)
+
+  def test_converted_call_no_leaks_via_inner_function_closure(self):
+
+    def test_fn():
+      res = TestResource()
+
+      def f(y):
+
+        def inner_f():
+          return res.x + y
+
+        return inner_f
+
+      opts = converter.ConversionOptions()
+      api.converted_call(f, None, opts, (1,), {})()
+
+    self.assertNoMemoryLeaks(test_fn)
+
   def test_to_graph_basic(self):
 
     def test_fn(x, s):
@@ -479,9 +541,9 @@ class ApiTest(test.TestCase):
 
     compiled_fn = api.to_graph(test_fn)
 
-    with self.cached_session() as sess:
-      x = compiled_fn(constant_op.constant([4, 8]), 4)
-      self.assertListEqual([1, 2], self.evaluate(x).tolist())
+    with tf.Graph().as_default():
+      x = compiled_fn(constant_op.constant((4, 8)), 4)
+      self.assertAllEqual(self.evaluate(x), (1, 2))
 
   @test_util.run_deprecated_v1
   def test_to_graph_with_defaults(self):
@@ -538,6 +600,68 @@ class ApiTest(test.TestCase):
 
     self.assertEqual(compiled_fn(), 3)
 
+  def test_to_graph_caching(self):
+
+    def test_fn(x):
+      if x > 0:
+        return x
+      else:
+        return -x
+
+    converted_functions = tuple(api.to_graph(test_fn) for _ in (-1, 0, 1))
+
+    # All outputs are from the same module. We can't use __module__ because
+    # that's reset when we instantiate the function (see conversion.py).
+    # TODO(mdan): Can and should we overwrite __module__ instead?
+    module_names = frozenset(f.ag_module for f in converted_functions)
+    self.assertEqual(len(module_names), 1)
+    self.assertNotIn('__main__', module_names)
+
+    self.assertEqual(len(frozenset(id(f) for f in converted_functions)), 3)
+
+  def test_to_graph_caching_different_options(self):
+
+    def called_fn():
+      pass
+
+    def test_fn():
+      return called_fn()
+
+    converted_recursive = api.to_graph(test_fn, recursive=True)
+    converted_non_recursive = api.to_graph(test_fn, recursive=False)
+
+    self.assertNotEqual(converted_recursive.ag_module,
+                        converted_non_recursive.ag_module)
+    self.assertIn('internal_convert_user_code=True',
+                  tf_inspect.getsource(converted_recursive))
+    self.assertNotIn('internal_convert_user_code=False',
+                     tf_inspect.getsource(converted_recursive))
+    self.assertIn('internal_convert_user_code=False',
+                  tf_inspect.getsource(converted_non_recursive))
+    self.assertNotIn('internal_convert_user_code=True',
+                     tf_inspect.getsource(converted_non_recursive))
+
+  def test_to_graph_preserves_bindings(self):
+    y = 3
+
+    def test_fn():
+      return y
+
+    converted = api.to_graph(test_fn)
+
+    self.assertEqual(converted(), 3)
+
+    y = 7
+
+    self.assertEqual(converted(), 7)
+
+  def test_to_graph_source_map(self):
+
+    def test_fn(y):
+      return y**2
+
+    self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
+
   def test_to_code_basic(self):
 
     def test_fn(x, s):
@@ -545,50 +669,8 @@ class ApiTest(test.TestCase):
         x /= 2
       return x
 
-    compiled_code = api.to_code(test_fn)
-
-    # Just check that it is parseable Python code.
-    self.assertIsNotNone(parser.parse_str(compiled_code))
-
-  def test_source_map_attribute_present(self):
-
-    def test_fn(y):
-      return y**2
-
-    self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
-
-  def assertNoMemoryLeaks(self, target_f):
-    refs_before = set(id(obj) for obj in gc.get_objects())
-    target_f()
-    gc.collect()
-    objs_after = [obj for obj in gc.get_objects() if id(obj) not in refs_before]
-    leaked = [obj for obj in objs_after if isinstance(obj, TestResource)]
-    self.assertFalse(leaked,
-                     'Resources {} were leaked by AutoGraph.'.format(leaked))
-
-  def test_no_module_memory_leak(self):
-    def f():
-      resource = TestResource('some-resource')
-      @api.convert()
-      def target(x):
-        return x + resource, 42
-      self.assertEqual(target('foo'), ('foosome-resource', 42))
-
-    self.assertNoMemoryLeaks(f)
-
-  def test_no_module_memory_leak_deferred_call(self):
-    def f():
-      resource = TestResource('some-resource')
-      @api.convert()
-      def target(x):
-        def inner_fn():
-          return x + resource
-        return inner_fn, 42
-      self.assertEqual(target('foo')[0](), 'foosome-resource')
-
-    f()
-    # TODO(brianklee): Reenable when we've revised module loading approach.
-    # self.assertNoMemoryLeaks(f)
+    # Just check that the output is parseable Python code.
+    self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
 
 
 if __name__ == '__main__':

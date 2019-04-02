@@ -29,6 +29,7 @@ limitations under the License.
 #include "cuda/include/cuComplex.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/util/cuda_device_functions.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
@@ -54,54 +55,10 @@ struct Sum {
   }
 };
 
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded addition op for std::complex
-template <>
-struct Sum<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Sum<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
-  }
-};
-
 template <typename T>
 struct Prod {
   __host__ __device__ T operator()(const T& a, const T& b) const {
     return a * b;
-  }
-};
-
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded multiply op for std::complex
-template <>
-struct Prod<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Prod<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
   }
 };
 

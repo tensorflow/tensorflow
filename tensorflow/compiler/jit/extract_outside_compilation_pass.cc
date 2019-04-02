@@ -493,14 +493,9 @@ Status ConstructHostGraph(
     device_ordinal_attr.set_i(0);
     protobuf::Map<string, AttrValue> attrs;
     attrs["device_ordinal"] = device_ordinal_attr;
-    FunctionBody* host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *fld->Find(host_func), AttrSlice(&attrs), fld,
-        [&](const string& op, const OpDef** sig) {
-          return fld->LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+        *fld->Find(host_func), AttrSlice(&attrs), fld, &host_fbody));
 
     // We use ReverseDFS() to copy nodes. Make sure all nodes are reverse
     // reachable from sink node so all nodes will be copied.
@@ -613,14 +608,9 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_attr;
-  FunctionBody* fbody = nullptr;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(host_graph_func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(host_graph_func_name),
+                                             AttrSlice(&attrs), fld, &fbody));
   Graph* host_graph = fbody->graph;
 
   // We use ReverseDFS() to copy nodes. Make sure all nodes are reverse
@@ -690,14 +680,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_attr;
-  FunctionBody* fbody = nullptr;
+  std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(shape_inference_graph_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+      *fld->Find(shape_inference_graph_name), AttrSlice(&attrs), fld, &fbody));
   Graph* g = fbody->graph;
 
   // Find SendFromHost node.
@@ -830,14 +815,9 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
   device_ordinal_attr.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_attr;
-  FunctionBody* fbody = nullptr;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(func_name),
+                                             AttrSlice(&attrs), fld, &fbody));
   Graph* g = fbody->graph;
 
   // Find or create the key placeholder node.
@@ -961,14 +941,10 @@ Status AddSendLoopPredToLoopCond(FunctionLibraryDefinition* fld,
                                  const string& while_node_name,
                                  const string& host_transfer_key) {
   // Instantiate the loop cond function.
-  FunctionBody* fbody = nullptr;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(loop_cond_func.name()), AttrSlice(&loop_cond_func.attr()), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+  std::unique_ptr<FunctionBody> fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(loop_cond_func.name()),
+                                             AttrSlice(&loop_cond_func.attr()),
+                                             fld, &fbody));
   Graph* g = fbody->graph;
 
   // Find the _Retval node and the loop cond node.
@@ -1032,14 +1008,9 @@ Status RewriteHostWhileLoopCond(
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_temp_value;
-  FunctionBody* cond_fbody = nullptr;
+  std::unique_ptr<FunctionBody> cond_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(cond_host_func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &cond_fbody));
-  std::unique_ptr<FunctionBody> cond_fbody_deleter(cond_fbody);
+      *fld->Find(cond_host_func_name), AttrSlice(&attrs), fld, &cond_fbody));
   Graph* cond_graph = cond_fbody->graph;
   Node* key_arg = nullptr;
   for (Node* n : cond_graph->nodes()) {
@@ -1112,14 +1083,9 @@ Status RewriteHostWhileLoopBody(
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> attrs;
   attrs["device_ordinal"] = device_ordinal_temp_value;
-  FunctionBody* body_fbody = nullptr;
+  std::unique_ptr<FunctionBody> body_fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fld->Find(body_host_func_name), AttrSlice(&attrs), fld,
-      [&](const string& op, const OpDef** sig) {
-        return fld->LookUpOpDef(op, sig);
-      },
-      &body_fbody));
-  std::unique_ptr<FunctionBody> body_fbody_deleter(body_fbody);
+      *fld->Find(body_host_func_name), AttrSlice(&attrs), fld, &body_fbody));
   Graph* body_graph = body_fbody->graph;
   Node* key_arg = nullptr;
   for (Node* n : body_graph->nodes()) {

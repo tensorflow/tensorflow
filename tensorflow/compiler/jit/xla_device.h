@@ -212,14 +212,12 @@ class XlaDevice : public LocalDevice {
   std::shared_ptr<se::Stream> stream_ GUARDED_BY(mu_);
   // If false, only stream_ is valid and all computation and transfers use
   // stream_. If true, computation is performed by stream_ and transfers are
-  // performed by host_to_device/device_to_host_stream.
+  // performed by host_to_device/device_to_device stream or borrowing a stream
+  // for each device to host transfer.
   const bool use_multiple_streams_;
   // If use_multiple_streams_, host to device transfers are performed using this
   // stream.
   std::shared_ptr<se::Stream> host_to_device_stream_ GUARDED_BY(mu_);
-  // If use_multiple_streams_, device to host transfers are performed using this
-  // stream.
-  std::shared_ptr<se::Stream> device_to_host_stream_ GUARDED_BY(mu_);
   // If use_multiple_streams_, transfers between different devices are performed
   // using these streams.
   std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -39,7 +38,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.util.tf_export import tf_export
 
 
 class BatchNormalizationBase(Layer):
@@ -131,7 +129,7 @@ class BatchNormalizationBase(Layer):
       Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
-  # By default, the base class uses V2 behavior. The BatchNormalizationV1
+  # By default, the base class uses V2 behavior. The BatchNormalization V1
   # subclass sets this to False to use the V1 behavior.
   _USE_V2_BEHAVIOR = True
 
@@ -594,7 +592,7 @@ class BatchNormalizationBase(Layer):
       return outputs
 
     # Compute the axes along which to reduce the mean / variance
-    input_shape = inputs.get_shape()
+    input_shape = inputs.shape
     ndims = len(input_shape)
     reduction_axes = [i for i in range(ndims) if i not in self.axis]
     if self.virtual_batch_size is not None:
@@ -605,8 +603,7 @@ class BatchNormalizationBase(Layer):
     broadcast_shape = [1] * ndims
     broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
     def _broadcast(v):
-      if (v is not None and
-          len(v.get_shape()) != ndims and
+      if (v is not None and len(v.shape) != ndims and
           reduction_axes != list(range(ndims - 1))):
         return array_ops.reshape(v, broadcast_shape)
       return v
@@ -785,7 +782,7 @@ def _replace_in_base_docstring(old, new):
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
-class BatchNormalizationV1(BatchNormalizationBase):
+class BatchNormalization(BatchNormalizationBase):
 
   __doc__ = _replace_in_base_docstring(
       '''
@@ -799,33 +796,6 @@ class BatchNormalizationV1(BatchNormalizationBase):
       If `False`, use the system recommended implementation.''')
 
   _USE_V2_BEHAVIOR = False
-
-
-@keras_export('keras.layers.BatchNormalization', v1=[])  # pylint: disable=missing-docstring
-class BatchNormalizationV2(BatchNormalizationBase):
-
-  pass
-
-
-BatchNormalization = None  # pylint: disable=invalid-name
-
-
-@tf_export(v1=['enable_v2_batch_normalization'])
-def enable_v2_batch_normalization():
-  global BatchNormalization  # pylint: disable=invalid-name
-  BatchNormalization = BatchNormalizationV2
-
-
-@tf_export(v1=['disable_v2_batch_normalization'])
-def disable_v2_batch_normalization():
-  global BatchNormalization  # pylint: disable=invalid-name
-  BatchNormalization = BatchNormalizationV1
-
-
-if tf2.enabled():
-  enable_v2_batch_normalization()
-else:
-  disable_v2_batch_normalization()
 
 
 @keras_export('keras.layers.experimental.LayerNormalization')
@@ -997,7 +967,7 @@ class LayerNormalization(Layer):
 
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
-    input_shape = inputs.get_shape()
+    input_shape = inputs.shape
     ndims = len(input_shape)
 
     # Calculate the moments on the last axis (layer activations).
@@ -1009,8 +979,7 @@ class LayerNormalization(Layer):
     for dim in self.params_axis:
       broadcast_shape[dim] = input_shape.dims[dim].value
     def _broadcast(v):
-      if (v is not None and
-          len(v.get_shape()) != ndims and
+      if (v is not None and len(v.shape) != ndims and
           self.params_axis != [ndims - 1]):
         return array_ops.reshape(v, broadcast_shape)
       return v

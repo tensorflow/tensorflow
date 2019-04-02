@@ -313,7 +313,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     device_dataset = device_dataset.apply(
         prefetching_ops.map_on_gpu(gpu_map_func))
     options = dataset_ops.Options()
-    options.experimental_autotune = False
+    options.experimental_optimization.autotune = False
     device_dataset = device_dataset.with_options(options)
 
     with ops.device("/gpu:0"):

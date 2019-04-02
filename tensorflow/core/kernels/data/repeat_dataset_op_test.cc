@@ -41,10 +41,10 @@ class RepeatDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    node_def_ = test::function::NDef(
+    NodeDef node_def = test::function::NDef(
         kNodeName, kOpName, {"input_dataset", "count"},
         {{"output_types", output_types}, {"output_shapes", output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, op_kernel));
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
 
@@ -56,9 +56,6 @@ class RepeatDatasetOpTest : public DatasetOpsTestBase {
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
     return Status::OK();
   }
-
- private:
-  NodeDef node_def_;
 };
 
 struct TestCase {
@@ -123,11 +120,11 @@ TestCase ForeverRepeatTestCase() {
           /*breakpoints*/ {0, 1, 3}};
 }
 
-class ParameterizedDatasetTest
+class ParameterizedDatasetOpTest
     : public RepeatDatasetOpTest,
       public ::testing::WithParamInterface<TestCase> {};
 
-TEST_P(ParameterizedDatasetTest, GetNext) {
+TEST_P(ParameterizedDatasetOpTest, GetNext) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -168,6 +165,7 @@ TEST_P(ParameterizedDatasetTest, GetNext) {
   if (test_case.count < 0) {
     // We test only a finite number of steps of the infinite sequence.
     for (int i = 0; i < 100; ++i) {
+      out_tensors.clear();
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence));
       for (const auto &tensor : out_tensors) {
@@ -198,7 +196,38 @@ TEST_P(ParameterizedDatasetTest, GetNext) {
   }
 }
 
-TEST_F(RepeatDatasetOpTest, DatasetName) {
+TEST_F(RepeatDatasetOpTest, DatasetNodeName) {
+  int thread_num = 2, cpu_num = 2;
+  TF_ASSERT_OK(InitThreadPool(thread_num));
+  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+
+  const TestCase &test_case = FiniteRepeatTestCase();
+  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
+  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
+  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
+                                              &tensor_slice_dataset_tensor));
+  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
+  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
+  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
+  inputs_for_repeat_dataset.emplace_back(&count);
+
+  std::unique_ptr<OpKernel> repeat_dataset_kernel;
+  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
+                                         test_case.expected_output_shapes,
+                                         &repeat_dataset_kernel));
+  std::unique_ptr<OpKernelContext> repeat_dataset_context;
+  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
+                                          &inputs_for_repeat_dataset,
+                                          &repeat_dataset_context));
+  DatasetBase *repeat_dataset;
+  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
+                             repeat_dataset_context.get(), &repeat_dataset));
+  core::ScopedUnref scoped_unref(repeat_dataset);
+
+  EXPECT_EQ(repeat_dataset->node_name(), kNodeName);
+}
+
+TEST_F(RepeatDatasetOpTest, DatasetTypeString) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -229,7 +258,7 @@ TEST_F(RepeatDatasetOpTest, DatasetName) {
   EXPECT_EQ(repeat_dataset->type_string(), kOpName);
 }
 
-TEST_P(ParameterizedDatasetTest, DatasetOutputDtypes) {
+TEST_P(ParameterizedDatasetOpTest, DatasetOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -259,7 +288,7 @@ TEST_P(ParameterizedDatasetTest, DatasetOutputDtypes) {
                                 test_case.expected_output_dtypes));
 }
 
-TEST_P(ParameterizedDatasetTest, DatasetOutputShapes) {
+TEST_P(ParameterizedDatasetOpTest, DatasetOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -289,7 +318,7 @@ TEST_P(ParameterizedDatasetTest, DatasetOutputShapes) {
                                       test_case.expected_output_shapes));
 }
 
-TEST_P(ParameterizedDatasetTest, Cardinality) {
+TEST_P(ParameterizedDatasetOpTest, Cardinality) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -354,7 +383,7 @@ TEST_F(RepeatDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(writer.Flush());
 }
 
-TEST_P(ParameterizedDatasetTest, IteratorOutputDtypes) {
+TEST_P(ParameterizedDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -391,7 +420,7 @@ TEST_P(ParameterizedDatasetTest, IteratorOutputDtypes) {
                                 test_case.expected_output_dtypes));
 }
 
-TEST_P(ParameterizedDatasetTest, IteratorOutputShapes) {
+TEST_P(ParameterizedDatasetOpTest, IteratorOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -428,7 +457,7 @@ TEST_P(ParameterizedDatasetTest, IteratorOutputShapes) {
                                       test_case.expected_output_shapes));
 }
 
-TEST_P(ParameterizedDatasetTest, IteratorOutputPrefix) {
+TEST_P(ParameterizedDatasetOpTest, IteratorOutputPrefix) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -470,7 +499,7 @@ TEST_P(ParameterizedDatasetTest, IteratorOutputPrefix) {
   }
 }
 
-TEST_P(ParameterizedDatasetTest, Roundtrip) {
+TEST_P(ParameterizedDatasetOpTest, Roundtrip) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -521,6 +550,7 @@ TEST_P(ParameterizedDatasetTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
 
     while (cur_iteration < breakpoint) {
+      out_tensors.clear();
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence));
       if (!end_of_sequence) {
@@ -550,7 +580,7 @@ TEST_P(ParameterizedDatasetTest, Roundtrip) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(RepeatDatasetOpTest, ParameterizedDatasetTest,
+INSTANTIATE_TEST_SUITE_P(RepeatDatasetOpTest, ParameterizedDatasetOpTest,
                          ::testing::ValuesIn(std::vector<TestCase>(
                              {FiniteRepeatTestCase(), EmptyRepeatTestCase(),
                               ForeverRepeatTestCase()})));

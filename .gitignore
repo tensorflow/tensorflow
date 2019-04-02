@@ -24,10 +24,13 @@ Pods
 Podfile.lock
 *.pbxproj
 *.xcworkspacedata
-/tensorflow/lite/tools/make/downloads/**
-/tensorflow/lite/gen/**
+/*.podspec
+/tensorflow/lite/experimental/objc/BUILD
+/tensorflow/lite/experimental/swift/BUILD
 /tensorflow/lite/examples/ios/simple/data/*.txt
 /tensorflow/lite/examples/ios/simple/data/*.tflite
+/tensorflow/lite/gen/**
+/tensorflow/lite/tools/make/downloads/**
 xcuserdata/**
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt

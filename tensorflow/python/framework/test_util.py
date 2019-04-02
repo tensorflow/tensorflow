@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 from collections import OrderedDict
 import contextlib
+import functools
 import gc
 import itertools
 import math
@@ -32,6 +33,7 @@ import tempfile
 import threading
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -894,6 +896,58 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def build_as_function_and_v1_graph(func=None):
+  """Run a test case in v1 graph mode and inside tf.function in eager mode.
+
+  WARNING: This decorator can only be used in test cases that statically checks
+  generated graph. Attempting to evaluate graph or function results via.
+  session.run() or self.evaluate() will fail.
+
+  WARNING: This decorator can only be used for test cases that inherit from
+  absl.testing.parameterized.TestCase.
+
+  Args:
+    func: Test case function to be decorated.
+
+  Returns:
+    Decorated test case function.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError(
+          "`run_in_graph_mode_and_function` only supports test methods.")
+
+    @parameterized.named_parameters(("_v1_graph", "v1_graph"),
+                                    ("_function", "function"))
+    @functools.wraps(f)
+    def decorated(self, run_mode, *args, **kwargs):
+      if run_mode == "v1_graph":
+        with ops.Graph().as_default():
+          f(self, *args, **kwargs)
+      elif run_mode == "function":
+
+        @def_function.function
+        def function_in_eager():
+          f(self, *args, **kwargs)
+
+        # Create a new graph for the eagerly executed version of this test for
+        # better isolation.
+        graph_for_eager_test = ops.Graph()
+        with graph_for_eager_test.as_default(), context.eager_mode():
+          function_in_eager()
+        ops.dismantle_graph(graph_for_eager_test)
+      else:
+        return ValueError("Unknown run mode %s" % run_mode)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
@@ -1134,27 +1188,33 @@ def run_v1_only(reason, func=None):
   Returns:
     Returns a decorator that will conditionally skip the decorated test method.
   """
+  if not isinstance(reason, str):
+    raise ValueError("'reason' should be string, got {}".format(type(reason)))
 
   def decorator(f):
     if tf_inspect.isclass(f):
-      setup = f.__dict__.get("setUp")
-      if setup is not None:
-        setattr(f, "setUp", decorator(setup))
-
-      for name, value in f.__dict__.copy().items():
-        if (callable(value) and
-            name.startswith(unittest.TestLoader.testMethodPrefix)):
-          setattr(f, name, decorator(value))
+      # To skip an entire test suite class, we only decorate the setUp method
+      # to skip all tests. There are cases when setUp is not defined (not
+      # overridden in subclasses of TestCase, so not available in f.__dict__
+      # below). For those cases, we walk the method resolution order list and
+      # pick the first setUp method we find (usually this should be the one in
+      # the parent class since that's the TestCase class).
+      for cls in type.mro(f):
+        setup = cls.__dict__.get("setUp")
+        if setup is not None:
+          setattr(f, "setUp", decorator(setup))
+          break
 
       return f
+    else:
+      # If f is just a function, just create a decorator for it and return it
+      def decorated(self, *args, **kwargs):
+        if tf2.enabled():
+          self.skipTest(reason)
 
-    def decorated(self, *args, **kwargs):
-      if tf2.enabled():
-        self.skipTest(reason)
+        return f(self, *args, **kwargs)
 
-      return f(self, *args, **kwargs)
-
-    return decorated
+      return decorated
 
   if func is not None:
     return decorator(func)
@@ -1428,6 +1488,36 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
+def use_deterministic_cudnn(func):
+  """Disable autotuning during the call to this function.
+
+  Some tests want to base assertions on a graph being isomorphic with a copy.
+  To ensure this, this decorator disables autotuning.
+
+  Args:
+    func: Function to run with CUDNN autotuning turned off.
+
+  Returns:
+    Decorated function.
+  """
+
+  def decorator(f):
+
+    def decorated(self, *args, **kwargs):
+      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
+      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      result = f(self, *args, **kwargs)
+      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+      return result
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 # The description is just for documentation purposes.
 def disable_xla(description):
 
@@ -1468,6 +1558,45 @@ def disable_all_xla(description):
   return disable_all_impl
 
 
+# The description is just for documentation purposes.
+def xla_allow_fallback(description):  # pylint: disable=unused-argument
+
+  def xla_allow_fallback_impl(func):
+    """Allow fallback to TF even though testing xla."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # We have to use the TF_XLA_FLAGS_FOR_TESTING variable here, as
+          # TF_XLA_FLAGS is not reparsed once the jit was used once, so it
+          # cannot be used to update flags.
+          old_env = os.environ.get("TF_XLA_FLAGS_FOR_TESTING")
+          os.environ["TF_XLA_FLAGS_FOR_TESTING"] = (
+              ("" if old_env is None else old_env + " ") +
+              "--tf_xla_enable_lazy_compilation=true")
+          result = func(self, *args, **kwargs)
+          if old_env is None:
+            # We have to use the empty string here instead of deleting it
+            # so that the update logic for testing flags is still triggered
+            # and actually deletes the testing flags on next invocation.
+            os.environ["TF_XLA_FLAGS_FOR_TESTING"] = ""
+          else:
+            os.environ["TF_XLA_FLAGS_FOR_TESTING"] = old_env
+          return result
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return xla_allow_fallback_impl
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
@@ -1487,10 +1616,10 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      os.putenv(
-          "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
-          "--tf_xla_enable_lazy_compilation=false " +
-          os.getenv("TF_XLA_FLAGS", ""))
+      os.environ["TF_XLA_FLAGS"] = (("--tf_xla_auto_jit=2 "
+                                     "--tf_xla_min_cluster_size=1 "
+                                     "--tf_xla_enable_lazy_compilation=false ")
+                                    + os.environ.get("TF_XLA_FLAGS", ""))
     self._threads = []
     self._tempdir = None
     self._cached_session = None
@@ -1508,6 +1637,9 @@ class TensorFlowTestCase(googletest.TestCase):
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    # Reset summary writer in case another test used set_as_default() with their
+    # summary writer.
+    context.context().summary_writer = None
 
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):
