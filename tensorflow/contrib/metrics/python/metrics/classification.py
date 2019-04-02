@@ -166,7 +166,14 @@ def f1_score(labels, predictions, weights=None, num_thresholds=200,
           2.0 * precision_at_t * recall_at_t /
           (precision_at_t + recall_at_t + epsilon))
       return math_ops.reduce_max(f1_at_thresholds)
-
+    
+    # Compute micro precision and recall at various thresholds.
+    def compute_micro_f1_score(tp,fp,fn,name):
+      precision_at_t = math_ops.div(tp, epsilon + tp + fp,
+                                    name='precision_' + name)
+      recall_at_t = math_ops.div(tp, epsilon + tp + fn,
+                                    name='recall_' + name)
+    
     def f1_across_replicas(_, values):
       best_f1 = compute_best_f1_score(tp=values['tp'], fp=values['fp'],
                                       fn=values['fn'], name='value')
