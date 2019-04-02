@@ -384,16 +384,3 @@ cc_library(
     ],
     alwayslink = 1,
 )
-
-cc_library(
-    name = "test_ops",
-    srcs = ["cannot_be_compiled_op.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-    alwayslink = 1,
-)

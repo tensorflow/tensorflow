@@ -1497,7 +1497,6 @@ cc_library(
     srcs = ["framework/test_ops.cc"],
     linkstatic = 1,
     deps = [
-        "//tensorflow/compiler/tf2xla/kernels:test_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1671,7 +1670,7 @@ tf_py_test(
     tags = ["no_windows"],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "framework_test_util_test",
     size = "small",
     srcs = ["framework/test_util_test.py"],
@@ -1693,7 +1692,6 @@ cuda_py_test(
     ],
     main = "framework/test_util_test.py",
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
