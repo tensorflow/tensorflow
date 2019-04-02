@@ -12,9 +12,32 @@ If `T` is smaller than `type`, the operator requires that the rightmost
 dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 [..., sizeof(`type`)/sizeof(`T`)] to [...].
 
-In case ofconverting from a real data type to complex data type(e.g. tf.complex64,
-tf.complex128) tf.bitcast() give error while tf.cast() make imaginary part of output
-0.
+tf.bitcast() is used when you have to cast to an unsigned dtype (e.g. tf.uint8)
+where tf.cast() will not work effectively.
+
+```
+python
+code here
+```
+For example,
+  tf.bitcast(tf.cast(my_tensor, tf.int8), tf.uint8)
+
+Other example,
+>>> import tensorflow as tf
+>>> x = [1., 2., 3.]
+>>> y = [0., 2., 3.]
+>>> equality= tf.equal(x,y)
+>>> equality_cast = tf.cast(equality,tf.float32)
+>>> equality_bitcast = tf.bitcast(equality_cast,tf.uint8)
+>>> print(equality)
+tf.Tensor([False True True], shape=(3,), dtype=bool)
+>>> print(equality_cast)
+tf.Tensor([0. 1. 1.], shape=(3,), dtype=float32)
+>>> print(equality_bitcast)
+tf.Tensor(
+[[ 0 0 0 0]
+ [ 0 0 128 63]
+ [ 0 0 128 63]], shape=(3, 4), dtype=uint8)
 
 *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 endian orderings will give different results.
