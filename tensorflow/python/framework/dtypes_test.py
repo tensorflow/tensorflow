@@ -311,6 +311,10 @@ class TypesTest(test_util.TensorFlowTestCase):
       reconstructed = ctor(*args)
       self.assertEquals(reconstructed, dtype)
 
+  def testAsDtypeInvalidArgument(self):
+    with self.assertRaises(TypeError):
+      dtypes.as_dtype((dtypes.int32, dtypes.float32))
+
 
 if __name__ == "__main__":
   googletest.main()

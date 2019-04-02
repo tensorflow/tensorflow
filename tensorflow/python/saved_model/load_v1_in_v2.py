@@ -49,11 +49,11 @@ class _Initializer(tracking.TrackableResource):
     self._asset_paths = asset_paths
     self._init_fn = init_fn
 
-  def create_resource(self):
+  def _create_resource(self):
     return array_ops.placeholder(
         dtype=dtypes.resource, shape=[], name="unused_resource")
 
-  def initialize(self):
+  def _initialize(self):
     self._init_fn(*[path.asset_path for path in self._asset_paths])
 
 
@@ -98,7 +98,11 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     """Creates ConcreteFunctions for signatures in `meta_graph_def`."""
     signature_functions = {}
     for signature_key, signature_def in meta_graph_def.signature_def.items():
-      input_names, input_specs = zip(*signature_def.inputs.items())
+      if signature_def.inputs:
+        input_names, input_specs = zip(*signature_def.inputs.items())
+      else:
+        input_names = []
+        input_specs = []
       # TODO(allenl): Support optional arguments
       signature_fn = wrapped.prune(
           feeds=[wrapped.graph.as_graph_element(inp.name)
@@ -107,7 +111,12 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
                    for name, out in signature_def.outputs.items()})
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
-      signature_fn._num_positional_args = 0
+      if len(input_names) == 1:
+        # Allowing positional arguments does not create any ambiguity if there's
+        # only one.
+        signature_fn._num_positional_args = 1
+      else:
+        signature_fn._num_positional_args = 0
       # pylint: enable=protected-access
       signature_functions[signature_key] = signature_fn
     return signature_functions
@@ -135,7 +144,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           feeds=asset_feed_tensors,
           fetches=[wrapped.graph.as_graph_element(init_op)])
       initializer = _Initializer(init_fn, asset_paths)
-      initializer.initialize()
+      initializer._initialize()  # pylint: disable=protected-access
       root.initializer = initializer
       root.asset_paths = asset_paths
     else:

@@ -20,7 +20,6 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
-#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
+#include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -100,8 +101,8 @@ Status Profile(const string& service_addr, const string& logdir,
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.encoded_trace().empty()) {
-    TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
-        logdir, session_id, "", response, &std::cout));
+    TF_CHECK_OK(WriteTensorboardTPUProfile(logdir, session_id, "", response,
+                                           &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
         << "NOTE: using the trace duration " << duration_ms << "ms."
@@ -162,6 +163,23 @@ Status NewSession(const string& service_addr,
   return Status::OK();
 }
 
+// Creates an empty event file if not already exists, which indicates that we
+// have a plugins/profile/ directory in the current logdir.
+Status MaybeCreateEmptyEventFile(const tensorflow::string& logdir) {
+  // Suffix for an empty event file.  it should be kept in sync with
+  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
+  constexpr char kProfileEmptySuffix[] = ".profile-empty";
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
+  for (const string& child : children) {
+    if (str_util::EndsWith(child, kProfileEmptySuffix)) {
+      return Status::OK();
+    }
+  }
+  EventsWriter event_writer(io::JoinPath(logdir, "events"));
+  return event_writer.InitWithSuffix(kProfileEmptySuffix);
+}
+
 // Starts tracing on a single or multiple TPU hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
@@ -177,6 +195,8 @@ Status StartTracing(const tensorflow::string& service_addr,
       io::JoinPath(logdir, kProfilePluginDirectory);
   std::vector<tensorflow::string> hostnames =
       tensorflow::str_util::Split(workers_list, ",");
+
+  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;
@@ -208,9 +228,8 @@ Status StartTracing(const tensorflow::string& service_addr,
               << std::endl
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
-    return status;
   }
-  return Status::OK();
+  return status;
 }
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
@@ -248,4 +267,3 @@ void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
 }  // namespace client
 }  // namespace profiler
 }  // namespace tensorflow
-

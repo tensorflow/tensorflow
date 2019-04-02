@@ -122,5 +122,6 @@ if hasattr(_current_module, 'keras'):
   losses = keras.losses
   metrics = keras.metrics
   optimizers = keras.optimizers
+  initializers = keras.initializers
 
 # pylint: enable=undefined-variable

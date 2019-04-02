@@ -84,9 +84,6 @@ class DatasetBenchmarkBase(test.Benchmark):
 
     if extras is None:
       extras = {}
-    extras["elements_per_second"] = 1 / wall_time
     extras["num_elements"] = num_elements
-    # 'mode' represents the mechanism used for iterating over dataset elements.
-    name = "%s_mode_cpp" % name
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)

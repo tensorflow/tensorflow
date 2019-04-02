@@ -68,8 +68,8 @@ class RGBToHSVTest(xla_test.XLATestCase):
                                                 {batch0: inp})
 
       # Verify that processing batch elements together is the same as separate
-      self.assertAllClose(batch1, join1)
-      self.assertAllClose(batch2, join2)
+      self.assertAllCloseAccordingToType(batch1, join1, half_rtol=0.000002)
+      self.assertAllCloseAccordingToType(batch2, join2, half_rtol=0.000002)
       self.assertAllCloseAccordingToType(
           batch2, inp, bfloat16_atol=0.03, half_rtol=0.02)
 

@@ -192,18 +192,21 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
                                    true_inputs, false_inputs)
 
   # Create the If op.
-  tensors = gen_functional_ops._if(  # pylint: disable=protected-access
-      pred,
-      cond_inputs, [t.dtype for t in true_graph.outputs],
-      util.create_new_tf_function(true_graph),
-      util.create_new_tf_function(false_graph),
-      output_shapes=_get_output_shapes(true_graph.outputs,
-                                       false_graph.outputs),
-      name=name)
+  with ops.control_dependencies(
+      list(true_graph.control_captures) + list(false_graph.control_captures)):
+    tensors = gen_functional_ops._if(  # pylint: disable=protected-access
+        pred,
+        cond_inputs, [t.dtype for t in true_graph.outputs],
+        util.create_new_tf_function(true_graph),
+        util.create_new_tf_function(false_graph),
+        output_shapes=_get_output_shapes(true_graph.outputs,
+                                         false_graph.outputs),
+        name=name)
 
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
   util.maybe_set_lowering_attr(if_op)
+  util.maybe_propagate_compile_time_consts_in_xla(if_op)
 
   # Return identities for each output of the If op, rather than the output of
   # the If op directly. This makes pruning work if the output of cond() is

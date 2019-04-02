@@ -168,11 +168,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       bw_aux_input_weights->dims->data[1]);
   }
 
-  const bool is_hybrid_op = ((fw_input_weights->type == kTfLiteUInt8 ||
-                              fw_input_weights->type == kTfLiteInt8) &&
-                             input->type == kTfLiteFloat32);
-
-  if (is_hybrid_op) {
+  if (IsHybridOp(input, fw_input_weights)) {
     int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
 
     TfLiteIntArrayFree(node->temporaries);

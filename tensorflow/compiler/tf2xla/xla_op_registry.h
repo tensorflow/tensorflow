@@ -51,10 +51,10 @@ constexpr std::array<DataType, 12> kNumericTypes = {
     {DT_UINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_INT32, DT_INT64, DT_HALF,
      DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128, DT_BFLOAT16}};
 
-constexpr std::array<DataType, 15> kCpuAllTypes = {
+constexpr std::array<DataType, 16> kCpuAllTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
      DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL}};
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
 constexpr std::array<DataType, 15> kGpuAllTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
@@ -89,7 +89,7 @@ class XlaOpRegistry {
     AutoclusteringPolicy autoclustering_policy;
 
     // Enable compilation of operators that use DT_RESOURCE types?
-    bool compile_resource_ops = false;
+    bool compile_all_resource_ops = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the
@@ -216,6 +216,10 @@ class XlaOpRegistry {
     // allow TensorList which is of type DT_VARIANT.
     bool allow_variant_types = false;
 
+    // Should we allow string type for type attributes? Used by PartitionedCall
+    // to allow DT_STRING.
+    bool allow_string_type = false;
+
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
@@ -299,6 +303,9 @@ class XlaOpRegistrationBuilder {
 
   // Allow DT_VARIANT types for type parameters.
   XlaOpRegistrationBuilder& AllowVariantTypes();
+
+  // Allow DT_STRING type for type parameters.
+  XlaOpRegistrationBuilder& AllowStringType();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
   XlaOpRegistrationBuilder& CompileTimeConstantInput(

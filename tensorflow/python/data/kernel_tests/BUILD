@@ -370,6 +370,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -442,6 +443,23 @@ cuda_py_test(
         "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "memory_cleanup_test",
+    size = "medium",
+    srcs = ["memory_cleanup_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -463,6 +481,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(

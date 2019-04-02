@@ -64,7 +64,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda${CUDA} \
         && apt-get update \
-        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda${CUDA} \
+        && apt-get install -y --no-install-recommends \
+            libnvinfer5=5.0.2-1+cuda${CUDA} \
+            libnvinfer-dev=5.0.2-1+cuda${CUDA} \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*; }
 
@@ -72,7 +74,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
 ENV CI_BUILD_PYTHON python
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 ENV TF_NEED_CUDA 1
-ENV TF_NEED_TENSORRT 0
+ENV TF_NEED_TENSORRT 1
 ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.0,6.1,7.0
 ENV TF_CUDA_VERSION=${CUDA}
 ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}

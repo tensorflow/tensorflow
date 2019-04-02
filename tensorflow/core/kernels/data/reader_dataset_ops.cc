@@ -751,6 +751,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
+      VLOG(2) << "Reading file: " << filenames_tensor->flat<string>()(i);
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
@@ -844,6 +845,11 @@ class TFRecordDatasetOp : public DatasetOpKernel {
             }
             out_tensors->pop_back();
             if (!errors::IsOutOfRange(s)) {
+              // In case of other errors e.g., DataLoss, we still move forward
+              // the file index so that it works with ignore_errors.
+              // Otherwise the same file will repeat.
+              ResetStreamsLocked();
+              ++current_file_index_;
               return s;
             }
 

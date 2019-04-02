@@ -396,7 +396,6 @@ class LayoutAssignment : public HloModulePass {
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
   Status RunOnComputation(ComputationLayout* computation_layout,
-                          const TuplePointsToAnalysis& points_to_analysis,
                           HloComputation* computation,
                           ChannelLayoutConstraints* channel_constraints);
 
@@ -466,9 +465,9 @@ class LayoutAssignment : public HloModulePass {
   // Creates a copy of the given operand if the operand's layout does not match
   // the given layout. This copy replaces the use in the given instruction.
   // Tuple operands will be deep-copied.
-  Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
-                                    HloInstruction* instruction,
-                                    int64 operand_no);
+  virtual Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                            HloInstruction* instruction,
+                                            int64 operand_no);
 
   // Registers a copy instruction added by the layout assignment pass.
   void RegisterAddedCopy(HloInstruction* copy) {
@@ -504,6 +503,9 @@ class LayoutAssignment : public HloModulePass {
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
 
+  // Map from branch computations to the result layout they shuould apply.
+  std::map<HloComputation*, ComputationLayout> conditional_mismatch_;
+
   // Every copy added to the module by the layout assignment pass is registered
   // here.
   absl::flat_hash_set<HloInstruction*> added_copies_;
@@ -520,6 +522,9 @@ class LayoutAssignment : public HloModulePass {
   // Layout constraints for send/recv instructions which communicate with the
   // host.
   ChannelLayoutConstraints host_channel_constraints_;
+
+  // Module points to analysis that can be updated for cloned computations.
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.

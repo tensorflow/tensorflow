@@ -96,8 +96,9 @@ class CheckpointInitialValue(ops.Tensor):
 class NoRestoreSaveable(saveable_object.SaveableObject):
   """Embeds a tensor in a checkpoint with no restore ops."""
 
-  def __init__(self, tensor, name, dtype=None):
-    spec = saveable_object.SaveSpec(tensor, "", name, dtype=dtype)
+  def __init__(self, tensor, name, dtype=None, device=None):
+    spec = saveable_object.SaveSpec(tensor, "", name, dtype=dtype,
+                                    device=device)
     super(NoRestoreSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -174,7 +175,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
     return NoRestoreSaveable(
         tensor=_constant_state,
         dtype=dtypes.string,
-        name=self.name)
+        name=self.name,
+        device="cpu:0")
 
   def python_restore(self, restored_strings):
     """Called to restore Python state."""
@@ -851,10 +853,14 @@ class Trackable(object):
       """Serializes `self.get_config()` for saving."""
       dereferenced_self = weak_self()
       if dereferenced_self:
-        return json.dumps(
-            dereferenced_self,
-            default=serialization.get_json_type,
-            sort_keys=True).encode("utf8")
+        try:
+          return json.dumps(
+              dereferenced_self,
+              default=serialization.get_json_type,
+              sort_keys=True).encode("utf8")
+        except TypeError:
+          # Even if get_config worked objects may have produced garbage.
+          return ""
       else:
         return ""
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(

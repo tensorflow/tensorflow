@@ -24,6 +24,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
+// for being fused. Note that further restrictions apply, e.g. Scatter must
+// be the root of an input fusion.
+bool IsFusible(const HloInstruction& instr);
+
+bool IsInputFusible(const HloInstruction& instr);
+
+bool IsLoopFusible(const HloInstruction& instr);
+
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
 // such situtations it is better not to fuse. Only input params with
@@ -45,6 +54,10 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // Whether `instr` is fusible as root of a reduce input fusions, i.e. `instr`
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
+
+// Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
+// is either an unfused scatter op or a scatter input fusion.
+bool IsInputFusibleScatter(const HloInstruction& instr);
 
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.

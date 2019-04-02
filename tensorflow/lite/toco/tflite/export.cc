@@ -222,6 +222,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
 
     std::vector<int> shape;
     if (array.has_shape()) {
+      shape.reserve(array.shape().dims().size());
       for (const auto& d : array.shape().dims()) {
         shape.push_back(d);
       }
@@ -384,7 +385,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
       if (!mutating_input_variables.empty()) {
-        for (int i = 0; i < op->inputs.size(); ++i) {
+        for (size_t i = 0; i < op->inputs.size(); ++i) {
           if (!mutating_input_variables[i]) {
             continue;
           }

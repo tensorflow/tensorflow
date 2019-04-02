@@ -321,8 +321,8 @@ class LabeledTensor(object):
     for (d, axis) in zip(shape, unvalidated_axes.values()):
       if d != axis.size:
         raise ValueError(
-            'Provided axis size %d does not match tensor dimension size %d' %
-            (axis.size, d))
+            'Provided axis size %d does not match tensor dimension size %d'
+            'in tensor %r' % (axis.size, d, tensor))
 
     self._axes = unvalidated_axes
 

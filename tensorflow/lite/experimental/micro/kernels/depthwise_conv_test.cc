@@ -50,6 +50,11 @@ void TestDepthwiseConvFloat(std::initializer_list<int> input_dims_data,
       CreateFloatTensor(output_data, output_dims, "output_tensor"),
   };
 
+  // Place a unique value in the uninitialized output buffer.
+  for (int i = 0; i < output_dims_count; ++i) {
+    output_data[i] = 23;
+  }
+
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, &context);
 
@@ -401,6 +406,86 @@ TF_LITE_MICRO_TEST(SimpleTestReluQuantized) {
       {4, 1, 2, 1, 4},         // Output shape.
       output_min, output_max,  // Output quantization range.
       kTfLiteActRelu, output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleTestOptimizedFilterWidth) {
+  using tflite::testing::F2Q;
+  using tflite::testing::F2Q32;
+
+  const float input_min = 0;
+  const float input_max = 255.0f;
+  const float filter_min = -63.5f;
+  const float filter_max = 64.0f;
+  const float bias_min = 0.0f;
+  const float bias_max = 128.0f * (1 << 24);
+  const float output_min = -127.0f;
+  const float output_max = 128.0f;
+  const int output_dims_count = 9;
+  uint8_t output_data[output_dims_count];
+
+  tflite::testing::TestDepthwiseConvQuantized(  //
+      {4, 1, 1, 9, 1},                          // Input shape.
+      {
+          // Input values.
+          F2Q(1, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(7, input_min, input_max),
+          F2Q(8, input_min, input_max),
+          F2Q(3, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(9, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(5, input_min, input_max),
+          F2Q(6, input_min, input_max),
+          F2Q(11, input_min, input_max),
+          F2Q(12, input_min, input_max),
+      },
+      input_min, input_max,  // Input quantization range.
+      {4, 2, 1, 8, 1},       // Filter shape.
+      {
+          // Filter values.
+          F2Q(1, filter_min, filter_max),
+          F2Q(2, filter_min, filter_max),
+          F2Q(3, filter_min, filter_max),
+          F2Q(4, filter_min, filter_max),
+          F2Q(-9, filter_min, filter_max),
+          F2Q(10, filter_min, filter_max),
+          F2Q(-11, filter_min, filter_max),
+          F2Q(12, filter_min, filter_max),
+          F2Q(5, filter_min, filter_max),
+          F2Q(6, filter_min, filter_max),
+          F2Q(7, filter_min, filter_max),
+          F2Q(8, filter_min, filter_max),
+          F2Q(13, filter_min, filter_max),
+          F2Q(-14, filter_min, filter_max),
+          F2Q(15, filter_min, filter_max),
+          F2Q(-16, filter_min, filter_max),
+      },
+      filter_min, filter_max,  // Filter quantization range.
+      {1, 1},                  // Bias shape.
+      {
+          // Bias values.
+          F2Q32(1, bias_min, bias_max),
+          F2Q32(2, bias_min, bias_max),
+          F2Q32(3, bias_min, bias_max),
+          F2Q32(4, bias_min, bias_max),
+      },
+      bias_min, bias_max,  // Bias quantization range.
+      {
+          // Expected results.
+          220,
+          184,
+          140,
+          150,
+          161,
+          200,
+          172,
+          148,
+          133,
+      },
+      {4, 1, 1, 9, 1},         // Output shape.
+      output_min, output_max,  // Output quantization range.
+      kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

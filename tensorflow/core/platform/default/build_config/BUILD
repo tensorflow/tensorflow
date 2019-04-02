@@ -8,8 +8,8 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "check_deps")
-load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "if_rocm")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
@@ -34,7 +34,10 @@ cc_library(
 
 tf_cuda_library(
     name = "stream_executor",
-    cuda_deps = ["//tensorflow/stream_executor/cuda:cuda_activation"],
+    cuda_deps = [
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+    ],
     deps = [
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:dnn",
@@ -294,6 +297,7 @@ check_deps(
         "@local_config_cuda//cuda:cudnn",
         "@local_config_cuda//cuda:curand",
         "@local_config_cuda//cuda:cusolver",
+        "@local_config_cuda//cuda:cusparse",
     ],
     deps = ["//tensorflow:libtensorflow_framework.so"],
 )

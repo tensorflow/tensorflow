@@ -53,7 +53,10 @@ py_library(
 py_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
-    data = [":test_data"],
+    data = [
+        ":test_data",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [

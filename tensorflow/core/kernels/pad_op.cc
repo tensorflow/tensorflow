@@ -294,7 +294,7 @@ TF_CALL_POD_TYPES(REGISTER_KERNEL);
 TF_CALL_string(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Dims)                                         \
@@ -395,7 +395,7 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .HostMemory("constant_values")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32, int64>);
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 // Registration of the GPU implementations.

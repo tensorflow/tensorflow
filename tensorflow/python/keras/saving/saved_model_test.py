@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.keras.saving import saved_model as keras_saved_model
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.keras.utils import tf_utils
@@ -286,61 +287,64 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       {
           'model_builder': functional_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': adadelta.Adadelta,
           'train_before_export': True},
       {
           'model_builder': functional_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': training_module.AdadeltaOptimizer,
           'train_before_export': False},
       {
           'model_builder': functional_model,
           'uses_learning_phase': False,
-          'optimizer': None,
+          'optimizer_cls': None,
           'train_before_export': False},
       {
           'model_builder': sequential_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': training_module.AdadeltaOptimizer,
           'train_before_export': True},
       {
           'model_builder': sequential_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': adadelta.Adadelta,
           'train_before_export': False},
       {
           'model_builder': sequential_model,
           'uses_learning_phase': False,
-          'optimizer': None,
+          'optimizer_cls': None,
           'train_before_export': False},
       {
           'model_builder': sequential_model_without_input_shape,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': training_module.AdadeltaOptimizer,
           'train_before_export': False})
   def testSaveAndLoadSavedModelExport(
-      self, model_builder, uses_learning_phase, optimizer, train_before_export):
+      self, model_builder, uses_learning_phase, optimizer_cls,
+      train_before_export):
+    optimizer = None if optimizer_cls is None else optimizer_cls()
+
     saved_model_dir = self._save_model_dir()
-    with self.session(graph=ops.Graph()):
-      np.random.seed(130)
-      input_arr = np.random.random((1, 3))
-      target_arr = np.random.random((1, 3))
 
-      model = model_builder(uses_learning_phase)
-      if optimizer is not None:
-        model.compile(
-            loss='mse',
-            optimizer=optimizer,
-            metrics=['mae'])
-        if train_before_export:
-          model.train_on_batch(input_arr, target_arr)
+    np.random.seed(130)
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
 
-        ref_loss, ref_mae = model.evaluate(input_arr, target_arr)
+    model = model_builder(uses_learning_phase)
+    if optimizer is not None:
+      model.compile(
+          loss='mse',
+          optimizer=optimizer,
+          metrics=['mae'])
+      if train_before_export:
+        model.train_on_batch(input_arr, target_arr)
 
-      ref_predict = model.predict(input_arr)
+      ref_loss, ref_mae = model.evaluate(input_arr, target_arr)
 
-      # Export SavedModel
-      keras_saved_model.export_saved_model(model, saved_model_dir)
+    ref_predict = model.predict(input_arr)
+
+    # Export SavedModel
+    keras_saved_model.export_saved_model(model, saved_model_dir)
 
     input_name = model.input_names[0]
     output_name = model.output_names[0]

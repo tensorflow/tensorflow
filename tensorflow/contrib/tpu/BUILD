@@ -18,6 +18,7 @@ package(
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
+        "//smartass/brain:__subpackages__",
         "//tensorflow:__subpackages__",
         "//vr/perception:__subpackages__",
     ],

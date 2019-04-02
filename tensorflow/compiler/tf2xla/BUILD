@@ -10,6 +10,7 @@ package_group(
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/contrib/compiler/...",
+        "//tensorflow/python/compiler/...",
     ],
 )
 
@@ -84,7 +85,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":common",
-        ":dump_graph",
         ":functionalize_control_flow",
         ":tf2xla_proto",
         ":tf2xla_util",
@@ -104,22 +104,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_function_runtime",
-    srcs = ["cpu_function_runtime.cc"],
-    hdrs = ["cpu_function_runtime.h"],
-    visibility = [
-        "//tensorflow/compiler/aot:__pkg__",
-        "//tensorflow/compiler/xla/service/cpu:__pkg__",
-    ],
-    deps = [
-        # Keep dependencies to a minimum here; this library is used in every AOT
-        # binary produced by tfcompile.
-        "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
-    ],
-)
-
-cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
@@ -127,7 +111,7 @@ cc_library(
     deps = [
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
-        ":cpu_function_runtime",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
     ],
@@ -137,7 +121,7 @@ tf_cc_test(
     name = "cpu_function_runtime_test",
     srcs = ["cpu_function_runtime_test.cc"],
     deps = [
-        ":cpu_function_runtime",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -153,6 +137,7 @@ cc_library(
         ":tf2xla",
         ":tf2xla_proto",
         ":xla_compiled_cpu_function",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -199,7 +184,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
-        ":dump_graph",
         ":host_compute_metadata_proto",
         ":sharding_util",
         ":side_effect_util",
@@ -450,23 +434,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "dump_graph",
-    srcs = [
-        "dump_graph.cc",
-    ],
-    hdrs = [
-        "dump_graph.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "functionalize_control_flow_util",
     srcs = [
         "functionalize_control_flow_util.cc",
@@ -497,7 +464,6 @@ cc_library(
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -525,7 +491,6 @@ cc_library(
         ":functionalize_while",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -562,7 +527,6 @@ cc_library(
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",

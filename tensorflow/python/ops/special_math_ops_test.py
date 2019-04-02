@@ -204,54 +204,18 @@ class BesselTest(test.TestCase):
 class EinsumTest(test.TestCase):
 
   simple_cases = [
-      'ij,jk->ik',
-      'ijk,jklm->il',
-      'ij,jk,kl->il',
-      'ijk->i',
-      'ijk->kji',
-      'ji,kj->ik',
-      'ikl,kji->kl',
-      'klj,lki->ij',
-      'ijk,ilj->kli',
-      'kij,mkb->ijmb',
-      'ijk,ijl,ikl->i',
-      'i,ijk,j->k',
-      'ij,ij,jk,kl->il',
-      'ij,kj,il,jm->ml',
-      'a,ab,abc->abc',
-      'a,b,ab->ab',
-      'ab,ab,c->',
-      'ab,ab,c->c',
-      'ab,ab,cd,cd->',
-      'ab,ab,cd,cd->ac',
-      'ab,ab,cd,cd->cd',
-      'ab,ab,cd,cd,ef,ef->',
-      'ab,cd,ef->abcdef',
-      'ab,cd,ef->acdf',
-      'ab,cd,de->abcde',
-      'ab,cd,de->be',
-      'ab,bcd,cd->abcd',
-      'ab,bcd,cd->abd',
-      'eb,cb,fb->cef',
-      'abcd,ad',
-      'bd,db,eac->ace',
-      'ba,ac,da->bcd',
-      'ab,ab',
-      'ab,ba',
-      'abc,abc',
-      'abc,bac',
-      'abc,cba',
-      'dba,ead,cad->bce',
-      'aef,fbc,dca->bde',
-      'iJ,Jk->ik',
-      'iJ,Ki->JK',
-      'iJk,Jklm->Jk',
-      'ij, jk, kl -> il',
-      'a, ab, abc -> abc',
-      'ab, ab, cd, cd, ef, ef -> ',
-      'abc, bac',
-      'iJ, Ki -> JK',
-      'iJk, Jklm -> Jk'
+      'ij,jk->ik', 'ijk,jklm->il', 'ij,jk,kl->il', 'ijk->i', 'ijk->kji',
+      'ji,kj->ik', 'ikl,kji->kl', 'klj,lki->ij', 'ijk,ilj->kli',
+      'kij,mkb->ijmb', 'ijk,ijl,ikl->i', 'i,ijk,j->k', 'ij,ij,jk,kl->il',
+      'ij,kj,il,jm->ml', 'a,ab,abc->abc', 'a,b,ab->ab', 'ab,ab,c->',
+      'ab,ab,c->c', 'ab,ab,cd,cd->', 'ab,ab,cd,cd->ac', 'ab,ab,cd,cd->cd',
+      'ab,ab,cd,cd,ef,ef->', 'ab,cd,ef->abcdef', 'ab,cd,ef->acdf',
+      'ab,cd,de->abcde', 'ab,cd,de->be', 'ab,bcd,cd->abcd', 'ab,bcd,cd->abd',
+      'eb,cb,fb->cef', 'abcd,ad', 'bd,db,eac->ace', 'ba,ac,da->bcd', 'ab,ab',
+      'ab,ba', 'abc,abc', 'abc,bac', 'abc,cba', 'dba,ead,cad->bce',
+      'aef,fbc,dca->bde', 'iJ,Jk->ik', 'iJ,Ki->JK', 'iJk,Jklm->Jk',
+      'ij, jk, kl -> il', 'a, ab, abc -> abc', 'ab, ab, cd, cd, ef, ef -> ',
+      'abc, bac', 'iJ, Ki -> JK', 'iJk, Jklm -> Jk', 'ii', 'ijji'
   ]
 
   long_cases = [
@@ -350,10 +314,13 @@ class EinsumTest(test.TestCase):
     with self.session(use_gpu=True):
       output_value = self.evaluate(output_tensor)
 
-    correct_value = np.einsum(axes, *input_vals)
-
+    correct_value = 0
+    if axes == 'ijji':
+      output = math_ops.trace(*input_tensors)
+      correct_value = self.evaluate(output)
+    else:
+      correct_value = np.einsum(axes, *input_vals)
     err = np.abs(correct_value - output_value).max()
-    # print(axes, err)
     self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):

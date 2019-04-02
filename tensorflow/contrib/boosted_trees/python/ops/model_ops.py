@@ -96,18 +96,18 @@ class TreeEnsembleVariable(tracking.TrackableResource):
     self._init_op = None
     super(TreeEnsembleVariable, self).__init__()
 
-  def create_resource(self):
+  def _create_resource(self):
     return gen_model_ops.decision_tree_ensemble_resource_handle_op(
         self._container, shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return gen_model_ops.create_tree_ensemble_variable(
         self.resource_handle, self._stamp_token, self._tree_ensemble_config)
 
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):

@@ -94,6 +94,27 @@ py_test(
 )
 
 py_test(
+    name = "choose_fastest_branch_dataset_serialization_test",
+    size = "medium",
+    srcs = ["choose_fastest_branch_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "choose_fastest_dataset_serialization_test",
     size = "small",
     srcs = ["choose_fastest_dataset_serialization_test.py"],
@@ -161,6 +182,29 @@ py_test(
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "auto_shard_dataset_serialization_test",
+    size = "medium",
+    srcs = ["auto_shard_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -334,6 +378,7 @@ py_test(
     srcs = ["numa_map_and_batch_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",  # b/118497483
         "no_pip",
         "no_windows",
         "notap",

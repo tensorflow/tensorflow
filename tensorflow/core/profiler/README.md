@@ -35,10 +35,10 @@ bazel-bin/tensorflow/core/profiler/profiler \
     --profile_path=/tmp/train_dir/profile_xx
 tfprof> op -select micros,bytes,occurrence -order_by micros
 
-# To be open sourced...
-bazel-bin/tensorflow/python/profiler/profiler_ui \
-    --profile_path=/tmp/profiles/profile_1
+# Profiler ui available at: https://github.com/tensorflow/profiler-ui
+python ui.py --profile_context_path=/tmp/train_dir/profile_xx
 ```
+
 ![ProfilerUI](g3doc/profiler_ui.jpg)
 
 ```python

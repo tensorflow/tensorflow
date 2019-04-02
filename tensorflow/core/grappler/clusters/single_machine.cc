@@ -455,7 +455,6 @@ Status SingleMachine::ClearAllocatorStats() const {
   std::vector<Device*> devices = device_mgr->ListDevices();
 
   for (Device* device : devices) {
-    AllocatorStats stats;
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
       return Status(error::INVALID_ARGUMENT,

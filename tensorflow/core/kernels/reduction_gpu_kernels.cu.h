@@ -29,6 +29,7 @@ limitations under the License.
 #include "cuda/include/cuComplex.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/util/cuda_device_functions.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
@@ -39,13 +40,6 @@ namespace tensorflow {
 namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
-
-template <typename T>
-struct Square {
-  __host__ __device__ T operator()(const T& a) const {
-    return a * Eigen::numext::conj(a);
-  }
-};
 
 template <typename T>
 struct Sqrt {
@@ -61,28 +55,6 @@ struct Sum {
   }
 };
 
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded addition op for std::complex
-template <>
-struct Sum<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Sum<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
-  }
-};
-
 template <typename T>
 struct Prod {
   __host__ __device__ T operator()(const T& a, const T& b) const {
@@ -90,25 +62,10 @@ struct Prod {
   }
 };
 
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded multiply op for std::complex
-template <>
-struct Prod<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Prod<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
+template <typename T>
+struct Square {
+  __host__ __device__ T operator()(const T& a) const {
+    return Prod<T>()(a, Eigen::numext::conj(a));
   }
 };
 
@@ -511,8 +468,9 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   if (in_size <= 4096) {
     const int num_blocks = 1;
     const int num_threads = 256;
-    BlockReduceKernel<IN_T, OUT_T, num_threads>
-        <<<num_blocks, num_threads, 0, cu_stream>>>(in, out, in_size, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(
+        BlockReduceKernel<IN_T, OUT_T, num_threads, Op>, num_blocks,
+        num_threads, 0, cu_stream, in, out, in_size, op, init));
     return;
   } else if (in_size <= 1 << 18) {
     const int num_threads = 256;
@@ -531,17 +489,19 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
             DT_INT8, TensorShape({static_cast<int64>(num_blocks * sizeof(T))}),
             &temp_storage));
 
-    BlockReduceKernel<IN_T, T*, num_threads>
-        <<<num_blocks, num_threads, 0, cu_stream>>>(
-            in, (T*)temp_storage.flat<int8_t>().data(), in_size, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(BlockReduceKernel<IN_T, T*, num_threads, Op>,
+                                 num_blocks, num_threads, 0, cu_stream, in,
+                                 (T*)temp_storage.flat<int8_t>().data(),
+                                 in_size, op, init));
 
     // take care that we only reduce blocks that had some valid elements in them
     // TODO(eriche): CUB currently has a bug in HeadSegmentedReduce that
     // requires it to be used with a full warp.  Can reduce 32 -> num_blocks
     // when this is fixed.
-    CleanupSegments<<<1, 32, 0, cu_stream>>>(
-        (T*)temp_storage.flat<int8_t>().data(), out, 1, 1, num_blocks, op,
-        init);
+    TF_CHECK_OK(CudaLaunchKernel(CleanupSegments<T*, OUT_T, Op>, 1, 32, 0,
+                                 cu_stream,
+                                 (T*)temp_storage.flat<int8_t>().data(), out, 1,
+                                 1, num_blocks, op, init));
     return;
   }
 
@@ -576,8 +536,9 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
     const int warps_per_block = threads_per_block / 32;
     int num_blocks = (num_rows + warps_per_block - 1) / warps_per_block;
 
-    RowReduceKernel<<<num_blocks, threads_per_block, 0, cu_stream>>>(
-        in, out, num_rows, num_cols, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(RowReduceKernel<IN_T, OUT_T, Op>, num_blocks,
+                                 threads_per_block, 0, cu_stream, in, out,
+                                 num_rows, num_cols, op, init));
     return;
   }
 
@@ -628,8 +589,9 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    ColumnReduceMax16ColumnsKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
-        in, out, extent_x, extent_y, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(
+        ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op>, grid_dim, block_dim, 0,
+        cu_stream, in, out, extent_x, extent_y, op, init));
   } else {
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
@@ -637,15 +599,17 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                       TensorShape({static_cast<int64>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
-    ColumnReduceMax16ColumnsKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
-        in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
-        init);
+    TF_CHECK_OK(CudaLaunchKernel(ColumnReduceMax16ColumnsKernel<IN_T, T*, Op>,
+                                 grid_dim, block_dim, 0, cu_stream, in,
+                                 (T*)temp_storage.flat<int8_t>().data(),
+                                 extent_x, extent_y, op, init));
 
     dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
     dim3 num_threads(128, 1, 1);
-    CleanupSegments<<<new_grid_dim, num_threads, 0, cu_stream>>>(
-        (T*)temp_storage.flat<int8_t>().data(), out, extent_x, extent_y,
-        grid_dim.y, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
+                                 num_threads, 0, cu_stream,
+                                 (T*)temp_storage.flat<int8_t>().data(), out,
+                                 extent_x, extent_y, grid_dim.y, op, init));
   }
 }
 
@@ -664,8 +628,9 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    ColumnReduceKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
-        in, out, extent_x, extent_y, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(ColumnReduceKernel<IN_T, OUT_T, Op>, grid_dim,
+                                 block_dim, 0, cu_stream, in, out, extent_x,
+                                 extent_y, op, init));
   } else {
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
@@ -674,15 +639,16 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
-    ColumnReduceKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
-        in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
-        init);
+    TF_CHECK_OK(CudaLaunchKernel(
+        ColumnReduceKernel<IN_T, T*, Op>, grid_dim, block_dim, 0, cu_stream, in,
+        (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init));
 
     dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
     dim3 num_threads(128, 1, 1);
-    CleanupSegments<<<new_grid_dim, block_dim, 0, cu_stream>>>(
-        (T*)temp_storage.flat<int8_t>().data(), out, extent_x, extent_y,
-        grid_dim.y, op, init);
+    TF_CHECK_OK(CudaLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
+                                 block_dim, 0, cu_stream,
+                                 (T*)temp_storage.flat<int8_t>().data(), out,
+                                 extent_x, extent_y, grid_dim.y, op, init));
   }
 }
 
@@ -700,8 +666,9 @@ void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     int threads_per_block = 128;
     int num_blocks = Eigen::divup(extent_y, threads_per_block);
 
-    ColumnReduceSimpleKernel<<<num_blocks, threads_per_block, 0, cu_stream>>>(
-        in, out, 1, extent_x, extent_y, op);
+    TF_CHECK_OK(CudaLaunchKernel(ColumnReduceSimpleKernel<IN_T, OUT_T, Op>,
+                                 num_blocks, threads_per_block, 0, cu_stream,
+                                 in, out, 1, extent_x, extent_y, op));
   }
 }
 
@@ -715,8 +682,9 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
   // TODO(eriche): this won't be very good in the case of small x
   //                small z and large y.
-  ColumnReduceSimpleKernel<<<num_blocks, threads_per_block, 0, cu_stream>>>(
-      in, out, extent_x, extent_y, extent_z, op);
+  TF_CHECK_OK(CudaLaunchKernel(ColumnReduceSimpleKernel<IN_T, OUT_T, Op>,
+                               num_blocks, threads_per_block, 0, cu_stream, in,
+                               out, extent_x, extent_y, extent_z, op));
 }
 
 template <typename T, typename Op, typename OUT_T, typename IN_T>

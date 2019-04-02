@@ -90,6 +90,12 @@ class SparseToDenseTest(xla_test.XLATestCase):
     np_ans[2, 0, 1] = 1
     self.assertAllClose(np_ans, tf_ans)
 
+  def testDegenerateIndexMatrix(self):
+    with self.cached_session(), self.test_scope():
+      tf_ans = _SparseToDense([[2], [3], [4], [5], [6], [7], [8], [9]], [10],
+                              [1, 2, 3, 4, 5, 6, 7, 8], -1)
+    self.assertAllClose([-1, -1, 1, 2, 3, 4, 5, 6, 7, 8], tf_ans)
+
   def testBadShape(self):
     with self.cached_session(), self.test_scope():
       with self.assertRaisesWithPredicateMatch(ValueError, "must be rank 1"):

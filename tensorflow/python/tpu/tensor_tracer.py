@@ -58,6 +58,7 @@ _REASON_OUTSIDE_OP_RANGE = 'not-traced-outside-op-range'
 _REASON_UNSAFE_OP = 'not-traced-unsafe-op'
 _REASON_WHILELOOP_OP = 'not-traced-special-whileloop-op'
 _REASON_UNSAFE_SCALAR = 'not-traced-unsafe-scalar'
+_REASON_SKIP_SCALAR = 'not-traced-scalar'
 _REASON_LESS_INTERESTING_OP = 'not-traced-less-interesting-op'
 _REASON_DEVICE_MISMATCH = 'not-traced-device-mismatch'
 _REASON_DYNAMIC_SHAPE = 'not-traced-dynamic-shape'
@@ -95,6 +96,9 @@ _FLAG_NO_EQUAL_PAT = re.compile(r'\s*--([^=]+)\s*')
 _FLAG_NAME_ENABLE = 'enable'
 _FLAG_NAME_TRACE_MODE = 'trace_mode'
 _FLAG_NAME_USE_COMPACT_TRACE = 'compact_trace'
+_FLAG_NAME_TRACE_SCALAR_OPS = 'trace_scalar'
+_FLAG_NAME_TRACE_BEFORE_OPS = 'trace_before_included_ops'
+_FLAG_NAME_TRACE_AFTER_OPS = 'trace_after_included_ops'
 _FLAG_NAME_SUBMODE = 'submode'
 _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS = 'include_less_interesting_ops'
 _FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
@@ -218,7 +222,7 @@ def _create_tensor_values_cache(graph, num_tensors):
             _COMPACT_TRACE_ENTRY_INIT_VALUE),
         trainable=False,
         use_resource=True,
-        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.GLOBAL_VARIABLES])
+        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
 
 
 class TensorTracer(object):
@@ -239,6 +243,7 @@ class TensorTracer(object):
   """
   # The set of graphs that are rewritten by tensor tracer.
   _traced_graphs = set()
+
   @staticmethod
   def _match_next_flag(flags, pos):
     """Returns the match for the next TensorTracer flag.
@@ -274,6 +279,9 @@ class TensorTracer(object):
     """Validates if the TensorTrace flags passed are valid."""
     valid_flag_names = [_FLAG_NAME_ENABLE, _FLAG_NAME_TRACE_MODE,
                         _FLAG_NAME_USE_COMPACT_TRACE,
+                        _FLAG_NAME_TRACE_SCALAR_OPS,
+                        _FLAG_NAME_TRACE_BEFORE_OPS,
+                        _FLAG_NAME_TRACE_AFTER_OPS,
                         _FLAG_NAME_SUBMODE,
                         _FLAG_NAME_EXCLUDED_OPNAMES,
                         _FLAG_NAME_EXCLUDED_OPTYPES,
@@ -328,11 +336,34 @@ class TensorTracer(object):
     return result
 
   @staticmethod
+  def flag_value_as_int(wanted_flag_name, default_value):
+    """Returns the int value of a TensorTracer flag.
+
+    Args:
+      wanted_flag_name: the name of the flag we are looking for.
+      default_value: the default value for the flag, if not provided.
+    Returns:
+      the value of the flag.
+    Raises:
+      RuntimeError: If supposedly deadcode is reached.
+    """
+    flag_int_value = default_value
+    found, flag_value = TensorTracer.get_flag_value(wanted_flag_name)
+
+    if found:
+      try:
+        flag_int_value = int(flag_value)
+      except ValueError:
+        logging.warning('Cannot convert %s to int for flag %s' % (
+            flag_int_value, wanted_flag_name))
+    return flag_int_value
+
+  @staticmethod
   def get_flag_value(wanted_flag_name):
     """Returns the value of a TensorTracer flags.
 
     Args:
-      wanted_flag_name: the name the the flag we are looking for.
+      wanted_flag_name: the name of the flag we are looking for.
 
     Returns:
       A pair where the first element indicates if the flag is
@@ -540,54 +571,56 @@ class TensorTracer(object):
        cycle is found) and the second element is either the sorted
        list of nodes or the cycle of nodes found.
     """
+    def _is_loop_edge(op):
+      """Returns true if the op is the end of a while-loop creating a cycle."""
+      return op.type in ['NextIteration']
 
-    def visit(op, cycle, permanently_marked_ops,
-              temporarily_marked_ops, sorted_ops):
-      """Recursively visits all Ops in a graph.
+    def _in_op_degree(op):
+      """Returns the number of incoming edges to the given op.
 
+      The edge calculation skips the edges that come from 'NextIteration' ops.
+      NextIteration creates a cycle in the graph. We break cycles by treating
+      this op as 'sink' and ignoring all outgoing edges from it.
       Args:
-         op: the current Op being visited.
-         cycle: a cycle of Ops found.
-         permanently_marked_ops: the set of Ops that were already visited.
-         temporarily_marked_ops: the set of Ops that we have visited during
-                                 the current descent.
-         sorted_ops: the list of Ops sorted in topological order.
+        op: Tf.Operation
+      Returns:
+        the number of incoming edges.
       """
+      count = 0
+      for op in op.control_inputs + [in_tensor.op for in_tensor in op.inputs]:
+        if not _is_loop_edge(op):
+          count += 1
+      return count
 
-      if cycle:
-        return
-      if op in permanently_marked_ops:
-        return
-      if op in temporarily_marked_ops:
-        cycle = temporarily_marked_ops
-        return
-      temporarily_marked_ops.add(op)
-      for i in range(len(op.outputs)):
-        out_tensor = op.outputs[i]
-        for consumer_op in out_tensor.consumers():
-          visit(consumer_op, cycle, permanently_marked_ops,
-                temporarily_marked_ops, sorted_ops)
-      # pylint: disable=protected-access
-      for ctrl_output_op in op._control_outputs:
-        # pylint: enable=protected-access
-        visit(ctrl_output_op, cycle, permanently_marked_ops,
-              temporarily_marked_ops, sorted_ops)
-      temporarily_marked_ops.remove(op)
-      permanently_marked_ops.add(op)
-      sorted_ops.insert(0, op)
-
-    graph_cycle = set([])
     sorted_ops = []
-    permanently_marked_ops = set([])
-    temporarily_marked_ops = set([])
-    unsorted_ops = g.get_operations()
-    for op in unsorted_ops:
-      visit(op, graph_cycle, permanently_marked_ops,
-            temporarily_marked_ops, sorted_ops)
-    if graph_cycle:
-      return (False, graph_cycle)
+    op_in_degree = {op: _in_op_degree(op) for op in g.get_operations()}
+
+    frontier = [op for (op, degree) in op_in_degree.items() if degree == 0]
+    while frontier:
+      op = frontier.pop()
+      # Remove the op from graph, and remove its outgoing edges.
+      sorted_ops.append(op)
+      if _is_loop_edge(op):
+        continue
+      # pylint: disable=protected-access
+      consumers = list(op._control_outputs)
+      # pylint: enable=protected-access
+      for out_tensor in op.outputs:
+        consumers += [consumer_op for consumer_op in out_tensor.consumers()]
+
+      for consumer in consumers:
+        # For each deleted edge shift the bucket of the vertex.
+        op_in_degree[consumer] -= 1
+        if op_in_degree[consumer] == 0:
+          frontier.append(consumer)
+        if op_in_degree[consumer] < 0:
+          raise ValueError('consumer:%s degree mismatch'%consumer.name)
+
+    left_ops = set([op for (op, degree) in op_in_degree.items() if degree > 0])
+    if left_ops:
+      return (False, left_ops)
     else:
-      assert len(unsorted_ops) == len(sorted_ops)
+      assert len(g.get_operations()) == len(sorted_ops)
       return (True, sorted_ops)
 
   @staticmethod
@@ -646,6 +679,25 @@ class TensorTracer(object):
     self._num_replicas_per_host = None
     self._num_hosts = None
     self._replica_id = None
+    self._included_op_full_names = set()
+    self._trace_scalar_ops = TensorTracer._is_flag_on(
+        _FLAG_NAME_TRACE_SCALAR_OPS)
+
+    # _trace_ops_before_included and _trace_ops_after_included denotes to depth
+    # of tracing relative to the ops given in --included_opnames or
+    # --included_optypes
+    # For example, in the below graph
+    #                op1 --> op2 --> op3 --> op4 --> op5
+    # If --included_opnames=op3 then only op3 will be traced.
+    # If also --trace_before_included_ops=2 (_trace_ops_before_included), then
+    # op1 and op2 will be traced as they are at most 2 hops apart from an
+    # included op. Similarly, if --trace_after_included_ops=2, then op4 and op5
+    # will also be traced.
+    self._trace_ops_before_included = TensorTracer.flag_value_as_int(
+        _FLAG_NAME_TRACE_BEFORE_OPS, 0)
+    self._trace_ops_after_included = TensorTracer.flag_value_as_int(
+        _FLAG_NAME_TRACE_AFTER_OPS, 0)
+
     _, self._graph_dump_path = TensorTracer.get_flag_value(
         _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
 
@@ -734,13 +786,47 @@ class TensorTracer(object):
         _FLAG_NAME_INCLUDED_OPTYPES)
 
   def _is_user_included_op(self, op):
-    for opname_re in self._included_opname_re_list:
-      if opname_re.match(op.name):
+    """Checks whether the op is included in the tensor tracer flags.
+
+    Args:
+      op: tf Operation
+    Returns:
+      True, if the op is included.
+      An op is included if:
+      - Its op name is given in included_opnames
+      - Its op type is given in included_optypes
+      - The op is at most _trace_ops_before_included hops before an included op
+      - The op is at most _trace_ops_after_included hops after an included op
+    """
+
+    def _is_op_or_any_neighbor_included(op, check_before=0, check_after=0):
+      """Helper function to check if op is included or not."""
+      if op.name in self._included_op_full_names:
         return True
-    for optype_re in self._included_optype_re_list:
-      if optype_re.match(op.type):
-        return True
-    return False
+      for opname_re in self._included_opname_re_list:
+        if opname_re.match(op.name):
+          self._included_op_full_names.add(op.name)
+          return True
+
+      if check_after > 0:
+        for out_tensor in op.outputs:
+          for consumer in out_tensor.consumers():
+            if _is_op_or_any_neighbor_included(consumer, check_after - 1, 0):
+              self._included_op_full_names.add(op.name)
+              return True
+      if check_before > 0:
+        for input_tensor in op.inputs:
+          if _is_op_or_any_neighbor_included(input_tensor.op,
+                                             0,
+                                             check_before - 1):
+            self._included_op_full_names.add(op.name)
+            return True
+      return False
+    # check_after and check_before are swapped below, as below operation
+    # checks the distance from an arbitrary op to included ops.
+    return _is_op_or_any_neighbor_included(op,
+                                           self._trace_ops_after_included,
+                                           self._trace_ops_before_included)
 
   def _is_user_excluded_op(self, op):
     for opname_re in self._excluded_opname_re_list:
@@ -1076,14 +1162,19 @@ class TensorTracer(object):
     rank = len(out_tensor.shape)
     if rank < 1:
       # scalar
-      if TensorTracer.unsafe_scalar_trace(out_tensor.op):
-        self._instrument_records[out_tensor.name] = TensorTracer.reason(
-            op_id, _REASON_UNSAFE_SCALAR)
-        return True
+      if self._trace_scalar_ops:
+        if TensorTracer.unsafe_scalar_trace(out_tensor.op):
+          self._instrument_records[out_tensor.name] = TensorTracer.reason(
+              op_id, _REASON_UNSAFE_SCALAR)
+          return True
+        else:
+          self._instrument_records[out_tensor.name] = TensorTracer.reason(
+              op_id, _REASON_SCALAR_GET_TRACED)
+          return False
       else:
         self._instrument_records[out_tensor.name] = TensorTracer.reason(
-            op_id, _REASON_SCALAR_GET_TRACED)
-        return False
+            op_id, _REASON_SKIP_SCALAR)
+        return True
     else:
       # tensor
       self._instrument_records[out_tensor.name] = TensorTracer.reason(

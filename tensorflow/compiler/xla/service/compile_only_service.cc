@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -70,26 +71,14 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation.has_host_program_shape());
 
     const DebugOptions& debug_options = options.debug_options();
-
-    // Dump computation proto if flag is set.
-    const string& directory_path = debug_options.xla_dump_computations_to();
-    if (!directory_path.empty()) {
-      HloSnapshot hlo_snapshot;
-      *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = instance.computation;
-      string filename =
-          absl::StrCat("computation_", instance.computation.id(), "__",
-                       instance.computation.entry_computation_name());
-      const string& per_host_path = tensorflow::io::JoinPath(
-          directory_path, tensorflow::port::Hostname());
-
-      TF_RETURN_IF_ERROR(
-          Executable::DumpToDirectory(per_host_path, filename, hlo_snapshot));
-    }
-
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;
     *execution_options.mutable_shape_with_output_layout() =
         instance.result_layout->ToProto();
+    if (options.has_static_device_assignment()) {
+      TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
+          execution_options.mutable_device_assignment()));
+    }
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(
@@ -99,7 +88,7 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,
         HloModule::CreateFromProto(instance.computation, *module_config));
-    TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*hlo_module));
+    DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
     hlo_modules.push_back(std::move(hlo_module));
   }
 

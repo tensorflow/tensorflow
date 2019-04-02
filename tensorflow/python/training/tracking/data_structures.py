@@ -118,6 +118,17 @@ def sticky_attribute_assignment(trackable, name, value):
   return value
 
 
+class _UntrackableError(ValueError):
+
+  def __init__(self, value):  # pylint: disable=super-init-not-called
+    self._value = value
+
+  def __str__(self):
+    return (("Only trackable objects (such as Layers or Optimizers) may be "
+             "stored in a List object. Got %s, which does not inherit from "
+             "Trackable.") % (self._value,))
+
+
 class TrackableDataStructure(base.Trackable):
   """Base class for data structures which contain trackable objects."""
 
@@ -132,10 +143,7 @@ class TrackableDataStructure(base.Trackable):
     if isinstance(value, variables.Variable):
       self._extra_variables.append(value)
     if not isinstance(value, base.Trackable):
-      raise ValueError(
-          ("Only trackable objects (such as Layers or Optimizers) may be "
-           "stored in a List object. Got %s, which does not inherit from "
-           "Trackable.") % (value,))
+      raise _UntrackableError(value)
     if hasattr(value, "_use_resource_variables"):
       # In subclassed models, legacy layers (tf.layers) must always use
       # resource variables.

@@ -40,4 +40,8 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\', \'values\', \'indices\', \'dense_shape\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

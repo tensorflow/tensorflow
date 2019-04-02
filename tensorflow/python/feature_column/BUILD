@@ -23,6 +23,7 @@ py_library(
     srcs = ["feature_column.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -57,6 +58,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
+        ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -100,9 +102,22 @@ tf_py_test(
     name = "feature_column_test",
     srcs = ["feature_column_test.py"],
     additional_deps = [
+        ":feature_column_test_main_lib",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_windows",
+    ],
+)
+
+py_library(
+    name = "feature_column_test_main_lib",
+    srcs = ["feature_column_test.py"],
+    data = [":vocabulary_testdata"],
+    deps = [
         ":feature_column",
         ":feature_column_py",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -121,8 +136,15 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
     ],
-    data = [":vocabulary_testdata"],
+)
+
+tf_py_test(
+    name = "feature_column_v2_test",
+    srcs = ["feature_column_v2_test.py"],
+    additional_deps = [":feature_column_v2_test_main_lib"],
+    shard_count = 5,
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
@@ -130,13 +152,13 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "feature_column_v2_test",
+py_library(
+    name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
-    additional_deps = [
+    data = [":vocabulary_testdata"],
+    deps = [
         ":feature_column_py",
         ":feature_column_v2",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -156,13 +178,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
-    ],
-    data = [":vocabulary_testdata"],
-    shard_count = 5,
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_pip",
-        "no_windows",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -172,6 +188,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column_v2",
+        ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
@@ -181,6 +198,19 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
     ],
 )
 

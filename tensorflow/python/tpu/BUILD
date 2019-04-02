@@ -18,6 +18,7 @@ package(
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
+        "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
         "//vr/perception:__subpackages__",
     ],
@@ -124,6 +125,7 @@ py_library(
         "__init__.py",
         "bfloat16.py",
         "device_assignment.py",
+        "profile_logger.py",
         "session_support.py",
         "tensor_tracer.py",
         "topology.py",
@@ -132,6 +134,7 @@ py_library(
         "tpu_function.py",
         "tpu_optimizer.py",
         "tpu_sharding.py",
+        "tpu_strategy_util.py",
         "tpu_system_metadata.py",
         "training_loop.py",
         "xla.py",
@@ -295,6 +298,21 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy_util",
+    srcs = ["tpu_strategy_util.py"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
     ],
 )
 

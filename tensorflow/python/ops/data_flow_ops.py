@@ -1233,7 +1233,7 @@ class ConditionalAccumulatorBase(object):
     """
     return gen_data_flow_ops.accumulator_set_global_step(
         self._accumulator_ref,
-        math_ops.to_int64(ops.convert_to_tensor(new_global_step)),
+        math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
         name=name)
 
 
@@ -1291,7 +1291,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     """
     grad = ops.convert_to_tensor(grad, self._dtype)
     grad.get_shape().assert_is_compatible_with(self._shape)
-    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
     return gen_data_flow_ops.accumulator_apply_gradient(
         self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
@@ -1423,14 +1423,14 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If grad is of the wrong shape
     """
-    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
     return gen_data_flow_ops.sparse_accumulator_apply_gradient(
         self._accumulator_ref,
         local_step=local_step,
-        gradient_indices=math_ops.to_int64(grad_indices),
+        gradient_indices=math_ops.cast(grad_indices, _dtypes.int64),
         gradient_values=grad_values,
-        gradient_shape=math_ops.to_int64([]
-                                         if grad_shape is None else grad_shape),
+        gradient_shape=math_ops.cast(
+            [] if grad_shape is None else grad_shape, _dtypes.int64),
         has_known_shape=(grad_shape is not None),
         name=name)
 

@@ -965,7 +965,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
         # `update_op`.
         # TODO(josh11b): Make different state objects for each device to
         # avoid needing to set the device_policy.
-        device_policy = context.context().device_policy(
+        device_policy = context.device_policy(
             context.DEVICE_PLACEMENT_SILENT)
         with ops.name_scope("update_" + scope_name), device_policy:
           return processor.update_op(self, g, state)
@@ -981,7 +981,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       def finish():
         # TODO(josh11b): Make different state objects for each device to
         # avoid needing to set the device_policy.
-        with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+        with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
           return self._finish(state)
 
       update_ops = control_flow_ops.group(update_ops)

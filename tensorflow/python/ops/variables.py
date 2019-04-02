@@ -103,6 +103,17 @@ class VariableAggregationV2(enum.Enum):
   MEAN = 2
   ONLY_FIRST_REPLICA = 3
 
+  def __hash__(self):
+    return hash(self.value)
+
+  def __eq__(self, other):
+    if self is other:
+      return True
+    elif isinstance(other, VariableAggregation):
+      return int(self.value) == int(other.value)
+    else:
+      return False
+
 
 @tf_export(v1=["VariableAggregation"])
 class VariableAggregation(enum.Enum):
@@ -111,6 +122,9 @@ class VariableAggregation(enum.Enum):
   MEAN = 2
   ONLY_FIRST_REPLICA = 3
   ONLY_FIRST_TOWER = 3  # DEPRECATED
+
+  def __hash__(self):
+    return hash(self.value)
 
 
 VariableAggregation.__doc__ = (

@@ -67,9 +67,6 @@ task extractModels(type: Copy) {
     }
 }
 
-
-
-
 tasks.whenTaskAdded { task ->
     if (task.name == 'assembleDebug') {
         task.dependsOn 'extractModels'

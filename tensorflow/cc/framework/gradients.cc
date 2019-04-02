@@ -200,9 +200,9 @@ std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
   // `output_` node was encountered, pair.second will be nullptr.
   std::deque<std::pair<Node*, Node*>> queue;
   for (const Output& nout : inputs_) {
-    if (visited.find(nout.node()) == visited.end()) {
+    auto const& pair = visited.insert(nout.node());
+    if (pair.second) {
       queue.push_back(std::make_pair(nout.node(), static_cast<Node*>(nullptr)));
-      visited.insert(nout.node());
     }
   }
   // BFS from nodes in 'inputs_' along out edges for the entire graph. Internal
@@ -216,22 +216,23 @@ std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     for (const Edge* e : n->out_edges()) {
       // If a node is not reachable from outputs_, we can stop.
       if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
-      if (visited.find(e->dst()) != visited.end()) continue;
 
-      int node_id = e->dst()->id();
-      Node* last_output_node = p.second;
-      if (output_nodes.find(node_id) != output_nodes.end()) {
-        // We reached an output node.
-        if (last_output_node != nullptr) {
-          // If we had already found an output node on this path so we mark
-          // it as an internal output.
-          internal_outputs.insert(last_output_node->id());
+      auto const& pair = visited.insert(e->dst());
+      if (pair.second) {
+        int node_id = e->dst()->id();
+        Node* last_output_node = p.second;
+        if (output_nodes.find(node_id) != output_nodes.end()) {
+          // We reached an output node.
+          if (last_output_node != nullptr) {
+            // If we had already found an output node on this path so we mark
+            // it as an internal output.
+            internal_outputs.insert(last_output_node->id());
+          }
+          // Mark this newly found output node to insert in the queue.
+          last_output_node = e->dst();
         }
-        // Mark this newly found output node to insert in the queue.
-        last_output_node = e->dst();
+        queue.push_back(std::make_pair(e->dst(), last_output_node));
       }
-      queue.push_back(std::make_pair(e->dst(), last_output_node));
-      visited.insert(e->dst());
     }
   }
   // Finally, we set stop_backprop_nodes to all output_nodes that aren't also
@@ -285,9 +286,9 @@ Status SymbolicGradientBuilder::Initialize() {
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
     for (const Output& nout : inputs_) {
-      if (visited.find(nout.node()) == visited.end()) {
+      auto const& pair = visited.insert(nout.node());
+      if (pair.second) {
         queue.push_back(nout.node());
-        visited.insert(nout.node());
       }
     }
 
@@ -308,9 +309,9 @@ Status SymbolicGradientBuilder::Initialize() {
           // we don't expect it to receive a backpropagated gradient.
           // It will not be counted in num_expected_backprops.
           if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
-          if (visited.find(e->dst()) == visited.end()) {
+          auto const& pair = visited.insert(e->dst());
+          if (pair.second) {
             queue.push_back(e->dst());
-            visited.insert(e->dst());
           }
           ++num_expected_backprops;
         }

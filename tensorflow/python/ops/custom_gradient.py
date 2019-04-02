@@ -238,6 +238,9 @@ def _graph_mode_decorator(f, *args, **kwargs):
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+
+  original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]
+
   # Propagate handle data for happier shape inference for resource variables.
   for i, t in enumerate(original_tensors):
     if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):
@@ -268,6 +271,9 @@ def _eager_mode_decorator(f, *args, **kwargs):
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
 
+  input_tensors = [ops.convert_to_tensor(x) for x
+                   in list(args) + list(variables)]
+  arg_count = len(args)
   def actual_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
     if variables:
@@ -278,10 +284,13 @@ def _eager_mode_decorator(f, *args, **kwargs):
     else:
       input_grads = grad_fn(*result_grads)
       variable_grads = []
+    flat_grads = nest.flatten(input_grads)
+    if len(flat_grads) != arg_count:
+      raise ValueError(
+          "custom_gradient function expected to return", arg_count,
+          "gradients but returned", len(flat_grads), "instead.")
     return nest.flatten(input_grads) + variable_grads
 
-  input_tensors = [ops.convert_to_tensor(x) for x
-                   in list(args) + list(variables)]
   tape_lib.record_operation(f.__name__, flat_result, input_tensors,
                             actual_grad_fn)
   flat_result = list(flat_result)

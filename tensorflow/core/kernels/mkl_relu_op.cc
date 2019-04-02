@@ -28,12 +28,11 @@ limitations under the License.
 using mkldnn::algorithm;
 using mkldnn::eltwise_bounded_relu;
 using mkldnn::eltwise_elu;
+using mkldnn::eltwise_forward;
 using mkldnn::eltwise_relu;
 using mkldnn::eltwise_tanh;
 using mkldnn::memory;
 using mkldnn::prop_kind;
-using mkldnn::relu_backward;
-using mkldnn::relu_forward;
 using mkldnn::stream;
 
 namespace tensorflow {
@@ -542,7 +541,7 @@ class MklReluOpBase : public OpKernel {
 
  private:
   engine cpu_engine = engine(engine::cpu, 0);
-  std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+  std::shared_ptr<eltwise_forward::primitive_desc> relu_fwd_pd;
 
  protected:
   float alpha_;
@@ -710,7 +709,7 @@ class MklReluGradOpBase : public OpKernel {
 
  private:
   engine cpu_engine = engine(engine::cpu, 0);
-  std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+  std::shared_ptr<eltwise_forward::primitive_desc> relu_fwd_pd;
 
  protected:
   float alpha_;

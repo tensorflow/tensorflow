@@ -392,7 +392,7 @@ class Progbar(object):
 
       if self.target is not None:
         numdigits = int(np.log10(self.target)) + 1
-        bar = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
+        bar = ('%' + str(numdigits) + 'd/%d [') % (current, self.target)
         prog = float(current) / self.target
         prog_width = int(self.width * prog)
         if prog_width > 0:
@@ -579,3 +579,11 @@ def is_all_none(structure):
     if element is not None:
       return False
   return True
+
+
+def check_for_unexpected_keys(name, input_dict, expected_values):
+  unknown = set(input_dict.keys()).difference(expected_values)
+  if unknown:
+    raise ValueError('Unknown entries in {} dictionary: {}. Only expected '
+                     'following keys: {}'.format(name, list(unknown),
+                                                 expected_values))

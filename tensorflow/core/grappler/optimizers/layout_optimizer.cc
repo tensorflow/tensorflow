@@ -2048,8 +2048,10 @@ class DataLayoutOptimizer : GraphProcessor {
     // only needs to be performed if at least one node in the previous pass is
     // expanded.
     if (graph_->node_size() > node_size_original) {
-      NodeDef* n = AddNodePermNHWCToNCHW();
-      n = AddNodePermNCHWToNHWC();
+      // Create Const nodes holding the permutation used by added Transposes of
+      // nodes not in a frame.
+      AddNodePermNHWCToNCHW();
+      AddNodePermNCHWToNHWC();
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
@@ -2205,7 +2207,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
-  virtual_placer_.reset(new VirtualPlacer(cluster));
+  virtual_placer_.reset(new VirtualPlacer(cluster->GetDevices()));
   nodes_to_preserve_ = item.NodesToPreserve();
   GraphProperties graph_properties(item);
   auto status = graph_properties.InferStatically(false);

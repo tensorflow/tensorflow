@@ -292,30 +292,31 @@ class Template(trackable.Trackable):
         self._variable_scope = vs
     else:
       self._variable_scope = None
-    # This variable keeps track of whether the template has been called yet,
-    # which is not the same as whether the scope has been created.
+    # This variable keeps track of whether the template has been called to
+    # completion, which is not the same as whether the scope has been created.
     self._variables_created = False
+    # `MirroredStrategy` builds the graph with multiple threads. If a
+    # `merge_call` happens within a template, multiple calls may be in progress
+    # simultaneously. This variable keeps track of whether any call of the
+    # template has started.
+    self._first_call = True
 
   def _call_func(self, args, kwargs):
     try:
-      vars_at_start = len(
-          ops.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES))
-      trainable_at_start = len(
-          ops.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES))
       if self._variables_created:
-        result = self._func(*args, **kwargs)
-      else:
-        # The first time we run, restore variables if necessary (via
-        # Trackable).
-        with trackable_util.capture_dependencies(template=self):
-          result = self._func(*args, **kwargs)
+        vars_at_start = len(
+            ops.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES))
+        trainable_at_start = len(
+            ops.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES))
 
-      if self._variables_created:
+        result = self._func(*args, **kwargs)
+
         # Variables were previously created, implying this is not the first
         # time the template has been called. Check to make sure that no new
         # trainable variables were created this time around.
         trainable_variables = ops.get_collection_ref(
             ops.GraphKeys.TRAINABLE_VARIABLES)
+
         # If a variable that we intend to train is created as a side effect
         # of creating a template, then that is almost certainly an error.
         if trainable_at_start != len(trainable_variables):
@@ -333,8 +334,19 @@ class Template(trackable.Trackable):
                        "the first time, perhaps you used tf.Variable when you "
                        "meant tf.get_variable: %s",
                        variables[vars_at_start:])
-      else:
+      elif self._first_call:
+        self._first_call = False
+        try:
+          # The first time we run, restore variables if necessary (via
+          # Trackable).
+          with trackable_util.capture_dependencies(template=self):
+            result = self._func(*args, **kwargs)
+        except:
+          self._first_call = True
+          raise
         self._variables_created = True
+      else:  # We are calling the template in parallel from another thread.
+        result = self._func(*args, **kwargs)
       return result
     except Exception as exc:
       # Reraise the exception, but append the original definition to the
@@ -354,9 +366,9 @@ class Template(trackable.Trackable):
 
   def __call__(self, *args, **kwargs):
     if self._variable_scope:
-      # Only reuse variables if they were already created.
+      # Only reuse variables if not on first call.
       with variable_scope.variable_scope(
-          self._variable_scope, reuse=self._variables_created):
+          self._variable_scope, reuse=not self._first_call):
         return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.

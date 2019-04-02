@@ -1655,7 +1655,7 @@ body (bparam: s32[]) -> s32[] {
 condition (cparam: s32[]) -> pred[] {
   xconstant = s32[] constant(5)
   cparam = s32[] parameter(0)
-  ROOT greater-than = pred[] greater-than(xconstant, cparam)
+  ROOT greater-than = pred[] compare(xconstant, cparam), direction=GT
 }
 
 ENTRY entry (param: s32[]) -> s32[] {

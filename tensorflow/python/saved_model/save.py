@@ -214,7 +214,7 @@ class _SaveableView(object):
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.TrackableResource):
-        new_resource = obj.create_resource()
+        new_resource = obj._create_resource()  # pylint: disable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
@@ -417,7 +417,7 @@ def _trace_resource_initializers(accessible_objects):
   resource_initializers = []
 
   def _wrap_initializer(obj):
-    obj.initialize()
+    obj._initialize()  # pylint: disable=protected-access
     return constant_op.constant(1.)  # Dummy control output
 
   def _wrap_obj_initializer(obj):
@@ -521,7 +521,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
   # gathering from the eager context so Optimizers save the right set of
   # variables, but want any operations associated with the save/restore to be in
   # the exported graph (thus the `to_graph` argument).
-  saver = functional_saver.Saver(
+  saver = functional_saver.MultiDeviceSaver(
       saveable_view.checkpoint_view.frozen_saveable_objects(
           object_map=object_map, to_graph=exported_graph))
 

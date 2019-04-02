@@ -191,8 +191,9 @@ HloInstruction* GetExpandedFilterMask(
   // linspace to create a diagonal predicate.
   Shape predicate_shape = ShapeUtil::MakeShape(
       PRED, AsInt64Slice(expanded_filter_shape.dimensions()));
-  return add_instruction(HloInstruction::CreateBinary(
-      predicate_shape, HloOpcode::kEq, broadcasted_mask1, broadcasted_mask2));
+  return add_instruction(HloInstruction::CreateCompare(
+      predicate_shape, broadcasted_mask1, broadcasted_mask2,
+      ComparisonDirection::kEq));
 }
 
 // This function handles batch_group_counts which are relevant only for

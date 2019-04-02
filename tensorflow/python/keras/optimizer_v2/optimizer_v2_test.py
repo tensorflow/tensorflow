@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
@@ -476,6 +477,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithCallbacks(self):
+    np.random.seed(1331)
     input_np = np.random.random((10, 3))
     output_np = np.random.random((10, 4))
     a = input_layer.Input(shape=(3,), name='input_a')
@@ -496,7 +498,7 @@ class OptimizerTest(test.TestCase):
         batch_size=10,
         validation_data=(input_np, output_np),
         callbacks=cbks,
-        epochs=5,
+        epochs=2,
         verbose=0)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -516,7 +518,7 @@ class OptimizerTest(test.TestCase):
         batch_size=10,
         validation_data=(input_np, output_np),
         callbacks=cbks,
-        epochs=5,
+        epochs=2,
         verbose=2)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
@@ -535,6 +537,37 @@ class OptimizerTest(test.TestCase):
     self.evaluate(opt_op)
     new_step_value = self.evaluate(global_step)
     self.assertEqual(new_step_value, init_step_value + 1)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithCallableVarList(self):
+    train_samples = 20
+    input_dim = 1
+    num_classes = 2
+    (x, y), _ = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=10,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    y = keras.utils.to_categorical(y)
+
+    num_hidden = 1
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=num_hidden, num_classes=num_classes)
+    opt = adam.Adam()
+
+    loss = lambda: losses.mean_squared_error(model(x), y)
+    var_list = lambda: model.trainable_weights
+
+    self.assertLen(var_list(), 0)
+    train_op = opt.minimize(loss, var_list)
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(
+          [[0.]], self.evaluate(opt.get_slot(var_list()[0], 'm')))
+      self.evaluate(train_op)
+    self.assertNotEqual(
+        [[0.]], self.evaluate(opt.get_slot(var_list()[0], 'm')))
+    self.assertLen(var_list(), 4)
 
   def testVarKey(self):
     with context.graph_mode():

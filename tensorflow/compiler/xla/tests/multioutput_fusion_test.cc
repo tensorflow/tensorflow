@@ -227,7 +227,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
     fused_computation {
       p = f32[4] parameter(0)
       multiply = f32[4] multiply(p, p)
-      less-than = pred[4] less-than(p, multiply)
+      less-than = pred[4] compare(p, multiply), direction=LT
       ROOT tuple = (pred[4], f32[4]) tuple(less-than, multiply)
     }
 
@@ -252,7 +252,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
     fused_computation {
       p = f32[] parameter(0)
       multiply = f32[] multiply(p, p)
-      less-than = pred[] less-than(p, multiply)
+      less-than = pred[] compare(p, multiply), direction=LT
       ROOT tuple = (pred[], f32[]) tuple(less-than, multiply)
     }
 

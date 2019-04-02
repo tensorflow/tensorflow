@@ -163,6 +163,9 @@ class XlaCompiler {
     std::map<int32, int32> dynamic_dim_to_arg_num_map;
     bool is_pad_arg = false;
 
+    // Whether this argument will receive the same data across all replicas.
+    bool is_same_data_across_replicas = false;
+
     bool operator==(const Argument& other) const;
 
     // Returns a human-readable summary of the argument.
@@ -339,10 +342,11 @@ class XlaCompiler {
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
-  Status CompileGraph(const CompileOptions& options, string const& name,
-                      std::unique_ptr<Graph> graph,
-                      absl::Span<const Argument> args,
-                      CompilationResult* result);
+  Status CompileGraph(
+      const CompileOptions& options, string const& name,
+      std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
+      absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
+      CompilationResult* result);
 
   // Compiles a single Op, given by `node_def`, into an
   // xla::XlaComputation. Similar to CompileFunction but takes a single Op as
@@ -416,11 +420,11 @@ class XlaCompiler {
   Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
   xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
- private:
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
                           const FunctionBody** fbody);
 
+ private:
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
 

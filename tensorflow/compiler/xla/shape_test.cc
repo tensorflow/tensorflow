@@ -35,6 +35,8 @@ class ShapeTest : public ::testing::Test {
   const Shape opaque_ = ShapeUtil::MakeOpaqueShape();
   const Shape token_ = ShapeUtil::MakeTokenShape();
   const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_with_tile_ =
+      ShapeUtil::MakeShapeWithLayout(F32, {}, {}, {Tile({256})});
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
   const Shape tuple_ =
@@ -66,6 +68,8 @@ TEST_F(ShapeTest, ShapeToString) {
 
   EXPECT_EQ("opaque[]", opaque_.ToString(/*print_layout=*/true));
   EXPECT_EQ("f32[]", scalar_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("f32[]{:T(256)}",
+            scalar_with_tile_.ToString(/*print_layout=*/true));
   EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
   EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",

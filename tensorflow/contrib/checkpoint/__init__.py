@@ -46,7 +46,6 @@ from __future__ import print_function
 
 from tensorflow.contrib.checkpoint.python.containers import UniqueNameTracker
 from tensorflow.contrib.checkpoint.python.python_state import NumpyState
-from tensorflow.contrib.checkpoint.python.python_state import PythonStateWrapper
 from tensorflow.contrib.checkpoint.python.split_dependency import split_dependency
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.trackable_object_graph_pb2 import TrackableObjectGraph as CheckpointableObjectGraph
@@ -55,6 +54,7 @@ from tensorflow.python.training.tracking.base import Trackable as Checkpointable
 from tensorflow.python.training.tracking.data_structures import List
 from tensorflow.python.training.tracking.data_structures import Mapping
 from tensorflow.python.training.tracking.data_structures import NoDependency
+from tensorflow.python.training.tracking.python_state import PythonState as PythonStateWrapper
 from tensorflow.python.training.tracking.tracking import AutoTrackable as Checkpointable
 from tensorflow.python.training.tracking.util import capture_dependencies
 from tensorflow.python.training.tracking.util import list_objects
@@ -62,3 +62,4 @@ from tensorflow.python.training.tracking.util import object_metadata
 from tensorflow.python.util.all_util import remove_undocumented
 
 remove_undocumented(module_name=__name__)
+

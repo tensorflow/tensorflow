@@ -316,7 +316,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
     const int batch_size = batch_bucketized_features[0].size();
 
     // We need to get the feature ids used for splitting and the logits after
-    // each split. We will use these to calulate the changes in the prediction
+    // each split. We will use these to calculate the changes in the prediction
     // (contributions) for an arbitrary activation function (done in Python) and
     // attribute them to the associated feature ids. We will store these in
     // a proto below.

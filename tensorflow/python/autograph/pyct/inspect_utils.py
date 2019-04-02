@@ -191,9 +191,12 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
-def isweakrefself(m):
-  """Tests whether an object is a "weakref self" wrapper, see getmethodself."""
-  return hasattr(m, '__self__') and hasattr(m.__self__, 'ag_self_weakref__')
+def istfmethodtarget(m):
+  """Tests whether an object is a `function.TfMethodTarget`."""
+  # See eager.function.TfMethodTarget for more details.
+  return (hasattr(m, '__self__') and
+          hasattr(m.__self__, 'weakrefself_target__') and
+          hasattr(m.__self__, 'weakrefself_func__'))
 
 
 def getmethodself(m):
@@ -206,8 +209,8 @@ def getmethodself(m):
   # A fallback allowing methods to be actually bound to a type different
   # than __self__. This is useful when a strong reference from the method
   # to the object is not desired, for example when caching is involved.
-  if isweakrefself(m):
-    return m.__self__.ag_self_weakref__()
+  if istfmethodtarget(m):
+    return m.__self__.target
 
   return m.__self__
 
@@ -284,6 +287,21 @@ def getmethodclass(m):
     raise ValueError('Found too many owners of %s: %s' % (m, owners))
 
   return None
+
+
+def getfutureimports(entity):
+  """Detects what future imports are necessary to safely execute entity source.
+
+  Args:
+    entity: Any object
+
+  Returns:
+    A tuple of future strings
+  """
+  if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
+    return tuple()
+  return tuple(sorted(name for name, value in entity.__globals__.items()
+                      if getattr(value, '__module__', None) == '__future__'))
 
 
 class SuperWrapperForDynamicAttrs(object):

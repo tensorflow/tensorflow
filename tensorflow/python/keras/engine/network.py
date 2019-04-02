@@ -23,7 +23,6 @@ import copy
 import json
 import os
 
-import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
@@ -37,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -49,6 +49,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 
 
@@ -179,8 +180,8 @@ class Network(base_layer.Layer):
       self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    self._maybe_create_attribute('_trainable_weights', [])
+    self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
@@ -200,7 +201,7 @@ class Network(base_layer.Layer):
 
     # All layers in order of horizontal graph traversal.
     # Entries are unique. Includes input and output layers.
-    self._layers = []
+    self._maybe_create_attribute('_layers', [])
 
     # Used in symbolic mode only, only in conjunction with graph-networks
     self._outbound_nodes = []
@@ -208,6 +209,12 @@ class Network(base_layer.Layer):
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
+
+    # Networks do not need to do any casting of inputs or variables, because
+    # each of its layers will handle casting through the layer's own
+    # implementation. Therefore networks use the 'infer' policy, which does no
+    # casting.
+    self._mixed_precision_policy = policy.Policy('infer')
 
   @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
@@ -514,15 +521,13 @@ class Network(base_layer.Layer):
         return layer
     raise ValueError('No such layer: ' + name)
 
-  @property
-  def _unfiltered_updates(self):
+  def _get_unfiltered_updates(self, check_trainable=True):
+    if check_trainable and not self.trainable and not self.stateful:
+      return []
     updates = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        updates += layer._unfiltered_updates
-      else:
-        updates += layer.updates
-    updates += self._updates
+      updates += layer._get_unfiltered_updates(check_trainable=check_trainable)
+    updates += list(self._updates)
     return updates
 
   @property
@@ -549,10 +554,7 @@ class Network(base_layer.Layer):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        layer._clear_losses()
-      else:
-        layer._eager_losses = []
+      layer._clear_losses()
 
   @property
   def updates(self):
@@ -604,10 +606,8 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if not self.trainable and not self.stateful:
-      return []
 
-    updates = self._unfiltered_updates
+    updates = self._get_unfiltered_updates(check_trainable=True)
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
@@ -660,10 +660,11 @@ class Network(base_layer.Layer):
     # built symbolically, and captures the wrong tensors from a different
     # func graph (causing a crash later on when trying to execute the
     # graph function)
-    with ops.init_scope():
-      if context.executing_eagerly():
-        return [loss for loss in losses
-                if loss.graph == ops.get_default_graph()]
+    if ops.executing_eagerly_outside_functions():
+      return [
+          loss for loss in losses
+          if getattr(loss, 'graph', None) == ops.get_default_graph()
+      ]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -695,17 +696,6 @@ class Network(base_layer.Layer):
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
-
-  @property
-  def metrics(self):
-    """Returns the network's symbolic metrics.
-
-    Model overrides this function to include the metrics from `compile` API.
-    """
-    metrics = []
-    for layer in self.layers:
-      metrics += layer._metrics  # pylint: disable=protected-access
-    return metrics + self._metrics
 
   @property
   def _all_metrics_tensors(self):
@@ -1084,6 +1074,8 @@ class Network(base_layer.Layer):
                   tf_utils.ListWrapper(
                       [inbound_layer.name, new_node_index, tensor_id, kwargs]))
             node_data = nest.pack_sequence_as(node.input_tensors, node_data)
+            if not nest.is_sequence(node_data):
+              node_data = [node_data]
             # Convert ListWrapper to list for backwards compatible configs.
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)
@@ -1106,6 +1098,9 @@ class Network(base_layer.Layer):
       model_inputs.append(
           tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
     model_inputs = nest.pack_sequence_as(self._nested_inputs, model_inputs)
+    # Preserve external Keras compat for Models with single input.
+    if not nest.is_sequence(model_inputs):
+      model_inputs = [model_inputs]
     model_inputs = tf_utils.convert_inner_node_data(model_inputs)
     config['input_layers'] = model_inputs
 
@@ -1119,6 +1114,9 @@ class Network(base_layer.Layer):
       model_outputs.append(
           tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
     model_outputs = nest.pack_sequence_as(self._nested_outputs, model_outputs)
+    # Preserve external Keras compat for Models with single output.
+    if not nest.is_sequence(model_outputs):
+      model_outputs = [model_outputs]
     model_outputs = tf_utils.convert_inner_node_data(model_outputs)
     config['output_layers'] = model_outputs
     return copy.deepcopy(config)
@@ -1390,8 +1388,6 @@ class Network(base_layer.Layer):
       if not proceed:
         return
     if save_format == 'h5':
-      if not os.path.exists(os.path.dirname(filepath)):
-        os.makedirs(os.path.dirname(filepath))
       with h5py.File(filepath, 'w') as f:
         hdf5_format.save_weights_to_hdf5_group(f, self.layers)
     else:
@@ -1527,22 +1523,9 @@ class Network(base_layer.Layer):
     Returns:
         A JSON string.
     """
-    def get_json_type(obj):
-      # If obj is any numpy type
-      if type(obj).__module__ == np.__name__:
-        if isinstance(obj, np.ndarray):
-          return obj.tolist()
-        else:
-          return obj.item()
-
-      # If obj is a python 'type'
-      if type(obj).__name__ == type.__name__:
-        return obj.__name__
-
-      raise TypeError('Not JSON Serializable:', obj)
-
     model_config = self._updated_config()
-    return json.dumps(model_config, default=get_json_type, **kwargs)
+    return json.dumps(
+        model_config, default=serialization.get_json_type, **kwargs)
 
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.

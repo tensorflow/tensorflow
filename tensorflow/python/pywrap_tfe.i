@@ -157,6 +157,27 @@ limitations under the License.
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* service_addr {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* logdir {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* worker_list {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
 %typemap(in) (TFE_Context*) {
   $1 = (TFE_Context*)PyCapsule_GetPointer($input, nullptr);
 

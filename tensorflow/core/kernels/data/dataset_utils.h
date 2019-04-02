@@ -22,6 +22,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Returns a GraphDef representation of the given dataset.
+Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+                  GraphDef* graph_def);
+
 // This method is used to determine whether we can short-circuit the evaluation
 // of the user-defined function `func`. Short-circuting is possible if every
 // function output corresponds to one of its inputs (e.g. `f(x) = x`, `f(x,y) =
@@ -33,7 +37,7 @@ namespace data {
 // Returns non-ok status if analysis of the function fails.
 //
 // TODO(jsimsa): Extend this to support constants as well.
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
+Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
                                   const NameAttrList& func,
                                   std::vector<int>* indices);
 
@@ -105,6 +109,11 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionLibraryDefinition& to_add);
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionDefLibrary& to_add);
+
+// Creates a runner that runs functions with limited parallelism.
+std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
+    std::function<void(std::function<void()>)> runner, int max_parallelism);
+
 }  // namespace data
 }  // namespace tensorflow
 

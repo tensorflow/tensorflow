@@ -23,14 +23,12 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
-  CHECK(cluster);
-
-  // Default job name for canonical device name. Needs to be set before the
-  // first call to to_lfqn_or_empty()
-  default_job_name_lowercase_ = "localhost";
-
-  devices_ = cluster->GetDevices();
+VirtualPlacer::VirtualPlacer(
+    const std::unordered_map<string, DeviceProperties>& devices)
+    : devices_(devices),
+      // Default job name for canonical device name. Needs to be set before the
+      // first call to to_lfqn_or_empty()
+      default_job_name_lowercase_("localhost") {
   lfqn_map_.reserve(devices_.size());
   for (const auto& kv : devices_) {
     const auto lfqn = to_lfqn_or_empty(kv.first);

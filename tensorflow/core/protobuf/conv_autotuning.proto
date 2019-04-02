@@ -1,0 +1,19 @@
+// This is used for convolution logging. Also see
+// tensorflow/core/protobuf/autotuing.h
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/tensor.proto";
+
+message ConvNodeDef {
+  NodeDef conv = 1;
+  TensorProto input = 2;
+  TensorProto filter = 3;
+  TensorProto output = 4;
+  TensorProto bias = 5;
+  oneof side_input_oneof {
+    TensorProto side_input = 6;
+  }
+}

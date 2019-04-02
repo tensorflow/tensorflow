@@ -108,9 +108,12 @@ class ScanTest(test_base.DatasetTestBase):
 
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(5).apply(
         scan_ops.scan(([0], 1), _scan_fn))
-    self.assertEqual([None], dataset.output_shapes[0][0].as_list())
-    self.assertIs(None, dataset.output_shapes[0][1].ndims)
-    self.assertEqual([], dataset.output_shapes[1].as_list())
+    self.assertEqual(
+        [None], dataset_ops.get_legacy_output_shapes(dataset)[0][0].as_list())
+    self.assertIs(
+        None, dataset_ops.get_legacy_output_shapes(dataset)[0][1].ndims)
+    self.assertEqual(
+        [], dataset_ops.get_legacy_output_shapes(dataset)[1].as_list())
 
     next_element = self.getNext(dataset)
 
