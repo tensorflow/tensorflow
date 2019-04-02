@@ -212,6 +212,14 @@ def get_model():
   model = keras.Model(x, y)
   return model
 
+def get_sample_weights_model():
+  x = keras.layers.Input(shape=(4,), name='input')
+  y = keras.layers.Dense(4,
+                         kernel_initializer = 'ones',
+                         bias_initializer='zeros',
+                         name='dense')(x)
+  model = keras.Model(x, y)
+  return model
 
 def get_dataset(distribution):
   inputs = np.zeros((10, 3), dtype=np.float32)
@@ -739,6 +747,28 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
       model.fit(inputs, targets, sample_weight=sample_weights, epochs=1,
                 steps_per_epoch=2, verbose=1)
+
+  @combinations.generate(
+      combinations.combine(distribution=strategies_minus_tpu, mode=['graph']))
+  def test_distributed_sample_weights(self, distribution):
+    with self.cached_session(), distribution.scope():
+      model = get_sample_weights_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+      
+      inputs = np.array([[0, 1, 2, 3],[1, 3, 4, 5]], np.float32)
+      targets = np.array([[0, 1, 2, 1],[1, 2, 2, 3]], np.float32)
+      sample_weights0 = np.array([[1, 1, 1, 0],[1, 0, 0, 0]], np.float32)
+      sample_weights1 = np.array([[1, 1, 1, 1],[1, 1, 0, 0]], np.float32)
+
+      result0 = model.evaluate(inputs, targets, sample_weight=sample_weights0, 
+                              verbose=1)
+      self.assertAllEqual(result0[0], 0)
+      result1 = model.evaluate(inputs, targets, sample_weight=sample_weights1, 
+                              verbose=1)
+      self.assertAllGreater(result1[0], 0)
+
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_flatten_predict_outputs(self, distribution, cloning):

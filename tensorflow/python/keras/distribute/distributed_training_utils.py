@@ -645,6 +645,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     targets = []
   elif not is_distributing_by_cloning(model):
     sample_weights = None  # b/129503665
+  elif sample_weights is not None:
+    sample_weights = training_utils.standardize_sample_weights(sample_weights, model.outputs)
   else:
     sample_weights = [
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
