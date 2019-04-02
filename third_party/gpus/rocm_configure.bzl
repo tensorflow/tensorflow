@@ -171,6 +171,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
     # Add HIP headers
     inc_dirs.append("/opt/rocm/include/hip")
     inc_dirs.append("/opt/rocm/include/hip/hcc_detail")
+    inc_dirs.append("/opt/rocm/hip/include")
 
     # Add rocrand and hiprand headers
     inc_dirs.append("/opt/rocm/rocrand/include")
