@@ -57,6 +57,21 @@ class BaseActivationsOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
+  // A dedicated constructor for LeakyRelu, which does some options.
+  BaseActivationsOpModel(TensorData input, float alpha) {
+    input_ = AddInput(input);
+    if (input.type == TensorType_UINT8) {
+      output_ = AddOutput({input.type, {}, input.min, input.max});
+    } else if (input.type == TensorType_INT8) {
+      output_ = AddOutput({TensorType_INT8, {}, input.min, input.max});
+    } else {
+      output_ = AddOutput({input.type, {}});
+    }
+    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
+                 CreateLeakyReluOptions(builder_, alpha).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
   BaseActivationsOpModel(BuiltinOperator type, const TensorData& input,
                          const TensorData& output) {
     input_ = AddInput(input);
@@ -112,6 +127,7 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
   }
+
   template <typename T>
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
@@ -212,6 +228,33 @@ TEST(QuantizedActivationsOpTest, Relu6Uint8) {
               ElementsAreArray({128, 128, 160, 192, 176, 128, 224, 144}));
 }
 
+TEST(QuantizedActivationsOpTest, LeakyReluUint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      /*input=*/{TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, 0.5);
+
+  m.SetInput<uint8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 1.0f, 3.0f,    // Row 1
+                      1.0f, -0.5f, -1.0f,  // Row 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
+                                          128,
+                                          144,
+                                          176,
+                                          144,
+                                          120,
+                                          112,
+                                      }));
+}
 TEST(QuantizedActivationsOpTest, Relu6Int8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
@@ -983,7 +1026,6 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
                                  1.0f, -0.5f, -1.0f,  // Row 2
                              }));
 }
-
 }  // namespace
 }  // namespace tflite
 
