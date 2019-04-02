@@ -1341,8 +1341,11 @@ class ReLuOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::RELU);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
+
     ReLUAttributes attr;
-    attr.alpha = 0;
+    TfLiteLeakyReluParams* tf_options = nullptr;
+    RetrieveBuiltinData(tflite_node, &tf_options).IgnoreError();
+    attr.alpha = tf_options ? tf_options->alpha : 0;
     attr.clip = clip_;
     node->operation.attributes = attr;
     return reader->AddOutputs(node);
@@ -1750,6 +1753,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return make_unique<ReLuOperationParser>(0);
     case kTfLiteBuiltinRelu6:
       return make_unique<ReLuOperationParser>(6);
+    case kTfLiteBuiltinLeakyRelu:
+      return make_unique<ReLuOperationParser>(0);
     case kTfLiteBuiltinPrelu:
       return make_unique<PReLuOperationParser>();
     case kTfLiteBuiltinReshape:
