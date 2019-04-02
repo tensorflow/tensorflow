@@ -4237,6 +4237,75 @@ Status ConvertTopK(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertDepthToSpace(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TFAttrs attrs(node_def);
+  const int block_size = attrs.get<int64>("block_size");
+  if (block_size < 2) {
+    return errors::InvalidArgument("Block size must be 2 or greater, at ",
+                                   node_def.name());
+  }
+  const string data_format = attrs.get<string>("data_format");
+  if (data_format != "NCHW" && data_format != "NHWC") {
+    return errors::Unimplemented("Data format ", data_format,
+                                 " is not supported, at ", node_def.name());
+  }
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  if (dims.nbDims != 3) {
+    return errors::InvalidArgument(
+        "The input to DepthToSpace must be rank 4, at ", node_def.name());
+  }
+  const int num_channels = data_format == "NCHW" ? dims.d[0] : dims.d[2];
+  const int h = data_format == "NCHW" ? dims.d[1] : dims.d[0];
+  const int w = data_format == "NCHW" ? dims.d[2] : dims.d[1];
+  if (num_channels % (block_size * block_size) != 0) {
+    return errors::InvalidArgument(
+        "Number of channels must be divisible by block_size*block_size, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IShuffleLayer* layer_1 =
+      params->converter->network()->addShuffle(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer_1, node_def.name());
+  if (data_format == "NHWC") {
+    layer_1->setFirstTranspose({2, 0, 1});
+  }
+  // First Reshape [C, H, W] - > [r, r, C/(r*r), H, W]
+  nvinfer1::Dims new_shape_1;
+  new_shape_1.nbDims = 5;
+  new_shape_1.d[0] = block_size;
+  new_shape_1.d[1] = block_size;
+  new_shape_1.d[2] = num_channels / (block_size * block_size);
+  new_shape_1.d[3] = h;
+  new_shape_1.d[4] = w;
+  layer_1->setReshapeDimensions(new_shape_1);
+  // Transpose [r, r, C/(r*r), H, W] -> [C/(r*r), H, r, W, r]
+  layer_1->setSecondTranspose({2, 3, 0, 4, 1});
+
+  nvinfer1::IShuffleLayer* layer_2 =
+      params->converter->network()->addShuffle(*layer_1->getOutput(0));
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer_1, node_def.name());
+  // Second Reshape [C/(r*r), H, r, W, r] -> [C/(r*r), H * r, W * r]
+  const nvinfer1::Dims new_shape_2 = nvinfer1::DimsCHW(
+      num_channels / (block_size * block_size), h * block_size, w * block_size);
+  layer_2->setReshapeDimensions(new_shape_2);
+  if (data_format == "NHWC") {
+    layer_2->setSecondTranspose({1, 2, 0});
+  }
+
+  params->converter->MarkQuantizationRangesAsInferrable(inputs.at(0).tensor(),
+                                                        layer_1->getOutput(0));
+  params->converter->MarkQuantizationRangesAsInferrable(layer_1->getOutput(0),
+                                                        layer_2->getOutput(0));
+  params->outputs->push_back(TRT_TensorOrWeights(layer_2->getOutput(0)));
+  return Status::OK();
+}
+
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
@@ -4416,6 +4485,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
+  (*registration)["DepthToSpace"] = ConvertDepthToSpace;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;

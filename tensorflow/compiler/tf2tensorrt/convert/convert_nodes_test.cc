@@ -4910,6 +4910,141 @@ TEST_F(OpConverterTest, ConvertArgMinMax) {
   // TestConvertArgMinMax<ops::ArgMax, DT_INT32>(this);
 }
 
+// Get the NodeDef for DepthToSpace.
+NodeDef GetDepthToSpaceNodeDef(DataType dtype, int block_size,
+                               string data_format) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto attrs = ops::DepthToSpace::DataFormat(data_format);
+  auto depth_to_space = ops::DepthToSpace(s.WithOpName("my_depth_to_space"),
+                                          input, block_size, attrs);
+  return depth_to_space.operation.node()->def();
+}
+
+template <DataType dtype>
+void TestConvertDepthToSpace(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<CType> input_value;
+    int block_size;
+    string data_format;
+    std::vector<int> expected_output_dims;
+    std::vector<CType> expected_output;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(16);
+  std::vector<TestParams> params = {
+      {
+          /*input_shape=*/{4, 2, 2},
+          /*input_value=*/common_input,
+          /*block_size=*/2,
+          /*data_format=*/"NCHW",
+          /*expected_output_dims=*/{1, 4, 4},
+          /*expected_output=*/{CType(0), CType(4), CType(1), CType(5), CType(8),
+                               CType(12), CType(9), CType(13), CType(2),
+                               CType(6), CType(3), CType(7), CType(10),
+                               CType(14), CType(11), CType(15)},
+      },
+      {
+          /*input_shape=*/{2, 2, 4},
+          /*input_value=*/common_input,
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{4, 4, 1},
+          /*expected_output=*/{CType(0), CType(1), CType(4), CType(5), CType(2),
+                               CType(3), CType(6), CType(7), CType(8), CType(9),
+                               CType(12), CType(13), CType(10), CType(11),
+                               CType(14), CType(15)},
+      },
+      {
+          /*input_shape=*/{16, 1, 1},
+          /*input_value=*/common_input,
+          /*block_size=*/4,
+          /*data_format=*/"NCHW",
+          /*expected_output_dims=*/{1, 4, 4},
+          /*expected_output=*/InitTestVector<CType>(16),
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+
+    NodeDef node_def = GetDepthToSpaceNodeDef(dtype, params[i].block_size,
+                                              params[i].data_format);
+    test->AddTestTensor("input", params[i].input_dims, 1,
+                        TfDataTypeToTrt(dtype));
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_depth_to_space", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    DataVec input_data{{"input", test::AsTensor<CType>(params[i].input_value)}};
+    DataVec output_data{
+        {"my_depth_to_space",
+         ConstructTensor<CType>(params[i].expected_output.size())}};
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertDepthToSpace) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_depth_to_space", "DepthToSpace", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "DepthToSpace got 0 inputs but expected 1, at my_depth_to_space");
+  }
+  {
+    // Input is a weight, should fail.
+    Reset();
+    NodeDef node_def = GetDepthToSpaceNodeDef(DT_FLOAT, 2, "NCHW");
+    AddTestWeights<float>("input", {4, 1, 1}, {1, 2, 3, 4});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"input\" for DepthToSpace must be a "
+                               "tensor, at my_depth_to_space");
+  }
+  {
+    // Input rank != 4
+    Reset();
+    NodeDef node_def = GetDepthToSpaceNodeDef(DT_FLOAT, 2, "NCHW");
+    AddTestTensor("input", {16, 32});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "The input to DepthToSpace must be rank 4, at my_depth_to_space");
+  }
+  {
+    // Channels not divisible by block_size, should fail.
+    Reset();
+    NodeDef node_def = GetDepthToSpaceNodeDef(DT_FLOAT, 3, "NCHW");
+    AddTestTensor("input", {16, 32, 32});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Number of channels must be divisible by "
+                               "block_size*block_size, at my_depth_to_space");
+  }
+  {
+    // Unsupported format, should fail.
+    Reset();
+    NodeDef node_def = GetDepthToSpaceNodeDef(DT_FLOAT, 2, "NCHW_VECT_C");
+    AddTestTensor("input", {16, 32, 32});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Data format NCHW_VECT_C is not supported, at my_depth_to_space");
+  }
+
+  TestConvertDepthToSpace<DT_FLOAT>(this);
+  TestConvertDepthToSpace<DT_HALF>(this);
+  TestConvertDepthToSpace<DT_INT32>(this);
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
