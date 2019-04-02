@@ -225,6 +225,12 @@ renames = {
         'tf.linalg.cross',
     'tf.cumprod':
         'tf.math.cumprod',
+    'tf.data.get_output_classes':
+        'tf.compat.v1.data.get_output_classes',
+    'tf.data.get_output_shapes':
+        'tf.compat.v1.data.get_output_shapes',
+    'tf.data.get_output_types':
+        'tf.compat.v1.data.get_output_types',
     'tf.data.make_initializable_iterator':
         'tf.compat.v1.data.make_initializable_iterator',
     'tf.data.make_one_shot_iterator':
