@@ -119,9 +119,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Check if we can use output fusion for (A @ B) * alpha
-  if (producer->opcode() == HloOpcode::kDot ||
-      (producer->opcode() == HloOpcode::kFusion &&
-       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
+  if (producer->opcode() == HloOpcode::kDot && ImplementedAsGemm(*producer)) {
     int64 other_operand_index = 1 - operand_index;
     HloInstruction* op1 = nullptr;
     HloInstruction* op2 = nullptr;
