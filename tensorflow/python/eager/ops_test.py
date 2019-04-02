@@ -164,7 +164,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(3, three_x)
 
   def testOperatorOverrides(self):
-    def _testOperations(v1, v2):
+    def ops_test(v1, v2):
       a = constant_op.constant(v1)
       b = constant_op.constant(v2)
 
@@ -191,8 +191,8 @@ class OpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((a != b), np.not_equal(v1, v2)[0])
       self.assertAllEqual(v1[0], a[constant_op.constant(0)])
 
-    _testOperations([1, 4, 8], [2, 3, 5])
-    _testOperations([1, -4, -5], [-2, 3, -6])
+    ops_test([1, 4, 8], [2, 3, 5])
+    ops_test([1, -4, -5], [-2, 3, -6])
 
   def test_basic_slice(self):
     npt = np.arange(1, 19, dtype=np.float32).reshape(3, 2, 3)
