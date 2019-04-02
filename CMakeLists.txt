@@ -43,3 +43,7 @@ add_subdirectory(lib)
 add_subdirectory(tools)
 add_subdirectory(unittests)
 add_subdirectory(test)
+
+if( LLVM_INCLUDE_EXAMPLES )
+  add_subdirectory(examples)
+endif()
