@@ -7,3 +7,4 @@ macro(add_toy_chapter name)
 endmacro(add_toy_chapter name)
 
 add_subdirectory(Ch1)
+add_subdirectory(Ch2)

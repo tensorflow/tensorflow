@@ -29,6 +29,7 @@ set(MLIR_TEST_DEPENDS
 if(LLVM_BUILD_EXAMPLES)
   list(APPEND MLIR_TEST_DEPENDS
     toyc-ch1
+    toyc-ch2
     )
 endif()
 
