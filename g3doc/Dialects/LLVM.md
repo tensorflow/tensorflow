@@ -47,9 +47,8 @@ specific LLVM IR type.
 
 ## Operations {#operations}
 
-All operations in the LLVM IR dialect use the generic (verbose) form of MLIR
-operations. The mnemonic of an operation is that used in LLVM IR prefixed with
-"`llvm.`".
+All operations in the LLVM IR dialect have a custom form in MLIR. The mnemonic
+of an operation is that used in LLVM IR prefixed with "`llvm.`".
 
 ### LLVM IR operations
 
@@ -74,10 +73,10 @@ Examples:
 
 ```mlir {.mlir}
 // Integer addition.
-%0 = "llvm.add"(%a, %b) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
+%0 = llvm.add %a, %b : !llvm<"i32">
 
 // Unsigned integer division.
-%1 = "llvm.udiv"(%a, %b) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
+%1 = llvm.udiv %a, %b : !llvm<"i32">
 ```
 
 #### Floating point binary arithmetic operations
@@ -95,16 +94,16 @@ Examples:
 
 ```mlir {.mlir}
 // Float addition.
-%0 = "llvm.fadd"(%a, %b) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+%0 = llvm.fadd %a, %b : !llvm<"float">
 
 // Float division.
-%1 = "llvm.fdiv"(%a, %b) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+%1 = llvm.fdiv %a, %b : !llvm<"float">
 ```
 
 #### Memory-related operations
 
--   `<r> = alloca <size>`
--   `<r> = getelementptr <address>, <index> (, <index>)+`
+-   `<r> = alloca <size> x <type>`
+-   `<r> = getelementptr <address>[<index> (, <index>)+]`
 -   `<r> = load <address>`
 -   `store <value>, <address>`
 
@@ -120,45 +119,44 @@ Examples:
 
 ```mlir {.mlir}
 // Allocate an array of 4 floats on stack
-%c4 = "llvm.constant" {value: 4 : i64} : !llvm<"i64">
-%0 = "llvm.alloca"(%c4) : (!llvm<"i64">) -> !llvm<"float*">
+%c4 = llvm.constant(4) : !llvm<"i64">
+%0 = llvm.alloca %c4 x !llvm<"float"> : (!llvm<"i64">) -> !llvm<"float*">
 
 // Get the second element of the array (note 0-based indexing).
-%c1 = "llvm.constant" {value: 1 : i64} : !llvm<"i64">
-%1 = "llvm.getelementptr"(%0, %c1) : (!llvm<"float*">, !llvm<"i64">)
+%c1 = llvm.constant(1) : !llvm<"i64">
+%1 = llvm.getelementptr %0[%c1] : (!llvm<"float*">, !llvm<"i64">)
                                    -> !llvm<"float*">
 
 // Store a constant into this element.
-%cf = "llvm.constant" {value: 42.0 : f32} : !llvm<"float">
-"llvm.store" %cf, %1 : (!llvm<"float">, !llvm<"float*">) -> ()
+%cf = llvm.constant(42.0 : f32) : !llvm<"float">
+llvm.store %cf, %1 : !llvm<"float*">
 
 // Load the value from this element.
-%3 = "llvm.load" %1 : (!llvm<"float*">) -> (!llvm<"float">)
+%3 = llvm.load %1 : !llvm<"float*">
 ```
 
 #### Operations on values of aggregate type.
 
--   `<value> = extractvalue <struct> {position: [<index> (, <index>)+]}`
--   `<struct> = insertvalue <value>,<struct> {position: [<index> (, <index>)+]}`
+-   `<value> = extractvalue <struct>[<index> (, <index>)+]`
+-   `<struct> = insertvalue <value>, <struct>[<index> (, <index>)+]`
 
 In these operations, `<struct>` must be a value of wrapped LLVM IR structure
 type and `<value>` must be a value that corresponds to one of the (nested)
 structure element types.
 
-The `position` attribute is a mandatory array attribute containing integer
-attributes. It identifies the 0-based position of the element in the (nested)
-structure type.
+Note the use of integer literals to designate subscripts, which is made possbile
+by `extractvalue` and `insertvalue` must have constant subscripts. Internally,
+they are modeled as array attributes.
 
 Examples:
 
 ```mlir {.mlir}
 // Get the value third element of the second element of a structure.
-%0 = "llvm.extractvalue"(%s) {position: [1, 2]} : (!llvm<"{i32, {i1, i8, i16}">) -> !llvm<"i16">
+%0 = llvm.extractvalue %s[1, 2] : !llvm<"{i32, {i1, i8, i16}">
 
 // Insert the value to the third element of the second element of a structure.
 // Note that this returns a new structure-typed value.
-%1 = "llvm.insertvalue"(%0, %s) {position: [1, 2]} :
-  (!llvm<"i16">, !llvm<"{i32, {i1, i8, i16}">) -> !llvm<"{i32, {i1, i8, i16}">
+%1 = llvm.insertvalue %0, %s[1, 2] : !llvm<"{i32, {i1, i8, i16}">
 ```
 
 #### Terminator operations.
@@ -185,21 +183,20 @@ Examples:
 ```mlir {.mlir}
 // Branch without arguments.
 ^bb0:
-  "llvm.br"() [^bb0] : () -> ()
+  llvm.br ^bb0
 
 // Branch and pass arguments.
 ^bb1(%arg: !llvm<"i32">):
-  "llvm.br"() [^bb1(%arg : !llvm<"i32">)] : () -> ()
+  llvm.br ^bb1(%arg : !llvm<"i32">)
 
 // Conditionally branch and pass arguments to one of the blocks.
-"llvm.cond_br"(%cond) [^bb0, %bb1(%arg : !llvm<"i32">)] : (!llvm<"i1">) -> ()
+llvm.cond_br %cond, ^bb0, %bb1(%arg : !llvm<"i32">)
 
 // It's okay to use the same block without arguments, but probably useless.
-"llvm.cond_br"(%cond) [^bb0, ^bb0] : (!llvm<"i1">) ->  ()
+llvm.cond_br %cond, ^bb0, ^bb0
 
 // ERROR: Passing different arguments to the same block in a conditional branch.
-"llvm.cond_br"(%cond) [^bb1(%0 : !llvm<"i32">),
-                       ^bb1(%1 : !llvm<"i32">)] : (!llvm<"i1">) -> ()
+llvm.cond_br %cond, ^bb1(%0 : !llvm<"i32">), ^bb1(%1 : !llvm<"i32">)
 
 ```
 
@@ -213,42 +210,41 @@ this behavior by providing a variadic `call` operation for 0- and 1-result
 functions. Even though MLIR supports multi-result functions, LLVM IR dialect
 disallows them.
 
-The `call` operation supports both direct and indirect calls. Direct calls
-require the `callee` attribute of function type to be present. Otherwise, the
-call is considered indirect and expects the function as its first argument.
+The `call` instruction supports both direct and indirect calls. Direct calls
+start with a function name (`@`-prefixed) and indirect calls start with an SSA
+value (`%`-prefixed). The direct callee, if present, is stored as a function
+attribute `callee`. The trailing type of the instruction is always the MLIR
+function type, which may be different from the indirect callee that has the
+wrapped LLVM IR function type.
 
 Examples:
 
 ```mlir {.mlir}
 // Direct call without arguments and with one result.
-%0 = "llvm.call"() {callee: @foo : () -> (!llvm<"float">)}
-    : () -> (!llvm<"float">)
+%0 = llvm.call @foo() : () -> (!llvm<"float">)
 
 // Direct call with arguments and without a result.
-"llvm.call"(%0) {callee: @bar : (!llvm<"float">) -> ()}
-    : (!llvm<"float">) -> ()
+llvm.call @bar(%0) : (!llvm<"float">) -> ()
 
 // Indirect call with an argument and without a result.
-"llvm.call"(%1, %0) : ((!llvm<"float">) -> (), !llvm<"float">) -> ()
+llvm.call %1(%0) : (!llvm<"float">) -> ()
 ```
 
 #### Miscellaneous operations.
 
-Integer comparisons: `icmp <lhs>, <rhs> {predicate: <int>}`. The following
-predicate values are supported:
+Integer comparisons: `icmp "predicate" <lhs>, <rhs>`. The following predicate
+values are supported:
 
--   `0` - equality comparison;
--   `1` - inequality comparison;
--   `2` - signed less-than comparison
--   `3` - signed less-than-or-equal comparison
--   `4` - signed greater-than comparison
--   `5` - signed greater-than-or-equal comparison
--   `6` - unsigned less-than comparison
--   `7` - unsigned less-than-or-equal comparison
--   `8` - unsigned greater-than comparison
--   `9` - unsigned greater-than-or-equal comparison
-
-Note: these constant values correspond to those used by MLIR's `cmpi` operation.
+-   `eq` - equality comparison;
+-   `ne` - inequality comparison;
+-   `slt` - signed less-than comparison
+-   `sle` - signed less-than-or-equal comparison
+-   `sgt` - signed greater-than comparison
+-   `sge` - signed greater-than-or-equal comparison
+-   `ult` - unsigned less-than comparison
+-   `ule` - unsigned less-than-or-equal comparison
+-   `ugt` - unsigned greater-than comparison
+-   `uge` - unsigned greater-than-or-equal comparison
 
 Bitwise reinterpretation: `bitcast <value>`.
 
@@ -266,21 +262,25 @@ constants must be created as SSA values before being used in other operations.
 `llvm.constant` creates such values for scalars and vectors. It has a mandatory
 `value` attribute, which may be an integer, floating point attribute; splat,
 dense or sparse attribute containing integers or floats. The type of the
-attribute is one the corresponding MLIR standard types. The operation produces a
-new SSA value of the specified LLVM IR dialect type.
+attribute is one the corresponding MLIR standard types. It may be omitted for
+`i64` and `f64` types that are implied. The operation produces a new SSA value
+of the specified LLVM IR dialect type. The type of that value _must_ correspond
+to the attribute type converted to LLVM IR.
 
 Examples:
 
 ```mlir {.mlir}
-// Integer constant
-%0 = "llvm.constant"() {value: 42 : i32} -> !llvm<"i32">
+// Integer constant, internal i32 is mandatory
+%0 = llvm.constant(42 : i32) : !llvm<"i32">
 
-// Floating point constant
-%1 = "llvm.constant"() {value: 42.0 : f32} -> !llvm<"float">
+// It's okay to omit i64.
+%1 = llvm.constant(42) : !llvm<"i64">
 
-// Splat vector constant
-%2 = "llvm.constant"() {value: splat<vector<4xf32>, 1.0>}
-      -> !llvm<"<4 x float>">
+// Floating point constant.
+%2 = llvm.constant(42.0 : f32) : !llvm<"float">
+
+// Splat vector constant,.
+%3 = llvm.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">
 ```
 
 #### `llvm.undef` {#undef-operation}
@@ -294,5 +294,5 @@ Example:
 
 ```mlir {.mlir}
 // Create a structure with a 32-bit integer followed by a float.
-%0 = "llvm.undef"() -> !llvm<"{i32, float}">
+%0 = llvm.undef : !llvm<"{i32, float}">
 ```

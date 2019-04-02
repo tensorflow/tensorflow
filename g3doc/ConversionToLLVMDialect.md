@@ -207,21 +207,21 @@ func @bar() {
 
 func @foo(%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}"> {
   // insert the vales into a structure
-  %0 = "llvm.undef"() : () -> !llvm.type<"{i32, i64}">
-  %1 = "llvm.insertvalue"(%arg0, %0) {position: [0]} : (!llvm.type<"i32">, !llvm.type<"{i32, i64}">) -> !llvm.type<"{i32, i64}">
-  %2 = "llvm.insertvalue"(%arg1, %1) {position: [1]} : (!llvm.type<"i64">, !llvm.type<"{i32, i64}">) -> !llvm.type<"{i32, i64}">
+  %0 = llvm.undef :  !llvm.type<"{i32, i64}">
+  %1 = llvm.insertvalue %arg0, %0[0] : !llvm.type<"{i32, i64}">
+  %2 = llvm.insertvalue %arg1, %1[1] : !llvm.type<"{i32, i64}">
 
   // return the structure value
-  "llvm.return"(%2) : !llvm.type<"{i32, i64}"> -> ()
+  llvm.return %2 : !llvm.type<"{i32, i64}">
 }
 func @bar() {
-  %0 = "llvm.constant" {value: 42} : !llvm.type<"i32">
-  %1 = "llvm.constant" {value: 17} : !llvm.type<"i64">
+  %0 = llvm.constant(42 : i32) : !llvm.type<"i32">
+  %1 = llvm.constant(17) : !llvm.type<"i64">
 
   // call and extract the values from the structure
-  %2 = "llvm.call"(%0, %1) {callee: @bar} : (%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}">
-  %3 = "llvm.extractvalue"(%2) {position: [0]} :  (!llvm.type<"{i32, i64}"> -> !llvm.type<"i32">
-  %4 = "llvm.extractvalue"(%2) {position: [1]} :  (!llvm.type<"{i32, i64}"> -> !llvm.type<"i64">
+  %2 = llvm.call @bar(%0, %1) : (%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}">
+  %3 = llvm.extractvalue %2[0] : !llvm.type<"{i32, i64}">
+  %4 = llvm.extractvalue %2[1] : !llvm.type<"{i32, i64}">
 
   // use as before
   "use_i32"(%3) : (!llvm.type<"i32">) -> ()
@@ -264,11 +264,11 @@ leads to a new basic block being inserted,
 before the conversion to the LLVM IR dialect:
 
 ```mlir {.mlir}
-  "llvm.cond_br"(%0)[^bb1(%1 : !llvm.type<"i32">), ^dummy] : (!llvm.type<"i1">) -> ()
+  llvm.cond_br  %0, ^bb1(%1 : !llvm.type<"i32">), ^dummy
 ^bb1(%3 : !llvm.type<"i32">):
   "use"(%3) : (!llvm.type<"i32">) -> ()
 ^dummy:
-  "llvm.br"()[^bb1(%2 : !llvm.type<"i32">)] : () -> ()
+  llvm.br ^bb1(%2 : !llvm.type<"i32">)
 ```
 
 ## Memref Model
@@ -308,7 +308,7 @@ An access to a zero-dimensional memref is converted into a plain load:
 %0 = load %m[] : memref<f32>
 
 // after
-%0 = "llvm.load"(%m) : (!llvm.type<"float*">) -> (!llvm.type<"float">)
+%0 = llvm.load %m : !llvm.type<"float*">
 ```
 
 An access to a memref with indices:
@@ -321,34 +321,34 @@ is transformed into the equivalent of the following code:
 
 ```mlir {.mlir}
 // obtain the buffer pointer
-%b = "llvm.extractvalue"(%m) {position: [0]} : (!llvm.type<"{float*, i64, i64}">) -> !llvm.type<"float*">
+%b = llvm.extractvalue %m[0] : !llvm.type<"{float*, i64, i64}">
 
 // obtain the components for the index
-%sub1 = "llvm.constant" {value: 1} : () -> !llvm.type<"i64">  // first subscript
-%sz2 = "llvm.extractvalue"(%m) {position: [1]}
-    : (!llvm.type<"{float*, i64, i64}">) -> !llvm.type<"float*"> // second size (dynamic, second descriptor element)
-%sub2 = "llvm.constant" {value: 2} : () -> !llvm.type<"i64">  // second subscript
-%sz3 = "llvm.constant" {value: 13} : () -> !llvm.type<"i64">  // third size (static)
-%sub3 = "llvm.constant" {value: 3} : () -> !llvm.type<"i64">  // third subscript
-%sz4 = "llvm.extractvalue"(%m) {position: [1]}
-    : (!llvm.type<"{float*, i64, i64}">) -> !llvm.type<"float*"> // fourth size (dynamic, third descriptor element)
-%sub4 = "llvm.constant" {value: 4} : () -> !llvm.type<"i64">  // fourth subscript
+%sub1 = llvm.constant(1) : !llvm.type<"i64">  // first subscript
+%sz2 = llvm.extractvalue %m[1]
+    : !llvm.type<"{float*, i64, i64}"> // second size (dynamic, second descriptor element)
+%sub2 = llvm.constant(2) : !llvm.type<"i64">  // second subscript
+%sz3 = llvm.constant(13) : !llvm.type<"i64">  // third size (static)
+%sub3 = llvm.constant(3) : !llvm.type<"i64">  // third subscript
+%sz4 = llvm.extractvalue %m[1]
+    : !llvm.type<"{float*, i64, i64}"> // fourth size (dynamic, third descriptor element)
+%sub4 = llvm.constant(4) : !llvm.type<"i64">  // fourth subscript
 
 // compute the linearized index
 // %sub4 + %sub3 * %sz4 + %sub2 * (%sz3 * %sz4) + %sub1 * (%sz2 * %sz3 * %sz4) =
 // = ((%sub1 * %sz2 + %sub2) * %sz3 + %sub3) * %sz4 + %sub4
-%idx0 = "llvm.mul"(%sub1, %sz2) : (!llvm.type<"i64">, !llvm.type<"i64">) -> !llvm.type<"i64">
-%idx1 = "llvm.add"(%idx0, %sub2) : (!llvm.type<"i64">, !llvm.type<"i64">) -> !llvm.type<"i64">
-%idx2 = "llvm.mul"(%idx1, %sz3) : (!llvm.type<"i64">, !llvm.type<"i64">) -> !llvm.type<"i64">
-%idx3 = "llvm.add"(%idx2, %sub3) : (!llvm.type<"i64">, !llvm.type<"i64">) -> !llvm.type<"i64">
-%idx4 = "llvm.mul"(%idx3, %sz4) : (!llvm.type<"i64">, !llvm.type<"i64">) -> !llvm.type<"i64">
-%idx5 = "llvm.add"(%idx4, %sub4) : (!llvm.type<"i64">, !llvm.type<"i64">) -> !llvm.type<"i64">
+%idx0 = llvm.mul %sub1, %sz2 : !llvm.type<"i64">
+%idx1 = llvm.add %idx0, %sub : !llvm.type<"i64">
+%idx2 = llvm.mul %idx1, %sz3 : !llvm.type<"i64">
+%idx3 = llvm.add %idx2, %sub3 : !llvm.type<"i64">
+%idx4 = llvm.mul %idx3, %sz4 : !llvm.type<"i64">
+%idx5 = llvm.add %idx4, %sub4 : !llvm.type<"i64">
 
 // obtain the element address
-%a = "llvm.getelementptr"(%b, %idx5) : (!llvm.type<"float*">, !llvm.type<"i64">) -> !llvm.type<"float*">
+%a = llvm.getelementptr %b[%idx5] : (!llvm.type<"float*">, !llvm.type<"i64">) -> !llvm.type<"float*">
 
 // perform the actual load
-%0 = "llvm.load"(%a) : (!llvm.type<"float*">) -> !llvm.type<"float">
+%0 = llvm.load %a : !llvm.type<"float*">
 ```
 
 In practice, the subscript and size extraction will be interleaved with the

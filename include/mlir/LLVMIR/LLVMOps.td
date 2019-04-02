@@ -135,7 +135,10 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
     LLVM_OneResultOp<mnemonic,
            !listconcat([NoSideEffect, SameValueType], traits)>,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
-    LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);">;
+    LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);"> {
+  let parser = [{ return impl::parseBinaryOp(parser, result); }];
+  let printer = [{ printLLVMBinaryOp(p, this->getOperation()); }];
+}
 
 // Integer binary operations.
 def LLVM_AddOp : LLVM_ArithmeticOp<"add", "CreateAdd", [Commutative]>;
@@ -154,6 +157,8 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
     $res = builder.CreateICmp(getLLVMCmpPredicate(
         static_cast<CmpIPredicate>($predicate.getZExtValue())), $lhs, $rhs);
   }];
+  let parser = [{ return parseICmpOp(parser, result); }];
+  let printer = [{ printICmpOp(p, *this); }];
 }
 
 // Floating point binary operations.
@@ -169,20 +174,33 @@ def LLVM_AllocaOp : LLVM_OneResultOp<"alloca">,
   string llvmBuilder = [{
     $res = builder.CreateAlloca($_resultType, $arraySize);
   }];
+  let parser = [{ return parseAllocaOp(parser, result); }];
+  let printer = [{ printAllocaOp(p, *this); }];
 }
 def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
                  Arguments<(ins LLVM_Type:$base, Variadic<LLVM_Type>:$indices)>,
-                 LLVM_Builder<"$res = builder.CreateGEP($base, $indices);">;
+                 LLVM_Builder<"$res = builder.CreateGEP($base, $indices);"> {
+  let parser = [{ return parseGEPOp(parser, result); }];
+  let printer = [{ printGEPOp(p, *this); }];
+}
 def LLVM_LoadOp : LLVM_OneResultOp<"load">, Arguments<(ins LLVM_Type:$addr)>,
-                  LLVM_Builder<"$res = builder.CreateLoad($addr);">;
+                  LLVM_Builder<"$res = builder.CreateLoad($addr);"> {
+  let parser = [{ return parseLoadOp(parser, result); }];
+  let printer = [{ printLoadOp(p, *this); }];
+}
 def LLVM_StoreOp : LLVM_ZeroResultOp<"store">,
                    Arguments<(ins LLVM_Type:$value, LLVM_Type:$addr)>,
-                   LLVM_Builder<"builder.CreateStore($value, $addr);">;
+                   LLVM_Builder<"builder.CreateStore($value, $addr);"> {
+  let parser = [{ return parseStoreOp(parser, result); }];
+  let printer = [{ printStoreOp(p, *this); }];
+}
 def LLVM_BitcastOp
     : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
       Arguments<(ins LLVM_Type:$arg)>,
-      LLVM_Builder<"$res = builder.CreateBitCast($arg, $_resultType);">;
-
+      LLVM_Builder<"$res = builder.CreateBitCast($arg, $_resultType);"> {
+  let parser = [{ return parseBitcastOp(parser, result); }];
+  let printer = [{ printBitcastOp(p, *this); }];
+}
 
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
@@ -196,6 +214,8 @@ def LLVM_CallOp : LLVM_Op<"call">,
       return emitOpError("must have 0 or 1 result");
     return success();
   }];
+  let parser = [{ return parseCallOp(parser, result); }];
+  let printer = [{ printCallOp(p, *this); }];
 }
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
                           Arguments<(ins LLVM_Type:$container,
@@ -203,6 +223,8 @@ def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
   string llvmBuilder = [{
     $res = builder.CreateExtractValue($container, extractPosition($position));
   }];
+  let parser = [{ return parseExtractValueOp(parser, result); }];
+  let printer = [{ printExtractValueOp(p, *this); }];
 }
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
                          Arguments<(ins LLVM_Type:$container, LLVM_Type:$value,
@@ -211,6 +233,8 @@ def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
     $res = builder.CreateInsertValue($container, $value,
                                      extractPosition($position));
   }];
+  let parser = [{ return parseInsertValueOp(parser, result); }];
+  let printer = [{ printInsertValueOp(p, *this); }];
 }
 
 // Misc operations.
@@ -219,16 +243,24 @@ def LLVM_SelectOp
       Arguments<(ins LLVM_Type:$condition, LLVM_Type:$trueValue,
                  LLVM_Type:$falseValue)>,
       LLVM_Builder<
-          "$res = builder.CreateSelect($condition, $trueValue, $falseValue);">;
+          "$res = builder.CreateSelect($condition, $trueValue, $falseValue);"> {
+  let parser = [{ return parseSelectOp(parser, result); }];
+  let printer = [{ printSelectOp(p, *this); }];
+}
 
 // Terminators.
-def LLVM_BrOp : LLVM_TerminatorOp<"br", [NoSideEffect]>;
+def LLVM_BrOp : LLVM_TerminatorOp<"br", [NoSideEffect]> {
+  let parser = [{ return parseBrOp(parser, result); }];
+  let printer = [{ printBrOp(p, *this); }];
+}
 def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
   let verifier = [{
     if (getNumSuccessors() != 2)
       return emitOpError("expected exactly two successors");
     return success();
   }];
+  let parser = [{ return parseCondBrOp(parser, result); }];
+  let printer = [{ printCondBrOp(p, *this); }];
 }
 def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]> {
   string llvmBuilder = [{
@@ -243,15 +275,25 @@ def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]> {
       return emitOpError("expects at most 1 operand");
     return success();
   }];
+
+  let parser = [{ return parseReturnOp(parser, result); }];
+  let printer = [{ printReturnOp(p, *this); }];
 }
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
 // work correctly).
 def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>,
-                   LLVM_Builder<"$res = llvm::UndefValue::get($_resultType);">;
+                   LLVM_Builder<"$res = llvm::UndefValue::get($_resultType);"> {
+  let parser = [{ return parseUndefOp(parser, result); }];
+  let printer = [{ printUndefOp(p, *this); }];
+}
 def LLVM_ConstantOp
     : LLVM_OneResultOp<"constant", [NoSideEffect]>,
       Arguments<(ins AnyAttr:$value)>,
-      LLVM_Builder<"$res = getLLVMConstant($_resultType, $value, $_location);">;
+      LLVM_Builder<"$res = getLLVMConstant($_resultType, $value, $_location);">
+{
+  let parser = [{ return parseConstantOp(parser, result); }];
+  let printer = [{ printConstantOp(p, *this); }];
+}
 
 #endif // LLVMIR_OPS

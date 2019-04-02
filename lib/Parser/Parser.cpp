@@ -3057,6 +3057,9 @@ public:
   bool parseComma() override {
     return parser.parseToken(Token::comma, "expected ','");
   }
+  bool parseColon() override {
+    return parser.parseToken(Token::colon, "expected ':'");
+  }
   bool parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
   }
@@ -3142,10 +3145,19 @@ public:
   /// Parse a function name like '@foo' and return the name in a form that can
   /// be passed to resolveFunctionName when a function type is available.
   virtual bool parseFunctionName(StringRef &result, llvm::SMLoc &loc) {
+    if (parseOptionalFunctionName(result, loc))
+      return emitError(loc, "expected function name");
+    return false;
+  }
+
+  /// Parse a function name like '@foo` if present and return the name without
+  /// the sigil in `result`.  Return true if the next token is not a function
+  /// name and keep `result` unchanged.
+  bool parseOptionalFunctionName(StringRef &result, llvm::SMLoc &loc) override {
     loc = parser.getToken().getLoc();
 
     if (parser.getToken().isNot(Token::at_identifier))
-      return emitError(loc, "expected function name");
+      return true;
 
     result = parser.getTokenSpelling();
     parser.consumeToken(Token::at_identifier);
@@ -3165,6 +3177,14 @@ public:
                                 SmallVectorImpl<Value *> &operands) override {
     // Defer successor parsing to the function parsers.
     return parser.parseSuccessorAndUseList(dest, operands);
+  }
+
+  bool parseLParen() override {
+    return parser.parseToken(Token::l_paren, "expected '('");
+  }
+
+  bool parseRParen() override {
+    return parser.parseToken(Token::r_paren, "expected ')'");
   }
 
   bool parseOperandList(SmallVectorImpl<OperandType> &result,
