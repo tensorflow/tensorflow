@@ -312,6 +312,12 @@ public final class Interpreter implements AutoCloseable {
     return wrapper.getInputTensor(inputIndex);
   }
 
+  /** Gets the names of the input Tensors. */
+  public String[] getInputTensorNames() {
+    checkNotClosed();
+    return wrapper.getInputTensorNames();
+  }
+
   /** Gets the number of output Tensors. */
   public int getOutputTensorCount() {
     checkNotClosed();
@@ -337,6 +343,12 @@ public final class Interpreter implements AutoCloseable {
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
     return wrapper.getOutputTensor(outputIndex);
+  }
+
+  /** Gets the names of the output Tensors. */
+  public String[] getOutputTensorNames() {
+    checkNotClosed();
+    return wrapper.getOutputTensorNames();
   }
 
   /**

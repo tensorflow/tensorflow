@@ -69,6 +69,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
     this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+
+    this.inputTensorNames = getInputNames(interpreterHandle);
+    this.outputTensorNames = getOutputNames(interpreterHandle);
+
     if (options.useNNAPI != null) {
       setUseNNAPI(options.useNNAPI.booleanValue());
     }
@@ -268,6 +272,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return inputTensors.length;
   }
 
+  /** Gets the names of the input tensors. */
+  String[] getInputTensorNames() {
+    if (inputTensorNames == null) {
+      inputTensorNames = new String[] {};
+    }
+    return inputTensorNames;
+  }
+
   /**
    * Gets the input {@link Tensor} for the provided input index.
    *
@@ -289,6 +301,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   /** Gets the number of output tensors. */
   int getOutputTensorCount() {
     return outputTensors.length;
+  }
+
+  /** Gets the names of the output tensors. */
+  String[] getOutputTensorNames() {
+    if (outputTensorNames == null) {
+      outputTensorNames = new String[] {};
+    }
+    return outputTensorNames;
   }
 
   /**
@@ -334,6 +354,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   // Lazily constructed and populated arrays of input and output Tensor wrappers.
   private Tensor[] inputTensors;
   private Tensor[] outputTensors;
+
+  // Lazily constructed and populated arrays of input and output tensor names.
+  private String[] inputTensorNames;
+  private String[] outputTensorNames;
 
   private boolean isMemoryAllocated = false;
 
