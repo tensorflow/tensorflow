@@ -957,7 +957,7 @@ class GradientTape(object):
     flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
-    for t in flat_sources:
+    for t in flat_sources_raw:
       if not t.dtype.is_floating:
         logging.vlog(
             logging.WARN, "The dtype of the source tensor must be "
