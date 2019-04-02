@@ -2025,6 +2025,7 @@ cc_library(
     deps = [
         ":hlo",
         ":while_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
