@@ -29,6 +29,8 @@ import traceback
 import pasta
 import six
 
+import IPython.core.inputtransformer2 as ip
+
 # Some regular expressions we will need for parsing
 FIND_OPEN = re.compile(r"^\s*(\[).*$")
 FIND_STRING_CHARS = re.compile(r"['\"]")
@@ -544,7 +546,6 @@ class ASTCodeUpgrader(object):
       A tuple representing number of files processed, log of actions, errors
     """
     lines = in_file.readlines()
-    import IPython.core.inputtransformer2 as ip
     tm=ip.TransformerManager()
     lines_with_iptyhon_translation=tm.transform_cell(lines)
     processed_file, new_file_content, log, process_errors = (
