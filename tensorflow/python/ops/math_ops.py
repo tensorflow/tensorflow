@@ -2786,7 +2786,8 @@ def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
   Converts `IndexedSlices` objects into dense tensors prior to adding.
-  'tf.math.add_n' performs same operation as 'tf.math.accumulate_n' but it waits
+  
+  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n` but it waits
   for all of its inputs to be ready before beginning to sum, that consumes more 
   memory as  inputs are not ready at different times, since minimum temporary storage 
   is proportional to the output size rather than the inputs size.
