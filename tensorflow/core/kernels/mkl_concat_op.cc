@@ -118,9 +118,8 @@ class EigenConcatBaseOp : public OpKernel {
       *output_max = largest_value;
     } else {
       // For MKL quantization, we only support scaled mode, so the range is
-      // [0,m] for unsigned data
-      overall_min = std::min(0.0f, overall_min);
-      *output_min = overall_min;
+      // [0, m] for unsigned data where m is the range maximum
+      *output_min = 0.0f;
       *output_max = overall_max;
     }
   }
@@ -151,7 +150,7 @@ class EigenConcatBaseOp : public OpKernel {
     const int input_dims = input_shapes[0].dims();
     const TensorShape& input_shape = input_shapes[0];
 
-    int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
+    int32 axis = (concat_dim < 0) ? (concat_dim + input_dims) : concat_dim;
     OP_REQUIRES(
         c, (0 <= axis && axis < input_dims) ||
                (allow_legacy_scalars() && concat_dim == 0),
@@ -169,9 +168,9 @@ class EigenConcatBaseOp : public OpKernel {
     }
     // Note that we reduce the concat of n-dimensional tensors into a two
     // dimensional concat. Assuming the dimensions of any input/output
-    // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
-    // the dimension indicated with size y0, we flatten it to {x, y}, where y =
-    // Prod_i(yi) and x = ((n > 0) ? Prod_i(xi) : 1).
+    // tensor are {x_0, x_1,...,x_n-1, y_0, y_1,...,y_m-1}, where the
+    // concat is along the dimension indicated with size y_0, we flatten it
+    // to {x, y}, where y = Prod_i(y_i) and x = ((n > 0) ? Prod_i(x_i) : 1).
     ConstMatrixVector inputs_flat;
     inputs_flat.reserve(N);
     int64 inputs_flat_dim0 = 1;
@@ -564,7 +563,7 @@ class MklConcatOp : public OpKernel {
                         const MklDnnShapeList& mkl_input_shapes,
                         bool quantized_input) {
     size_t num_mkl_input_shapes = mkl_input_shapes.size();
-    CHECK_EQ(values.size(), num_mkl_input_shapes);
+    DCHECK_EQ(values.size(), num_mkl_input_shapes);
     std::vector<Tensor> converted_values(num_mkl_input_shapes);
     TensorShapeList tf_input_shapes;
     for (size_t i = 0; i < num_mkl_input_shapes; ++i) {
