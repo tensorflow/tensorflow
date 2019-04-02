@@ -166,6 +166,7 @@ using constant_float = ValueBuilder<ConstantFloatOp>;
 using constant_index = ValueBuilder<ConstantIndexOp>;
 using constant_int = ValueBuilder<ConstantIntOp>;
 using dealloc = OperationBuilder<DeallocOp>;
+using dim = ValueBuilder<DimOp>;
 using load = ValueBuilder<LoadOp>;
 using ret = OperationBuilder<ReturnOp>;
 using select = ValueBuilder<SelectOp>;

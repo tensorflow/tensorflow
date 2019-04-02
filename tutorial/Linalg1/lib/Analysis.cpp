@@ -73,13 +73,3 @@ std::pair<mlir::Value *, unsigned> linalg::getViewRootIndexing(Value *view,
   unsigned parentDim = dim > sliceDim ? dim + 1 : dim;
   return getViewRootIndexing(parentView, parentDim);
 }
-
-////////////////////////////////////////////////////////////////////////////////
-/// Helper functions to avoid dispatch at all client sites.
-////////////////////////////////////////////////////////////////////////////////
-unsigned linalg::getViewRank(Value *view) {
-  assert(view->getType().isa<ViewType>() && "expected a ViewType");
-  if (auto viewOp = view->getDefiningOp()->dyn_cast<ViewOp>())
-    return viewOp.getRank();
-  return view->getDefiningOp()->dyn_cast<SliceOp>().getRank();
-}

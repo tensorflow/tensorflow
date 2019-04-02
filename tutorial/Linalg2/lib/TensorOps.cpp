@@ -20,7 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "linalg2/Analysis.h"
+#include "linalg1/Utils.h"
 #include "linalg2/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpDefinition.h"
@@ -33,116 +33,6 @@ using llvm::Twine;
 
 using namespace mlir;
 using namespace linalg;
-
-template <class ConcreteOp>
-Type linalg::TensorContractionBase<ConcreteOp>::getInputElementType(
-    unsigned idx) {
-  return getInputView(idx)
-      ->getType()
-      .template cast<ViewType>()
-      .getElementType();
-}
-
-template <class ConcreteOp>
-Type linalg::TensorContractionBase<ConcreteOp>::getOutputElementType(
-    unsigned idx) {
-  return getOutputView(idx)
-      ->getType()
-      .template cast<ViewType>()
-      .getElementType();
-}
-
-template <class ConcreteOp>
-Value *linalg::TensorContractionBase<ConcreteOp>::getInputView(unsigned idx) {
-  return *(getInputs().begin() + idx);
-}
-
-template <class ConcreteOp>
-Value *linalg::TensorContractionBase<ConcreteOp>::getOutputView(unsigned idx) {
-  return *(getOutputs().begin() + idx);
-}
-
-template <class ConcreteOp>
-Value *linalg::TensorContractionBase<ConcreteOp>::getInputMemRef(unsigned idx) {
-  return getViewSupportingMemRef(*(getInputs().begin() + idx));
-}
-
-template <class ConcreteOp>
-Value *
-linalg::TensorContractionBase<ConcreteOp>::getOutputMemRef(unsigned idx) {
-  return getViewSupportingMemRef(*(getOutputs().begin() + idx));
-}
-
-template <class ConcreteOp>
-mlir::Operation::operand_range
-linalg::TensorContractionBase<ConcreteOp>::getInputs() {
-  auto *op = static_cast<ConcreteOp *>(this)->getOperation();
-  return {op->operand_begin(), op->operand_begin() + getNumInputs()};
-}
-
-template <class ConcreteOp>
-mlir::Operation::operand_range
-linalg::TensorContractionBase<ConcreteOp>::getOutputs() {
-  auto *op = static_cast<ConcreteOp *>(this)->getOperation();
-  return {op->operand_begin() + getNumInputs(),
-          op->operand_begin() + getNumInputs() + getNumOutputs()};
-}
-
-template <class ConcreteOp>
-LogicalResult linalg::TensorContractionBase<ConcreteOp>::verify() {
-  auto *concreteOp = static_cast<ConcreteOp *>(this)->getOperation();
-  if (getNumInputs() <= 0)
-    concreteOp->emitOpError("expected at least one input");
-  if (getNumOutputs() <= 0)
-    concreteOp->emitOpError("expected at least one output");
-  if (concreteOp->getNumOperands() != getNumInputs() + getNumOutputs()) {
-    concreteOp->emitOpError(
-        "expected " + Twine(getNumInputs() + getNumOutputs()) + " operands");
-  }
-  for (unsigned i = 0, e = getNumInputs(); i < e; ++i) {
-    if (!concreteOp->getOperand(i)->getType().template isa<ViewType>())
-      return concreteOp->emitOpError("operand " + Twine(i) + " not a ViewType");
-  }
-  for (unsigned i = getNumInputs(), e = getNumInputs() + getNumOutputs(); i < e;
-       ++i) {
-    auto viewType =
-        concreteOp->getOperand(i)->getType().template dyn_cast<ViewType>();
-    if (!viewType)
-      return concreteOp->emitOpError("operand " + Twine(i) + " not a ViewType");
-    if (viewType.getRank() != getNumParallelDims())
-      return concreteOp->emitOpError("operand " + Twine(i) +
-                                     " must be of rank " +
-                                     Twine(getNumParallelDims()));
-  }
-  return success();
-}
-
-template <class ConcreteOp>
-bool linalg::TensorContractionBase<ConcreteOp>::parse(OpAsmParser *parser,
-                                                      OperationState *result) {
-  llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
-}
-
-// A TensorContraction prints as:
-//
-// ```{.mlir}
-//   concrete_op_name {%0, %1} -> {%2}
-// ```
-//
-// Where %0, %1 is an ssa-value holding a View, %2 is an ssa-value holding a
-// view.
-template <class ConcreteOp>
-void linalg::TensorContractionBase<ConcreteOp>::print(OpAsmPrinter *p) {
-  *p << static_cast<ConcreteOp *>(this)->getOperationName() << " {";
-  auto *lastInput = *std::prev(getInputs().end());
-  for (auto *i : getInputs()) {
-    *p << *i << ((i == lastInput) ? "} -> {" : ", ");
-  }
-  auto *lastOutput = *std::prev(getOutputs().end());
-  for (auto *o : getOutputs()) {
-    *p << *o << ((o == lastOutput) ? "}" : ",");
-  }
-}
 
 //////////////////////////////////////////////////////////////////////////////
 // Op-specific Dot.

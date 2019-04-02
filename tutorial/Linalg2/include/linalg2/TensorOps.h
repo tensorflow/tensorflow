@@ -15,11 +15,15 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG2_MATMULOP_H_
-#define LINALG2_MATMULOP_H_
+#ifndef LINALG2_TENSOROPS_H_
+#define LINALG2_TENSOROPS_H_
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Support/LLVM.h"
+
+namespace mlir {
+class AffineForOp;
+} // namespace mlir
 
 namespace linalg {
 
@@ -41,13 +45,6 @@ protected:
   // Op-specific functionality.
   //////////////////////////////////////////////////////////////////////////////
   TensorContractionBase() = default;
-
-  mlir::Type getInputElementType(unsigned i);
-  mlir::Type getOutputElementType(unsigned i);
-  mlir::Value *getInputView(unsigned i);
-  mlir::Value *getOutputView(unsigned i);
-  mlir::Value *getInputMemRef(unsigned i);
-  mlir::Value *getOutputMemRef(unsigned i);
   mlir::Operation::operand_range getInputs();
   mlir::Operation::operand_range getOutputs();
 
@@ -69,6 +66,20 @@ public:
   unsigned getNumReductionDims() {
     return static_cast<ConcreteOp *>(this)->numReductionDims;
   };
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Used in Linalg3 and later.
+  //////////////////////////////////////////////////////////////////////////////
+  mlir::Value *getInputView(unsigned i);
+  mlir::Value *getOutputView(unsigned i);
+  /// Computes a mapping from all the ranges of the operands to the enclosing
+  /// loops. In order to support "broadcast"-style semantics, we need to
+  /// consider all the operands (i.e. input operands are not sufficient).
+  /// The operands and their ranges are in the order defined by the particular
+  /// ConcreteOp implementation, the resulting map must match those.
+  /// This is currently computed but can also be specified explicitly in each
+  /// operator to generalize to cases where an analysis is not available.
+  mlir::AffineMap operandRangesToLoopsMap();
 };
 
 /// Implements c = A * B where c is a scalar and A and B are 1-D vectors.
@@ -101,6 +112,13 @@ public:
   static constexpr unsigned numOutputs = 1;
   static constexpr unsigned numParallelDims = 0;
   static constexpr unsigned numReductionDims = 1;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Used in Linalg3 and later.
+  //////////////////////////////////////////////////////////////////////////////
+  /// Rewrites this op as a finer-grained tensor contraction (e.g. matmul is a
+  /// loop over matvec). Does nothing by default.
+  void writeAsFinerGrainTensorContraction();
 };
 
 /// Implements C = A * B where A is a 2-D matrix and X and Y are 1-D vectors.
@@ -133,6 +151,13 @@ public:
   static constexpr unsigned numOutputs = 1;
   static constexpr unsigned numParallelDims = 1;
   static constexpr unsigned numReductionDims = 1;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Used in Linalg3 and later.
+  //////////////////////////////////////////////////////////////////////////////
+  /// Rewrites this op as a finer-grained tensor contraction (e.g. matmul is a
+  /// loop over matvec). Does nothing by default.
+  void writeAsFinerGrainTensorContraction();
 };
 
 /// Implements C = A * B on 2-D matrices.
@@ -165,7 +190,20 @@ public:
   static constexpr unsigned numOutputs = 1;
   static constexpr unsigned numParallelDims = 2;
   static constexpr unsigned numReductionDims = 1;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Used in Linalg3 and later.
+  //////////////////////////////////////////////////////////////////////////////
+  /// Rewrites this op as a finer-grained tensor contraction (e.g. matmul is a
+  /// loop over matvec). Does nothing by default.
+  void writeAsFinerGrainTensorContraction();
 };
+
 } // namespace linalg
 
-#endif // LINALG2_MATMULOP_H_
+/// The TensorOp-inl.h inclusion pattern is chosen to allow gradual extension of
+/// TensorOps by adding implementations as they are needed in the appropriate
+/// step in the tutorial.
+#include "linalg2/TensorOps-inl.h"
+
+#endif // LINALG2_TENSOROPS_H_

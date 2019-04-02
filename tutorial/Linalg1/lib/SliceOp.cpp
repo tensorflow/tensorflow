@@ -23,6 +23,7 @@
 #include "linalg1/Analysis.h"
 #include "linalg1/Ops.h"
 #include "linalg1/Types.h"
+#include "linalg1/Utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpDefinition.h"

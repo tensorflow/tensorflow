@@ -44,12 +44,6 @@ mlir::Value *getViewSupportingMemRef(mlir::Value *view);
 std::pair<mlir::Value *, unsigned> getViewRootIndexing(mlir::Value *view,
                                                        unsigned dim);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Helper functions to avoid dispatching at all client sites.
-////////////////////////////////////////////////////////////////////////////////
-/// Asserts `view` is of ViewType and returns its rank.
-unsigned getViewRank(mlir::Value *view);
-
 } // namespace linalg
 
 #endif // LINALG1_ANALYSIS_H_
