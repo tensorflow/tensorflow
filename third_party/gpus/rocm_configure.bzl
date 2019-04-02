@@ -266,9 +266,19 @@ def _hipcc_is_hipclang(repository_ctx):
         A string "True" if hipcc is based on hip-clang toolchain.
         The functions returns "False" if not (ie: based on HIP/HCC toolchain).
     """
+    #  check user-defined hip-clang environment variables
     for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
         if name in repository_ctx.os.environ:
             return "True"
+    # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
+    grep_result = _execute(
+        repository_ctx,
+        ["grep", "HIP_COMPILER=clang", "/opt/rocm/hip/lib/.hipInfo"],
+        empty_stdout_fine = True,
+    )
+    result = grep_result.stdout
+    if result == "HIP_COMPILER=clang":
+        return "True"
     return "False"
 
 def _crosstool_verbose(repository_ctx):
