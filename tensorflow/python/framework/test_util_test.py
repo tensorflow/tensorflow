@@ -38,6 +38,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -850,6 +851,41 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
     LeakedObjectTest().test_has_no_leak()
 
+
+class XlaDecoratorsTest(test_util.TensorFlowTestCase):
+
+  def _makeGraphWithUnsupportedOp(self):
+    placeholder = array_ops.placeholder(dtype=dtypes.bool, shape=[])
+    return test_ops.cannot_be_compiled_with_xla(placeholder), placeholder
+
+  @test_util.xla_allow_fallback("for testing")
+  @test_util.deprecated_graph_mode_only
+  def test_xla_allow_fallback_decorator(self):
+    with self.session() as sess:
+      graph, placeholder = self._makeGraphWithUnsupportedOp()
+      res = sess.run(graph, feed_dict={placeholder: True})
+      self.assertEqual(True, res)
+
+  @test_util.xla_allow_fallback("for testing")
+  @test_util.xla_allow_fallback("double used decorator")
+  @test_util.deprecated_graph_mode_only
+  def test_xla_allow_fallback_decorator_double_use(self):
+    with self.session() as sess:
+      graph, placeholder = self._makeGraphWithUnsupportedOp()
+      res = sess.run(graph, feed_dict={placeholder: True})
+      self.assertEqual(True, res)
+
+  @test_util.deprecated_graph_mode_only
+  def test_xla_fails_on_unsupported(self):
+    if not test_util.is_xla_enabled() or not test_util.is_gpu_available():
+      return
+    with self.assertRaises(errors.UnimplementedError):
+      with self.session(force_gpu=True) as sess:
+        graph, placeholder = self._makeGraphWithUnsupportedOp()
+        res = sess.run(graph, feed_dict={placeholder: True})
+        # We should never reach the below line but if we do also assert the
+        # value is correct.
+        self.assertEqual(True, res)
 
 if __name__ == "__main__":
   googletest.main()
