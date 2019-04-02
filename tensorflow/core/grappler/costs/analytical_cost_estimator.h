@@ -40,7 +40,6 @@ struct GrapplerItem;
 // with static shape inference.
 class AnalyticalCostEstimator : public CostEstimator {
  public:
-  // Does not take ownership of cluster.
   AnalyticalCostEstimator(Cluster* cluster, bool use_static_shapes,
                           bool use_aggressive_shape_inference);
   AnalyticalCostEstimator(Cluster* cluster,
@@ -63,7 +62,6 @@ class AnalyticalCostEstimator : public CostEstimator {
   const VirtualScheduler* GetScheduler() const { return scheduler_.get(); }
 
  private:
-  Cluster* cluster_;
   GrapplerItem item_;
   std::unique_ptr<OpLevelCostEstimator> node_estimator_;
   std::unique_ptr<ReadyNodeManager> node_manager_;
