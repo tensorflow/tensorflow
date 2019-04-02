@@ -2190,6 +2190,7 @@ inline void Slice(tflite::SliceParams& op_params,
     op_params.size[i] = stop_i;
   }
 
+  // Store as std::function to allow recursion.
   std::function<void(int, int)> compute_slice =
       [&compute_slice, slice_dimensions, writer, input_shape, op_params](
           int axis, int curr_indices) {
