@@ -1244,11 +1244,10 @@ static uint64_t getSliceIterationCount(
 
 // Checks if node 'srcId' (which writes to a live out memref), can be safely
 // fused into node 'dstId'. Returns true if the following conditions are met:
-// *) 'srcNode' writes only writes to live out 'memref'.
+// *) 'srcNode' only writes to live out 'memref'.
 // *) 'srcNode' has exaclty one output edge on 'memref' (which is to 'dstId').
-// *) 'dstNode' does write to 'memref'.
-// *) 'dstNode's write region to 'memref' is a super set of 'srcNode's write
-//    region to 'memref'.
+// *) 'dstNode's read/write region to 'memref' is a super set of 'srcNode's
+//    write region to 'memref'.
 // TODO(andydavis) Generalize this to handle more live in/out cases.
 static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
                                            Value *memref,
@@ -1256,13 +1255,17 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   auto *srcNode = mdg->getNode(srcId);
   auto *dstNode = mdg->getNode(dstId);
 
+  // Gather all memrefs from 'srcNode' store ops.
+  DenseSet<Value *> storeMemrefs;
+  for (auto *storeOpInst : srcNode->stores) {
+    storeMemrefs.insert(storeOpInst->cast<StoreOp>().getMemRef());
+  }
   // Return false if any of the following are true:
   // *) 'srcNode' writes to a live in/out memref other than 'memref'.
   // *) 'srcNode' has more than one output edge on 'memref'.
-  // *) 'dstNode' does not write to 'memref'.
-  if (srcNode->getStoreOpCount(memref) != 1 ||
-      mdg->getOutEdgeCount(srcNode->id, memref) != 1 ||
-      dstNode->getStoreOpCount(memref) == 0)
+  // Check that all stores are to the same memref.
+  if (storeMemrefs.size() != 1 ||
+      mdg->getOutEdgeCount(srcNode->id, memref) != 1)
     return false;
   // Compute MemRefRegion 'srcWriteRegion' for 'srcStoreOpInst' on 'memref'.
   auto *srcStoreOpInst = srcNode->stores.front();
@@ -1280,23 +1283,26 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   if (!srcNumElements.hasValue())
     return false;
 
-  // Compute MemRefRegion 'dstWriteRegion' for 'dstStoreOpInst' on 'memref'.
-  SmallVector<Operation *, 2> dstStoreOps;
-  dstNode->getStoreOpsForMemref(memref, &dstStoreOps);
+  // Compute MemRefRegion 'dstRegion' for 'dstStore/LoadOpInst' on 'memref'.
   // TODO(andydavis) Compute 'unionboundingbox' of all write regions (one for
   // each store op in 'dstStoreOps').
-  auto *dstStoreOpInst = dstStoreOps[0];
-  MemRefRegion dstWriteRegion(dstStoreOpInst->getLoc());
-  if (failed(dstWriteRegion.compute(dstStoreOpInst, /*loopDepth=*/0))) {
+  SmallVector<Operation *, 2> dstStoreOps;
+  dstNode->getStoreOpsForMemref(memref, &dstStoreOps);
+  SmallVector<Operation *, 2> dstLoadOps;
+  dstNode->getLoadOpsForMemref(memref, &dstLoadOps);
+
+  auto *dstOpInst = dstStoreOps.empty() ? dstLoadOps[0] : dstStoreOps[0];
+  MemRefRegion dstRegion(dstOpInst->getLoc());
+  if (failed(dstRegion.compute(dstOpInst, /*loopDepth=*/0))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Unable to compute MemRefRegion for dest operation\n.");
     return false;
   }
   SmallVector<int64_t, 4> dstShape;
-  // Query 'dstWriteRegion' for 'dstShape' and 'dstNumElements'.
-  // by 'dstStoreOpInst' at depth 'dstLoopDepth'.
+  // Query 'dstRegion' for 'dstShape' and 'dstNumElements'.
+  // by 'dstOpInst' at depth 'dstLoopDepth'.
   Optional<int64_t> dstNumElements =
-      dstWriteRegion.getConstantBoundingSizeAndShape(&dstShape);
+      dstRegion.getConstantBoundingSizeAndShape(&dstShape);
   if (!dstNumElements.hasValue())
     return false;
 

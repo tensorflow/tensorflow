@@ -1261,16 +1261,42 @@ func @should_not_fuse_live_out_arg(%arg0: memref<10xf32>) {
   affine.for %i0 = 0 to 10 {
     store %cf7, %arg0[%i0] : memref<10xf32>
   }
-  affine.for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 9 {
     %v0 = load %arg0[%i1] : memref<10xf32>
   }
   // This tests that the loop nest '%i0' should not be removed after fusion
-  // because it writes to memref argument '%arg0'.
+  // because it writes to memref argument '%arg0', and its read region
+  // does not cover its write region (so fusion would shrink the write region
+  // in the fused loop nest, so complete live out data region would not
+  // be written).
   // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 9 {
   // CHECK-NEXT:    %0 = load %arg0[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @should_fuse_live_out_arg(%arg0: memref<10xf32>) {
+func @should_fuse_live_out_arg(%arg0: memref<10xf32>) {
+  %cf7 = constant 7.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    store %cf7, %arg0[%i0] : memref<10xf32>
+  }
+  affine.for %i1 = 0 to 10 {
+    %v0 = load %arg0[%i1] : memref<10xf32>
+  }
+  // The read/write regions for memref '%arg0' are the same for both
+  // loops, so they should fuse.
+
+  // CHECK:       affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
+  // CHECK-NEXT:    %0 = load %arg0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
@@ -1285,7 +1311,7 @@ func @should_not_fuse_escaping_memref() -> memref<10xf32> {
   affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  affine.for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 9 {
     %v0 = load %m[%i1] : memref<10xf32>
   }
   // This tests that the loop nest '%i0' should not be removed after fusion
@@ -1294,7 +1320,7 @@ func @should_not_fuse_escaping_memref() -> memref<10xf32> {
   // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 9 {
   // CHECK-NEXT:    %1 = load %0[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return %0 : memref<10xf32>
@@ -2408,5 +2434,58 @@ func @affine_2mm_fused(%arg0: memref<1024x1024xf32>, %arg1: memref<1024x1024xf32
   // CHECK-NEXT:     }
   // CHECK-NEXT:   }
 
+  return
+}
+
+// -----
+
+func @affine_2_dependent_mm_fused(%arg0: memref<1024x1024xf32>, %arg1: memref<1024x1024xf32>, %arg2: memref<1024x1024xf32>, %arg3: memref<1024x1024xf32>, %arg4: memref<1024x1024xf32>) {
+  affine.for %i0 = 0 to 1024 {
+    affine.for %i1 = 0 to 1024 {
+      affine.for %i2 = 0 to 1024 {
+        %0 = load %arg1[%i2, %i1] : memref<1024x1024xf32>
+        %1 = load %arg0[%i0, %i2] : memref<1024x1024xf32>
+        %2 = mulf %1, %0 : f32
+        %3 = load %arg2[%i0, %i1] : memref<1024x1024xf32>
+        %4 = addf %3, %2 : f32
+        store %4, %arg2[%i0, %i1] : memref<1024x1024xf32>
+      }
+    }
+  }
+  affine.for %i3 = 0 to 1024 {
+    affine.for %i4 = 0 to 1024 {
+      affine.for %i5 = 0 to 1024 {
+        %5 = load %arg3[%i5, %i4] : memref<1024x1024xf32>
+        %6 = load %arg2[%i3, %i5] : memref<1024x1024xf32>
+        %7 = mulf %6, %5 : f32
+        %8 = load %arg4[%i3, %i4] : memref<1024x1024xf32>
+        %9 = addf %8, %7 : f32
+        store %9, %arg4[%i3, %i4] : memref<1024x1024xf32>
+      }
+    }
+  }
+
+  // CHECK:  affine.for %i0 = 0 to 1024 {
+  // CHECK-NEXT:     affine.for %i1 = 0 to 1024 {
+  // CHECK-NEXT:       affine.for %i2 = 0 to 1024 {
+  // CHECK-NEXT:         %0 = load %arg1[%i2, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %1 = load %arg0[%i0, %i2] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %2 = mulf %1, %0 : f32
+  // CHECK-NEXT:         %3 = load %arg2[%i0, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %4 = addf %3, %2 : f32
+  // CHECK-NEXT:         store %4, %arg2[%i0, %i1] : memref<1024x1024xf32>
+  // CHECK-NEXT:       }
+  // CHECK-NEXT:     }
+  // CHECK-NEXT:     affine.for %i3 = 0 to 1024 {
+  // CHECK-NEXT:       affine.for %i4 = 0 to 1024 {
+  // CHECK-NEXT:         %5 = load %arg3[%i4, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %6 = load %arg2[%i0, %i4] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %7 = mulf %6, %5 : f32
+  // CHECK-NEXT:         %8 = load %arg4[%i0, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:         %9 = addf %8, %7 : f32
+  // CHECK-NEXT:         store %9, %arg4[%i0, %i3] : memref<1024x1024xf32>
+  // CHECK-NEXT:       }
+  // CHECK-NEXT:     }
+  // CHECK-NEXT:   }
   return
 }
