@@ -1540,7 +1540,7 @@ class RefVariable(VariableV1):
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          true_name = ops._name_from_scope_name(name)  # pylint: disable=protected-access
+          true_name = ops.name_from_scope_name(name)  # pylint: disable=protected-access
           attr = attr_value_pb2.AttrValue(
               list=attr_value_pb2.AttrValue.ListValue(
                   s=[compat.as_bytes("loc:@%s" % true_name)]))

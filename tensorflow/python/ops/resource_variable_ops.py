@@ -530,7 +530,7 @@ class ResourceVariable(variables.VariableV1):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
           unique_id = shared_name
