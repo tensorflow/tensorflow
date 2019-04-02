@@ -2629,4 +2629,16 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
   return ImportTensorFlowGraphDef(model_flags, tf_import_flags, *tf_graph);
 }
+
+std::vector<std::string> GetPotentiallySupportedOps() {
+  std::vector<std::string> supported_ops;
+  const internal::ConverterMapType& converter_map =
+      internal::GetTensorFlowNodeConverterMap();
+
+  for (const auto& item : converter_map) {
+    supported_ops.push_back(item.first);
+  }
+  return supported_ops;
+}
+
 }  // namespace toco

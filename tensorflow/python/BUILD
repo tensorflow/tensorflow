@@ -1497,6 +1497,7 @@ cc_library(
     srcs = ["framework/test_ops.cc"],
     linkstatic = 1,
     deps = [
+        "//tensorflow/compiler/tf2xla/kernels:test_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1670,7 +1671,7 @@ tf_py_test(
     tags = ["no_windows"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "framework_test_util_test",
     size = "small",
     srcs = ["framework/test_util_test.py"],
@@ -1692,6 +1693,7 @@ tf_py_test(
     ],
     main = "framework/test_util_test.py",
     tags = ["no_windows"],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -4052,17 +4054,24 @@ tf_py_test(
     name = "util_nest_test",
     size = "small",
     srcs = ["util/nest_test.py"],
-    additional_deps = [
+    additional_deps = [":util_nest_test_main_lib"],
+    main = "util/nest_test.py",
+)
+
+py_library(
+    name = "util_nest_test_main_lib",
+    testonly = True,
+    srcs = ["util/nest_test.py"],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":util",
-        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    main = "util/nest_test.py",
 )
 
 tf_py_test(
@@ -5762,22 +5771,29 @@ cuda_py_test(
     name = "matmul_benchmark",
     size = "medium",
     srcs = ["ops/matmul_benchmark.py"],
-    additional_deps = [
-        ":math_ops",
-        ":random_ops",
+    additional_deps = [":matmul_benchmark_main_lib"],
+    main = "ops/matmul_benchmark.py",
+    xla_enable_strict_auto_jit = True,
+)
+
+py_library(
+    name = "matmul_benchmark_main_lib",
+    testonly = True,
+    srcs = ["ops/matmul_benchmark.py"],
+    deps = [
         ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":math_ops",
         ":platform",
         ":platform_benchmark",
+        ":random_ops",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
-    main = "ops/matmul_benchmark.py",
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

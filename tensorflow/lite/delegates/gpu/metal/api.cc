@@ -52,6 +52,7 @@ namespace {
 std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
     int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
+  LOG(INFO) << "RRRRRRR - " << GetAppleSocVersion();
   if (GetAppleSocVersion() >= 11) {
     bool conv1x1 = attr.weights.shape.h == 1 && attr.weights.shape.w == 1 &&
                    attr.strides.h == 1 && attr.strides.w == 1 &&
@@ -75,6 +76,8 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     const metal::RuntimeOptions& options) {
   if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
     return DepthWiseConv3x3Stride1x1(id, input_id, output_id, attr, options);
+  } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
+    return DepthWiseConv3x3Stride2(id, input_id, output_id, attr, options);
   } else {
     return DepthWiseConvolution(id, input_id, output_id, attr, options);
   }

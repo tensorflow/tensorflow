@@ -19,11 +19,12 @@ package tflite.evaluation;
 
 // Defines the functionality executed by an EvaluationStage.
 //
-// Next ID: 3
+// Next ID: 4
 message ProcessSpecification {
   oneof params {
     ImagePreprocessingParams image_preprocessing_params = 1;
     TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
+    TfliteInferenceParams tflite_inference_params = 3;
   }
 }
 
@@ -47,12 +48,13 @@ message LatencyMetrics {
 // Contains process-specific metrics, which may differ based on what an
 // EvaluationStage does.
 //
-// Next ID: 3
+// Next ID: 4
 message ProcessMetrics {
   optional LatencyMetrics total_latency = 1;
 
   oneof stage_metrics {
     TopkAccuracyEvalMetrics topk_accuracy_metrics = 2;
+    TfliteInferenceMetrics tflite_inference_metrics = 3;
   }
 }
 
@@ -72,6 +74,36 @@ message ImagePreprocessingParams {
   // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
   // Set to 0 to disable cropping.
   optional float cropping_fraction = 4 [default = 0.875];
+}
+
+// Parameters that control TFLite inference.
+//
+// Next ID: 5
+message TfliteInferenceParams {
+  // Required
+  optional string model_file_path = 1;
+
+  enum Delegate {
+    NONE = 0;
+    NNAPI = 1;
+  }
+  optional Delegate delegate = 2;
+  // Number of threads available to the TFLite Interpreter.
+  // -1 defaults to best estimate.
+  optional int32 num_threads = 3 [default = -1];
+
+  // Defines how many times the TFLite Interpreter is invoked for every input.
+  // This helps benchmark cases where extensive pre-processing might not be
+  // required for every input.
+  optional int32 invocations_per_run = 4 [default = 1];
+}
+
+// Metrics specific to TFLite inference.
+//
+// Next ID: 2
+message TfliteInferenceMetrics {
+  // Number of times the interpreter is invoked.
+  optional int32 num_inferences = 1;
 }
 
 // Parameters that define how top-K accuracy is evaluated.

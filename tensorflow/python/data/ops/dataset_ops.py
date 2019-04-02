@@ -1529,6 +1529,8 @@ class DatasetV1(DatasetV2):
         get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_classes(dataset)`.")
   def output_classes(self):
     """Returns the class of each component of an element of this dataset.
 
@@ -1541,6 +1543,8 @@ class DatasetV1(DatasetV2):
     return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_shapes(dataset)`.")
   def output_shapes(self):
     """Returns the shape of each component of an element of this dataset.
 
@@ -1551,6 +1555,8 @@ class DatasetV1(DatasetV2):
     return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_types(dataset)`.")
   def output_types(self):
     """Returns the type of each component of an element of this dataset.
 
@@ -1894,7 +1900,7 @@ def get_structure(dataset_or_iterator):
                   "but got %s." % type(dataset_or_iterator))
 
 
-# TODO(b/110122868): Remove all uses of this method.
+@tf_export(v1=["data.get_output_shapes"])
 def get_legacy_output_shapes(dataset_or_iterator):
   """Returns the output shapes of a `Dataset` or `Iterator`.
 
@@ -1912,7 +1918,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
   return get_structure(dataset_or_iterator)._to_legacy_output_shapes()  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Remove all uses of this method.
+@tf_export(v1=["data.get_output_types"])
 def get_legacy_output_types(dataset_or_iterator):
   """Returns the output shapes of a `Dataset` or `Iterator`.
 
@@ -1930,7 +1936,7 @@ def get_legacy_output_types(dataset_or_iterator):
   return get_structure(dataset_or_iterator)._to_legacy_output_types()  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Remove all uses of this method.
+@tf_export(v1=["data.get_output_classes"])
 def get_legacy_output_classes(dataset_or_iterator):
   """Returns the output classes of a `Dataset` or `Iterator`.
 

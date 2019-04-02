@@ -92,12 +92,10 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
-void AllocateAndParseFlags() {
-  build_ops_flags = new BuildXlaOpsPassFlags;
+void InitializeFlagsToDefaultValues() {
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
   build_ops_flags->tf_xla_print_cluster_outputs = false;
 
-  mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
       0;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general = 0;
@@ -111,12 +109,25 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
 
-  device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
 
-  ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
+}
 
+// Environment variable name for XLA jit flags. Only parsed once.
+constexpr char const* kTfXlaFlags = "TF_XLA_FLAGS";
+// Environment variable name for XLA jit flags. Values override flags set via
+// `kTfXlaFlags`. This variable, if present, is reparsed each time a flag is
+// requested. Used for testing.
+constexpr char const* kTfXlaFlagsForTesting = "TF_XLA_FLAGS_FOR_TESTING";
+
+void AllocateAndParseFlags() {
+  build_ops_flags = new BuildXlaOpsPassFlags;
+  mark_for_compilation_flags = new MarkForCompilationPassFlags;
+  device_flags = new XlaDeviceFlags;
+  ops_flags = new XlaOpsCommonFlags;
+
+  InitializeFlagsToDefaultValues();
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
 
@@ -150,28 +161,46 @@ void AllocateAndParseFlags() {
             "TensorId format of <node name>:<output idx>.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
-  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
+  xla::ParseFlagsFromEnvAndDieIfUnknown(kTfXlaFlags, *flag_list);
+}
+
+void ParseFlagsForTesting() {
+  const char* env = getenv(kTfXlaFlagsForTesting);
+  if (env != nullptr) {
+    // Reset to default and then reparse.
+    InitializeFlagsToDefaultValues();
+    int* argc;
+    std::vector<char*>* argv;
+    xla::ResetFlagsFromEnvForTesting(kTfXlaFlags, &argc, &argv);
+    xla::ParseFlagsFromEnvAndDieIfUnknown(kTfXlaFlags, *flag_list);
+    xla::ParseFlagsFromEnvAndDieIfUnknown(kTfXlaFlagsForTesting, *flag_list,
+                                          false);
+  }
 }
 
 }  // namespace
 
 const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
+  ParseFlagsForTesting();
   return *build_ops_flags;
 }
 
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
+  ParseFlagsForTesting();
   return mark_for_compilation_flags;
 }
 
 XlaDeviceFlags* GetXlaDeviceFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
+  ParseFlagsForTesting();
   return device_flags;
 }
 
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
+  ParseFlagsForTesting();
   return *ops_flags;
 }
 

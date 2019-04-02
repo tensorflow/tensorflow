@@ -378,7 +378,7 @@ def create_file_writer_v2(logdir,
       if context.executing_eagerly():
         shared_name = context.shared_name()
       else:
-        shared_name = ops._name_from_scope_name(scope)  # pylint: disable=protected-access
+        shared_name = ops.name_from_scope_name(scope)  # pylint: disable=protected-access
       return ResourceSummaryWriter(
           shared_name=shared_name,
           init_op_fn=functools.partial(

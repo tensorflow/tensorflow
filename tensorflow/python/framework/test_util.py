@@ -1558,6 +1558,45 @@ def disable_all_xla(description):
   return disable_all_impl
 
 
+# The description is just for documentation purposes.
+def xla_allow_fallback(description):  # pylint: disable=unused-argument
+
+  def xla_allow_fallback_impl(func):
+    """Allow fallback to TF even though testing xla."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          # We have to use the TF_XLA_FLAGS_FOR_TESTING variable here, as
+          # TF_XLA_FLAGS is not reparsed once the jit was used once, so it
+          # cannot be used to update flags.
+          old_env = os.environ.get("TF_XLA_FLAGS_FOR_TESTING")
+          os.environ["TF_XLA_FLAGS_FOR_TESTING"] = (
+              ("" if old_env is None else old_env + " ") +
+              "--tf_xla_enable_lazy_compilation=true")
+          result = func(self, *args, **kwargs)
+          if old_env is None:
+            # We have to use the empty string here instead of deleting it
+            # so that the update logic for testing flags is still triggered
+            # and actually deletes the testing flags on next invocation.
+            os.environ["TF_XLA_FLAGS_FOR_TESTING"] = ""
+          else:
+            os.environ["TF_XLA_FLAGS_FOR_TESTING"] = old_env
+          return result
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return xla_allow_fallback_impl
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
@@ -1577,10 +1616,10 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      os.putenv(
-          "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
-          "--tf_xla_enable_lazy_compilation=false " +
-          os.getenv("TF_XLA_FLAGS", ""))
+      os.environ["TF_XLA_FLAGS"] = (("--tf_xla_auto_jit=2 "
+                                     "--tf_xla_min_cluster_size=1 "
+                                     "--tf_xla_enable_lazy_compilation=false ")
+                                    + os.environ.get("TF_XLA_FLAGS", ""))
     self._threads = []
     self._tempdir = None
     self._cached_session = None

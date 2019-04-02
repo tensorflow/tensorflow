@@ -163,6 +163,9 @@ class XlaCompiler {
     std::map<int32, int32> dynamic_dim_to_arg_num_map;
     bool is_pad_arg = false;
 
+    // Whether this argument will receive the same data across all replicas.
+    bool is_same_data_across_replicas = false;
+
     bool operator==(const Argument& other) const;
 
     // Returns a human-readable summary of the argument.

@@ -262,7 +262,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         bool dump_log_on_failure,
                                         uint64 freed_before) {
   if (num_bytes == 0) {
-    LOG(ERROR) << "tried to allocate 0 bytes";
+    VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
   }
   // First, always allocate memory of at least kMinAllocationSize
@@ -405,7 +405,7 @@ void BFCAllocator::DeallocateRaw(void* ptr) {
 
 void BFCAllocator::DeallocateRawInternal(void* ptr) {
   if (ptr == nullptr) {
-    LOG(ERROR) << "tried to deallocate nullptr";
+    VLOG(2) << "tried to deallocate nullptr";
     return;
   }
   mutex_lock l(lock_);

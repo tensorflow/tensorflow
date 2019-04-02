@@ -68,6 +68,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "eigen_support_test",
+    size = "small",
+    srcs = ["eigen_support_test.cc"],
+    deps = [
+        ":eigen_support",
+        "//tensorflow/lite/kernels/internal:optimized",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "gemm_support",
     srcs = [

@@ -134,7 +134,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                         if init_from_fn else [initial_value]) as name:
       # pylint: disable=protected-access
       with ops.init_scope():
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         unique_id = "%s_%d" % (handle_name, ops.uid())
         shared_name = context.shared_name(unique_id)
       with ops.name_scope("Initializer"), ops.device(None):

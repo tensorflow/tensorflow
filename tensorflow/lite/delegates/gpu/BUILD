@@ -27,6 +27,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -65,6 +66,7 @@ objc_library(
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",

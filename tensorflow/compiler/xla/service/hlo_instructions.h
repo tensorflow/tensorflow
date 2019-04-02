@@ -876,6 +876,13 @@ class HloParameterInstruction : public HloInstruction {
         parameter_replicated_at_leaf_buffers.begin(),
         parameter_replicated_at_leaf_buffers.end());
   }
+  void set_parameter_replicated_at_leaf_buffers(
+      const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
+    CHECK_EQ(ShapeUtil::GetLeafCount(shape()),
+             parameter_replicated_at_leaf_buffers.size());
+    parameter_replicated_at_leaf_buffers_ =
+        parameter_replicated_at_leaf_buffers;
+  }
   const absl::optional<std::vector<bool>>&
   parameter_replicated_at_leaf_buffers() const {
     return parameter_replicated_at_leaf_buffers_;

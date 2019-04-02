@@ -150,7 +150,7 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
-bool IsReductionToVector(const HloInstruction& reduce);
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,

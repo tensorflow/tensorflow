@@ -334,7 +334,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
 TfLiteExternalContext* Subgraph::GetExternalContext(
     TfLiteExternalContextType type) {
-  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+  if (static_cast<int>(type) >= 0 && type < kTfLiteMaxExternalContexts) {
     return external_contexts_[type];
   }
   return nullptr;
@@ -347,7 +347,7 @@ TfLiteExternalContext* Subgraph::GetExternalContext(
 
 void Subgraph::SetExternalContext(TfLiteExternalContextType type,
                                   TfLiteExternalContext* ctx) {
-  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+  if (static_cast<int>(type) >= 0 && type < kTfLiteMaxExternalContexts) {
     external_contexts_[type] = ctx;
   }
 }

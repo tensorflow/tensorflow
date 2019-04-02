@@ -216,7 +216,7 @@ class MklConcatOp : public OpKernel {
         else
           are_all_mkl_inputs = false;
 
-        if (s_dims != 4 && s_dims != 2) invoke_eigen = true;
+        if (s_dims != 4) invoke_eigen = true;
 
         ++i;
       }

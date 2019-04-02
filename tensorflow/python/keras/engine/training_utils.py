@@ -380,7 +380,8 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, dict):
+  if isinstance(x_weight, collections.Mapping):
+    generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
       x_weights.append(x_weight.get(name))

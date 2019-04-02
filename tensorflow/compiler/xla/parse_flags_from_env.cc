@@ -182,9 +182,17 @@ static std::unordered_map<string, EnvArgv>& EnvArgvs() {
 static tensorflow::mutex env_argv_mu(tensorflow::LINKER_INITIALIZED);
 
 bool ParseFlagsFromEnvAndDieIfUnknown(
-    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list) {
+    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list,
+    bool use_cache) {
   tensorflow::mutex_lock lock(env_argv_mu);
-  auto* env_argv = &EnvArgvs()[string(envvar)];
+  std::unique_ptr<EnvArgv> uncached_env;
+  EnvArgv* env_argv;
+  if (use_cache) {
+    env_argv = &EnvArgvs()[string(envvar)];
+  } else {
+    uncached_env = absl::make_unique<EnvArgv>();
+    env_argv = uncached_env.get();
+  }
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
 
   if (VLOG_IS_ON(1)) {
