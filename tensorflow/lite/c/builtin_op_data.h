@@ -334,6 +334,7 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteRankParams;
 
 typedef struct {
