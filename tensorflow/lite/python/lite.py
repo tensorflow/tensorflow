@@ -634,7 +634,7 @@ class TFLiteConverter(object):
       output_tensors = keras_model.outputs
     _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   def __setattr__(self, name, value):
