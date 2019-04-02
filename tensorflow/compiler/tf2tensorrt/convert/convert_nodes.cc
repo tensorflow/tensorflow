@@ -4197,6 +4197,7 @@ Status ConvertArgMinMax(OpConverterParams* params) {
       /*validation_only=*/false, &output_tensor));
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
 }
 
 Status ConvertTopK(OpConverterParams* params) {
