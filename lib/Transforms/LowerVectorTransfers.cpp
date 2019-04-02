@@ -39,7 +39,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
-#include "mlir/Transforms/MLPatternLoweringPass.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/VectorOps/VectorOps.h"
 
@@ -99,30 +98,27 @@ namespace {
 ///   4. local memory deallocation.
 /// Minor variations occur depending on whether a VectorTransferReadOp or
 /// a VectorTransferWriteOp is rewritten.
-template <typename VectorTransferOpTy> class VectorTransferRewriter {
-public:
-  VectorTransferRewriter(VectorTransferOpTy transfer,
-                         MLFuncLoweringRewriter *rewriter,
-                         MLFuncGlobalLoweringState *state);
+template <typename VectorTransferOpTy>
+struct VectorTransferRewriter : public RewritePattern {
+  explicit VectorTransferRewriter(MLIRContext *context)
+      : RewritePattern(VectorTransferOpTy::getOperationName(), 1, context) {}
 
   /// Used for staging the transfer in a local scalar buffer.
-  MemRefType tmpMemRefType() {
+  MemRefType tmpMemRefType(VectorTransferOpTy transfer) const {
     auto vectorType = transfer.getVectorType();
     return MemRefType::get(vectorType.getShape(), vectorType.getElementType(),
                            {}, 0);
   }
+
   /// View of tmpMemRefType as one vector, used in vector load/store to tmp
   /// buffer.
-  MemRefType vectorMemRefType() {
+  MemRefType vectorMemRefType(VectorTransferOpTy transfer) const {
     return MemRefType::get({1}, transfer.getVectorType(), {}, 0);
   }
-  /// Performs the rewrite.
-  void rewrite();
 
-private:
-  VectorTransferOpTy transfer;
-  MLFuncLoweringRewriter *rewriter;
-  MLFuncGlobalLoweringState *state;
+  /// Performs the rewrite.
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override;
 };
 } // end anonymous namespace
 
@@ -213,12 +209,6 @@ clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
   return clippedScalarAccessExprs;
 }
 
-template <typename VectorTransferOpTy>
-VectorTransferRewriter<VectorTransferOpTy>::VectorTransferRewriter(
-    VectorTransferOpTy transfer, MLFuncLoweringRewriter *rewriter,
-    MLFuncGlobalLoweringState *state)
-    : transfer(transfer), rewriter(rewriter), state(state){};
-
 /// Lowers VectorTransferReadOp into a combination of:
 ///   1. local memory allocation;
 ///   2. perfect loop nest over:
@@ -260,13 +250,20 @@ VectorTransferRewriter<VectorTransferOpTy>::VectorTransferRewriter(
 ///
 /// TODO(ntv): implement alternatives to clipping.
 /// TODO(ntv): support non-data-parallel operations.
-template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
+
+/// Performs the rewrite.
+template <>
+PatternMatchResult
+VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
+    Operation *op, PatternRewriter &rewriter) const {
   using namespace mlir::edsc;
   using namespace mlir::edsc::op;
   using namespace mlir::edsc::intrinsics;
 
+  VectorTransferReadOp transfer = op->cast<VectorTransferReadOp>();
+
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(transfer.getOperation()), transfer.getLoc());
+  ScopedContext scope(FuncBuilder(op), transfer.getLoc());
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   VectorView vectorView(transfer.getVector());
@@ -281,9 +278,9 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   auto steps = vectorView.getSteps();
 
   // 2. Emit alloc-copy-load-dealloc.
-  ValueHandle tmp = alloc(tmpMemRefType());
+  ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
-  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType());
+  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
   LoopNestBuilder(pivs, lbs, ubs, steps)({
       // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
       local(ivs) = remote(clip(transfer, view, ivs)),
@@ -292,8 +289,8 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   (dealloc(tmp)); // vexing parse
 
   // 3. Propagate.
-  transfer.replaceAllUsesWith(vectorValue.getValue());
-  transfer.erase();
+  rewriter.replaceOp(op, vectorValue.getValue());
+  return matchSuccess();
 }
 
 /// Lowers VectorTransferWriteOp into a combination of:
@@ -314,13 +311,18 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
 ///
 /// TODO(ntv): implement alternatives to clipping.
 /// TODO(ntv): support non-data-parallel operations.
-template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
+template <>
+PatternMatchResult
+VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
+    Operation *op, PatternRewriter &rewriter) const {
   using namespace mlir::edsc;
   using namespace mlir::edsc::op;
   using namespace mlir::edsc::intrinsics;
 
+  VectorTransferWriteOp transfer = op->cast<VectorTransferWriteOp>();
+
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(transfer.getOperation()), transfer.getLoc());
+  ScopedContext scope(FuncBuilder(op), transfer.getLoc());
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   ValueHandle vectorValue(transfer.getVector());
@@ -336,9 +338,9 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   auto steps = vectorView.getSteps();
 
   // 2. Emit alloc-store-copy-dealloc.
-  ValueHandle tmp = alloc(tmpMemRefType());
+  ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
-  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType());
+  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
   store(vectorValue, vec, {constant_index(0)});
   LoopNestBuilder(pivs, lbs, ubs, steps)({
       // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
@@ -346,36 +348,23 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   });
   (dealloc(tmp)); // vexing parse...
 
-  transfer.erase();
+  rewriter.replaceOp(op, llvm::None);
+  return matchSuccess();
 }
 
 namespace {
-template <typename VectorTransferOpTy>
-class VectorTransferExpander : public MLLoweringPattern {
-public:
-  explicit VectorTransferExpander(MLIRContext *context)
-      : MLLoweringPattern(VectorTransferOpTy::getOperationName(), 1, context) {}
-
-  PatternMatchResult match(Operation *op) const override {
-    if (m_Op<VectorTransferOpTy>().match(op))
-      return matchSuccess();
-    return matchFailure();
-  }
-  void rewriteOpInst(Operation *op, MLFuncGlobalLoweringState *funcWiseState,
-                     std::unique_ptr<PatternState> opState,
-                     MLFuncLoweringRewriter *rewriter) const override {
-    VectorTransferRewriter<VectorTransferOpTy>(
-        op->dyn_cast<VectorTransferOpTy>(), rewriter, funcWiseState)
-        .rewrite();
-  }
-};
-
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
   void runOnFunction() {
-    auto &f = getFunction();
-    applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
-                            VectorTransferExpander<VectorTransferWriteOp>>(&f);
+    OwningRewritePatternList patterns;
+    auto *context = &getContext();
+    patterns.push_back(
+        llvm::make_unique<VectorTransferRewriter<VectorTransferReadOp>>(
+            context));
+    patterns.push_back(
+        llvm::make_unique<VectorTransferRewriter<VectorTransferWriteOp>>(
+            context));
+    applyPatternsGreedily(getFunction(), std::move(patterns));
   }
 };
 
@@ -388,5 +377,3 @@ FunctionPassBase *mlir::createLowerVectorTransfersPass() {
 static PassRegistration<LowerVectorTransfersPass>
     pass("lower-vector-transfers", "Materializes vector transfer ops to a "
                                    "proper abstraction for the hardware");
-
-#undef DEBUG_TYPE
