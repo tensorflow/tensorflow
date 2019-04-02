@@ -414,7 +414,7 @@ REGISTER_OP("_MklAdd")
     .Output("mkl_z: uint8")
     .Attr(
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
-        "complex128, string}")
+        "complex128, string, bfloat16}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns `x` + `y` element-wise.
@@ -536,7 +536,7 @@ REGISTER_OP("_MklMaximum")
     .Input("mkl_y: uint8")
     .Output("z: T")
     .Output("mkl_z: uint8")
-    .Attr("T: {half, float, double, int32, int64}")
+    .Attr("T: {half, float, double, int32, int64, bfloat16}")
     .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(

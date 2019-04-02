@@ -1999,7 +1999,7 @@ REGISTER_OP("_MklLeakyRelu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .Attr("alpha: float = 0.2")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
@@ -2017,7 +2017,7 @@ REGISTER_OP("_MklLeakyReluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .Attr("alpha: float = 0.2")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
@@ -2510,7 +2510,7 @@ REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-    .Attr("T: {half, float, double, qint8, quint8, qint32}")
+    .Attr("T: {half, float, double, bfloat16, qint8, quint8, qint32}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2531,8 +2531,8 @@ REGISTER_OP("_MklInputConversion")
     .Output("mkl_output_1: uint8")
     // All datatypes supported by element-wise ops
     .Attr(
-        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
-        "complex64, complex128}")
+        "T: {half, float, bfloat16, double, uint8, int8, uint16, int16, int32, "
+        "int64, complex64, complex128}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
