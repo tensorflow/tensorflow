@@ -102,10 +102,10 @@ class ArenaPlanner : public MemoryPlanner {
   std::vector<AllocationInfo> alloc_queue_;
 
   // Raw memory buffer that is allocated for all temporary and graph outputs
-  // those are declared kTfLiteArenaRw.
+  // that are declared kTfLiteArenaRw.
   SimpleMemoryArena arena_;
 
-  // Raw memory buffer that is allocated for persistent tensors those are
+  // Raw memory buffer that is allocated for persistent tensors that are
   // declared as kTfLiteArenaRwPersistent.
   SimpleMemoryArena persistent_arena_;
 
