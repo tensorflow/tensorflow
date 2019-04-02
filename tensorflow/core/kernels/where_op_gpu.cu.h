@@ -164,7 +164,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
                                  /*num_items*/ input.size(),
                                  /*stream*/ cu_stream);
 
-    if (first_success != GPUSUCCESSS) {
+    if (first_success != gpuSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to calculate "
           "temp_storage_bytes, status: ",
@@ -183,7 +183,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
         /*num_items*/ input.size(),
         /*stream*/ cu_stream);
 
-    if (second_success != GPUSUCCESSS) {
+    if (second_success != gpuSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to count "
           "number of true / nonzero indices.  temp_storage_bytes: ",
@@ -300,7 +300,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                  /*d_num_selected_out*/ found_true_device,
                                  /*num_items*/ input.size(),
                                  /*stream*/ cu_stream);
-    if (first_success != GPUSUCCESSS) {
+    if (first_success != gpuSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to calculate "
           "temp_storage_bytes, status: ",
@@ -320,7 +320,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         /*num_items*/ input.size(),
         /*stream*/ cu_stream);
 
-    if (second_success != GPUSUCCESSS) {
+    if (second_success != gpuSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to copy "
           "indices out, status: ",
