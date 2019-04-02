@@ -51,7 +51,7 @@ bool IsReducableArtithmetic(const HloComputation* computation) {
     return false;
   }
 
-  switch (root->opcode() ) {
+  switch (root->opcode()) {
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
     case HloOpcode::kMaximum:
