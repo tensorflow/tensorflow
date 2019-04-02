@@ -813,9 +813,9 @@ class GradientTape(object):
     """
     for t in nest.flatten(tensor):
       if not t.dtype.is_floating:
-        logging.vlog(
+        logging.log_first_n(
             logging.WARN, "The dtype of the watched tensor must be "
-            "floating (e.g. tf.float32), got %r", t.dtype)
+            "floating (e.g. tf.float32), got %r", 5, t.dtype)
       if hasattr(t, "handle"):
         # There are many variable-like objects, all of them currently have
         # `handle` attribute that points to a tensor. If this changes, internals
