@@ -91,6 +91,7 @@ Status RedzoneAllocator::CheckRedzones(se::Stream* stream) const {
 
 Status RedzoneAllocator::CheckBufferRedzones(se::DeviceMemoryBase buf,
                                              se::Stream* stream) const {
+  XLA_SCOPED_LOGGING_TIMER("RedzoneAllocator::CheckBufferRedzones.");
   char* buf_start = reinterpret_cast<char*>(buf.opaque());
   auto check_redzone = [&](int64 offset, int64 size, absl::string_view name) {
     se::DeviceMemoryBase redzone(buf_start + offset, size,
@@ -98,7 +99,24 @@ Status RedzoneAllocator::CheckBufferRedzones(se::DeviceMemoryBase buf,
     auto redzone_data = absl::make_unique<uint8[]>(size);
     TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
                            .BlockHostUntilDone());
-    for (int64 i = 0; i < size; ++i) {
+    XLA_SCOPED_LOGGING_TIMER("RedzoneAllocator::CheckBufferRedzones CPU loop.");
+
+    std::array<uint8, sizeof(uint64)> pattern_arr;
+    pattern_arr.fill(redzone_pattern_);
+    uint64 pattern64;
+    std::memcpy(&pattern64, pattern_arr.data(), sizeof(uint64));
+
+    int64 i;
+    for (i = 0; i + 7 < size; i += sizeof(uint64)) {
+      uint64 rz_value = *reinterpret_cast<uint64*>(&redzone_data[i]);
+      if (rz_value != pattern64) {
+        return InternalError(
+            "Redzone mismatch in %s redzone of buffer %p at offset %d; "
+            "expected %08x but was %08x.",
+            name, buf.opaque(), i, pattern64, rz_value);
+      }
+    }
+    for (; i < size; ++i) {
       uint8 rz_value = redzone_data[i];
       if (rz_value != redzone_pattern_) {
         return InternalError(

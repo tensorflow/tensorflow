@@ -468,6 +468,7 @@ cc_library(
         ":ir_emission_utils",
         ":redzone_allocator",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
