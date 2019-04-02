@@ -112,12 +112,6 @@ private:
   /// scope is destroyed and the mappings created in this scope are dropped.
   llvm::ScopedHashTable<StringRef, mlir::Value *> symbolTable;
 
-  /// Create a new scope in the symbol table. The scope lifetime is managed by
-  /// the returned RAII object.
-  ScopedHashTableScope<llvm::StringRef, mlir::Value *> create_scope() {
-    return ScopedHashTableScope<llvm::StringRef, mlir::Value *>(symbolTable);
-  }
-
   /// Helper conversion for a Toy AST location to an MLIR location.
   mlir::FileLineColLoc loc(Location loc) {
     return mlir::FileLineColLoc::get(
@@ -158,7 +152,7 @@ private:
   /// Emit a new function and add it to the MLIR module.
   std::unique_ptr<mlir::Function> mlirGen(FunctionAST &funcAST) {
     // Create a scope in the symbol table to hold variable declarations.
-    auto var_scope = create_scope();
+    ScopedHashTableScope<llvm::StringRef, mlir::Value *> var_scope(symbolTable);
 
     // Create an MLIR function for the given prototype.
     std::unique_ptr<mlir::Function> function(mlirGen(*funcAST.getProto()));
@@ -457,7 +451,7 @@ private:
 
   /// Codegen a list of expression, return false if one of them hit an error.
   bool mlirGen(ExprASTList &blockAST) {
-    auto var_scope = create_scope();
+    ScopedHashTableScope<llvm::StringRef, mlir::Value *> var_scope(symbolTable);
     for (auto &expr : blockAST) {
       // Specific handling for variable declarations, return statement, and
       // print. These can only appear in block list and not in nested
