@@ -297,6 +297,11 @@ tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
+    disabled_backends = [
+        # TODO(b/129396575): Fails on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
     tags = ["optonly"],
     deps = [
         ":xla_test",

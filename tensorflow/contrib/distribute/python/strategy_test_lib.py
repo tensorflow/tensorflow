@@ -221,7 +221,7 @@ class DistributionTestBase(test.TestCase):
       """Function executed for each replica."""
       with summary_writer.as_default():
         replica_id = ds_context.get_replica_context().replica_id_in_sync_group
-        return summary_ops.scalar("a", replica_id)
+        return summary_ops.write("a", replica_id)
 
     with self.cached_session() as sess, d.scope(), \
         summary_ops.always_record_summaries():
@@ -232,6 +232,7 @@ class DistributionTestBase(test.TestCase):
         # When executing eagerly, variables are initialized immediately after
         # creation, and its initializer will be None.
         global_step.initializer.run()
+      summary_ops.set_step(0)
       summary_writer = summary_ops.create_file_writer(logdir)
       output = d.extended.call_for_each_replica(run_fn)
       unwrapped = d.unwrap(output)

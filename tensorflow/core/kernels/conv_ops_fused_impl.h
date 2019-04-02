@@ -536,11 +536,9 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
       result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(
           profile_algorithm.tensor_ops_enabled());
-      result.mutable_success()->set_scratch_bytes(
-          scratch_allocator.TotalByteSize());
-      *result.mutable_success()->mutable_run_time() =
-          proto_utils::ToDurationProto(
-              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+      *result.mutable_run_time() = proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }
   // Only log on an AutoTuneFusedConv cache miss.

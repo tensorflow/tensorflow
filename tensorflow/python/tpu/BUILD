@@ -125,6 +125,7 @@ py_library(
         "__init__.py",
         "bfloat16.py",
         "device_assignment.py",
+        "profile_logger.py",
         "session_support.py",
         "tensor_tracer.py",
         "topology.py",

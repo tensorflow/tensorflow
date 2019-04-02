@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/time/clock.h"
+
 namespace tensorflow {
 namespace data {
 namespace model {
@@ -484,7 +486,7 @@ void Model::RecordStart(const string& name, bool stop_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (collect_resource_usage_ && node) {
-    int64 now_nanos = Env::Default()->NowNanos();
+    int64 now_nanos = absl::GetCurrentTimeNanos();
     if (stop_output && (*node)->output()) {
       (*node)->output()->record_stop(now_nanos);
     }
@@ -496,7 +498,7 @@ void Model::RecordStop(const string& name, bool start_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (collect_resource_usage_ && node) {
-    int64 now_nanos = Env::Default()->NowNanos();
+    int64 now_nanos = absl::GetCurrentTimeNanos();
     (*node)->record_stop(now_nanos);
     if (start_output && (*node)->output()) {
       (*node)->output()->record_start(now_nanos);

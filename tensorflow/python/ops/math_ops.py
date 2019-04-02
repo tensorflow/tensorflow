@@ -73,6 +73,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -160,16 +161,16 @@ def argmax_v2(input,
 
   Returns:
     A `Tensor` of type `output_type`.
-	
+
   Usage:
-	```python
-	import tensorflow as tf
-	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
-	b = tf.math.argmax(input = a)
-	c = tf.keras.backend.eval(b)  
-	# c = 4
-	# here a[4] = 166.32 which is the largest element of a across axis 0
-	```
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmax(input = a)
+  c = tf.keras.backend.eval(b)
+  # c = 4
+  # here a[4] = 166.32 which is the largest element of a across axis 0
+  ```
   """
   if axis is None:
     axis = 0
@@ -215,16 +216,16 @@ def argmin_v2(input,
 
   Returns:
     A `Tensor` of type `output_type`.
-	
+
   Usage:
-    	```python
-	import tensorflow as tf
-	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
-	b = tf.math.argmin(input = a)
-	c = tf.keras.backend.eval(b)  
-	# c = 0
-	# here a[0] = 1 which is the smallest element of a across axis 0
-	```
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmin(input = a)
+  c = tf.keras.backend.eval(b)
+  # c = 0
+  # here a[0] = 1 which is the smallest element of a across axis 0
+  ```
   """
   if axis is None:
     axis = 0
@@ -2547,9 +2548,20 @@ def matmul(a,
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
+
+    if fwd_compat.forward_compatible(2019, 4, 18):
+      output_may_have_non_empty_batch_shape = (
+          (a_shape is None or len(a_shape) > 2) or
+          (b_shape is None or len(b_shape) > 2))
+      batch_mat_mul_fn = gen_math_ops.batch_mat_mul_v2
+    else:
+      output_may_have_non_empty_batch_shape = (
+          (a_shape is None or len(a_shape) > 2) and
+          (b_shape is None or len(b_shape) > 2))
+      batch_mat_mul_fn = gen_math_ops.batch_mat_mul
+
     if (not a_is_sparse and
-        not b_is_sparse) and ((a_shape is None or len(a_shape) > 2) and
-                              (b_shape is None or len(b_shape) > 2)):
+        not b_is_sparse) and output_may_have_non_empty_batch_shape:
       # BatchMatmul does not support transpose, so we conjugate the matrix and
       # use adjoint instead. Conj() is a noop for real matrices.
       if transpose_a:
@@ -2558,8 +2570,7 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      return batch_mat_mul_fn(a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real

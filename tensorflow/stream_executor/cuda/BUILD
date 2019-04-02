@@ -107,7 +107,7 @@ cc_library(
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": ["cudart_stub"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub"],
         "//conditions:default": ["//tensorflow/core:cuda"],
-    }),
+    }) + ["@com_google_absl//absl/strings:str_format"],
 )
 
 cc_library(

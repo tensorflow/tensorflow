@@ -629,8 +629,9 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
   });
 }
 
-XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
-                            const string& name) {
+XlaOp XlaBuilder::Parameter(
+    int64 parameter_number, const Shape& shape, const string& name,
+    const std::vector<bool>& replicated_at_leaf_buffers) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (!parameter_numbers_.insert(parameter_number).second) {
@@ -640,6 +641,12 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
     instr.set_parameter_number(parameter_number);
     instr.set_name(name);
     *instr.mutable_shape() = shape.ToProto();
+    if (!replicated_at_leaf_buffers.empty()) {
+      auto replication = instr.mutable_parameter_replication();
+      for (bool replicated : replicated_at_leaf_buffers) {
+        replication->add_replicated_at_leaf_buffers(replicated);
+      }
+    }
     return AddInstruction(std::move(instr), HloOpcode::kParameter);
   });
 }
@@ -2827,7 +2834,15 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
 // passed to the computation.
 XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
                 const string& name) {
-  return builder->Parameter(parameter_number, shape, name);
+  std::vector<bool> empty_bools;
+  return Parameter(builder, parameter_number, shape, name, empty_bools);
+}
+
+XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
+                const string& name,
+                const std::vector<bool>& replicated_at_leaf_buffers) {
+  return builder->Parameter(parameter_number, shape, name,
+                            replicated_at_leaf_buffers);
 }
 
 // Enqueues a constant with the value of the given literal onto the

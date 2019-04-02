@@ -191,18 +191,19 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 
   Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) override;
 
-  bool IsStateful(const string& function_name) override;
+  bool IsStateful(const string& function_name) const override;
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override;
 
   Env* env() override;
   Device* device() override;
+  const Device* device() const override;
   std::function<void(std::function<void()>)>* runner() override;
   const DeviceMgr* device_mgr() const override;
 
   string DebugString(Handle handle) override;
-  int graph_def_version() override;
+  int graph_def_version() const override;
 
   Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
@@ -267,7 +268,8 @@ Status FunctionLibraryRuntimeOverlay::CreateKernel(const NodeDef&, OpKernel**) {
       "Overlay function library runtime doesn't support kernel creation.");
 }
 
-bool FunctionLibraryRuntimeOverlay::IsStateful(const string& function_name) {
+bool FunctionLibraryRuntimeOverlay::IsStateful(
+    const string& function_name) const {
   // Important: we do not forward lookup to the base FLR.
   const OpDef* op_def;
   const Status s = lib_def_->LookUpOpDef(function_name, &op_def);
@@ -277,6 +279,10 @@ bool FunctionLibraryRuntimeOverlay::IsStateful(const string& function_name) {
 Env* FunctionLibraryRuntimeOverlay::env() { return base_flr_->env(); }
 
 Device* FunctionLibraryRuntimeOverlay::device() { return base_flr_->device(); }
+
+const Device* FunctionLibraryRuntimeOverlay::device() const {
+  return base_flr_->device();
+}
 
 std::function<void(std::function<void()>)>*
 FunctionLibraryRuntimeOverlay::runner() {
@@ -296,7 +302,7 @@ string FunctionLibraryRuntimeOverlay::DebugString(Handle handle) {
   return base_flr_->DebugString(handle);
 }
 
-int FunctionLibraryRuntimeOverlay::graph_def_version() {
+int FunctionLibraryRuntimeOverlay::graph_def_version() const {
   return base_flr_->graph_def_version();
 }
 
@@ -343,7 +349,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   void Run(const Options& opts, Handle handle, CallFrameInterface* frame,
            DoneCallback done) override;
 
-  bool IsStateful(const string& function) override;
+  bool IsStateful(const string& function) const override;
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override {
@@ -351,6 +357,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   }
 
   Device* device() override { return device_; }
+  const Device* device() const override { return device_; }
 
   std::function<void(std::function<void()>)>* runner() override {
     return &default_runner_;
@@ -358,7 +365,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   const DeviceMgr* device_mgr() const override { return device_mgr_; }
   Env* env() override { return env_; }
-  int graph_def_version() override { return graph_def_version_; }
+  int graph_def_version() const override { return graph_def_version_; }
 
   string DebugString(Handle h) override;
 
@@ -1180,7 +1187,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   item->exec->RunAsync(exec_args, std::move(done));
 }
 
-bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
+bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {
   const OpDef* op_def;
   const Status s = base_lib_def_->LookUpOpDef(func, &op_def);
   return s.ok() && op_def->is_stateful();
@@ -1447,11 +1454,11 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
 }
 
 Status InstantiateFunctionCall(const NodeDef& call_def,
-                               FunctionLibraryRuntime& flr,
+                               FunctionLibraryRuntime* flr,
                                FunctionLibraryRuntime::Handle* handle) {
   NameAttrList function;
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(call_def, &function));
-  return flr.Instantiate(function.name(), AttrSlice(&function.attr()), handle);
+  return flr->Instantiate(function.name(), AttrSlice(&function.attr()), handle);
 }
 
 namespace {
@@ -1892,7 +1899,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       continue;
     }
     FunctionLibraryRuntime::Handle handle;
-    Status s = InstantiateFunctionCall(node->def(), *lib, &handle);
+    Status s = InstantiateFunctionCall(node->def(), lib, &handle);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
       continue;
@@ -1937,7 +1944,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // possible execution order of the graph.
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
-  gdef->mutable_versions()->CopyFrom(g->versions());
+  *gdef->mutable_versions() = g->versions();
 
   std::vector<Node*> start_nodes;
   for (Node* n : g->nodes()) {

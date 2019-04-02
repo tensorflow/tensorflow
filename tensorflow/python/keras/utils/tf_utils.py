@@ -318,6 +318,8 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
+  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
   if isinstance(tensor, variables.Variable):
     # Variables that are output of a Keras Layer in Functional API mode
     # should be considered symbolic.
@@ -330,8 +332,6 @@ def is_symbolic_tensor(tensor):
     return tensor._is_graph_tensor  # pylint: disable=protected-access
   if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    return hasattr(ops.convert_to_tensor(tensor), 'graph')
   return False
 
 

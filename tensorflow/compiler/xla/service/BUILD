@@ -1098,6 +1098,7 @@ tf_cc_test(
         ":buffer_liveness",
         ":hlo",
         ":hlo_dataflow_analysis",
+        ":hlo_parser",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -3791,6 +3792,7 @@ tf_cc_test(
         ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",  # fixdeps: keep

@@ -997,6 +997,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       state_ops.scatter_nd_add(v, indices, updates)
       self.assertAllClose(expected, v.numpy())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testUnreadVariableInsideFunction(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def assign():
+      v.assign(1.0)
+
+    graph = assign.get_concrete_function().graph
+    self.assertTrue(all(x.type != "ReadVariableOp"
+                        for x in graph.get_operations()))
+
   def testScatterNdSubStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(

@@ -544,8 +544,3 @@ def autocast_context_manager(input_list, should_cast):
   var_read_dtype = _get_var_read_dtype(input_list, should_cast)
   return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
       var_read_dtype)
-
-
-def is_subclassed(layer):
-  return (layer.__module__.find('keras.engine') == -1 and
-          layer.__module__.find('keras.layers') == -1)

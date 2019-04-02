@@ -54,6 +54,8 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     shard_count = 20,
+    # TODO(b/129706424): Re-enable this test on Mac.
+    tags = ["no_mac"],
 )
 
 tf_py_test(
@@ -1486,6 +1488,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:test_ops",
@@ -3738,4 +3741,5 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
     ],
+    xla_enable_strict_auto_jit = True,
 )

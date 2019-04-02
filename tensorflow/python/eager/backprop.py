@@ -812,6 +812,10 @@ class GradientTape(object):
       tensor: a Tensor or list of Tensors.
     """
     for t in nest.flatten(tensor):
+      if not t.dtype.is_floating:
+        logging.vlog(
+            logging.WARN, "The dtype of the watched tensor must be "
+            "floating (e.g. tf.float32), got %r", t.dtype)
       if hasattr(t, "handle"):
         # There are many variable-like objects, all of them currently have
         # `handle` attribute that points to a tensor. If this changes, internals
@@ -940,13 +944,25 @@ class GradientTape(object):
 
     flat_targets = []
     for t in nest.flatten(target):
+      if not t.dtype.is_floating:
+        logging.vlog(
+            logging.WARN, "The dtype of the target tensor must be "
+            "floating (e.g. tf.float32) when calling GradientTape.gradient, "
+            "got %r", t.dtype)
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
       flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
+    flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
+    for t in flat_sources:
+      if not t.dtype.is_floating:
+        logging.vlog(
+            logging.WARN, "The dtype of the source tensor must be "
+            "floating (e.g. tf.float32) when calling GradientTape.gradient, "
+            "got %r", t.dtype)
 
     if output_gradients is not None:
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
@@ -957,6 +973,7 @@ class GradientTape(object):
         flat_targets,
         flat_sources,
         output_gradients=output_gradients,
+        sources_raw=flat_sources_raw,
         unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:
@@ -1123,7 +1140,7 @@ class GradientTape(object):
     """
     target_shape = target.shape
     if target_shape.rank is None:
-      dim = Dimension(None)
+      dim = tensor_shape.Dimension(None)
     else:
       dim = target_shape.dims[0]
     if not (target_shape.with_rank_at_least(2) and

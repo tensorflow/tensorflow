@@ -38,9 +38,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:stats_calculator_portable",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/core:tflite_portable_logging",
@@ -66,11 +64,66 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":image_preprocessing_stage",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "topk_accuracy_eval_stage",
+    srcs = ["topk_accuracy_eval_stage.cc"],
+    hdrs = ["topk_accuracy_eval_stage.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "topk_accuracy_eval_stage_test",
+    srcs = ["topk_accuracy_eval_stage_test.cc"],
+    linkopts = common_linkopts,
+    linkstatic = 1,
+    deps = [
+        ":topk_accuracy_eval_stage",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "tflite_inference_stage",
+    srcs = ["tflite_inference_stage.cc"],
+    hdrs = ["tflite_inference_stage.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "tflite_inference_stage_test",
+    srcs = ["tflite_inference_stage_test.cc"],
+    data = ["//tensorflow/lite:testdata/add_quantized.bin"],
+    linkopts = common_linkopts,
+    linkstatic = 1,
+    deps = [
+        ":tflite_inference_stage",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )

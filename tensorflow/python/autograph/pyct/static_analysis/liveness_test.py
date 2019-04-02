@@ -35,12 +35,7 @@ class LivenessTest(test.TestCase):
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source,
-        source_file=None,
-        future_features=(),
-        namespace={},
-        arg_values=None,
-        arg_types=None)
+        source_code=source, source_file=None, future_features=(), namespace={})
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)
@@ -109,6 +104,18 @@ class LivenessTest(test.TestCase):
     fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], 'x')
+
+  def test_live_out_for_iterate(self):
+
+    def test_fn(x, a):
+      for i in range(a):
+        x += i
+      return x, i  # pylint:disable=undefined-loop-variable
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveOut(fn_body[0], ('x', 'i'))
 
   def test_live_out_attributes(self):
 

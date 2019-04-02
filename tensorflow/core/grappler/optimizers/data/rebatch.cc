@@ -226,11 +226,19 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
 
       // Replace optimized function with a new FunctionDef.
       TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, optimized_func));
+    } else {
+      VLOG(2) << "Failed to optimize dataset function. Error: "
+              << s.error_message();
     }
   } else if (IsDatasetNodeOfType(node, kSourceDatasetOps)) {
     return errors::InvalidArgument(
         "Reached a source dataset: ", node.op(),
         " without encountering a batch transformation.");
+  } else if (IsRetval(node)) {
+    // _Retvals added to the function body graph in place of function outputs.
+    NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
+    TF_RETURN_IF_ERROR(
+        RecursivelyHandleOp(*input_node, num_workers, flib, graph));
   } else {
     return errors::InvalidArgument("Encountered an unsupported op: ",
                                    node.op());

@@ -180,8 +180,8 @@ class Network(base_layer.Layer):
       self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    self._maybe_create_attribute('_trainable_weights', [])
+    self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
@@ -201,7 +201,7 @@ class Network(base_layer.Layer):
 
     # All layers in order of horizontal graph traversal.
     # Entries are unique. Includes input and output layers.
-    self._layers = []
+    self._maybe_create_attribute('_layers', [])
 
     # Used in symbolic mode only, only in conjunction with graph-networks
     self._outbound_nodes = []

@@ -26,7 +26,6 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python import autograph
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -152,10 +151,8 @@ class Layer(trackable.Trackable):
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
-    if not hasattr(self, '_trainable_weights'):
-      self._trainable_weights = []
-    if not hasattr(self, '_non_trainable_weights'):
-      self._non_trainable_weights = []
+    self._maybe_create_attribute('_trainable_weights', [])
+    self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
@@ -185,8 +182,8 @@ class Layer(trackable.Trackable):
                                    hasattr(self, 'compute_mask'))
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
-    if not hasattr(self, '_layers'):
-      self._layers = []  # Dependencies tracked via attribute assignment.
+    # Dependencies tracked via attribute assignment.
+    self._maybe_create_attribute('_layers', [])
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -584,25 +581,6 @@ class Layer(trackable.Trackable):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
-
-          # Wrapping `call` function in autograph to allow for dynamic control
-          # dependencies in call. We are limiting this to subclassed layers as
-          # autograph is strictly needed only for subclassed layers.
-          if base_layer_utils.is_subclassed(self):
-            decorators, original_func = tf_decorator.unwrap(self.call)
-            # TODO(psv): Remove optional_features param from the call here
-            # after b/129001876 is fixed.
-            converted_func = autograph.convert(
-                recursive=True, optional_features=None)(
-                    original_func)
-            if decorators:
-              call_fn = tf_decorator.rewrap(self.call, original_func,
-                                            converted_func)
-            else:
-              call_fn = converted_func
-          else:
-            call_fn = self.call
-
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
@@ -620,18 +598,20 @@ class Layer(trackable.Trackable):
                   self._mixed_precision_policy.should_cast_variables), (
                       base_layer_utils.AutoAddUpdates(self,
                                                       inputs)) as auto_updater:
-                outputs = call_fn(inputs, *args, **kwargs)
+                outputs = self.call(inputs, *args, **kwargs)
                 auto_updater.set_outputs(outputs)
 
             except TypeError as e:
+              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager')
               exception_str = str(e)
-              exception_msg = 'Tensor objects are only iterable when eager'
-              if exception_msg in exception_str:
-                raise TypeError('You are attempting to use Python control '
-                                'flow in a layer that was not declared to be '
-                                'dynamic. Pass `dynamic=True` to the class '
-                                'constructor.\nEncountered error:\n"""\n' +
-                                exception_str + '\n"""')
+              for msg in messages:
+                if msg in exception_str:
+                  raise TypeError('You are attempting to use Python control '
+                                  'flow in a layer that was not declared to be '
+                                  'dynamic. Pass `dynamic=True` to the class '
+                                  'constructor.\nEncountered error:\n"""\n' +
+                                  exception_str + '\n"""')
               raise
           else:
             # We will use static shape inference to return symbolic tensors
@@ -1744,11 +1724,25 @@ class Layer(trackable.Trackable):
   @property
   def _obj_reference_counts(self):
     """A dictionary counting the number of attributes referencing an object."""
-    if not hasattr(self, '_obj_reference_counts_dict'):
-      super(Layer, self).__setattr__(
-          '_obj_reference_counts_dict',
-          object_identity.ObjectIdentityDictionary())
+    self._maybe_create_attribute('_obj_reference_counts_dict',
+                                 object_identity.ObjectIdentityDictionary())
     return self._obj_reference_counts_dict
+
+  def _maybe_create_attribute(self, name, default_value):
+    """Create the attribute with the default value if it hasn't been created.
+
+    This is useful for fields that is used for tracking purpose,
+    _trainable_weights, or _layers. Note that user could create a layer subclass
+    and assign an internal field before invoking the Layer.__init__(), the
+    __setattr__() need to create the tracking fields and __init__() need to not
+    override them.
+
+    Args:
+      name: String, the name of the attribute.
+      default_value: Object, the default value of the attribute.
+    """
+    if not hasattr(self, name):
+      super(Layer, self).__setattr__(name, default_value)
 
   def __delattr__(self, name):
     existing_value = getattr(self, name, None)
@@ -1812,9 +1806,7 @@ class Layer(trackable.Trackable):
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
         trackable_layer_utils.has_weights(value)):
-      # Initialize `_layers` here in case `__init__` has not yet been called.
-      if not hasattr(self, '_layers'):
-        super(Layer, self).__setattr__('_layers', [])
+      self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
@@ -1834,10 +1826,8 @@ class Layer(trackable.Trackable):
           not isinstance(val, resource_variable_ops._UnreadVariable)):  # pylint: disable=protected-access
         # Users may add extra weights/variables
         # simply by assigning them to attributes (invalid for graph networks)
-        if not hasattr(self, '_trainable_weights'):
-          super(Layer, self).__setattr__('_trainable_weights', [])
-        if not hasattr(self, '_non_trainable_weights'):
-          super(Layer, self).__setattr__('_non_trainable_weights', [])
+        self._maybe_create_attribute('_trainable_weights', [])
+        self._maybe_create_attribute('_non_trainable_weights', [])
         if val not in self._trainable_weights + self._non_trainable_weights:
           if val.trainable:
             self._trainable_weights.append(val)

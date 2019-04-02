@@ -57,13 +57,19 @@ limitations under the License.
 
 namespace xla {
 
-// Calls tensorflow::Flags::Parse(argc, argv, flag_list) against any as yet
-// unrecognized flags passed in the environment variable `envvar`, and returns
-// its return value.
+// Calls tensorflow::Flags::Parse(argc, argv, flag_list) against flags passed
+// in the environment variable `envvar`, and returns its return value.
+//
+// If `use_cache` is true, the result of parsing `envvar` is cached. This means
+// that future invocations of this method will be a no-op. Neither will the
+// environment variable be read again, nor will the originally read flags be
+// applied again. The latter is a consequence of destructive flag parsing in
+// tensorflow::Flags::Parse.
 //
 // Raises a fatal error if any flags in `envvar` were not recognized.
 bool ParseFlagsFromEnvAndDieIfUnknown(
-    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list);
+    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list,
+    bool use_cache = true);
 
 // Used only for testing.  Not to be used by clients.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,

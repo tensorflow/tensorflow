@@ -1130,6 +1130,11 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  bool IsLoopFusion() const;
+  bool IsInputFusion() const;
+  bool IsOutputFusion() const;
+  bool IsCustomFusion() const;
+
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusible() const;
@@ -1492,6 +1497,8 @@ class HloInstruction {
   // HloParameterInstruction::set_parameter_replicated_at_leaf_buffers.
   void set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool> parameter_replicated_at_leaf_buffers);
+  void set_parameter_replicated_at_leaf_buffers(
+      const std::vector<bool>& parameter_replicated_at_leaf_buffers);
 
   // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
   const absl::optional<std::vector<bool>>&
@@ -1817,6 +1824,7 @@ string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);

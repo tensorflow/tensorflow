@@ -105,7 +105,8 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       graph_def_version_(context->graph_def_version()),
       is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
-      output_name_map_(context->num_outputs()) {
+      output_name_map_(context->num_outputs()),
+      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
@@ -119,6 +120,10 @@ OpKernel::OpKernel(OpKernelConstruction* context,
 }
 
 OpKernel::~OpKernel() {}
+
+const uint64 OpKernel::kInitialCostEstimateCycles;
+const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
+const uint64 OpKernel::kCostDecay;
 
 const string& OpKernel::name() const { return def_->name(); }
 const string& OpKernel::type_string() const { return def_->op(); }
@@ -650,7 +655,7 @@ Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
 }
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
-                                        Tensor** output) {
+                                        Tensor** tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
   bool forward_expected =
@@ -662,7 +667,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
         "turning off the ScopedAllocator optimizer.");
   }
   AllocatorAttributes attr = output_alloc_attr(index);
-  return allocate_output(index, shape, output, attr);
+  return allocate_output(index, shape, tensor, attr);
 }
 
 Status OpKernelContext::allocate_output(StringPiece name,

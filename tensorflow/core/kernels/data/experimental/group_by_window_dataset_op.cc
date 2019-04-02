@@ -108,30 +108,26 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func_.name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func_.name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, window_size_func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_key_func_, &key_func_other_arguments_node,
-          &key_func_other_arguments_types));
+      TF_RETURN_IF_ERROR(
+          captured_key_func_->AddToGraph(ctx, b, &key_func_other_arguments_node,
+                                         &key_func_other_arguments_types));
 
       std::vector<Node*> reduce_func_other_arguments_node;
       DataTypeVector reduce_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          ctx, b, captured_reduce_func_, &reduce_func_other_arguments_node,
+      TF_RETURN_IF_ERROR(captured_reduce_func_->AddToGraph(
+          ctx, b, &reduce_func_other_arguments_node,
           &reduce_func_other_arguments_types));
 
       std::vector<Node*> window_size_func_other_arguments_node;
       DataTypeVector window_size_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(
-          OtherArgumentsNodeAndType(ctx, b, captured_window_size_func_,
-                                    &window_size_func_other_arguments_node,
-                                    &window_size_func_other_arguments_types));
+      TF_RETURN_IF_ERROR(captured_window_size_func_->AddToGraph(
+          ctx, b, &window_size_func_other_arguments_node,
+          &window_size_func_other_arguments_types));
 
       AttrValue key_func;
       b->BuildAttrValue(key_func_, &key_func);
@@ -489,28 +485,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<InstantiatedCapturedFunction>
           instantiated_window_size_func_;
     };
-
-    Status OtherArgumentsNodeAndType(
-        SerializationContext* ctx, DatasetGraphDefBuilder* b,
-        const std::unique_ptr<CapturedFunction>& captured_func,
-        std::vector<Node*>* other_arguments_node,
-        DataTypeVector* other_arguments_types) const {
-      other_arguments_node->reserve(captured_func->captured_inputs().size());
-      other_arguments_types->reserve(captured_func->captured_inputs().size());
-      for (const Tensor& t : captured_func->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments_node->emplace_back(node);
-        other_arguments_types->emplace_back(t.dtype());
-      }
-      return Status::OK();
-    }
 
     const DatasetBase* const input_;
     const NameAttrList key_func_;

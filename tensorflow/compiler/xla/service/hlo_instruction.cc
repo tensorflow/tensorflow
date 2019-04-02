@@ -303,6 +303,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_ASSIGN_OR_RETURN(auto literal,
                             Literal::CreateFromProto(proto.literal()));
         instruction = CreateConstant(std::move(literal));
+        // Literal's shape may have no/different tiling info.
+        TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+            instruction->shape(), shape));
+        *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);
       }
@@ -2453,6 +2457,22 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
+bool HloInstruction::IsInputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
+}
+
+bool HloInstruction::IsLoopFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kLoop;
+}
+
+bool HloInstruction::IsOutputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kOutput;
+}
+
+bool HloInstruction::IsCustomFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kCustom;
+}
+
 bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
   if (tracing()) {
@@ -3082,6 +3102,16 @@ string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
+  std::vector<string> replica_group_str;
+  replica_group_str.reserve(replica_groups.size());
+  for (const ReplicaGroup& group : replica_groups) {
+    replica_group_str.push_back(
+        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
+  }
+  return StrCat("{", StrJoin(replica_group_str, ","), "}");
+}
+
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
   static std::unordered_map<string, RandomDistribution>* map = [] {
     static auto* map = new std::unordered_map<string, RandomDistribution>;
@@ -3376,6 +3406,13 @@ int64 HloInstruction::parameter_number() const {
 
 void HloInstruction::set_parameter_replicated_at_leaf_buffers(
     absl::Span<const bool> parameter_replicated_at_leaf_buffers) {
+  return Cast<HloParameterInstruction>(this)
+      ->set_parameter_replicated_at_leaf_buffers(
+          parameter_replicated_at_leaf_buffers);
+}
+
+void HloInstruction::set_parameter_replicated_at_leaf_buffers(
+    const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
   return Cast<HloParameterInstruction>(this)
       ->set_parameter_replicated_at_leaf_buffers(
           parameter_replicated_at_leaf_buffers);

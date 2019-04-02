@@ -1877,7 +1877,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   if min_jpeg_quality >= max_jpeg_quality:
     raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
 
-  if compat.forward_compatible(2019, 3, 24):
+  if compat.forward_compatible(2019, 4, 4):
     jpeg_quality = random_ops.random_uniform([],
                                              min_jpeg_quality,
                                              max_jpeg_quality,

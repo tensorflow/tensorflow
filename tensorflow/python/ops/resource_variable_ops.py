@@ -287,6 +287,14 @@ def _maybe_set_handle_data(dtype, handle, tensor):
               shape_and_type=handle_data.shape_and_type[1:]))
 
 
+def variable_accessed(variable):
+  """Records that `variable` was accessed for the tape and FuncGraph."""
+  if hasattr(ops.get_default_graph(), "watch_variable"):
+    ops.get_default_graph().watch_variable(variable)
+  if variable.trainable:
+    tape.variable_accessed(variable)
+
+
 class ResourceVariable(variables.VariableV1):
   """Variable based on resource handles.
 
@@ -852,8 +860,7 @@ class ResourceVariable(variables.VariableV1):
                                               T=self.dtype)
 
   def _read_variable_op(self):
-    if self.trainable:
-      tape.variable_accessed(self)
+    variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     _maybe_set_handle_data(self._dtype, self._handle, result)
@@ -885,8 +892,7 @@ class ResourceVariable(variables.VariableV1):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
-      if self.trainable:
-        tape.variable_accessed(self)
+      variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
 
@@ -1023,8 +1029,7 @@ class ResourceVariable(variables.VariableV1):
     return assign_add_op
 
   def _lazy_read(self, op):
-    if self.trainable:
-      tape.variable_accessed(self)
+    variable_accessed(self)
     return _UnreadVariable(
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,
@@ -1453,7 +1458,11 @@ class _UnreadVariable(ResourceVariable):
     self._is_initialized_op = None
     self._initializer_op = None
     self._parent_op = parent_op
-    if context.executing_eagerly():
+    # Only create a graph_element if we're in session.run-land as only
+    # session.run requires a preexisting tensor to evaluate. Otherwise we can
+    # avoid accidentally reading the variable.
+    if (context.executing_eagerly()
+        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
       self._graph_element = None
     else:
       self._graph_element = self.read_value()
@@ -1478,7 +1487,6 @@ class _UnreadVariable(ResourceVariable):
                                                           self._dtype)
       _maybe_set_handle_data(self._dtype, self._handle, result)
       return result
-
 
   @property
   def op(self):

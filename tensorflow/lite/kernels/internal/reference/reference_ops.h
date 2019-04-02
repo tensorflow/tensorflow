@@ -246,26 +246,28 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void Relu(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float lower = 0;
-    const float clamped = val < lower ? lower : val;
+    const T val = input_data[i];
+    const T lower = 0;
+    const T clamped = val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
 
-inline void Relu1(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float upper = 1;
-    const float lower = -1;
-    const float clamped = val > upper ? upper : val < lower ? lower : val;
+    const T val = input_data[i];
+    const T upper = 1;
+    const T lower = -1;
+    const T clamped = val > upper ? upper : val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
@@ -2749,6 +2751,25 @@ inline void Requantize(const input_type* input_data, int32_t size,
                        int32_t effective_scale_shift, int32_t input_zeropoint,
                        int32_t output_zeropoint, output_type* output_data) {
   gemmlowp::ScopedProfilingLabel label("Requantize");
+  const bool same_scale =
+      (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
+  if (same_scale) {
+    const bool mixed_type_int8_uint8 =
+        std::is_same<input_type, int8_t>::value &&
+        std::is_same<output_type, uint8_t>::value;
+    const bool mixed_type_uint8_int8 =
+        std::is_same<input_type, uint8_t>::value &&
+        std::is_same<output_type, int8_t>::value;
+    const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
+    // Fast path to do requantization for the case when just a shift of 128 is
+    // needed.
+    if ((mixed_type_int8_uint8 && zero_point_diff == -128) ||
+        (mixed_type_uint8_int8 && zero_point_diff == 128)) {
+      for (int i = 0; i < size; ++i) {
+        output_data[i] = input_data[i] ^ 0x80;
+      }
+    }
+  }
   static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
   static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
   for (int i = 0; i < size; ++i) {

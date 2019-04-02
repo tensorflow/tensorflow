@@ -218,8 +218,6 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   TF_ASSERT_OK(Rewrite(&graph));
 
   // Verify the resultant graph has switch, merge and function call nodes.
-  // TODO(ezhulenev): Inlining functions with empty outputs leads to undefined
-  // graph execution.
   int switch_count = 0;
   int merge_count = 0;
   int node_called_if_count = 0;
@@ -233,7 +231,8 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   ASSERT_EQ(switch_count, 2);
   // One merge for the else/then branch (`branch_executed` node).
   ASSERT_EQ(merge_count, 1);
-  ASSERT_EQ(node_called_if_count, 1);
+  // Because function has no outputs we didn't preserve 'if' node.
+  ASSERT_EQ(node_called_if_count, 0);
 
   // Verify execution.
   ClientSession session(root, SessionOptionsWithInlining());

@@ -282,7 +282,6 @@ def converted_call(f, owner, options, args, kwargs):
     if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
       # Regular functions
       target_entity = f
-      arg_map_target = f
       f_self = inspect_utils.getmethodself(f)
 
       # TODO(b/119246461): This may be more elegantly handled using __get__?
@@ -297,30 +296,22 @@ def converted_call(f, owner, options, args, kwargs):
       # conversion with an experimental flag, this branch is dead code.
       # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
-      arg_map_target = f.__init__
       effective_args = args
 
     elif hasattr(f, '__call__') and hasattr(f, '__class__'):
       # Callable objects
       target_entity = f.__call__
-      arg_map_target = f.__call__
       effective_args = (f,) + args
 
     else:
       target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
-    arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
-    arg_types = {}
-    for name, arg in arg_values.items():
-      arg_class = arg.__class__
-      arg_types[name] = (arg_class.__name__, arg_class)
-
     converted_f = to_graph(
         target_entity,
         recursive=options.recursive,
-        arg_values=arg_values,
-        arg_types=arg_types,
+        arg_values=None,
+        arg_types=None,
         experimental_optional_features=options.optional_features)
 
     if logging.has_verbosity(2):
@@ -423,12 +414,15 @@ def to_graph(entity,
     ValueError: If the entity could not be converted.
   """
   try:
+    # TODO(b/129431421): Remove these args.
+    del arg_values
+    del arg_types
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
             recursive=recursive,
             optional_features=experimental_optional_features),
         autograph_module=tf_inspect.getmodule(to_graph))
-    return conversion.convert(entity, program_ctx, arg_values, arg_types)
+    return conversion.convert(entity, program_ctx)
   except (ValueError, AttributeError, KeyError, NameError, AssertionError) as e:
     errors.report_internal_error(entity, e)
 
@@ -467,6 +461,8 @@ def to_code(entity,
   Returns:
     The converted code as string.
   """
+  # TODO(b/129431421): Remove this arg.
+  del indentation
   source = tf_inspect.getsource(
       to_graph(
           entity,

@@ -48,6 +48,12 @@ tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda10.0-cudnn7/cuda/BUI
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc-cuda10.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda9.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda9.0-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/tensorrt5/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/centos7/tensorrt5/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/gcc7-nvcc-cuda10.0/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/py3/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/cuda10.0-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/centos7/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/generate/workspace.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
@@ -196,6 +202,7 @@ tensorflow/third_party/tflite_smartreply.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/pcre.BUILD
+tensorflow/third_party/pybind11.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/sqlite.BUILD
 tensorflow/third_party/common.bzl

@@ -31,7 +31,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 
 _RANDOM_SEED = 1337
 _EVAL_STEPS = 20
@@ -52,9 +52,8 @@ all_strategies = [
 
 
 def eager_mode_test_configuration():
-  return combinations.combine(mode='eager',
-                              use_numpy=False,
-                              use_validation_data=False)
+  return combinations.combine(
+      mode='eager', use_numpy=[True, False], use_validation_data=[True, False])
 
 
 def graph_mode_test_configuration():
@@ -368,14 +367,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def skip_unsupported_test_configuration(self, distribution):
     if should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
-
-    if context.executing_eagerly() and self.use_numpy:
-      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
-
-    if context.executing_eagerly() and self.use_validation_data:
-      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
-                    'data for eager execution.')
-    return
 
   def run_correctness_test(self,
                            distribution,

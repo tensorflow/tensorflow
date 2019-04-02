@@ -195,7 +195,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // We need a cost model for GPUs. Currently, do nothing.
       return false;
     };
-    pipeline.AddPass<DotDecomposer>(false);
+    pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<ConvolutionGroupConverter>(
         cost_model,
         /*convert_batch_groups_only=*/true);

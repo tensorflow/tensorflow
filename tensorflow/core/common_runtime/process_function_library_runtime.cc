@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -320,6 +321,43 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
   return &node.requested_device();
 }
 
+Status SetArgShape(
+    const std::unordered_map<int, TensorShape>& input_tensor_shapes,
+    const std::unordered_map<int, std::pair<DataType, TensorShape>>&
+        input_resource_dtypes_and_shapes,
+    const std::vector<Node*>& arg_nodes) {
+  for (Node* n : arg_nodes) {
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    if (dtype != DT_RESOURCE) {
+      auto shape_iter = input_tensor_shapes.find(index);
+      if (shape_iter != input_tensor_shapes.end()) {
+        TensorShapeProto shape_proto;
+        shape_iter->second.AsProto(&shape_proto);
+        AttrValue attr_value;
+        *attr_value.mutable_list()->add_shape() = shape_proto;
+        n->AddAttr("_output_shapes", attr_value);
+      }
+    } else {
+      auto dtype_and_shape_iter = input_resource_dtypes_and_shapes.find(index);
+      if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
+        AttrValue dtype_attr_value;
+        dtype_attr_value.mutable_list()->add_type(
+            dtype_and_shape_iter->second.first);
+        n->AddAttr("_handle_dtypes", dtype_attr_value);
+        TensorShapeProto shape_proto;
+        dtype_and_shape_iter->second.second.AsProto(&shape_proto);
+        AttrValue shape_attr_value;
+        *shape_attr_value.mutable_list()->add_shape() = shape_proto;
+        n->AddAttr("_handle_shapes", shape_attr_value);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
@@ -578,14 +616,17 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     device_set.AddDevice(d);
   }
 
+  TF_RETURN_IF_ERROR(SetArgShape(options.input_tensor_shapes,
+                                 options.input_resource_dtypes_and_shapes,
+                                 arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(options.input_devices,
                                     options.output_devices, device_set,
                                     arg_nodes, ret_nodes));
 
   std::unique_ptr<MultiDeviceFunctionData> data =
-      absl::make_unique<MultiDeviceFunctionData>(function_name, function_key,
-                                                 ret_node_names.size(), lib_def,
-                                                 std::move(ret_types));
+      absl::make_unique<MultiDeviceFunctionData>(
+          function_name, function_key, ret_node_names.size(),
+          lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
@@ -803,6 +844,9 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
+  VLOG(1) << "Running multi-device function " << data->function_name_;
+  VLOG(4) << "    with " << opts.DebugString();
+
   if (data->glue_.empty()) {
     // Trivial case where the function body is empty.
     done(Status::OK());
@@ -819,8 +863,6 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const string& target = pair.first;
     const ComponentFunctionData& comp_data = pair.second;
     FunctionLibraryRuntime::Handle handle = pair.second.handle_;
-    VLOG(1) << "Running function shard on device " << target << " with handle "
-            << handle;
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs_;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
@@ -830,10 +872,15 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     // When target device has private thread pool, use the target device runner
     thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
     opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
+
     std::vector<Tensor> comp_args =
         GetArgsForIndices(comp_data.arg_indices_, args);
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
+
+    VLOG(1) << "Running component function on device " << target
+            << " with handle " << handle;
+    VLOG(4) << "    with " << opts_copy.DebugString();
     flr->Run(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {

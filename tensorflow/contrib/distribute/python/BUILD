@@ -20,6 +20,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":keras_correctness_test_lib",
+        ":keras_multi_worker_test_base",
         ":keras_test_lib",
         ":single_loss_example",
         ":strategy_test_lib",
@@ -237,13 +238,42 @@ cuda_py_test(
 cuda_py_test(
     name = "keras_multi_worker_test",
     srcs = ["keras_multi_worker_test.py"],
-    additional_deps = [
+    additional_deps = [":keras_multi_worker_test_main_lib"],
+    shard_count = 3,
+    tags = [
+        # TODO(b/124344198): Add "multi_and_single_gpu",
+    ],
+)
+
+py_library(
+    name = "keras_multi_worker_test_main_lib",
+    testonly = True,
+    srcs = ["keras_multi_worker_test.py"],
+    deps = [
         "//tensorflow/contrib/distribute/python:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
-        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/contrib/distribute/python:parameter_server_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_multi_worker_correctness_test",
+    srcs = ["keras_multi_worker_correctness_test.py"],
+    additional_deps = [
+        ":keras_multi_worker_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
@@ -252,13 +282,25 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras:engine",
     ],
-    shard_count = 3,
     tags = [
-        # TODO(b/124344198): Add "multi_and_single_gpu",
+        "multi_and_single_gpu",
+    ],
+)
+
+py_library(
+    name = "keras_multi_worker_test_base",
+    srcs = ["keras_multi_worker_test_base.py"],
+    deps = [
+        "//tensorflow/contrib/distribute/python:collective_all_reduce_strategy",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:parameter_server_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
     ],
 )
 
@@ -334,6 +376,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -459,6 +502,7 @@ py_library(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 
@@ -570,6 +614,8 @@ py_library(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -588,7 +634,7 @@ distribute_py_test(
     ],
     deps = [
         ":keras_test_lib",
-        "//tensorflow/python/keras:distribute_strategy_test",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     ],
 )
 

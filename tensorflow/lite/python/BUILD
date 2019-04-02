@@ -73,6 +73,7 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",
@@ -136,6 +137,7 @@ py_library(
     ],
     deps = [
         ":lite_constants",
+        ":op_hint",
         "//tensorflow/python:tf_optimizer",
     ],
 )
@@ -188,7 +190,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],

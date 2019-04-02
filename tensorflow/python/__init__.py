@@ -144,6 +144,10 @@ from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 
+# XLA JIT compiler APIs.
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
+
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).
 nn.dynamic_rnn = rnn.dynamic_rnn

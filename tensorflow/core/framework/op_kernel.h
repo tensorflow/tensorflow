@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
+#include <atomic>
 #include <functional>
 
 #include <utility>
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -116,10 +118,34 @@ class OpKernel {
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
   virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
+  // Initial time (in CPU cycles) we expect an operation to take.  Used to
+  // determine whether an operation should be place in a threadpool.  Operations
+  // start out "expensive".
+  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
+  static const uint64 kCostDecay = 10;
+
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() { return expensive_; }
+  virtual bool IsExpensive() {
+    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
+                          kOpIsExpensiveThresholdCycles);
+  }
+
+  // Updates the dynamic cost estimate, which is used to determine whether this
+  // op is expensive. The new cost estimate is a weighted average of the old
+  // cost estimate and the latest cost.
+  void UpdateCostEstimate(uint64 elapsed_cycles) {
+    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simultaneous
+    // updates may result in one or more updates being ignored.  This does not
+    // affect correctness but may slow down the update frequency.
+    cost_estimate_.store(
+        (kCostDecay - 1) * cost_estimate_.load(std::memory_order_relaxed) /
+                kCostDecay +
+            (elapsed_cycles / kCostDecay),
+        std::memory_order_relaxed);
+  }
 
   // Accessors.
   const NodeDef& def() const { return *def_; }
@@ -184,6 +210,7 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   bool expensive_;
+  std::atomic_uint_fast64_t cost_estimate_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -204,8 +231,6 @@ class AsyncOpKernel : public OpKernel {
   const AsyncOpKernel* AsAsync() const final { return this; }
 
   void Compute(OpKernelContext* context) final;
-
-  bool IsExpensive() override { return true; }
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For
@@ -660,7 +685,7 @@ class OpKernelContext {
 
   // params must outlive the OpKernelContext.
   explicit OpKernelContext(Params* params);
-  OpKernelContext(Params* params, int noutputs);
+  OpKernelContext(Params* params, int num_outputs);
   ~OpKernelContext();
 
   Env* env() const { return params_->device->env(); }
