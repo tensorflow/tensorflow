@@ -2158,7 +2158,7 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintName(name(), options), " = ");
   }
 
-  // Print shape
+  // Print shape.
   if (options.include_layout_in_shapes()) {
     StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
   } else {
