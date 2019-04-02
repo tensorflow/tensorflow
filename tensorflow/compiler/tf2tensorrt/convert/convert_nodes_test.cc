@@ -4695,9 +4695,9 @@ void TestConvertPack(OpConverterTest* test) {
     }
     DataVec output_data{
         {"my_pack", ConstructTensor<CType>(params[i].expected_output.size())}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(params[i].expected_output));
   }
@@ -4824,39 +4824,38 @@ void TestConvertArgMinMax(OpConverterTest* test) {
   };
 
   for (int i = 0; i < params.size(); ++i) {
-      test->Reset();
+    test->Reset();
 
-      NodeDef node_def = GetArgMinMaxNodeDef<OptType>(dtype, DT_INT32);
-      // Create inputs.
-      test->AddTestTensor("input", params[i].input_shape, /*batch_size=*/1,
-                          /*trt_dtype=*/TfDataTypeToTrt(dtype));
-      test->AddTestWeights<int32>("dimension", {1}, {params[i].axis});
-      test->RunValidationAndConversion(node_def);
+    NodeDef node_def = GetArgMinMaxNodeDef<OpType>(dtype, DT_INT32);
+    // Create inputs.
+    test->AddTestTensor("input", params[i].input_shape, /*batch_size=*/1,
+                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+    test->AddTestWeights<int32>("dimension", {1}, {params[i].axis});
+    test->RunValidationAndConversion(node_def);
 
-      TRT_TensorOrWeights output;
-      TF_EXPECT_OK(test->GetTensorOrWeights("my_arg", &output));
-      EXPECT_TRUE(output.is_tensor());
-      ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
-                               output.tensor()->getDimensions());
-      // Create input data for tensors.
-      const DataVec input_data{
-          {"input", test::AsTensor<CType>(params[i].input_value)}};
-      DataVec output_data{
-          {"my_arg",
-           ConstructTensor<int32>(params[i].expected_argmax_output.size())}};
-      test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
-                                                      ? TrtPrecisionMode::FP16
-                                                      : TrtPrecisionMode::FP32);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_arg", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+    // Create input data for tensors.
+    const DataVec input_data{
+        {"input", test::AsTensor<CType>(params[i].input_value)}};
+    DataVec output_data{
+        {"my_arg",
+         ConstructTensor<int32>(params[i].expected_argmax_output.size())}};
+    test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                    ? TrtPrecisionMode::FP16
+                                                    : TrtPrecisionMode::FP32);
 
-      if (node_def.op() == "ArgMax") {
-        EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
-                    ElementsAreArray(params[i].expected_argmax_output));
-      } else if (node_def.op() == "ArgMin") {
-        EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
-                    ElementsAreArray(params[i].expected_argmin_output));
-      } else {
-        ASSERT_TRUE(false);
-      }
+    if (node_def.op() == "ArgMax") {
+      EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
+                  ElementsAreArray(params[i].expected_argmax_output));
+    } else if (node_def.op() == "ArgMin") {
+      EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
+                  ElementsAreArray(params[i].expected_argmin_output));
+    } else {
+      ASSERT_TRUE(false);
     }
   }
 }
@@ -4872,33 +4871,32 @@ TEST_F(OpConverterTest, ConvertArgMinMax) {
   {
     // Dimension is a tensor, should fail.
     Reset();
-    NodeDef node_def = GetArgMaxNodeDef(DT_FLOAT, DT_INT32);
+    NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT32);
     AddTestTensor("input", {1, 2, 3});
     AddTestTensor("dimension", {1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"dimension\" for ArgMax must be a constant, at my_argmax");
+        "The input \"dimension\" for ArgMax must be a constant, at my_arg");
   }
   {
     // Output type is INT64, should fail.
     Reset();
-    NodeDef node_def = GetArgMaxNodeDef(DT_FLOAT, DT_INT64);
+    NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT64);
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("dimension", {1}, {3});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Output type int64 is not supported, at my_argmax");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Output type int64 is not supported, at my_arg");
   }
   {
     // Axis is batch dimension, should fail
     Reset();
-    NodeDef node_def = GetArgMaxNodeDef(DT_FLOAT, DT_INT32);
+    NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT32);
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("dimension", {1}, {0});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "TensorRT does not allow manipulation of the batch dimension, at "
-        "my_argmax");
+        "my_arg");
   }
 
   TestConvertArgMinMax<ops::ArgMin, DT_FLOAT>(this);
