@@ -274,6 +274,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Gets the names of the input tensors. */
   String[] getInputTensorNames() {
+    if (inputTensorNames == null) {
+      inputTensorNames = new String[] {};
+    }
     return inputTensorNames;
   }
 
@@ -302,6 +305,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Gets the names of the output tensors. */
   String[] getOutputTensorNames() {
+    if (outputTensorNames == null) {
+      outputTensorNames = new String[] {};
+    }
     return outputTensorNames;
   }
 
