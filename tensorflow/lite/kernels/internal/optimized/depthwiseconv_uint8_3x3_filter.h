@@ -5445,32 +5445,19 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             int8x16_t right_bank_3_reg;
             int8x16_t right_bank_4_reg;
             int8x16_t right_bank_5_reg;
-            // Logic: (i_width == output_width_micro_repeats) &&
-            //        ((residual_width - 1) * stride_val < 2)
-            const bool no_right_block =
-                i_width == output_width_micro_repeats && residual_width < 3;
 
-            if (no_right_block) {
-              // Only needed for santizer checks.
-              right_bank_0_reg = vdupq_n_s8(0);
-              right_bank_1_reg = vdupq_n_s8(0);
-              right_bank_2_reg = vdupq_n_s8(0);
-              right_bank_3_reg = vdupq_n_s8(0);
-              right_bank_4_reg = vdupq_n_s8(0);
-              right_bank_5_reg = vdupq_n_s8(0);
-            } else {
-              right_bank_0_reg = vld1q_s8(next_input_data);
-              right_bank_1_reg =
-                  vld1q_s8(next_input_data + workspace_height_stride);
-              right_bank_2_reg =
-                  vld1q_s8(next_input_data + 2 * workspace_height_stride);
-              right_bank_3_reg =
-                  vld1q_s8(next_input_data + 3 * workspace_height_stride);
-              right_bank_4_reg =
-                  vld1q_s8(next_input_data + 4 * workspace_height_stride);
-              right_bank_5_reg =
-                  vld1q_s8(next_input_data + 5 * workspace_height_stride);
-            }
+            // Loading of next block always valid.
+            right_bank_0_reg = vld1q_s8(next_input_data);
+            right_bank_1_reg =
+                vld1q_s8(next_input_data + workspace_height_stride);
+            right_bank_2_reg =
+                vld1q_s8(next_input_data + 2 * workspace_height_stride);
+            right_bank_3_reg =
+                vld1q_s8(next_input_data + 3 * workspace_height_stride);
+            right_bank_4_reg =
+                vld1q_s8(next_input_data + 4 * workspace_height_stride);
+            right_bank_5_reg =
+                vld1q_s8(next_input_data + 5 * workspace_height_stride);
 
             {
               acc0 = adjusted_bias_data;
@@ -5986,31 +5973,114 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           int32x4_t acc0;
           int32x4_t acc1;
+          int16x8_t acc_s16_0_1;
+          uint8x8_t acc_u8;
 
-          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
-               ++i_width) {
-            const int output_width = i_width == output_width_micro_repeats
-                                         ? residual_width
-                                         : four_over_stride;
+          int i_width = 0;
+
+          // When output_width_micro_repeats <
+          // output_width_overall_micro_repeats, 0 < residual_width <= 2, and so
+          // residual_width == 1 is then true iff residual_width < 2.
+          const int adjusted_width_micro_repeats =
+              (output_width_micro_repeats <
+               output_width_overall_micro_repeats) &&
+                      (residual_width == 1)
+                  ? output_width_micro_repeats
+                  : output_width_overall_micro_repeats;
+
+          for (; i_width < adjusted_width_micro_repeats; ++i_width) {
+            const int output_width = four_over_stride;
             TFLITE_DCHECK_LE(output_width * stride_val, 4);
             const int8* input_data =
                 input_data_0 + width_micro_stride * i_width;
-            const bool no_right_block = i_width == output_width_micro_repeats &&
-                                        output_width_overall_micro_repeats ==
-                                            workspace_width_micro_repeats;
+            acc0 = adjusted_bias_data;
+            acc1 = adjusted_bias_data;
+            right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
+            right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
+                                        workspace_height_stride);
 
-            if (!no_right_block) {
-              // Load next sub-micro block of data.
-              right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
-              right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
-                                          workspace_height_stride);
-              right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
-                                          2 * workspace_height_stride);
-              right_bank_3_reg = vld1q_s8(input_data + width_micro_stride +
-                                          3 * workspace_height_stride);
-              right_bank_4_reg = vld1q_s8(input_data + width_micro_stride +
-                                          4 * workspace_height_stride);
-            }
+            acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
+            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
+
+            right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
+                                        2 * workspace_height_stride);
+            right_bank_3_reg = vld1q_s8(input_data + width_micro_stride +
+                                        3 * workspace_height_stride);
+            acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+            acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
+            right_bank_4_reg = vld1q_s8(input_data + width_micro_stride +
+                                        4 * workspace_height_stride);
+
+            // Fixed-point multiplication.
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0, -output_shift);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc1, -output_shift);
+            // Add the output offset.
+            acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+            acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+            // Apply the activation function.
+            acc_u8 = vqmovun_s16(acc_s16_0_1);
+            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+            left_bank_0_reg = vrev32q_u16(left_bank_0_reg);
+            left_bank_1_reg = vrev32q_u16(left_bank_1_reg);
+            left_bank_2_reg = vrev32q_u16(left_bank_2_reg);
+            left_bank_3_reg = vrev32q_u16(left_bank_3_reg);
+            left_bank_4_reg = vrev32q_u16(left_bank_4_reg);
+            acc0 = adjusted_bias_data;
+            acc1 = adjusted_bias_data;
+            vtrn1_s8x2_in_place(&left_bank_0_reg, &right_bank_0_reg);
+            vtrn1_s8x2_in_place(&left_bank_1_reg, &right_bank_1_reg);
+            vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
+            vst1_lane_8x4(output_data_base, acc_u8, 0);
+            vst1_lane_8x4(output_data_base + output_height_stride, acc_u8, 1);
+
+            vtrn1_s8x2_in_place(&left_bank_3_reg, &right_bank_3_reg);
+            vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
+
+            acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
+            acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
+            acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
+
+            // Fixed-point multiplication.
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0, -output_shift);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc1, -output_shift);
+            // Add the output offset.
+            acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+            acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+            // Apply the activation function.
+            acc_u8 = vqmovun_s16(acc_s16_0_1);
+            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+            vst1_lane_8x4(output_data_base + depth, acc_u8, 0);
+            vst1_lane_8x4(output_data_base + depth + output_height_stride,
+                          acc_u8, 1);
+
+            left_bank_0_reg = right_bank_0_reg;
+            left_bank_1_reg = right_bank_1_reg;
+            left_bank_2_reg = right_bank_2_reg;
+            left_bank_3_reg = right_bank_3_reg;
+            left_bank_4_reg = right_bank_4_reg;
+          }
+          for (; i_width < output_width_overall_micro_repeats; ++i_width) {
+            TFLITE_DCHECK_NE(residual_width, four_over_stride);
+
+            // No need to load next ("right") block of data.
 
             uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
 
@@ -6055,44 +6125,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
               vtrn1_s8x2_in_place(&left_bank_3_reg, &right_bank_3_reg);
               vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
-            }
-
-            if (output_width > 1) {
-              acc0 = adjusted_bias_data;
-              acc1 = adjusted_bias_data;
-
-              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
-              acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
-              acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
-              acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
-
-              // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              // Add the output offset.
-              int16x8_t acc_s16_0_1 =
-                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
-              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
-              // Apply the activation function.
-              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
-
-              vst1_lane_8x4(output_data_base + depth, acc_u8, 0);
-              vst1_lane_8x4(output_data_base + depth + output_height_stride,
-                            acc_u8, 1);
-
-              left_bank_0_reg = right_bank_0_reg;
-              left_bank_1_reg = right_bank_1_reg;
-              left_bank_2_reg = right_bank_2_reg;
-              left_bank_3_reg = right_bank_3_reg;
-              left_bank_4_reg = right_bank_4_reg;
             }
           }
           bias_data += bias_increment;
