@@ -875,6 +875,7 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -920,6 +921,7 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
