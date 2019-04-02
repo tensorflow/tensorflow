@@ -1629,8 +1629,6 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
-    LOG(WARNING) << "Inlining mismatch: " << SummarizeNode(*caller) << " vs. "
-                 << DebugString(fbody->graph);
     return errors::Internal("Inlining mismatch: ", validation.error_message());
   }
 
