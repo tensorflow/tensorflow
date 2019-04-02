@@ -490,8 +490,9 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
   HloInstruction* zero = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   builder.AddInstruction(HloInstruction::CreateMap(
-      r2f32, {param0, builder.AddInstruction(
-                          HloInstruction::CreateBroadcast(r2f32, zero, {}))},
+      r2f32,
+      {param0, builder.AddInstruction(
+                   HloInstruction::CreateBroadcast(r2f32, zero, {}))},
       add_computation));
 
   auto computation = m->AddEntryComputation(builder.Build());
@@ -3129,8 +3130,9 @@ TEST_P(ConvInputPaddingTest, DoTest) {
       input, pad_value, padding_config));
 
   auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(
-             F32, {lhs_pad->shape().dimensions(1), 256, 3, 3}),  // io01
+      1,
+      ShapeUtil::MakeShape(
+          F32, {lhs_pad->shape().dimensions(1), 256, 3, 3}),  // io01
       "input"));
 
   ConvolutionDimensionNumbers dnums =
@@ -3236,8 +3238,9 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
       filter, pad_value, padding_config));
 
   auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(
-             F32, {1024, rhs_pad->shape().dimensions(0), 100, 100}),  // bf01
+      0,
+      ShapeUtil::MakeShape(
+          F32, {1024, rhs_pad->shape().dimensions(0), 100, 100}),  // bf01
       "input"));
 
   ConvolutionDimensionNumbers dnums =
@@ -4253,8 +4256,9 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
       ShapeInference::InferPadShape(input->shape(),
                                     ShapeUtil::MakeShape(F32, {}), padding));
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      pad_shape, input, builder.AddInstruction(HloInstruction::CreateConstant(
-                            LiteralUtil::CreateR0(0.0f))),
+      pad_shape, input,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f))),
       padding));
 
   HloComputation* add_computation = nullptr;
