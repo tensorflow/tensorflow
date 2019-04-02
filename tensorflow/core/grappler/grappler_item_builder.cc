@@ -83,7 +83,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
-  if (!cfg.apply_optimizations || !cfg.erase_noinline_attributes) {
+  if (!cfg.apply_optimizations && !cfg.erase_noinline_attributes) {
     return Status::OK();
   }
 
