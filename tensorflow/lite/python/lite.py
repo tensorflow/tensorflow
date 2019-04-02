@@ -600,25 +600,42 @@ class TFLiteConverter(object):
     
     try:
       keras_model = _keras.models.load_model(model_file)
-      sess = _keras.backend.get_session()
+    except ValueError as e:
+      print("*** This model may have custom compilation parameters,"
+                " you can try to load your model"
+                " into a Keras Session"
+                " and use TFLiteConverter.from_session"
+                " instead of using TFLiteConverter.from_keras_model_file. ***\n"
+                "You can do like this:\n\n"
+                "import tensorflow as tf\n"
+                "tf.keras.backend.clear_session()\n"
+                "tf.keras.backend.set_learning_phase(False)\n"
+                "model = tf.keras.models.load_model('model.h5', compile=False)\n"
+                "sess = tf.keras.backend.get_session()\n"
+                "inputTensors = model.inputs\n"
+                "outputTensors = model.outputs\n"
+                "print(inputTensors)\n"
+                "print(outputTensors)\n"
+                "converter = tf.lite.TFLiteConverter.from_session(sess, inputTensors, outputTensors)\n"
+                "tflite_model = converter.convert()\n"
+                "open(\"converted_model.tflite\", \"wb\").write(tflite_model)\n")
+      raise ValueError(e)
+    sess = _keras.backend.get_session()
 
-      # Get input and output tensors.
-      if input_arrays:
-        input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
-      else:
-        input_tensors = keras_model.inputs
+    # Get input and output tensors.
+    if input_arrays:
+      input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
+    else:
+      input_tensors = keras_model.inputs
 
-      if output_arrays:
-        output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
-      else:
-        output_tensors = keras_model.outputs
-      _set_tensor_shapes(input_tensors, input_shapes)
+    if output_arrays:
+      output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
+    else:
+      output_tensors = keras_model.outputs
+    _set_tensor_shapes(input_tensors, input_shapes)
 
-      graph_def = _freeze_graph(sess, output_tensors)
-
-      return cls(graph_def, input_tensors, output_tensors)
-    except Exception as e:
-      raise Exception(e, ' This model may have custom compilation parameters, you can try to load your model into a Keras Session and use TFLiteConverter.from_session instead of using TFLiteConverter.from_keras_model_file.') 
+    graph_def = _freeze_graph(sess, output_tensors)
+    return cls(graph_def, input_tensors, output_tensors)
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
