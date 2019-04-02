@@ -131,10 +131,10 @@ void Function::emitWarning(const Twine &message) {
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.  This function always
-/// returns true.  NOTE: This may terminate the containing application, only use
-/// when the IR is in an inconsistent state.
-bool Function::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message);
+/// returns failure.  NOTE: This may terminate the containing application, only
+/// use when the IR is in an inconsistent state.
+LogicalResult Function::emitError(const Twine &message) {
+  return getContext()->emitError(getLoc(), message), failure();
 }
 
 /// Clone the internal blocks from this function into dest and all attributes

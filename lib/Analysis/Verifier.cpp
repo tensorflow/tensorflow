@@ -55,11 +55,11 @@ public:
   LogicalResult failure() { return mlir::failure(); }
 
   LogicalResult failure(const Twine &message, Operation &value) {
-    return value.emitError(message), failure();
+    return value.emitError(message);
   }
 
   LogicalResult failure(const Twine &message, Function &fn) {
-    return fn.emitError(message), failure();
+    return fn.emitError(message);
   }
 
   LogicalResult failure(const Twine &message, Block &bb) {
@@ -153,7 +153,7 @@ LogicalResult FuncVerifier::verify() {
 
     // Verify this attribute with the defining dialect.
     if (auto *dialect = getDialectForAttribute(attr))
-      if (dialect->verifyFunctionAttribute(&fn, attr))
+      if (failed(dialect->verifyFunctionAttribute(&fn, attr)))
         return failure();
   }
 
@@ -176,7 +176,7 @@ LogicalResult FuncVerifier::verify() {
 
       // Verify this attribute with the defining dialect.
       if (auto *dialect = getDialectForAttribute(attr))
-        if (dialect->verifyFunctionArgAttribute(&fn, i, attr))
+        if (failed(dialect->verifyFunctionArgAttribute(&fn, i, attr)))
           return failure();
     }
   }
@@ -287,7 +287,7 @@ LogicalResult FuncVerifier::verifyOperation(Operation &op) {
     if (!attr.first.strref().contains('.'))
       continue;
     if (auto *dialect = getDialectForAttribute(attr))
-      if (dialect->verifyOperationAttribute(&op, attr))
+      if (failed(dialect->verifyOperationAttribute(&op, attr)))
         return failure();
   }
 

@@ -95,13 +95,14 @@ void LLVMDialect::printType(Type type, raw_ostream &os) const {
 }
 
 /// Verify LLVMIR function argument attributes.
-bool LLVMDialect::verifyFunctionArgAttribute(Function *func, unsigned argIdx,
-                                             NamedAttribute argAttr) {
+LogicalResult LLVMDialect::verifyFunctionArgAttribute(Function *func,
+                                                      unsigned argIdx,
+                                                      NamedAttribute argAttr) {
   // Check that llvm.noalias is a boolean attribute.
   if (argAttr.first == "llvm.noalias" && !argAttr.second.isa<BoolAttr>())
     return func->emitError(
         "llvm.noalias argument attribute of non boolean type");
-  return false;
+  return success();
 }
 
 static DialectRegistration<LLVMDialect> llvmDialect;

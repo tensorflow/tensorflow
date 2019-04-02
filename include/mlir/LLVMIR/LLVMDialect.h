@@ -79,9 +79,9 @@ public:
   void printType(Type type, raw_ostream &os) const override;
 
   /// Verify a function argument attribute registered to this dialect.
-  /// Returns true if the verification failed, false otherwise.
-  bool verifyFunctionArgAttribute(Function *func, unsigned argIdx,
-                                  NamedAttribute argAttr) override;
+  /// Returns failure if the verification failed, success otherwise.
+  LogicalResult verifyFunctionArgAttribute(Function *func, unsigned argIdx,
+                                           NamedAttribute argAttr) override;
 
 private:
   llvm::LLVMContext llvmContext;
