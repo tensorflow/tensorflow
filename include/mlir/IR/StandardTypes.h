@@ -366,8 +366,8 @@ public:
   /// well-formed MemRef type.  Use getChecked to gracefully handle MemRefType
   /// construction failures.
   static MemRefType get(ArrayRef<int64_t> shape, Type elementType,
-                        ArrayRef<AffineMap> affineMapComposition,
-                        unsigned memorySpace) {
+                        ArrayRef<AffineMap> affineMapComposition = {},
+                        unsigned memorySpace = 0) {
     auto result = getImpl(shape, elementType, affineMapComposition, memorySpace,
                           /*location=*/llvm::None);
     assert(result && "Failed to construct instance of MemRefType.");
