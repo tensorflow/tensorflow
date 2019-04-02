@@ -52,15 +52,17 @@ namespace {
 ///
 class FuncVerifier {
 public:
-  bool failure(const Twine &message, Operation &value) {
-    return value.emitError(message);
+  LogicalResult failure() { return mlir::failure(); }
+
+  LogicalResult failure(const Twine &message, Operation &value) {
+    return value.emitError(message), failure();
   }
 
-  bool failure(const Twine &message, Function &fn) {
-    return fn.emitError(message);
+  LogicalResult failure(const Twine &message, Function &fn) {
+    return fn.emitError(message), failure();
   }
 
-  bool failure(const Twine &message, Block &bb) {
+  LogicalResult failure(const Twine &message, Block &bb) {
     // Take the location information for the first operation in the block.
     if (!bb.empty())
       return failure(message, bb.front());
@@ -77,9 +79,9 @@ public:
   }
 
   template <typename ErrorContext>
-  bool verifyAttribute(Attribute attr, ErrorContext &ctx) {
+  LogicalResult verifyAttribute(Attribute attr, ErrorContext &ctx) {
     if (!attr.isOrContainsFunction())
-      return false;
+      return success();
 
     // If we have a function attribute, check that it is non-null and in the
     // same module as the operation that refers to it.
@@ -92,23 +94,22 @@ public:
                            Twine(fnAttr.getValue()->getName()) +
                            "' defined in another module!",
                        ctx);
-      return false;
+      return success();
     }
 
     // Otherwise, we must have an array attribute, remap the elements.
-    for (auto elt : attr.cast<ArrayAttr>().getValue()) {
-      if (verifyAttribute(elt, ctx))
-        return true;
-    }
+    for (auto elt : attr.cast<ArrayAttr>().getValue())
+      if (failed(verifyAttribute(elt, ctx)))
+        return failure();
 
-    return false;
+    return success();
   }
 
-  bool verify();
-  bool verifyBlock(Block &block, bool isTopLevel);
-  bool verifyOperation(Operation &op);
-  bool verifyDominance(Block &block);
-  bool verifyOpDominance(Operation &op);
+  LogicalResult verify();
+  LogicalResult verifyBlock(Block &block, bool isTopLevel);
+  LogicalResult verifyOperation(Operation &op);
+  LogicalResult verifyDominance(Block &block);
+  LogicalResult verifyOpDominance(Operation &op);
 
   explicit FuncVerifier(Function &fn)
       : fn(fn), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
@@ -129,7 +130,7 @@ private:
 };
 } // end anonymous namespace
 
-bool FuncVerifier::verify() {
+LogicalResult FuncVerifier::verify() {
   llvm::PrettyStackTraceFormat fmt("MLIR Verifier: func @%s",
                                    fn.getName().c_str());
 
@@ -142,8 +143,8 @@ bool FuncVerifier::verify() {
     if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      fn);
-    if (verifyAttribute(attr.second, fn))
-      return true;
+    if (failed(verifyAttribute(attr.second, fn)))
+      return failure();
 
     /// Check that the attribute is a dialect attribute, i.e. contains a '.' for
     /// the namespace.
@@ -153,7 +154,7 @@ bool FuncVerifier::verify() {
     // Verify this attribute with the defining dialect.
     if (auto *dialect = getDialectForAttribute(attr))
       if (dialect->verifyFunctionAttribute(&fn, attr))
-        return true;
+        return failure();
   }
 
   /// Verify that all of the argument attributes are okay.
@@ -164,8 +165,8 @@ bool FuncVerifier::verify() {
             llvm::formatv("invalid attribute name '{0}' on argument {1}",
                           attr.first.strref(), i),
             fn);
-      if (verifyAttribute(attr.second, fn))
-        return true;
+      if (failed(verifyAttribute(attr.second, fn)))
+        return failure();
 
       /// Check that the attribute is a dialect attribute, i.e. contains a '.'
       /// for the namespace.
@@ -176,13 +177,13 @@ bool FuncVerifier::verify() {
       // Verify this attribute with the defining dialect.
       if (auto *dialect = getDialectForAttribute(attr))
         if (dialect->verifyFunctionArgAttribute(&fn, i, attr))
-          return true;
+          return failure();
     }
   }
 
   // External functions have nothing more to check.
   if (fn.isExternal())
-    return false;
+    return success();
 
   // Verify the first block has no predecessors.
   auto *firstBB = &fn.front();
@@ -205,8 +206,8 @@ bool FuncVerifier::verify() {
           fn);
 
   for (auto &block : fn)
-    if (verifyBlock(block, /*isTopLevel=*/true))
-      return true;
+    if (failed(verifyBlock(block, /*isTopLevel=*/true)))
+      return failure();
 
   // Since everything looks structurally ok to this point, we do a dominance
   // check.  We do this as a second pass since malformed CFG's can cause
@@ -215,14 +216,14 @@ bool FuncVerifier::verify() {
   DominanceInfo theDomInfo(&fn);
   domInfo = &theDomInfo;
   for (auto &block : fn)
-    if (verifyDominance(block))
-      return true;
+    if (failed(verifyDominance(block)))
+      return failure();
 
   domInfo = nullptr;
-  return false;
+  return success();
 }
 
-bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
+LogicalResult FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
       return failure("block argument not owned by block", block);
@@ -241,13 +242,13 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
           "operation with block successors must terminate its parent block",
           op);
 
-    if (verifyOperation(op))
-      return true;
+    if (failed(verifyOperation(op)))
+      return failure();
   }
 
   // Verify the terminator.
-  if (verifyOperation(block.back()))
-    return true;
+  if (failed(verifyOperation(block.back())))
+    return failure();
   if (block.back().isKnownNonTerminator())
     return failure("block with no terminator", block);
 
@@ -257,11 +258,11 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
     if (successor->getParent() != block.getParent())
       return failure("branching to block of a different region", block.back());
 
-  return false;
+  return success();
 }
 
 /// Check the invariants of the specified operation.
-bool FuncVerifier::verifyOperation(Operation &op) {
+LogicalResult FuncVerifier::verifyOperation(Operation &op) {
   if (op.getFunction() != &fn)
     return failure("operation in the wrong function", op);
 
@@ -279,31 +280,31 @@ bool FuncVerifier::verifyOperation(Operation &op) {
     if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      op);
-    if (verifyAttribute(attr.second, op))
-      return true;
+    if (failed(verifyAttribute(attr.second, op)))
+      return failure();
 
     // Check for any optional dialect specific attributes.
     if (!attr.first.strref().contains('.'))
       continue;
     if (auto *dialect = getDialectForAttribute(attr))
       if (dialect->verifyOperationAttribute(&op, attr))
-        return true;
+        return failure();
   }
 
   // If we can get operation info for this, check the custom hook.
   auto *opInfo = op.getAbstractOperation();
   if (opInfo && opInfo->verifyInvariants(&op))
-    return true;
+    return failure();
 
   // Verify that all child blocks are ok.
   for (auto &region : op.getRegions())
     for (auto &b : region)
-      if (verifyBlock(b, /*isTopLevel=*/false))
-        return true;
+      if (failed(verifyBlock(b, /*isTopLevel=*/false)))
+        return failure();
 
   // If this is a registered operation, there is nothing left to do.
   if (opInfo)
-    return false;
+    return success();
 
   // Otherwise, verify that the parent dialect allows un-registered operations.
   auto opName = op.getName().getStringRef();
@@ -329,18 +330,18 @@ bool FuncVerifier::verifyOperation(Operation &op) {
                    op);
   }
 
-  return false;
+  return success();
 }
 
-bool FuncVerifier::verifyDominance(Block &block) {
+LogicalResult FuncVerifier::verifyDominance(Block &block) {
   // Verify the dominance of each of the held operations.
   for (auto &op : block)
-    if (verifyOpDominance(op))
-      return true;
-  return false;
+    if (failed(verifyOpDominance(op)))
+      return failure();
+  return success();
 }
 
-bool FuncVerifier::verifyOpDominance(Operation &op) {
+LogicalResult FuncVerifier::verifyOpDominance(Operation &op) {
   // Check that operands properly dominate this use.
   for (unsigned operandNo = 0, e = op.getNumOperands(); operandNo != e;
        ++operandNo) {
@@ -352,16 +353,16 @@ bool FuncVerifier::verifyOpDominance(Operation &op) {
                  " does not dominate this use");
     if (auto *useOp = operand->getDefiningOp())
       useOp->emitNote("operand defined here");
-    return true;
+    return failure();
   }
 
   // Verify the dominance of each of the nested blocks within this operation.
   for (auto &region : op.getRegions())
     for (auto &block : region)
-      if (verifyDominance(block))
-        return true;
+      if (failed(verifyDominance(block)))
+        return failure();
 
-  return false;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -370,19 +371,17 @@ bool FuncVerifier::verifyOpDominance(Operation &op) {
 
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
-/// returns true.
-bool Function::verify() { return FuncVerifier(*this).verify(); }
+/// returns failure.
+LogicalResult Function::verify() { return FuncVerifier(*this).verify(); }
 
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
-/// returns true.
-bool Module::verify() {
-
+/// returns failure.
+LogicalResult Module::verify() {
   /// Check that each function is correct.
-  for (auto &fn : *this) {
-    if (fn.verify())
-      return true;
-  }
+  for (auto &fn : *this)
+    if (failed(fn.verify()))
+      return failure();
 
-  return false;
+  return success();
 }

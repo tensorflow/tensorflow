@@ -3789,7 +3789,7 @@ Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
 
   // Make sure the parse module has no other structural problems detected by
   // the verifier.
-  if (module->verify())
+  if (failed(module->verify()))
     return nullptr;
 
   return module.release();

@@ -124,7 +124,7 @@ inline void cleanupAndPrintFunction(mlir::Function *f) {
       printToOuts = false;
     }
   };
-  check(mlir::failure(f->getModule()->verify()));
+  check(f->getModule()->verify());
   check(cleanupPassManager().run(f->getModule()));
   if (printToOuts)
     f->print(llvm::outs());

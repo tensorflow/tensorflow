@@ -371,7 +371,7 @@ namespace {
 /// Pass to verify a function and signal failure if necessary.
 class FunctionVerifier : public FunctionPass<FunctionVerifier> {
   void runOnFunction() {
-    if (getFunction().verify())
+    if (failed(getFunction().verify()))
       signalPassFailure();
     markAllAnalysesPreserved();
   }
@@ -380,7 +380,7 @@ class FunctionVerifier : public FunctionPass<FunctionVerifier> {
 /// Pass to verify a module and signal failure if necessary.
 class ModuleVerifier : public ModulePass<ModuleVerifier> {
   void runOnModule() {
-    if (getModule().verify())
+    if (failed(getModule().verify()))
       signalPassFailure();
     markAllAnalysesPreserved();
   }
