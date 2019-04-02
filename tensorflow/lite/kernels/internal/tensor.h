@@ -53,12 +53,13 @@ class VectorOfTensors {
     int num_tensors = tensor_list.size;
 
     all_data_.reserve(num_tensors);
+    all_tensors_.reserve(num_tensors);
     all_shape_.reserve(num_tensors);
     all_shape_ptr_.reserve(num_tensors);
 
     for (int i = 0; i < num_tensors; ++i) {
       TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
-      all_data_.push_back(GetTensorData<T>(t));
+      all_tensors_.push_back(t);
       all_shape_.push_back(GetTensorShape(t));
     }
 
@@ -73,7 +74,14 @@ class VectorOfTensors {
   // example:
   //   float* const* f = v.data();
   //   f[0][1] is the second element of the first tensor.
-  T* const* data() const { return all_data_.data(); }
+  // NOTE: This function should be called only in Eval/Invoke context
+  T* const* data() {
+    for (std::vector<TfLiteTensor*>::iterator it = all_tensors_.begin();
+         it != all_tensors_.end(); ++it) {
+      all_data_.push_back(GetTensorData<T>(*it));
+    }
+    return all_data_.data();
+  }
 
   // Return a pointer the shape pointers of all tensors in the list. For
   // example:
@@ -83,6 +91,7 @@ class VectorOfTensors {
 
  private:
   std::vector<T*> all_data_;
+  std::vector<TfLiteTensor*> all_tensors_;
   std::vector<RuntimeShape> all_shape_;
   std::vector<RuntimeShape*> all_shape_ptr_;
 };

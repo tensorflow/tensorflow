@@ -26,6 +26,22 @@ namespace add_n {
 constexpr int kInputTensor1 = 0;
 constexpr int kOutputTensor = 0;
 
+struct OpData {
+  int num_inputs;
+  void* all_inputs;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  // This is a builtin op, so we don't use the contents in 'buffer', if any.
+  // Instead, we allocate a new object to carry information from Prepare() to
+  // Eval().
+  return new OpData();
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int num_inputs = NumInputs(node);
   TF_LITE_ENSURE(context, num_inputs >= 2);
@@ -42,6 +58,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input1->type, input->type);
   }
 
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  data->num_inputs = NumInputs(node);
+  if (output->type == kTfLiteFloat32) {
+    data->all_inputs = reinterpret_cast<void*>(
+        new VectorOfTensors<float>(*context, *node->inputs));
+  } else if (output->type == kTfLiteInt32) {
+    data->all_inputs = reinterpret_cast<void*>(
+        new VectorOfTensors<int32_t>(*context, *node->inputs));
+  } else {
+    context->ReportError(context,
+                         "AddN only supports FLOAT32|INT32 now, got %s.",
+                         TfLiteTypeGetName(output->type));
+    return kTfLiteError;
+  }
+
   // Use the first input node's dimension to be the dimension of the output
   // node.
   TfLiteIntArray* input1_dims = input1->dims;
@@ -51,12 +82,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <typename T>
 void EvalAddN(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(haoliang): Initialize all_inputs only once during init.
-  VectorOfTensors<T> all_inputs(*context, *node->inputs);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  VectorOfTensors<T>* all_inputs =
+      static_cast<VectorOfTensors<T>*>(data->all_inputs);
+  int num_inputs = data->num_inputs;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  int num_inputs = NumInputs(node);
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  reference_ops::AddN<T>(GetTensorShape(input1), num_inputs, all_inputs.data(),
+  reference_ops::AddN<T>(GetTensorShape(input1), num_inputs, all_inputs->data(),
                          GetTensorData<T>(output));
 }
 
@@ -78,8 +110,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace add_n
 
 TfLiteRegistration* Register_ADD_N() {
-  static TfLiteRegistration r = {/*init*/ nullptr, /*free*/ nullptr,
-                                 add_n::Prepare, add_n::Eval};
+  static TfLiteRegistration r = {add_n::Init, add_n::Free, add_n::Prepare,
+                                 add_n::Eval};
   return &r;
 }
 
