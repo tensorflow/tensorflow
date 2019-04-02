@@ -3205,7 +3205,12 @@ Status HloInstruction::set_backend_config(
 /* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
     const tensorflow::protobuf::Message& proto) {
   string ret;
-  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  // Pass ignore_accuracy_loss = true because estimated_cycles field can be
+  // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
+  // INT64_MAX, JsonFormat will return an error status, although there is no
+  // accuracy loss for int64.
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
+      proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
 }
 
