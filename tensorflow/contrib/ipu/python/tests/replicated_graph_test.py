@@ -284,6 +284,46 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
       self.assertAllClose(outfed_result["this"][4][0],
                           np.broadcast_to(48, shape))
 
+  def testCreateCombinedReplicatedSumGraph(self):
+    def my_graph():
+      with ops.device("/device:IPU:0"):
+        with variable_scope.variable_scope("", use_resource=True):
+          x1 = variable_scope.get_variable(
+              "x1",
+              dtype=np.float32,
+              shape=[100],
+              initializer=init_ops.constant_initializer(10.0))
+          x2 = variable_scope.get_variable(
+              "x2",
+              dtype=np.int32,
+              shape=[100],
+              initializer=init_ops.constant_initializer(10))
+        y1 = popops_cross_replica_sum.cross_replica_sum(x1 + x1)
+        z1 = popops_cross_replica_sum.cross_replica_sum(x1 * x1)
+        y2 = popops_cross_replica_sum.cross_replica_sum(x2 + x2)
+        z2 = popops_cross_replica_sum.cross_replica_sum(x2 * x2)
+        return [
+            popops_cross_replica_sum.cross_replica_sum(z1 + y1),
+            popops_cross_replica_sum.cross_replica_sum(z2 + y2)
+        ]
+
+    out = ipu_compiler.compile(my_graph, [])
+
+    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+
+      result = sess.run(out, {})
+      ref = np.empty([2, 100])
+      ref.fill(480.0)
+
+      # Check output equals the expected value
+      self.assertAllClose(result, ref)
+
 
 if __name__ == "__main__":
   googletest.main()
