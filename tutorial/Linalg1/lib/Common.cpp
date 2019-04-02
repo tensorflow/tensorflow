@@ -20,12 +20,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "linalg/Common.h"
-#include "linalg/Ops.h"
-#include "linalg/RangeOp.h"
-#include "linalg/ViewOp.h"
-#include "linalg/ViewType.h"
-#include "mlir/EDSC/Builders.h"
+#include "linalg1/Common.h"
+#include "linalg1/Ops.h"
+#include "linalg1/Types.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/StandardOps/Ops.h"
 

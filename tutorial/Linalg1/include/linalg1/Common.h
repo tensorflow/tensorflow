@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_COMMON_H_
-#define LINALG_COMMON_H_
+#ifndef LINALG1_COMMON_H_
+#define LINALG1_COMMON_H_
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/SliceAnalysis.h"
@@ -46,54 +46,26 @@ namespace common {
 // Define a few boilerplate objects used across all linalg examples.
 ////////////////////////////////////////////////////////////////////////////////
 
-// The unique MLIRContext, similar to an llvm::Context.
-inline mlir::MLIRContext &globalContext() {
-  static mlir::MLIRContext context;
-  return context;
-}
-
-// The unique Module, similar to an llvm::Module.
-inline mlir::Module &globalModule() {
-  static mlir::Module module(&globalContext());
-  return module;
-}
-
-/// Shortcut notation for types that we use globally.
-/// The index type is the type that must be used with affine operations:
-///   (`affine.apply`, `affine.for`, `affine.load`, `affine.store`).
-inline mlir::IndexType indexType() {
-  return mlir::IndexType::get(&globalContext());
-}
-
-/// Common f32 type.
-inline mlir::FloatType f32Type() {
-  return mlir::FloatType::getF32(&globalContext());
-}
-
 /// A 2-D abstraction over a flat contiguous memory region of f32 with symbolic
 /// sizes.
 template <int N>
-inline mlir::MemRefType floatMemRefType(unsigned memorySpace = 0) {
+inline mlir::MemRefType floatMemRefType(
+    mlir::MLIRContext *context, unsigned memorySpace = 0) {
   llvm::SmallVector<int64_t, 4> shape(N, -1);
-  return mlir::MemRefType::get(shape, f32Type(), {}, memorySpace);
+  auto f32 = mlir::FloatType::getF32(context);
+  return mlir::MemRefType::get(shape, f32, {}, memorySpace);
 }
 
-/// The simple function, taking 4 parameters of type index, that we will use
-/// throughout this tutorial:
-///
-/// ```mlir
-///    func @name(%M: index, %N: index, %K: index, %P: index)
-/// ```
-inline mlir::Function *makeFunction(llvm::StringRef name,
+/// A basic function builder
+inline mlir::Function *makeFunction(mlir::Module &module, llvm::StringRef name,
+                                    llvm::ArrayRef<mlir::Type> types,
                                     llvm::ArrayRef<mlir::Type> resultTypes) {
-  auto &ctx = globalContext();
-  auto *function =
-      new mlir::Function(mlir::UnknownLoc::get(&ctx), name,
-                         mlir::FunctionType::get({indexType(), indexType(),
-                                                  indexType(), indexType()},
-                                                 resultTypes, &ctx));
+  auto *context = module.getContext();
+  auto *function = new mlir::Function(
+      mlir::UnknownLoc::get(context), name,
+      mlir::FunctionType::get({types}, resultTypes, context));
   function->addEntryBlock();
-  globalModule().getFunctions().push_back(function);
+  module.getFunctions().push_back(function);
   return function;
 }
 
@@ -148,4 +120,4 @@ private:
 } // namespace common
 } // namespace linalg
 
-#endif // LINALG_COMMON_H_
+#endif // LINALG1_COMMON_H_

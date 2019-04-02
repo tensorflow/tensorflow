@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_DIALECT_H_
-#define LINALG_DIALECT_H_
+#ifndef LINALG1_DIALECT_H_
+#define LINALG1_DIALECT_H_
 
 #include "mlir/IR/Dialect.h"
 
@@ -39,4 +39,4 @@ public:
 
 } // namespace linalg
 
-#endif // LINALG_DIALECT_H_
+#endif // LINALG1_DIALECT_H_

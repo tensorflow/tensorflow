@@ -15,12 +15,15 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_VIEWTYPE_H_
-#define LINALG_VIEWTYPE_H_
+#ifndef LINALG1_VIEWTYPE_H_
+#define LINALG1_VIEWTYPE_H_
 
-#include "linalg/Types.h"
+#include "linalg1/Types.h"
+#include "mlir/IR/Types.h"
 
 namespace linalg {
+
+class ViewTypeStorage;
 
 /// A ViewType represents a range abstraction on top of an underlying storage
 /// type. It is parameterizable by the underlying element type and the rank of
@@ -51,4 +54,4 @@ public:
 
 } // namespace linalg
 
-#endif // LINALG_VIEWTYPE_H_
+#endif // LINALG1_VIEWTYPE_H_

@@ -19,7 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "linalg/ViewType.h"
+#include "linalg1/ViewType.h"
 
 using mlir::MLIRContext;
 using mlir::Type;

@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_TEST_HARNESS_H
-#define LINALG_TEST_HARNESS_H
+#ifndef LINALG1_TEST_HARNESS_H
+#define LINALG1_TEST_HARNESS_H
 
 #include <functional>
 #include <vector>
@@ -64,4 +64,4 @@ struct TestRegistration {
       f();                                                                     \
   }
 
-#endif // LINALG_TEST_HARNESS_H
+#endif // LINALG1_TEST_HARNESS_H

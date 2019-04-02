@@ -22,16 +22,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "linalg1/Dialect.h"
-#include "linalg1/Ops.h"
-#include "linalg1/Types.h"
+#include "linalg2/Ops.h"
 
-using namespace mlir;
 using namespace linalg;
 
-LinalgDialect::LinalgDialect(MLIRContext *context)
+LinalgDialect::LinalgDialect(mlir::MLIRContext *context)
     : Dialect("linalg", context) {
   addTypes<RangeType, ViewType>();
-  addOperations<RangeOp, SliceOp, ViewOp>();
+  addOperations<DotOp, MatvecOp, MatmulOp, RangeOp, SliceOp, ViewOp>();
 }
 
 // Dialect registration triggers the creation of a `LinalgDialect` object which

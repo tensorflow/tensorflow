@@ -15,16 +15,18 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_RANGETYPE_H_
-#define LINALG_RANGETYPE_H_
+#ifndef LINALG1_RANGETYPE_H_
+#define LINALG1_RANGETYPE_H_
 
-#include "linalg/Types.h"
+#include "linalg1/Types.h"
+#include "mlir/IR/Types.h"
 
 namespace mlir {
 class MLIRContext;
 }
 
 namespace linalg {
+
 /// A RangeType is the simplest possible form of a type in MLIR. It represents
 /// a minimal range abstraction (min, max, step). Since RangeType is constructed
 /// without any additional argument, this example illustrates the minimal
@@ -44,4 +46,4 @@ public:
 
 } // namespace linalg
 
-#endif // LINALG_RANGETYPE_H_
+#endif // LINALG1_RANGETYPE_H_

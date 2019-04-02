@@ -1,4 +1,4 @@
-//===- RangeOp.h - Linalg dialect RangeOp operation definition ------------===//
+//===- ViewOp.h - Linalg dialect ViewOp operation definition ------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,30 +15,32 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_RANGEOP_H_
-#define LINALG_RANGEOP_H_
+#ifndef LINALG1_VIEWOP_H_
+#define LINALG1_VIEWOP_H_
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Support/LLVM.h"
 
 namespace linalg {
 
-/// A RangeOp is used to create a value of RangeType from 3 values of type index
-/// that represent the min, max and step values of the range.
-/// Note: step must be an mlir::ConstantIndexOp for now due to current
-/// `affine.for` limitations.
-class RangeOp : public mlir::Op<RangeOp, mlir::OpTrait::NOperands<3>::Impl,
-                                mlir::OpTrait::OneResult,
-                                mlir::OpTrait::HasNoSideEffect> {
+class ViewType;
+
+/// A `ViewOp` produces a `ViewType` which is a multi-dimensional range
+/// abstraction on top of an underlying data type. For now we use the existing
+/// mlir::MemRef for the underlying data type.
+class ViewOp : public mlir::Op<ViewOp, mlir::OpTrait::VariadicOperands,
+                               mlir::OpTrait::OneResult,
+                               mlir::OpTrait::HasNoSideEffect> {
 public:
   using Op::Op;
 
   //////////////////////////////////////////////////////////////////////////////
   // Hooks to customize the behavior of this op.
   //////////////////////////////////////////////////////////////////////////////
-  static llvm::StringRef getOperationName() { return "linalg.range"; }
+  static llvm::StringRef getOperationName() { return "linalg.view"; }
   static void build(mlir::Builder *b, mlir::OperationState *result,
-                    mlir::Value *min, mlir::Value *max, mlir::Value *step);
+                    mlir::Value *memRef,
+                    llvm::ArrayRef<mlir::Value *> indexings = {});
   bool verify();
   static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
@@ -46,11 +48,20 @@ public:
   //////////////////////////////////////////////////////////////////////////////
   // Op-specific functionality.
   //////////////////////////////////////////////////////////////////////////////
-  mlir::Value *getMin() { return getOperand(0); }
-  mlir::Value *getMax() { return getOperand(1); }
-  mlir::Value *getStep() { return getOperand(2); }
+  enum { FirstIndexingOperand = 1 };
+  unsigned getRank();
+  mlir::Type getElementType();
+  ViewType getViewType();
+  // May be something else than a MemRef in the future.
+  mlir::Value *getSupportingMemRef();
+  // Get the underlying indexing at a given rank.
+  mlir::Value *getIndexing(unsigned rank);
+  // Get all the indexings of type RangeOp.
+  llvm::SmallVector<mlir::Value *, 8> getRanges();
+  // Get all the indexings in this view.
+  mlir::Operation::operand_range getIndexings();
 };
 
 } // namespace linalg
 
-#endif // LINALG_RANGEOP_H_
+#endif // LINALG1_VIEWOP_H_

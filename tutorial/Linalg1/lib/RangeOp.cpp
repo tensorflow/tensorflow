@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "linalg/RangeOp.h"
-#include "linalg/RangeType.h"
+#include "linalg1/Ops.h"
+#include "linalg1/Types.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
@@ -53,8 +53,7 @@ bool linalg::RangeOp::verify() {
 
 // Parsing of the linalg dialect is not supported in this tutorial.
 bool linalg::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
-  assert(false && "NYI");
-  return false;
+  llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
 }
 
 // A RangeOp prints as:

@@ -20,12 +20,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "linalg/Dialect.h"
-#include "linalg/RangeOp.h"
-#include "linalg/RangeType.h"
-#include "linalg/SliceOp.h"
-#include "linalg/ViewOp.h"
-#include "linalg/ViewType.h"
+#include "linalg1/Dialect.h"
+#include "linalg1/Ops.h"
+#include "linalg1/Types.h"
 #include "mlir/IR/Dialect.h"
 #include "llvm/Support/raw_ostream.h"
 

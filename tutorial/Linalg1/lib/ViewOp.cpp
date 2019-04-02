@@ -20,11 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "linalg/ViewOp.h"
-#include "linalg/Ops.h"
-#include "linalg/RangeOp.h"
-#include "linalg/RangeType.h"
-#include "linalg/ViewType.h"
+#include "linalg1/Ops.h"
+#include "linalg1/Types.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
@@ -35,15 +32,8 @@
 using llvm::ArrayRef;
 using llvm::SmallVector;
 using llvm::Twine;
-using mlir::Builder;
-using mlir::IndexType;
-using mlir::MemRefType;
-using mlir::OpAsmParser;
-using mlir::OpAsmPrinter;
-using mlir::OperationState;
-using mlir::Type;
-using mlir::Value;
 
+using namespace mlir;
 using namespace linalg;
 
 void linalg::ViewOp::build(Builder *b, OperationState *result, Value *memRef,
@@ -101,8 +91,7 @@ bool linalg::ViewOp::verify() {
 
 // Parsing of the linalg dialect is not supported in this tutorial.
 bool linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
-  assert(false && "NYI");
-  return false;
+  llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
 }
 
 // A ViewOp prints as:

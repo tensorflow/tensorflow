@@ -19,16 +19,10 @@
 
 #include "TestHarness.h"
 
-#include "linalg/Common.h"
-#include "linalg/Ops.h"
-#include "linalg/RangeOp.h"
-#include "linalg/RangeType.h"
-#include "linalg/SliceOp.h"
-#include "linalg/Types.h"
-#include "linalg/ViewOp.h"
-#include "linalg/ViewType.h"
-#include "mlir/EDSC/Builders.h"
-#include "mlir/EDSC/Intrinsics.h"
+#include "linalg1/Common.h"
+#include "linalg1/Intrinsics.h"
+#include "linalg1/Ops.h"
+#include "linalg1/Types.h"
 #include "mlir/IR/Function.h"
 
 using namespace linalg;
@@ -39,7 +33,11 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 
 TEST_FUNC(view_op) {
-  Function *f = makeFunction("view_op", {});
+  MLIRContext context;
+  Module module(&context);
+  auto indexType = mlir::IndexType::get(&context);
+  Function *f =
+      makeFunction(module, "view_op", {indexType, indexType, indexType}, {});
 
   ScopedContext scope(f);
 
@@ -48,16 +46,16 @@ TEST_FUNC(view_op) {
 
   // clang-format off
   ValueHandle M(f->getArgument(0)), N(f->getArgument(1)),
-    A0 = alloc(floatMemRefType<0>()),
-    A1 = alloc(floatMemRefType<1>(), ArrayRef<ValueHandle>{M}),
-    A2 = alloc(floatMemRefType<2>(), ArrayRef<ValueHandle>{M, N}),
+    A0 = alloc(floatMemRefType<0>(&context)),
+    A1 = alloc(floatMemRefType<1>(&context), ArrayRef<ValueHandle>{M}),
+    A2 = alloc(floatMemRefType<2>(&context), ArrayRef<ValueHandle>{M, N}),
     r0 = range(constant_index(3), constant_index(17), constant_index(1)),
     v0 = view(A0),
     v1 = view(A1, ArrayRef<ValueHandle>{r0}),
     v2 = view(A2, ArrayRef<ValueHandle>{r0, r0});
   some_consumer(ArrayRef<ValueHandle>{v0, v1, v2});
   ret();
-  // CHECK-LABEL: func @view_op(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
+  // CHECK-LABEL: func @view_op(%arg0: index, %arg1: index, %arg2: index) {
   //       CHECK:   %[[R:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
   //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[] : !linalg<"view<0xf32>">
   //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[%[[R]]] : !linalg<"view<f32>">
@@ -68,7 +66,11 @@ TEST_FUNC(view_op) {
 }
 
 TEST_FUNC(slice_op) {
-  Function *f = makeFunction("slice_op", {});
+  MLIRContext context;
+  Module module(&context);
+  auto indexType = mlir::IndexType::get(&context);
+  Function *f =
+      makeFunction(module, "slice_op", {indexType, indexType, indexType}, {});
 
   ScopedContext scope(f);
 
@@ -77,7 +79,7 @@ TEST_FUNC(slice_op) {
 
   // clang-format off
   ValueHandle M(f->getArgument(0)), N(f->getArgument(1)),
-      A = alloc(floatMemRefType<2>(), {M, N}),
+      A = alloc(floatMemRefType<2>(&context), {M, N}),
       r1 = range(constant_index(3), constant_index(17), constant_index(1)),
       r2 = range(constant_index(0), N, constant_index(1));
   ViewOp vA = view(A, {r1, r2}).getValue()->getDefiningOp()->cast<ViewOp>();
@@ -87,7 +89,7 @@ TEST_FUNC(slice_op) {
     some_consumer(slice(slice(vA, j, 0), i, 0)),
   });
   ret();
-  // CHECK-LABEL: func @slice_op(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
+  // CHECK-LABEL: func @slice_op(%arg0: index, %arg1: index, %arg2: index) {
   //       CHECK: %[[ALLOC:.*]] = alloc(%arg0, %arg1) : memref<?x?xf32>
   //  CHECK-NEXT: %[[R1:.*]] = linalg.range {{.*}}:{{.*}}:{{.*}} : !linalg<"range">
   //  CHECK-NEXT: %[[R2:.*]] = linalg.range {{.*}}:%arg1:{{.*}} : !linalg<"range">

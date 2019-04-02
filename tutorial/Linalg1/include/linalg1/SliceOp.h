@@ -15,10 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_SLICEOP_H_
-#define LINALG_SLICEOP_H_
+#ifndef LINALG1_SLICEOP_H_
+#define LINALG1_SLICEOP_H_
 
-#include "linalg/Types.h"
+#include "linalg1/Types.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Support/LLVM.h"
 
@@ -78,25 +78,10 @@ public:
   /// Returns the element Type of the ViewType of `getParentView()`.
   mlir::Type getParentElementType();
 
-  /// Walks the SliceOp chain until it encounters the base ViewOp.
-  /// Returns the single return value of the ViewOp.
-  mlir::Value *getBaseView();
-
-  /// Returns the MemRef backing the base ViewOp.
-  // May be another data type than a MemRef in the future.
-  mlir::Value *getSupportingMemRef();
-
-  /// Extracts the indexing from the original ViewOp that this slice restricts
-  /// along `dim`. Walks back the chain of SliceOp and determines the first
-  /// slice that constrains `dim`.
-  /// Returns the indexing as well as its actual dimension which may have
-  /// shifted from the originally requested `dim`.
-  std::pair<mlir::Value *, unsigned> getRootIndexing(unsigned dim);
-
   // Get all the indexings in this slice.
   mlir::Operation::operand_range getIndexings();
 };
 
 } // namespace linalg
 
-#endif // LINALG_SLICEOP_H_
+#endif // LINALG1_SLICEOP_H_

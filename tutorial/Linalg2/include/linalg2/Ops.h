@@ -1,4 +1,4 @@
-//===- Types.h - Linalg Types forward declarations ------------------------===//
+//===- Ops.h - Linalg Ops single entry point ------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,23 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_TYPES_H_
-#define LINALG_TYPES_H_
+#ifndef LINALG2_OPS_H_
+#define LINALG2_OPS_H_
 
-#include "mlir/IR/Types.h"
+#include "linalg1/Ops.h"
+#include "linalg2/TensorOps.h"
 
-namespace linalg {
-
-class RangeType;
-class ViewType;
-class ViewTypeStorage;
-
-enum LinalgTypes {
-  Range = mlir::Type::FIRST_LINALG_TYPE,
-  View,
-  LAST_USED_LINALG_TYPE = View,
-};
-
-} // namespace linalg
-
-#endif // LINALG_TYPES_H_
+#endif // LINALG2_OPS_H_
