@@ -52,25 +52,16 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
-#define GPUGETERRORSTRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
-#define GPUGETLASTERROR() cudaGetLastError()
 using gpuError_t = cudaError_t;
-#define GPUSUCCESSS cudaSuccess
+
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
-#define GPUGETERRORSTRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
-#define GPUGETLASTERROR() hipGetLastError()
 using gpuError_t = hipError_t;
-#define GPUSUCCESSS hipSuccess
 #endif
 
-#if GOOGLE_CUDA
 #define GetGPUStream(context) context->eigen_gpu_device().stream()
-#elif TENSORFLOW_USE_ROCM
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-#endif
 
 namespace tensorflow {
 __host__ __device__ inline tensorflow::bfloat16 CudaLdg(
