@@ -1,11 +1,5 @@
 # -*- Python -*-
 
-# version for the shared libraries, can
-# not contain rc or alpha, only numbers.
-# Also update tensorflow/core/public/version.h
-# and tensorflow/tools/pip_package/setup.py
-VERSION = "1.13.1"
-
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -55,6 +49,12 @@ load(
 
 def register_extension_info(**kwargs):
     pass
+
+# version for the shared libraries, can
+# not contain rc or alpha, only numbers.
+# Also update tensorflow/core/public/version.h
+# and tensorflow/tools/pip_package/setup.py
+VERSION = "1.13.1"
 
 def if_v2(a):
     return select({
