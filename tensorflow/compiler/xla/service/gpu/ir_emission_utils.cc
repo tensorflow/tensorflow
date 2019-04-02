@@ -157,7 +157,7 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
          IsCustomCallToDnnConvolution(hlo);
 }
 
-bool IsReductionToVector(const HloInstruction& reduce) {
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   if (HloOpcode::kReduce != reduce.opcode()) {
     return false;
   }
