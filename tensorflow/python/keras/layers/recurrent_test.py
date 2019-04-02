@@ -870,8 +870,7 @@ class RNNTest(keras_parameterized.TestCase):
     if not context.executing_eagerly():
       init_state = layer.get_initial_state(x)
       self.assertEqual(len(init_state), 1)
-      self.assertEqual(init_state[0].get_shape().as_list(),
-                       [None, unit_a, unit_b])
+      self.assertEqual(init_state[0].shape.as_list(), [None, unit_a, unit_b])
 
     model = keras.models.Model(x, y)
     model.compile(
@@ -952,8 +951,7 @@ class RNNTest(keras_parameterized.TestCase):
     if not context.executing_eagerly():
       init_state = layer.get_initial_state(x)
       self.assertEqual(len(init_state), 1)
-      self.assertEqual(init_state[0].get_shape().as_list(),
-                       [None, state_size])
+      self.assertEqual(init_state[0].shape.as_list(), [None, state_size])
 
     model = keras.models.Model(x, y)
     model.compile(
@@ -1445,4 +1443,3 @@ class NestedCell(keras.layers.Layer):
 
 if __name__ == '__main__':
   test.main()
-
