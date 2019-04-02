@@ -121,8 +121,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  size->type == kTfLiteInt32 || size->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, NumDimensions(begin), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
-  TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
-                     "Slice op only supports 1D-4D input arrays.");
+  TF_LITE_ENSURE_MSG(
+      context, 1 <= NumDimensions(input) && NumDimensions(input) <= kMaxDim,
+      "Slice op only supports 1D-4D input arrays.");
   // Current implementation limits by expecting begin fills all dims of input
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), NumElements(begin));
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
