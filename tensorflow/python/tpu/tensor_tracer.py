@@ -1552,8 +1552,10 @@ class TensorTracer(object):
     current_control_flow_context = graph._get_control_flow_context()
     # pylint: enable=protected-access
 
+    sorted_exec_op_list = list(exec_op_set)
+    sorted_exec_op_list.sort(key=lambda op: op.name)
     # Trace ops only if they are in the execution path.
-    for op in exec_op_set:
+    for op in sorted_exec_op_list:
       for i in range(len(op.outputs)):
         out_tensor = op.outputs[i]
         tensor_name = out_tensor.name
