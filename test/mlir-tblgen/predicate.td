@@ -50,3 +50,20 @@ def IdentityI32 : Op<"identity_i32", [PredOpTrait<
 // CHECK-LABEL: IdentityI32::verify
 // CHECK: if (!((((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType().isInteger(32)))))
 // CHECK-NEXT: return emitOpError("failed to verify that first operand has i32 element type");
+
+def OpA : Op<"op_for_int_min_val", []> {
+  let arguments = (ins Confined<I32Attr, [IntMinValue<10>]>:$attr);
+}
+
+// CHECK-LABEL: OpA::verify()
+// CHECK:       if (!(((true)) && ((this->getAttr("attr").cast<IntegerAttr>().getInt() >= 10))))
+// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy 32-bit integer whose minimal value is 10 attribute constraints");
+
+def OpB : Op<"op_for_arr_min_count", []> {
+  let arguments = (ins Confined<ArrayAttr, [ArrayMinCount<8>]>:$attr);
+}
+
+// CHECK-LABEL: OpB::verify()
+// CHECK:       if (!(((true)) && ((this->getAttr("attr").cast<ArrayAttr>().size() >= 8))))
+// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy array with at least 8 elements attribute constraints");
+

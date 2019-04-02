@@ -313,6 +313,15 @@ def F16Tensor  : TypedTensor<F16>;
 def F32Tensor  : TypedTensor<F32>;
 def F64Tensor  : TypedTensor<F64>;
 
+// This represents a generic tuple without any constraints on elemental type,
+// ranks, or size. As Tuples can contain tensors, vectors, or scalar values
+// there is not only a single elemental type.
+def Tuple : Type<IsTupleTypePred, "tuple">;
+
+//===----------------------------------------------------------------------===//
+// Common type constraints
+//===----------------------------------------------------------------------===//
+
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
 def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
@@ -323,11 +332,6 @@ def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
 def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
         TypedVector<Float>.predicate, TypedTensor<Float>.predicate]>,
     "floating-point-like">;
-    
-// This represents a generic tuple without any constraints on elemental type,
-// ranks, or size. As Tuples can contain tensors, vectors, or scalar values
-// there is not only a single elemental type.
-def Tuple : Type<IsTupleTypePred, "tuple">;
 
 
 //===----------------------------------------------------------------------===//
@@ -530,6 +534,34 @@ class ConstantAttr<Attr attribute, string val> : AttrConstraint<
 class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 
 //===----------------------------------------------------------------------===//
+// Common attribute constraints
+//===----------------------------------------------------------------------===//
+
+// A general mechanism to further confine the given `attr` with all the
+// `constraints`. This allows to compose complex constraints out of a series
+// of more primitive ones.
+class Confined<Attr attr, list<AttrConstraint> constraints> : Attr<
+    AllOf<!listconcat([attr.predicate],
+                      !foreach(pred, constraints, pred.predicate))>,
+    !foldl(/*init*/attr.description, /*list*/constraints,
+           prev, cur, prev # " " # cur.description)> {
+  let storageType = attr.storageType;
+  let returnType = attr.returnType;
+  let convertFromStorage = attr.convertFromStorage;
+  let constBuilderCall = attr.constBuilderCall;
+  let defaultValue = attr.defaultValue;
+  let isOptional = attr.isOptional;
+}
+
+class IntMinValue<int n> : AttrConstraint<
+    CPred<"{0}.cast<IntegerAttr>().getInt() >= " # n>,
+    "whose minimal value is " # n>;
+
+class ArrayMinCount<int n> : AttrConstraint<
+    CPred<"{0}.cast<ArrayAttr>().size() >= " # n>,
+    "with at least " # n # " elements">;
+
+//===----------------------------------------------------------------------===//
 // OpTrait definitions
 //===----------------------------------------------------------------------===//
 
@@ -693,7 +725,7 @@ class Results<dag rets> {
 }
 
 //===----------------------------------------------------------------------===//
-// Common type constraint predicates
+// Common op type constraints
 //===----------------------------------------------------------------------===//
 
 // Type Constraint operand `idx`'s Vector or Tensor Element type is `type`.
@@ -716,7 +748,9 @@ class TCopVTEtIsSameAs<int i, int j> : AllOf<[
     SubstLeaves<"{0}",  "{0}.getOperand(" # j # ")->getType()",
       IsVectorOrTensorTypePred>,
     // TODO: This could be made into C++ function instead.
-    CPred<"{0}.getOperand(" # i # ")->getType().cast<VectorOrTensorType>().getElementType() == {0}.getOperand(" # j # ")->getType().cast<VectorOrTensorType>().getElementType()">]>;
+    CPred<"{0}.getOperand(" # i # ")->getType().cast<VectorOrTensorType>()."
+          "getElementType() == {0}.getOperand(" # j # ")->getType()."
+          "cast<VectorOrTensorType>().getElementType()">]>;
 
 // Predicate to verify that the i'th result and the j'th operand have the same
 // elemental type.
@@ -730,7 +764,9 @@ class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
     SubstLeaves<"{0}",  "{0}.getOperand(" # j # ")->getType()",
       IsVectorOrTensorTypePred>,
     // TODO: This could be made into C++ function instead.
-    CPred<"{0}.getResult(" # i # ")->getType().cast<VectorOrTensorType>().getElementType() == {0}.getOperand(" # j # ")->getType().cast<VectorOrTensorType>().getElementType()">]>;
+    CPred<"{0}.getResult(" # i # ")->getType().cast<VectorOrTensorType>()."
+          "getElementType() == {0}.getOperand(" # j # ")->getType()."
+          "cast<VectorOrTensorType>().getElementType()">]>;
 
 //===----------------------------------------------------------------------===//
 // Pattern definitions
