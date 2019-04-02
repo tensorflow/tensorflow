@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/sub.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
@@ -187,9 +186,6 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
         tasks = Softmax(node_id, inputs[0], outputs[0],
                         graph.FindInputs(node->id)[0]->tensor.shape.c, options);
         break;
-      case OperationType::SUB:
-        tasks = Sub(node_id, inputs, outputs[0]);
-        break;
       case OperationType::UPSAMPLE_2D:
         tasks = Upsample(
             node_id, inputs[0], outputs[0],
@@ -205,8 +201,17 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       case OperationType::SQRT:
       case OperationType::SQUARE:
       case OperationType::TANH:
-        tasks = Elementwise(node_id, inputs[0], outputs[0], op_type);
+        tasks =
+            ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
         break;
+
+      case OperationType::SUB:
+      case OperationType::DIV:
+      case OperationType::POW:
+      case OperationType::SQUARED_DIFF:
+        tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
+        break;
+
       case OperationType::APPLY_MASK:
       case OperationType::BATCH_NORMALIZATION:
       case OperationType::CONST:

@@ -20,7 +20,6 @@ cc_library(
         ":reshape",
         ":slice",
         ":softmax",
-        ":sub",
         ":transpose_conv",
         ":upsample",
     ],
@@ -257,21 +256,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "sub",
-    srcs = ["sub.cc"],
-    hdrs = ["sub.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
 )

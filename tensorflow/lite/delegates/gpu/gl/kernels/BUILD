@@ -292,19 +292,6 @@ cc_library(
 )
 
 cc_library(
-    name = "sub",
-    srcs = ["sub.cc"],
-    hdrs = ["sub.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:node_shader",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
@@ -371,7 +358,6 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "reshape",
     "slice",
     "softmax",
-    "sub",
     "transpose_conv",
     "upsampling_bilinear",
 ]
