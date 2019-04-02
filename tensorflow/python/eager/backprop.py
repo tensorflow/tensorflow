@@ -211,8 +211,7 @@ def implicit_val_and_grad(f):
     variables = this_tape.watched_variables()
     if not variables:
       raise ValueError("No trainable variables were accessed while the "
-                       "function was being computed.")
-
+                        "function was being computed.")
     sources = [v.handle for v in variables]
     grad = imperative_grad.imperative_grad(this_tape, nest.flatten(end_node),
                                            sources)
