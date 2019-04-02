@@ -41,6 +41,7 @@ from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -335,6 +336,10 @@ class Model(network.Network):
 
     # Initialization for Eager mode execution.
     if self.run_eagerly:
+      if isinstance(optimizer, loss_scale_optimizer.LossScaleOptimizer):
+        # TODO(reedwm): Support this.
+        raise ValueError('We currently do not support enabling `run_eagerly` '
+                         'with a LossScaleOptimizer.')
       # Prepare sample weights.
       self._set_sample_weight_attributes(sample_weight_mode,
                                          skip_target_weighing_indices)
