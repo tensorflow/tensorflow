@@ -195,7 +195,7 @@ class SvdOpGpu : public AsyncOpKernel {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
-      GpuLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
+      Gpu2DLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
       GPU_LAUNCH_KERNEL(ComputeValueOfVKernel<Scalar>,
                         dim3(cfg2D.block_count), dim3(cfg2D.thread_per_block), 0,
                         d.stream(), cfg2D, m, full_matrices_ ? m : p,
