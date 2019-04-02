@@ -66,11 +66,13 @@ struct TFE_Context {
   TFE_Context(const tensorflow::SessionOptions& opts,
               TFE_ContextDevicePlacementPolicy default_policy, bool async,
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
-              tensorflow::Rendezvous* rendezvous)
+              tensorflow::Rendezvous* rendezvous,
+              const tensorflow::CustomKernelCreator* custom_kernel_creator)
       : context(opts,
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
-                async, device_mgr, device_mgr_owned, rendezvous) {}
+                async, device_mgr, device_mgr_owned, rendezvous,
+                custom_kernel_creator) {}
 
   tensorflow::EagerContext context;
 };

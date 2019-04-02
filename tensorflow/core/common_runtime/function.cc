@@ -323,7 +323,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                              const FunctionLibraryDefinition* lib_def,
                              thread::ThreadPool* default_thread_pool,
                              const OptimizerOptions& optimizer_options,
-                             CustomKernelCreator custom_kernel_creator,
+                             const CustomKernelCreator* custom_kernel_creator,
                              ProcessFunctionLibraryRuntime* parent);
 
   ~FunctionLibraryRuntimeImpl() override;
@@ -382,7 +382,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const int graph_def_version_;
   const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
-  const CustomKernelCreator custom_kernel_creator_;
+  const CustomKernelCreator* custom_kernel_creator_;
   Executor::Args::Runner default_runner_;
   const string device_name_;
 
@@ -425,7 +425,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      const FunctionLibraryDefinition* lib_def,
                                      std::unique_ptr<FunctionBody>* g_body);
-  bool IsLocalTarget(const InstantiateOptions& options);
+  bool IsLocalTarget(const InstantiateOptions& options) const;
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
@@ -443,7 +443,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* default_thread_pool,
     const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
+    const CustomKernelCreator* custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent)
     : device_mgr_(dmgr),
       device_(device),
@@ -451,7 +451,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       graph_def_version_(graph_def_version),
       base_lib_def_(lib_def),
       optimizer_(optimizer_options),
-      custom_kernel_creator_(std::move(custom_kernel_creator)),
+      custom_kernel_creator_(custom_kernel_creator),
       default_runner_(nullptr),
       device_name_(device_ == nullptr
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
@@ -570,17 +570,16 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
     OpKernel** kernel) {
   // If a custom kernel creator is given, try that.
   Status s;
-  if (custom_kernel_creator_) {
+  if (custom_kernel_creator_ != nullptr &&
+      custom_kernel_creator_->CanCreateKernel(*this, ndef)) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_kernel_creator_(this, ndef, &ret);
+    s = custom_kernel_creator_->CreateKernel(this, ndef, &ret);
     if (s.ok()) {
       *kernel = ret.release();
-      return s;
     } else {
       VLOG(2) << "Custom creator error: " << s;
-      // Falls through.
-      s = Status::OK();
     }
+    return s;
   }
 
   if (lib_def->Find(ndef.op()) == nullptr) {
@@ -676,7 +675,7 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
 }
 
 bool FunctionLibraryRuntimeImpl::IsLocalTarget(
-    const InstantiateOptions& options) {
+    const InstantiateOptions& options) const {
   if (device_ == nullptr) return true;
   if (options.target.empty()) return true;
   if (options.is_multi_device_function) return false;
@@ -1223,14 +1222,14 @@ namespace {
 
 struct CustomCreatorSingleton {
   mutex mu;
-  CustomKernelCreator custom_creator = nullptr;
+  CustomKernelCreator* custom_creator = nullptr;
 
-  void Set(CustomKernelCreator cb) {
+  void Set(CustomKernelCreator* cb) {
     mutex_lock l(mu);
-    custom_creator = std::move(cb);
+    custom_creator = cb;
   }
 
-  CustomKernelCreator Get() {
+  CustomKernelCreator* Get() {
     mutex_lock l(mu);
     return custom_creator;
   }
@@ -1243,29 +1242,23 @@ CustomCreatorSingleton* GetCustomCreatorSingleton() {
 
 }  // namespace
 
-void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
-  GetCustomCreatorSingleton()->Set(std::move(cb));
+const CustomKernelCreator* GetDefaultCustomKernelCreator() {
+  return GetCustomCreatorSingleton()->Get();
+}
+
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c) {
+  GetCustomCreatorSingleton()->Set(c);
 }
 
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
+    const CustomKernelCreator* custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
       device_mgr, env, device, graph_def_version, lib_def, thread_pool,
-      optimizer_options, std::move(custom_kernel_creator), parent));
-}
-
-std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, Device* device,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
-    ProcessFunctionLibraryRuntime* parent) {
-  return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
-                                   lib_def, thread_pool, optimizer_options,
-                                   GetCustomCreatorSingleton()->Get(), parent);
+      optimizer_options, custom_kernel_creator, parent));
 }
 
 bool RemoveDeadNodes(Graph* g) {

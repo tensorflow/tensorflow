@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_CREATE_XLA_LAUNCH_OP_H_
 #define TENSORFLOW_COMPILER_JIT_CREATE_XLA_LAUNCH_OP_H_
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -23,12 +24,18 @@ namespace tensorflow {
 class FunctionLibraryRuntime;
 class OpKernel;
 
-// Given a NodeDef 'node_def' and the function library runtime 'flr', if
-// 'node_def' is a call to a compilable function defined in 'flr', returns OK
-// and fills in 'kernel' with a XlaLaunchOp kernel which computes the
-// node. Otherwise, returns a non-OK.
-Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
-                         std::unique_ptr<OpKernel>* kernel);
+class XlaKernelCreator : public CustomKernelCreator {
+ public:
+  // Given a NodeDef 'node_def' and the function library runtime 'flr', returns
+  // true if 'node_def' is a call to a compilable function defined in 'flr',
+  // with the kXlaCompileAttr set.
+  bool CanCreateKernel(const FunctionLibraryRuntime& flr,
+                       const NodeDef& node_def) const override;
+
+  // Given a supported NodeDef, returns a XlaLaunchOp that computes the node.
+  Status CreateKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
+                      std::unique_ptr<OpKernel>* kernel) const override;
+};
 
 }  // namespace tensorflow
 

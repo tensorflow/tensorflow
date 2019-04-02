@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/jit/create_xla_launch_op.h"
+#include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
@@ -64,26 +64,23 @@ class SinglePassSearch {
   int current_index_;
   const std::vector<int>* values_;
 };
+}  // namespace
 
-Status CompilationRequested(const FunctionLibraryRuntime& flr,
-                            const NodeDef& node_def) {
+bool XlaKernelCreator::CanCreateKernel(const FunctionLibraryRuntime& flr,
+                                       const NodeDef& node_def) const {
   const FunctionDef* function_def =
       flr.GetFunctionLibraryDefinition()->Find(node_def.name());
   if (function_def == nullptr) {
     // The node def is not calling a function. Individual ops can be
     // run directly using on-demand mode, no need to create XlaLaunch
     // kernel for them.
-    // TODO(b/110359382): Make custom kernel creation return a bool instead of
-    // status.
-    // We don't set error messages here to avoid unnecessary string copy.
-    // Similarly below.
-    return Status(error::INVALID_ARGUMENT, "");
+    return false;
   }
 
   // If kXlaCompileAttr is set on the node_def, use its value.
   const auto& it = node_def.attr().find(kXlaCompileAttr);
   if (it != node_def.attr().end()) {
-    return it->second.b() ? Status::OK() : Status(error::INVALID_ARGUMENT, "");
+    return it->second.b();
   }
 
   // kXlaCompileAttr is not set on node_def, check if it is set on
@@ -100,9 +97,9 @@ Status CompilationRequested(const FunctionLibraryRuntime& flr,
         VLOG(3) << node_def.op() << " is explicitly marked not to be compiled";
       }
     }
-    return Status(error::INVALID_ARGUMENT, "");
+    return false;
   }
-  return Status::OK();
+  return true;
 }
 
 // Given a FunctionLibraryRuntime and a NodeDef calling a function in the
@@ -148,13 +145,14 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   return Status::OK();
 }
 
-}  // namespace
+Status XlaKernelCreator::CreateKernel(FunctionLibraryRuntime* flr,
+                                      const NodeDef& node_def,
+                                      std::unique_ptr<OpKernel>* kernel) const {
+  if (!CanCreateKernel(*flr, node_def)) {
+    return errors::Internal("Invalid node: ", node_def.ShortDebugString());
+  }
 
-Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
-                         std::unique_ptr<OpKernel>* kernel) {
-  TF_RETURN_IF_ERROR(CompilationRequested(*flr, node_def));
-
-  VLOG(3) << "Attemping to create XlaLaunchOp for " << node_def.DebugString();
+  VLOG(3) << "Attempting to create XlaLaunchOp for " << node_def.DebugString();
 
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
@@ -242,7 +240,8 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
 namespace {
 
 bool RegisterLaunchOpCreator() {
-  RegisterDefaultCustomKernelCreator(CreateXlaLaunchOp);
+  XlaKernelCreator* xla_kernel_creator = new XlaKernelCreator();
+  RegisterDefaultCustomKernelCreator(xla_kernel_creator);
   return true;
 }
 

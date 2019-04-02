@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/create_xla_launch_op.h"
+#include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
@@ -53,7 +54,7 @@ FunctionDef XTimesY() {
       });
 }
 
-class CreateXlaLaunchOpTest : public ::testing::Test {
+class XlaKernelCreatorTest : public ::testing::Test {
  protected:
   void Init(const std::vector<FunctionDef>& flib) {
     SessionOptions options;
@@ -91,15 +92,17 @@ AttrValue BoolAttr(bool b) {
   return v;
 }
 
-TEST_F(CreateXlaLaunchOpTest, OneFloatOneResourceArgument) {
+TEST_F(XlaKernelCreatorTest, OneFloatOneResourceArgument) {
   FunctionDef fdef = XTimesY();
   (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(true);
   Init({fdef});
+  XlaKernelCreator xla_kernel_creator;
 
-  Status status = CreateXlaLaunchOp(
+  Status status = xla_kernel_creator.CreateKernel(
       flr_, ToNodeDef(R"pb(
         name: 'XTimesY' op: 'XTimesY' input: 'a' input: 'b'
-      )pb"), &kernel_);
+      )pb"),
+      &kernel_);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   EXPECT_EQ("XTimesY", kernel_->name());
@@ -116,31 +119,35 @@ TEST_F(CreateXlaLaunchOpTest, OneFloatOneResourceArgument) {
   EXPECT_EQ(DEVICE_MEMORY, kernel_->output_memory_types()[0]);
 }
 
-TEST_F(CreateXlaLaunchOpTest, FailsIfXlaCompileAttrNotSet) {
+TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrNotSet) {
   FunctionDef fdef = XTimesY();
   Init({fdef});
+  XlaKernelCreator xla_kernel_creator;
 
-  Status status = CreateXlaLaunchOp(flr_, ToNodeDef(R"proto(
-                                      name: 'XTimesY'
-                                      op: 'XTimesY'
-                                      input: 'a'
-                                      input: 'b'
-                                    )proto"), &kernel_);
-  EXPECT_TRUE(errors::IsInvalidArgument(status)) << status.ToString();
+  Status status = xla_kernel_creator.CreateKernel(flr_, ToNodeDef(R"proto(
+                                                    name: 'XTimesY'
+                                                    op: 'XTimesY'
+                                                    input: 'a'
+                                                    input: 'b'
+                                                  )proto"),
+                                                  &kernel_);
+  EXPECT_TRUE(errors::IsInternal(status)) << status.ToString();
 }
 
-TEST_F(CreateXlaLaunchOpTest, FailsIfXlaCompileAttrIsSetToFalse) {
+TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
   FunctionDef fdef = XTimesY();
   (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(false);
   Init({fdef});
+  XlaKernelCreator xla_kernel_creator;
 
-  Status status = CreateXlaLaunchOp(flr_, ToNodeDef(R"proto(
-                                      name: 'XTimesY'
-                                      op: 'XTimesY'
-                                      input: 'a'
-                                      input: 'b'
-                                    )proto"), &kernel_);
-  EXPECT_TRUE(errors::IsInvalidArgument(status)) << status.ToString();
+  Status status = xla_kernel_creator.CreateKernel(flr_, ToNodeDef(R"proto(
+                                                    name: 'XTimesY'
+                                                    op: 'XTimesY'
+                                                    input: 'a'
+                                                    input: 'b'
+                                                  )proto"),
+                                                  &kernel_);
+  EXPECT_TRUE(errors::IsInternal(status)) << status.ToString();
 }
 
 }  // namespace tensorflow

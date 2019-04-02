@@ -31,14 +31,18 @@ namespace tensorflow {
 
 static constexpr const char* const kNoInlineAttr = "_noinline";
 
+// Get default customizable kernel creator if set
+const CustomKernelCreator* GetDefaultCustomKernelCreator();
+
 // Registers a default customizable kernel creator for a function call.
 //
-// If 'cb()' returns a non-OK, we still fall back to an executor-based
-// interpreter op kernel to execute a function. If 'cb()' returns OK,
-// takes ownership of the returned OpKernel.
+// If c->CanCreateKernel returns false, we still fall back to an executor-based
+// interpreter op kernel to execute a function. Else c->CreateKernel() can be
+// used to create a kernel that will compile the function with XLA and run the
+// resulting program.
 //
 // TODO(zhifengc/phawkins): b/32379046
-void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c);
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
 // defined in "lib_def" and executes functions on the "device".
@@ -57,16 +61,7 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
-    ProcessFunctionLibraryRuntime* parent);
-
-// Same as above except that the returned runtime consults with the
-// global default custom kernel creator registered by
-// RegisterDefaultCustomKernelCreator.
-std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, Device* device,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
+    const CustomKernelCreator* custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
