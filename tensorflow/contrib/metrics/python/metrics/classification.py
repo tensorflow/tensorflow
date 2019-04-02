@@ -173,6 +173,11 @@ def f1_score(labels, predictions, weights=None, num_thresholds=200,
                                     name='precision_' + name)
       recall_at_t = math_ops.div(tp, epsilon + tp + fn,
                                     name='recall_' + name)
+      # Compute F1 score.
+      f1_at_thresholds = (
+          2.0 * precision_at_t * recall_at_t /
+          (precision_at_t + recall_at_t + epsilon))
+      return f1_at_thresholds
     
     def f1_across_replicas(_, values):
       best_f1 = compute_best_f1_score(tp=values['tp'], fp=values['fp'],
