@@ -4762,27 +4762,18 @@ TEST_F(OpConverterTest, ConvertPack) {
   // TestConvertPack<DT_INT32>(this);
 }
 
-// Get the NodeDef for ArgMax.
-NodeDef GetArgMaxNodeDef(DataType input_dtype, DataType output_dtype) {
+// Get the NodeDef for ArgMin or ArgMax.
+template <typename OpType>
+NodeDef GetArgMinMaxNodeDef(DataType input_dtype, DataType output_dtype) {
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), input_dtype);
   auto dimension = ops::Placeholder(s.WithOpName("dimension"), DT_INT32);
-  auto attrs = ops::ArgMax::OutputType(output_dtype);
-  auto argmax = ops::ArgMax(s.WithOpName("my_argmax"), input, dimension, attrs);
-  return argmax.operation.node()->def();
+  auto attrs = OpType::OutputType(output_dtype);
+  auto arg = OpType(s.WithOpName("my_arg"), input, dimension, attrs);
+  return arg.operation.node()->def();
 }
 
-// Get the NodeDef for ArgMin.
-NodeDef GetArgMinNodeDef(DataType input_dtype, DataType output_dtype) {
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), input_dtype);
-  auto dimension = ops::Placeholder(s.WithOpName("dimension"), DT_INT32);
-  auto attrs = ops::ArgMin::OutputType(output_dtype);
-  auto argmin = ops::ArgMin(s.WithOpName("my_argmin"), input, dimension, attrs);
-  return argmin.operation.node()->def();
-}
-
-template <DataType dtype>
+template <typename OpType, DataType dtype>
 void TestConvertArgMinMax(OpConverterTest* test) {
   typedef typename EnumToDataType<dtype>::Type CType;
 
@@ -4833,20 +4824,17 @@ void TestConvertArgMinMax(OpConverterTest* test) {
   };
 
   for (int i = 0; i < params.size(); ++i) {
-    for (bool is_argmax : {true, false}) {
       test->Reset();
 
-      NodeDef node_def = is_argmax ? GetArgMaxNodeDef(dtype, DT_INT32)
-                                   : GetArgMinNodeDef(dtype, DT_INT32);
+      NodeDef node_def = GetArgMinMaxNodeDef<OptType>(dtype, DT_INT32);
       // Create inputs.
       test->AddTestTensor("input", params[i].input_shape, /*batch_size=*/1,
                           /*trt_dtype=*/TfDataTypeToTrt(dtype));
       test->AddTestWeights<int32>("dimension", {1}, {params[i].axis});
       test->RunValidationAndConversion(node_def);
 
-      const string node_name = is_argmax ? "my_argmax" : "my_argmin";
       TRT_TensorOrWeights output;
-      TF_EXPECT_OK(test->GetTensorOrWeights(node_name, &output));
+      TF_EXPECT_OK(test->GetTensorOrWeights("my_arg", &output));
       EXPECT_TRUE(output.is_tensor());
       ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
                                output.tensor()->getDimensions());
@@ -4854,18 +4842,20 @@ void TestConvertArgMinMax(OpConverterTest* test) {
       const DataVec input_data{
           {"input", test::AsTensor<CType>(params[i].input_value)}};
       DataVec output_data{
-          {node_name,
+          {"my_arg",
            ConstructTensor<int32>(params[i].expected_argmax_output.size())}};
       test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
                                                       ? TrtPrecisionMode::FP16
                                                       : TrtPrecisionMode::FP32);
 
-      if (is_argmax) {
+      if (node_def.op() == "ArgMax") {
         EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
                     ElementsAreArray(params[i].expected_argmax_output));
-      } else {
+      } else if (node_def.op() == "ArgMin") {
         EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
                     ElementsAreArray(params[i].expected_argmin_output));
+      } else {
+        ASSERT_TRUE(false);
       }
     }
   }
@@ -4911,9 +4901,14 @@ TEST_F(OpConverterTest, ConvertArgMinMax) {
         "my_argmax");
   }
 
-  TestConvertArgMinMax<DT_FLOAT>(this);
-  TestConvertArgMinMax<DT_HALF>(this);
-  // TestConvertArgMinMax<DT_INT32>(this);
+  TestConvertArgMinMax<ops::ArgMin, DT_FLOAT>(this);
+  TestConvertArgMinMax<ops::ArgMax, DT_FLOAT>(this);
+  TestConvertArgMinMax<ops::ArgMin, DT_HALF>(this);
+  TestConvertArgMinMax<ops::ArgMax, DT_HALF>(this);
+  // TRT does not support int32 for TopK layer which is used to implement ArgMin
+  // and ArgMax.
+  // TestConvertArgMinMax<ops::ArgMin, DT_INT32>(this);
+  // TestConvertArgMinMax<ops::ArgMax, DT_INT32>(this);
 }
 
 }  // namespace convert
