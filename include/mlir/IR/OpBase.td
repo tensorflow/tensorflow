@@ -393,8 +393,8 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   // Note: this has to be kept up to date with Attr above.
   let storageType = attr.storageType;
   let returnType = "Optional<" # attr.returnType #">";
-  let convertFromStorage = "{0} ? " # returnType # "({0}.getValue())"
-                           " : (llvm::None)";
+  let convertFromStorage = "{0} ? " # returnType # "(" #
+                           attr.convertFromStorage # ") : (llvm::None)";
   let isOptional = 0b1;
 }
 

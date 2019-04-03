@@ -34,7 +34,7 @@ def AOp : Op<"a_op", []> {
 
 // CHECK:      Optional<some-return-type> AOp::cAttr() {
 // CHECK-NEXT:   auto attr = this->getAttr("cAttr").dyn_cast_or_null<some-attr-kind>();
-// CHECK-NEXT:   return attr ? Optional<some-return-type>(attr.getValue()) : (llvm::None);
+// CHECK-NEXT:   return attr ? Optional<some-return-type>(attr.some-convert-from-storage()) : (llvm::None);
 
 // Test build methods
 // ---
