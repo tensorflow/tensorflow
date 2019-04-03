@@ -1973,6 +1973,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "dot_decomposer_test",
+    srcs = ["dot_decomposer_test.cc"],
+    deps = [
+        ":dot_decomposer",
+        ":hlo_matchers",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+    ],
+)
+
 cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
