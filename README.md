@@ -22,6 +22,8 @@ For more information on MLIR, please see:
 *   previous external [talks](#talks),
 
 or join the [MLIR mailing list](https://groups.google.com/a/tensorflow.org/forum/#!forum/mlir).
+Please be mindful of the [TensorFlow Code of Conduct](https://github.com/tensorflow/tensorflow/blob/master/CODE_OF_CONDUCT.md)
+that pledges to foster an open and welcoming environment.
 
 ## What is MLIR for?
 
