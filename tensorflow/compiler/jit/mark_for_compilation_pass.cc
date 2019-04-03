@@ -93,12 +93,18 @@ class RecursiveCompilabilityChecker {
     // their memory effects in jit/resource_variable_safety_analysis.
     bool allow_resource_ops_in_called_functions;
 
-    // Whether resource operations that do not operate on resource variables are
-    // allowed.
-    bool allow_non_resource_var_resource_ops;
+    // Whether Stack operations are allowed.  We avoid auto-clustering Stack
+    // operations in general because we do not support snapshotting them.
+    //
+    // TODO(b/112837194): This restriction can be lifted with some work.
+    bool allow_stack_ops;
 
-    // Whether operations that produce resources (like StackV2) are allowed.
-    bool allow_resource_producing_ops;
+    // Whether TensorArray operations are allowed.  We avoid auto-clustering
+    // TensorArray operations in general because we do not support snapshotting
+    // them.
+    //
+    // TODO(b/112837194): This restriction can be lifted with some work.
+    bool allow_tensor_array_ops;
 
     // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
     // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
@@ -109,12 +115,14 @@ class RecursiveCompilabilityChecker {
     // to cluster ControlTrigger because of how we use deadness analysis.
     bool allow_control_trigger;
 
-    // Whether ops with dummy implementations are allowed. We avoid
-    // auto-clustering these ops so that the user is not surprised when XLA is
-    // implicitly enabled. If the user explicitly specifies to use XLA, it is
-    // fine to resort to a dummy implementation. Currently Assert and
-    // CheckNumerics ops have dummy XLA implementations.
-    bool allow_dummy_ops;
+    // Whether it is okay to "cluster" Assert and CheckNumerics by simply
+    // removing them (they're not removed during clustering, but their
+    // XlaOpKernel is a no-op kernel).  We avoid auto-clustering these ops so
+    // that the user is not surprised when XLA is implicitly enabled. If the
+    // user explicitly specifies to use XLA, it is fine to resort to a dummy
+    // implementation. Currently Assert and CheckNumerics ops have dummy XLA
+    // implementations.
+    bool allow_eliding_assert_and_checknumerics_ops;
 
     // Whether ops that produce or consume DT_VARIANT values are allowed.  We
     // don't auto-cluster these ops because we don't yet support live-in or
@@ -146,18 +154,19 @@ class RecursiveCompilabilityChecker {
   bool IsCompilableWhile(const Node& while_node, int depth,
                          FunctionLibraryRuntime* lib_runtime);
 
-  // Returns true if `node` is a resource operation recognized by tf2xla that
-  // operates on something other than resource variables.
-  bool IsNonResourceVarResourceOp(const Node& node) {
-    // TODO(b/112837194): We can't cluster these because we only support
-    // snapshotting resource variables (and we can't e.g. snapshot stacks). This
-    // limitation may be fixable with some work.
+  bool IsStackOp(const Node& node) {
     const XlaResourceOpInfo* op_info =
         GetResourceOpInfoForOp(node.type_string());
-    return op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
+    return op_info && op_info->resource_kind() == XlaResourceKind::kStack;
   }
 
-  bool IsDummyImplOp(absl::string_view op_name) {
+  bool IsTensorArrayOp(const Node& node) {
+    const XlaResourceOpInfo* op_info =
+        GetResourceOpInfoForOp(node.type_string());
+    return op_info && op_info->resource_kind() == XlaResourceKind::kTensorArray;
+  }
+
+  bool IsAssertOrCheckNumerics(absl::string_view op_name) {
     return op_name == "Assert" || op_name == "CheckNumerics";
   }
 
@@ -328,8 +337,9 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return LogNotCompilableAndReturn(node);
   }
 
-  if (!op_filter_.allow_dummy_ops && IsDummyImplOp(node.type_string())) {
-    return LogNotCompilableAndReturn(node, "dummy op");
+  if (!op_filter_.allow_eliding_assert_and_checknumerics_ops &&
+      IsAssertOrCheckNumerics(node.type_string())) {
+    return LogNotCompilableAndReturn(node, "Assert or CheckNumerics");
   }
 
   if (!op_filter_.allow_ops_producing_or_consuming_variant &&
@@ -337,18 +347,12 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return LogNotCompilableAndReturn(node, "DT_VARIANT producer/consumer");
   }
 
-  if (!op_filter_.allow_resource_producing_ops && HasResourceOutput(node)) {
-    // We don't have a way of returning values of type DT_RESOURCE from XLA
-    // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
-    return LogNotCompilableAndReturn(node, "DT_RESOURCE producer");
+  if (!op_filter_.allow_stack_ops && IsStackOp(node)) {
+    return LogNotCompilableAndReturn(node, "Stack op");
   }
 
-  if (!op_filter_.allow_non_resource_var_resource_ops &&
-      IsNonResourceVarResourceOp(node)) {
-    // XlaLaunchOp also cannot snapshot resources that are not resource
-    // variables so we avoid clustering resource operations that operate on
-    // non-resource variables.
-    return LogNotCompilableAndReturn(node, "non-resource variable resource op");
+  if (!op_filter_.allow_tensor_array_ops && IsTensorArrayOp(node)) {
+    return LogNotCompilableAndReturn(node, "TensorArray op");
   }
 
   if (!op_filter_.allow_resource_ops_in_called_functions && depth > 0 &&
@@ -362,20 +366,17 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
     const XlaOpRegistry::DeviceRegistration& registration) {
-  bool always_auto_cluster = registration.autoclustering_policy ==
-                             XlaOpRegistry::AutoclusteringPolicy::kAlways;
-
   RecursiveCompilabilityChecker::OperationFilter op_filter;
   op_filter.allow_resource_ops_in_called_functions =
-      registration.compile_all_resource_ops;
-  op_filter.allow_non_resource_var_resource_ops =
-      registration.compile_all_resource_ops;
-  op_filter.allow_resource_producing_ops =
-      registration.compile_all_resource_ops;
-  op_filter.allow_stateful_rng_ops = always_auto_cluster;
-  op_filter.allow_control_trigger = always_auto_cluster;
-  op_filter.allow_dummy_ops = always_auto_cluster;
-  op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
+      registration.cluster_resource_variable_ops_unsafely;
+  op_filter.allow_stack_ops = registration.cluster_stack_ops;
+  op_filter.allow_tensor_array_ops = registration.cluster_tensor_array_ops;
+  op_filter.allow_stateful_rng_ops = registration.cluster_stateful_rng_ops;
+  op_filter.allow_control_trigger = registration.cluster_control_trigger;
+  op_filter.allow_eliding_assert_and_checknumerics_ops =
+      registration.elide_assert_and_checknumerics;
+  op_filter.allow_ops_producing_or_consuming_variant =
+      registration.cluster_variant_ops;
   return op_filter;
 }
 
@@ -781,7 +782,7 @@ Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
   if (!registration) {
     *ignore = true;
   } else {
-    *ignore = registration->compile_all_resource_ops;
+    *ignore = registration->cluster_resource_variable_ops_unsafely;
   }
   return Status::OK();
 }
@@ -1351,11 +1352,11 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   // even if we are sometimes unable to auto-cluster them.
   RecursiveCompilabilityChecker::OperationFilter op_filter;
   op_filter.allow_resource_ops_in_called_functions = true;
-  op_filter.allow_non_resource_var_resource_ops = true;
-  op_filter.allow_resource_producing_ops = true;
+  op_filter.allow_stack_ops = true;
+  op_filter.allow_tensor_array_ops = true;
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
-  op_filter.allow_dummy_ops = true;
+  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
 
   return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
