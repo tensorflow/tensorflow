@@ -779,18 +779,24 @@ def addBenefit;
 // specifying rewrite rules.
 //
 // A rewrite rule contains two components: a source pattern and one or more
-// result rules. Each pattern is specified as a (recursive) DAG node (tree)
+// result patterns. Each pattern is specified as a (recursive) DAG node (tree)
 // in the form of `(node arg0, arg1, ...)`.
 // The `node` are normally MLIR ops, but it can also be one of the directives
 // listed later in this section.
 // In the source pattern, `arg*` can be used to specify matchers (e.g., using
-// type/attribute types, mAttr, etc.) and bound to a name for later use. In
+// type/attribute types, etc.) and bound to a name for later use. In
 // the result pattern, `arg*` can be used to refer to a previously bound name,
 // with potential transformations (e.g., using tAttr, etc.). `arg*` can itself
 // be nested DAG node.
 class Pattern<dag source, list<dag> results, list<dag> preds = [],
   dag benefitAdded = (addBenefit 0)> {
   dag sourcePattern = source;
+  // Result patterns. Each result pattern is expected to replace one result
+  // of the root op in the source pattern. In the case of more result patterns
+  // than needed to replace the source op, only the last N results generated
+  // by the last N result pattern is used to replace a N-result source op.
+  // So that the beginning result patterns can be used to generate additional
+  // ops to aid building the results used for replacement.
   list<dag> resultPatterns = results;
   // Multi-entity constraints. Each constraint here involves multiple entities
   // matched in source pattern and places further constraints on them as a

@@ -343,6 +343,10 @@ void PatternEmitter::emit(StringRef rewriteName) {
   const Operator &rootOp = pattern.getSourceRootOp();
   auto rootName = rootOp.getOperationName();
 
+  if (rootOp.hasVariadicResult())
+    PrintFatalError(
+        loc, "replacing op with variadic results not supported right now");
+
   // Emit RewritePattern for Pattern.
   os << formatv(R"(struct {0} : public RewritePattern {
   {0}(MLIRContext *context) : RewritePattern("{1}", {2}, context) {{})",
@@ -369,9 +373,13 @@ void PatternEmitter::emit(StringRef rewriteName) {
 }
 
 void PatternEmitter::emitRewriteMethod() {
-  unsigned numResults = pattern.getNumResults();
-  if (numResults == 0)
-    PrintFatalError(loc, "must provide at least one result pattern");
+  const Operator &rootOp = pattern.getSourceRootOp();
+  int numExpectedResults = rootOp.getNumResults();
+  unsigned numProvidedResults = pattern.getNumResults();
+
+  if (numProvidedResults < numExpectedResults)
+    PrintFatalError(
+        loc, "no enough result patterns to replace root op in source pattern");
 
   os << R"(
   void rewrite(Operation *op, std::unique_ptr<PatternState> state,
@@ -382,7 +390,7 @@ void PatternEmitter::emitRewriteMethod() {
 
   // Collect the replacement value for each result
   llvm::SmallVector<std::string, 2> resultValues;
-  for (unsigned i = 0; i < numResults; ++i) {
+  for (unsigned i = 0; i < numProvidedResults; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
     resultValues.push_back(handleRewritePattern(resultTree, i, 0));
   }
@@ -390,8 +398,9 @@ void PatternEmitter::emitRewriteMethod() {
   // Emit the final replaceOp() statement
   os.indent(4) << "rewriter.replaceOp(op, {";
   interleave(
-      resultValues, [&](const std::string &name) { os << name; },
-      [&]() { os << ", "; });
+      // We only use the last numExpectedResults ones to replace the root op.
+      ArrayRef<std::string>(resultValues).take_back(numExpectedResults),
+      [&](const std::string &name) { os << name; }, [&]() { os << ", "; });
   os << "});\n  }\n";
 }
 

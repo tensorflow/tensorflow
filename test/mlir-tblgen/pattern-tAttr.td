@@ -15,9 +15,11 @@ def X_AddOp : Op<"x.add"> {
 }
 def Y_AddOp : Op<"y.add"> {
   let arguments = (ins U, U, T_Attr:$attrName);
+  let results = (outs U);
 }
 def Z_AddOp : Op<"z.add"> {
   let arguments = (ins U, U, T_Attr:$attrName1, T_Attr:$attrName2);
+  let results = (outs U);
 }
 
 // Define rewrite pattern.

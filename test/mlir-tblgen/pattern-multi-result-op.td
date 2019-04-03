@@ -7,6 +7,11 @@ def ThreeResultOp : Op<"three_result_op", []> {
   let results = (outs I32:$r1, I32:$r2, I32:$r3);
 }
 
+def TwoResultOp : Op<"two_result_op", []> {
+  let arguments = (ins I32:$input);
+  let results = (outs I32:$r1, I32:$r2);
+}
+
 def OneResultOp : Op<"one_result_op", []> {
   let arguments = (ins I32:$input);
   let results = (outs I32:$r1);
@@ -47,3 +52,25 @@ def : Pattern<(ThreeResultOp $input), [
 // CHECK-NEXT:     /*input=*/vOneResultOp2
 // CHECK:        rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1, vOneResultOp3});
 
+// Test more result patterns than needed for replacement
+// ---
+def AdditionalOp : Op<"additional_one_result_op", []> {
+  let arguments = (ins I32:$input);
+  let results = (outs I32:$r1);
+}
+def : Pattern<(TwoResultOp $input), [
+        // Additional op generated to help build the final result but not
+        // directly used to replace the source op
+        (AdditionalOp:$interm $input),
+
+        (OneResultOp $interm),
+        (OneResultOp $input)
+      ]>;
+
+// CHECK-LABEL: struct GeneratedConvert2
+
+// CHECK:      auto interm = rewriter.create<AdditionalOp>(
+// CHECK:      auto vOneResultOp0 = rewriter.create<OneResultOp>(
+// CHECK-NEXT:   /*input=*/interm
+// CHECK:      auto vOneResultOp1 = rewriter.create<OneResultOp>(
+// CHECK:      rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1});
