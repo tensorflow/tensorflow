@@ -209,11 +209,13 @@ REGISTER_OP("StringSplitV2")
 REGISTER_OP("StringLower")
     .Input("input: string")
     .Output("output: string")
+    .Attr("encoding: string =''")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringUpper")
     .Input("input: string")
     .Output("output: string")
+    .Attr("encoding: string =''")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringStrip")

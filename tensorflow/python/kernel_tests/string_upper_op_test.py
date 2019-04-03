@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,6 +43,13 @@ class StringUpperOpTest(test.TestCase):
       output = self.evaluate(output)
       self.assertAllEqual(output, [[b"PIGS ON THE WING", b"ANIMALS"],
                                    [b" HELLO ", b"\n\tWORLD! \r \n"]])
+
+  def test_string_upper_unicode(self):
+    strings = [["óósschloë"]]
+    with self.cached_session() as sess:
+      output = string_ops.string_upper(strings, encoding='utf-8')
+      output = self.evaluate(output)
+      self.assertAllEqual(output, [[b"ÓÓSSCHLOË"]]),
 
 
 if __name__ == "__main__":
