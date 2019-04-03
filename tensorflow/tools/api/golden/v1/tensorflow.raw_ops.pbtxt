@@ -3790,7 +3790,7 @@ tf_module {
   }
   member_method {
     name: "StringLower"
-    argspec: "args=[\'input\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'encoding\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "StringSplit"
@@ -3822,7 +3822,7 @@ tf_module {
   }
   member_method {
     name: "StringUpper"
-    argspec: "args=[\'input\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'encoding\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Sub"
