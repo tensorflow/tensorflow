@@ -178,9 +178,9 @@ class OpsTest(test_util.TensorFlowTestCase):
 
       if all(x >= 0 for x in v2):
         self.assertAllEqual((a**b), np.power(v1, v2))
-      self.assertAllEqual((a / b), np.divide(v1, v2))
+      self.assertAllEqual((a / b), np.true_divide(v1, v2))
 
-      self.assertAllEqual((a / a), np.divide(v1, v1))
+      self.assertAllEqual((a / a), np.true_divide(v1, v1))
       self.assertAllEqual((a % b), np.mod(v1, v2))
 
       self.assertAllEqual((a < b), np.less(v1, v2))
