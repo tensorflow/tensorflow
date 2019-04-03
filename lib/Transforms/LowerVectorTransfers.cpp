@@ -197,12 +197,16 @@ clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
     auto N = view.ub(memRefDim);
     auto i = memRefAccess[memRefDim];
     if (loopIndex < 0) {
-      clippedScalarAccessExprs[memRefDim] =
-          select(i < zero, zero, select(i < N, i, N - one));
+      auto N_minus_1 = N - one;
+      auto select_1 = select(i < N, i, N_minus_1);
+      clippedScalarAccessExprs[memRefDim] = select(i < zero, zero, select_1);
     } else {
       auto ii = ivs[loopIndex];
+      auto i_plus_ii = i + ii;
+      auto N_minus_1 = N - one;
+      auto select_1 = select(i_plus_ii < N, i_plus_ii, N_minus_1);
       clippedScalarAccessExprs[memRefDim] =
-          select(i + ii < zero, zero, select(i + ii < N, i + ii, N - one));
+          select(i_plus_ii < zero, zero, select_1);
     }
   }
 
