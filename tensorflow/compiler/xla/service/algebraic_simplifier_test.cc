@@ -853,6 +853,26 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Constant())));
 }
 
+// A / Broadcast(Const) => A * Broadcast(InvertedConst)
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcastedConstant) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[4] parameter(0)
+      c = f32[] constant(256.0)
+      b = f32[4] broadcast(c), dimensions={}
+      ROOT d = f32[4] divide(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(
+                  m::Parameter(0),
+                  m::Broadcast(m::Op().IsConstantScalar(1.0f / 256.0f)))));
+}
+
 // pow(pow(A, X), Y) => pow(A, X*Y)
 TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   auto m = CreateNewVerifiedModule();

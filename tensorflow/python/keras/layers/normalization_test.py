@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -26,6 +27,7 @@ from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -131,18 +133,14 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float32')
     _run_batchnorm_correctness_test(
-        normalization.BatchNormalization, dtype='float32', fused=True)
-    _run_batchnorm_correctness_test(
-        normalization.BatchNormalization, dtype='float32', fused=False)
+        normalization_v2.BatchNormalization, dtype='float32')
 
   @keras_parameterized.run_all_keras_modes
   def test_batchnorm_mixed_precision(self):
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float16')
     _run_batchnorm_correctness_test(
-        normalization.BatchNormalization, dtype='float16', fused=True)
-    _run_batchnorm_correctness_test(
-        normalization.BatchNormalization, dtype='float16', fused=False)
+        normalization_v2.BatchNormalization, dtype='float16')
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_batchnorm_policy(self):
@@ -162,18 +160,18 @@ class BatchNormalizationV1Test(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_v1_fused_attribute(self):
-    norm = normalization.BatchNormalizationV1()
+    norm = normalization.BatchNormalization()
     inp = keras.layers.Input((4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, True)
 
-    norm = normalization.BatchNormalizationV1(fused=False)
+    norm = normalization.BatchNormalization(fused=False)
     self.assertEqual(norm.fused, False)
     inp = keras.layers.Input(shape=(4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, False)
 
-    norm = normalization.BatchNormalizationV1(virtual_batch_size=2)
+    norm = normalization.BatchNormalization(virtual_batch_size=2)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(2, 2, 2))
     norm(inp)
@@ -185,63 +183,63 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_basic_batchnorm_v2(self):
     testing_utils.layer_test(
-        normalization.BatchNormalizationV2,
+        normalization_v2.BatchNormalization,
         kwargs={'fused': True},
         input_shape=(3, 3, 3, 3))
     testing_utils.layer_test(
-        normalization.BatchNormalizationV2,
+        normalization_v2.BatchNormalization,
         kwargs={'fused': None},
         input_shape=(3, 3, 3))
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_v2_fused_attribute(self):
-    norm = normalization.BatchNormalizationV2()
+    norm = normalization_v2.BatchNormalization()
     self.assertEqual(norm.fused, None)
     inp = keras.layers.Input(shape=(4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, True)
 
-    norm = normalization.BatchNormalizationV2()
+    norm = normalization_v2.BatchNormalization()
     self.assertEqual(norm.fused, None)
     inp = keras.layers.Input(shape=(4, 4))
     norm(inp)
     self.assertEqual(norm.fused, False)
 
-    norm = normalization.BatchNormalizationV2(virtual_batch_size=2)
+    norm = normalization_v2.BatchNormalization(virtual_batch_size=2)
     self.assertEqual(norm.fused, False)
     inp = keras.layers.Input(shape=(4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, False)
 
-    norm = normalization.BatchNormalizationV2(fused=False)
+    norm = normalization_v2.BatchNormalization(fused=False)
     self.assertEqual(norm.fused, False)
     inp = keras.layers.Input(shape=(4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, False)
 
-    norm = normalization.BatchNormalizationV2(fused=True, axis=[3])
+    norm = normalization_v2.BatchNormalization(fused=True, axis=[3])
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4, 4))
     norm(inp)
     self.assertEqual(norm.fused, True)
 
     with self.assertRaisesRegexp(ValueError, 'fused.*renorm'):
-      normalization.BatchNormalizationV2(fused=True, renorm=True)
+      normalization_v2.BatchNormalization(fused=True, renorm=True)
 
     with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
-      normalization.BatchNormalizationV2(fused=True, axis=2)
+      normalization_v2.BatchNormalization(fused=True, axis=2)
 
     with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
-      normalization.BatchNormalizationV2(fused=True, axis=[1, 3])
+      normalization_v2.BatchNormalization(fused=True, axis=[1, 3])
 
     with self.assertRaisesRegexp(ValueError, 'fused.*virtual_batch_size'):
-      normalization.BatchNormalizationV2(fused=True, virtual_batch_size=2)
+      normalization_v2.BatchNormalization(fused=True, virtual_batch_size=2)
 
     with self.assertRaisesRegexp(ValueError, 'fused.*adjustment'):
-      normalization.BatchNormalizationV2(fused=True,
-                                         adjustment=lambda _: (1, 0))
+      normalization_v2.BatchNormalization(fused=True,
+                                          adjustment=lambda _: (1, 0))
 
-    norm = normalization.BatchNormalizationV2(fused=True)
+    norm = normalization_v2.BatchNormalization(fused=True)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
     with self.assertRaisesRegexp(ValueError, '4D input tensors'):
@@ -272,14 +270,16 @@ def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 
-class NormalizationLayersGraphModeOnlyTest(test.TestCase):
+@parameterized.parameters(
+    [normalization.BatchNormalization, normalization_v2.BatchNormalization])
+class NormalizationLayersGraphModeOnlyTest(
+    test.TestCase, parameterized.TestCase):
 
-  def test_shared_batchnorm(self):
-    """Test that a BN layer can be shared across different data streams.
-    """
+  def test_shared_batchnorm(self, layer):
+    """Test that a BN layer can be shared across different data streams."""
     with self.cached_session():
       # Test single layer reuse
-      bn = keras.layers.BatchNormalization()
+      bn = layer()
       x1 = keras.layers.Input(shape=(10,))
       _ = bn(x1)
 
@@ -307,13 +307,13 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 
-  def test_that_trainable_disables_updates(self):
+  def test_that_trainable_disables_updates(self, layer):
     with self.cached_session():
       val_a = np.random.random((10, 4))
       val_out = np.random.random((10, 4))
 
       a = keras.layers.Input(shape=(4,))
-      layer = keras.layers.BatchNormalization(input_shape=(4,))
+      layer = layer(input_shape=(4,))
       b = layer(a)
       model = keras.models.Model(a, b)
 
@@ -346,11 +346,14 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
       self.assertAllClose(x1, x2, atol=1e-7)
 
   @tf_test_util.run_deprecated_v1
-  def test_batchnorm_trainable(self):
+  def test_batchnorm_trainable(self, layer):
     """Tests that batchnorm layer is trainable when learning phase is enabled.
 
     Computes mean and std for current inputs then
     applies batch normalization using them.
+
+    Args:
+      layer: Either V1 or V2 of BatchNormalization layer.
     """
     # TODO(fchollet): enable in all execution modes when issue with
     # learning phase setting is resolved.
@@ -361,7 +364,7 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
 
       def get_model(bn_mean, bn_std):
         inp = keras.layers.Input(shape=(1,))
-        x = keras.layers.BatchNormalization()(inp)
+        x = layer()(inp)
         model1 = keras.models.Model(inp, x)
         model1.set_weights([
             np.array([1.]),

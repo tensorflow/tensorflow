@@ -96,8 +96,9 @@ class CheckpointInitialValue(ops.Tensor):
 class NoRestoreSaveable(saveable_object.SaveableObject):
   """Embeds a tensor in a checkpoint with no restore ops."""
 
-  def __init__(self, tensor, name, dtype=None):
-    spec = saveable_object.SaveSpec(tensor, "", name, dtype=dtype)
+  def __init__(self, tensor, name, dtype=None, device=None):
+    spec = saveable_object.SaveSpec(tensor, "", name, dtype=dtype,
+                                    device=device)
     super(NoRestoreSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -174,7 +175,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
     return NoRestoreSaveable(
         tensor=_constant_state,
         dtype=dtypes.string,
-        name=self.name)
+        name=self.name,
+        device="cpu:0")
 
   def python_restore(self, restored_strings):
     """Called to restore Python state."""

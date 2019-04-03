@@ -53,8 +53,9 @@ __global__ void FillKernel(
 
 template <typename Distribution>
 void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
-    OpKernelContext* ctx, const GPUDevice& d, int64 output_size,
-    int64 alg_tag_skip, ScopedUnlockUnrefVar* not_used, Tensor* state_tensor,
+    OpKernelContext* ctx, const GPUDevice& d, Distribution dist,
+    int64 output_size, int64 alg_tag_skip, ScopedUnlockUnrefVar* not_used,
+    Tensor* state_tensor,
     typename Distribution::ResultElementType* output_data) {
   OP_REQUIRES(
       ctx, alg_tag_skip == 0,
@@ -74,10 +75,9 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 
   int zero = 0;
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
-  TF_CHECK_OK(CudaLaunchKernel(FillKernel<Distribution>, cfg.block_count,
-                               cfg.thread_per_block, 0, d.stream(),
-                               Distribution(), state_size, output_size,
-                               state_data, output_data));
+  TF_CHECK_OK(CudaLaunchKernel(
+      FillKernel<Distribution>, cfg.block_count, cfg.thread_per_block, 0,
+      d.stream(), dist, state_size, output_size, state_data, output_data));
 }
 
 // Explicit instantiation of the GPU distributions functors.
@@ -90,6 +90,40 @@ template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, int32> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, int64> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, uint32> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformFullIntDistribution<
+                 random::PhiloxRandom, uint64> >;
 // clang-format on
 
 }  // end namespace tensorflow

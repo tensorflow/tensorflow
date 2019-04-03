@@ -55,6 +55,10 @@ def truncated_normal(shape):
              shape.dtype.as_datatype_enum, 'seed', 0, 'seed2', 0))[0]
 
 
+def current_device():
+  return constant_op.constant(1.).device
+
+
 class TFETest(test_util.TensorFlowTestCase):
 
   def testContext(self):
@@ -203,6 +207,38 @@ class TFETest(test_util.TensorFlowTestCase):
     with open(fname, 'rb') as f:
       t = pickle.load(f)
       self.assertAllEqual(t.numpy(), 10.0)
+
+  def testDevicePlacementEnforcesConsistency(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+
+    cpu = context.device('cpu:0')
+    gpu = context.device('gpu:0')
+    cpu.__enter__()
+    self.assertEndsWith(current_device(), 'CPU:0')
+    gpu.__enter__()
+    self.assertEndsWith(current_device(), 'GPU:0')
+    with self.assertRaisesRegexp(
+        RuntimeError, 'Exiting device scope without proper scope nesting'):
+      cpu.__exit__()
+      self.assertEndsWith(current_device(), 'GPU:0')
+    gpu.__exit__()
+    self.assertEndsWith(current_device(), 'CPU:0')
+
+  def testReEntrant(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+
+    cpu = context.device('cpu:0')
+    gpu = context.device('gpu:0')
+    with cpu:
+      with gpu:
+        with gpu:
+          self.assertEndsWith(current_device(), 'GPU:0')
+        self.assertEndsWith(current_device(), 'GPU:0')
+      self.assertEndsWith(current_device(), 'CPU:0')
+      with gpu:
+        self.assertEndsWith(current_device(), 'GPU:0')
 
   def testTensorPlacement(self):
     if not context.context().num_gpus():

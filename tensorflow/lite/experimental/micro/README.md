@@ -923,7 +923,7 @@ bottlenecks, and then add specialized implementations in their own folders.
 These don't need to be platform specific, they can also be broken out by which
 library they rely on for example. [Here's where we do that for the CMSIS
 implementation of integer fast-fourier
-transforms](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/preprocessor.cc).
+transforms](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.cc).
 This more complex case shows that you can also add helper source files alongside
 the main implementation, as long as you
 [mention them in the platform-specific makefile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/Makefile.inc).

@@ -21,7 +21,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/tile_functor.h"
@@ -47,8 +46,8 @@ __global__ void TileKernel(int nthreads, const T* src, const int32* buf,
   }
 }
 
-template <typename Device, typename T>
-void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
+template <typename T>
+void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
   // Ensures we can use 32-bit index.
   const int64 in_nelem = in.NumElements();
   CHECK_LT(in_nelem, kint32max) << "Tensor too large to transpose on GPU";
@@ -85,6 +84,7 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
 
 }  // end namespace internal
 }  // namespace tensorflow
+
 #endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_GPU_H_

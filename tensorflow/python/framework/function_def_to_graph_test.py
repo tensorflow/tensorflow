@@ -244,9 +244,9 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
     op = func_graph.get_operation_by_name("y")
     self.assertEqual(len(op.control_inputs), 3)
-    self.assertEqual(op.control_inputs[0].name, "x")
+    self.assertEqual(op.control_inputs[0].name, "assign")
     self.assertEqual(op.control_inputs[1].name, "inp")
-    self.assertEqual(op.control_inputs[2].name, "assign")
+    self.assertEqual(op.control_inputs[2].name, "x")
 
 
 if __name__ == "__main__":

@@ -246,4 +246,6 @@ def is_compile_on_demand():
 
 
 if __name__ == "__main__":
+  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_min_cluster_size=2 " +
+                                os.environ.get("TF_XLA_FLAGS", ""))
   test.main()

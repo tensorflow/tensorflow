@@ -639,8 +639,9 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
       num_outputs, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  kernel<<<config.block_count, block_dim, shared_memory_size,
-           device.stream()>>>(args, input, filter, output);
+  TF_CHECK_OK(CudaLaunchKernel(kernel, config.block_count, block_dim,
+                               shared_memory_size, device.stream(), args, input,
+                               filter, output));
   return Status::OK();
 }
 
@@ -766,9 +767,10 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                                       kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
                                   : device.getNumGpuMultiProcessors();
-  kernel<<<std::min(max_block_count, config.block_count),
-           config.thread_per_block, 0, device.stream()>>>(args, input, filter,
-                                                          output, num_outputs);
+  TF_CHECK_OK(CudaLaunchKernel(kernel,
+                               std::min(max_block_count, config.block_count),
+                               config.thread_per_block, 0, device.stream(),
+                               args, input, filter, output, num_outputs));
   return Status::OK();
 }
 
@@ -1625,8 +1627,9 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
       num_out_backprop, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  kernel<<<config.block_count, block_dim, shared_memory_size,
-           device.stream()>>>(args, out_backprop, input, filter_backprop);
+  TF_CHECK_OK(CudaLaunchKernel(kernel, config.block_count, block_dim,
+                               shared_memory_size, device.stream(), args,
+                               out_backprop, input, filter_backprop));
   return Status::OK();
 }
 

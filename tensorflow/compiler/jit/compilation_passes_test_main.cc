@@ -38,10 +38,13 @@ GTEST_API_ int main(int real_argc, char** real_argv) {
     void operator()(char* ptr) { free(ptr); }
   };
 
-  std::unique_ptr<char, FreeDeleter> allocated_arg(
+  std::unique_ptr<char, FreeDeleter> enable_global_jit_arg(
       strdup("--tf_xla_cpu_global_jit=true"));
+  args.push_back(enable_global_jit_arg.get());
 
-  args.push_back(allocated_arg.get());
+  std::unique_ptr<char, FreeDeleter> reduce_min_cluster_size_arg(
+      strdup("--tf_xla_min_cluster_size=2"));
+  args.push_back(reduce_min_cluster_size_arg.get());
 
   int argc = args.size();
 

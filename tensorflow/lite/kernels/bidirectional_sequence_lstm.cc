@@ -509,8 +509,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, fw_output, fw_output_size));
 
   // The weights are of consistent type, so it suffices to check one.
-  const bool is_hybrid_op = (fw_input_to_output_weights->type == kTfLiteUInt8 ||
-                             fw_input_to_output_weights->type == kTfLiteInt8);
+  const bool is_hybrid_op = IsHybridOp(input, fw_input_to_output_weights);
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {

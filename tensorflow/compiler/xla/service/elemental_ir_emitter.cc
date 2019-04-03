@@ -49,7 +49,6 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
-using llvm_ir::AsStringRef;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
@@ -326,6 +325,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         return Not(operand_value);
       }
       return Unimplemented("unary op Not is not defined for type '%d'", type);
+    }
+    case HloOpcode::kPopulationCount: {
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::ctpop,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
     }
     default:
       return Unimplemented("unary integer op '%s'",
@@ -1722,8 +1726,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     exit_block = llvm_ir::CreateBasicBlock(
         /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   } else {
-    exit_block = init_block->splitBasicBlock(b_->GetInsertPoint(),
-                                             AsStringRef(IrName(hlo, "merge")));
+    exit_block =
+        init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
   }
 
@@ -1769,37 +1773,40 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
     source_index_phis[operand_id] =
         PHI(source_index.GetType(), operand_usage_count[operand_id]);
-    auto operand_index = source_index;
-    operand_index[concat_dim] = source_index_phis[operand_id];
+    std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
+    operand_multi_index[concat_dim] = source_index_phis[operand_id];
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
     b_->SetInsertPoint(llvm::BranchInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
+    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
+                                          source_index.GetType());
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
     output->addIncoming(value, b_->GetInsertBlock());
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
+  std::vector<llvm::Value*> source_multi_index = source_index.multidim();
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    auto concat_dim_size =
-        llvm::ConstantInt::get(source_index[concat_dim]->getType(),
-                               operand->shape().dimensions(concat_dim));
+    auto concat_dim_size = source_index.GetConstantWithIndexType(
+        operand->shape().dimensions(concat_dim));
     int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(source_index[concat_dim],
+    source_index_phis[operand_id]->addIncoming(source_multi_index[concat_dim],
                                                b_->GetInsertBlock());
-    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size),
+    CondBr(ICmpULT(source_multi_index[concat_dim], concat_dim_size),
            emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
     b_->SetInsertPoint(false_block);
-    source_index[concat_dim] = Sub(source_index[concat_dim], concat_dim_size);
+    source_multi_index[concat_dim] =
+        Sub(source_multi_index[concat_dim], concat_dim_size);
   }
 
   Unreachable();
@@ -1816,7 +1823,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   const int64 rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
-  llvm_ir::IrArray::Index slice_start_index(index_type, rank);
+  std::vector<llvm::Value*> slice_start_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
@@ -1839,17 +1846,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
         is_signed);
 
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
-    slice_start_index[i] = start_index_value;
+    start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
+    slice_start_multi_index[i] = start_index_value;
   }
 
-  llvm_ir::IrArray::Index input_index(index_type, rank);
+  std::vector<llvm::Value*> input_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     // Emit IR which computes:
     //   input_index = start_index + offset_index
-    input_index[i] = Add(slice_start_index[i], index[i]);
+    input_multi_index[i] = Add(slice_start_multi_index[i], index[i]);
   }
+  llvm_ir::IrArray::Index input_index(input_multi_index, input_hlo->shape(),
+                                      index_type);
   return operand_to_generator.at(input_hlo)(input_index);
 }
 
@@ -1871,7 +1879,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   llvm::Type* index_type = index.GetType();
   // This is the index into `operand` that holds the element we want to
   // generate.
-  IrArray::Index operand_index(index_type);
+  std::vector<llvm::Value*> operand_multi_index;
 
   // First copy in the window indices to operand_index. Also collect a mapping
   // from operand dimension to output window dimension. Elided window dimensions
@@ -1880,26 +1888,29 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
     if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
-      operand_index.push_back(index.GetConstantWithIndexType(0));
+      operand_multi_index.push_back(index.GetConstantWithIndexType(0));
     } else {
       int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
       operand_to_output_dim[i] = output_window_dim;
-      operand_index.push_back(index[output_window_dim]);
+      operand_multi_index.push_back(index[output_window_dim]);
     }
   }
 
   // This is the index of the index vector in the start_indices tensor.
-  IrArray::Index gather_index_index(index_type);
+  std::vector<llvm::Value*> gather_index_index_components;
   {
-    std::vector<llvm::Value*> gather_index_index_components;
     for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
       if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
-        gather_index_index.push_back(index[i]);
+        gather_index_index_components.push_back(index[i]);
       }
     }
 
-    if (gather_index_index.size() != indices_shape.dimensions_size()) {
-      gather_index_index.InsertAt(dim_numbers.index_vector_dim(), nullptr);
+    if (gather_index_index_components.size() !=
+        indices_shape.dimensions_size()) {
+      gather_index_index_components.insert(
+          gather_index_index_components.begin() +
+              dim_numbers.index_vector_dim(),
+          nullptr);
     }
   }
 
@@ -1927,11 +1938,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
                         gather_dim_component_extended, is_signed),
         is_signed);
 
-    operand_index[operand_dim] =
-        Add(operand_index[operand_dim], gather_dim_component_extended_inbound);
+    operand_multi_index[operand_dim] =
+        Add(operand_multi_index[operand_dim],
+            gather_dim_component_extended_inbound);
   };
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
+    IrArray::Index gather_index_index(gather_index_index_components,
+                                      indices_shape, index_type);
     TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                         indices_generator(gather_index_index));
     add_to_operand_index(gather_dim_component, 0);
@@ -1939,13 +1953,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     int64 index_vector_size =
         indices_shape.dimensions(dim_numbers.index_vector_dim());
     for (int64 i = 0; i < index_vector_size; i++) {
-      gather_index_index[dim_numbers.index_vector_dim()] =
+      gather_index_index_components[dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
+      IrArray::Index gather_index_index(gather_index_index_components,
+                                        indices_shape, index_type);
       TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                           indices_generator(gather_index_index));
       add_to_operand_index(gather_dim_component, i);
     }
   }
+  IrArray::Index operand_index(operand_multi_index, operand_shape, index_type);
   return operand_generator(operand_index);
 }
 
@@ -1958,8 +1975,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
   const int64 rank = input_hlo->shape().rank();
-  llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
-  llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
+  std::vector<llvm::Value*> slice_start_multi_index(rank);
+  std::vector<llvm::Value*> slice_limit_multi_index(rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = b_->getTrue();
@@ -1990,16 +2007,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
         is_signed);
 
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
-    slice_start_index[i] = start_index_value;
-    slice_limit_index[i] = Add(slice_start_index[i], update_dim_size);
+    start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
+    slice_start_multi_index[i] = start_index_value;
+    slice_limit_multi_index[i] =
+        Add(slice_start_multi_index[i], update_dim_size);
 
     slice_intersection =
-        And(slice_intersection, ICmpSGE(index[i], slice_start_index[i]),
+        And(slice_intersection, ICmpSGE(index[i], slice_start_multi_index[i]),
             "slice_intersection");
     slice_intersection =
-        And(slice_intersection, ICmpSLT(index[i], slice_limit_index[i]),
+        And(slice_intersection, ICmpSLT(index[i], slice_limit_multi_index[i]),
             "slice_intersection");
   }
 
@@ -2015,10 +2032,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Handle true BB (return data from 'update')
   SetToFirstInsertPoint(if_data.true_block, b_);
   // Compute update index for intersection case.
-  llvm_ir::IrArray::Index update_index(index.GetType(), rank);
+  std::vector<llvm::Value*> update_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    update_index[i] = Sub(index[i], slice_start_index[i]);
+    update_multi_index[i] = Sub(index[i], slice_start_multi_index[i]);
   }
+  llvm_ir::IrArray::Index update_index(update_multi_index, update_hlo->shape(),
+                                       index.GetType());
   TF_ASSIGN_OR_RETURN(llvm::Value * true_value,
                       operand_to_generator.at(update_hlo)(update_index));
   Store(true_value, ret_value_addr);
@@ -2037,27 +2056,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& padded_index) {
-  auto index = padded_index;
+  std::vector<llvm::Value*> multi_index = padded_index.multidim();
   llvm::Value* in_bounds = b_->getTrue();
-  for (size_t i = 0; i < index.size(); ++i) {
+  for (size_t i = 0; i < multi_index.size(); ++i) {
     auto index_typed_const = [=](int64 n) {
-      return llvm::ConstantInt::get(index[i]->getType(), n);
+      return padded_index.GetConstantWithIndexType(n);
     };
     const auto& pad_dim = hlo->padding_config().dimensions(i);
-    index[i] = Sub(index[i], index_typed_const(pad_dim.edge_padding_low()));
-    in_bounds =
-        And(in_bounds, ICmpSGE(index[i], index_typed_const(0)), "in_bounds");
-    in_bounds = And(
-        in_bounds,
-        ICmpEQ(
-            index_typed_const(0),
-            URem(index[i], index_typed_const(pad_dim.interior_padding() + 1))),
-        "in_bounds");
-    index[i] =
-        SDiv(index[i], index_typed_const(pad_dim.interior_padding() + 1));
+    multi_index[i] =
+        Sub(multi_index[i], index_typed_const(pad_dim.edge_padding_low()));
+    in_bounds = And(in_bounds, ICmpSGE(multi_index[i], index_typed_const(0)),
+                    "in_bounds");
     in_bounds =
         And(in_bounds,
-            ICmpSLT(index[i],
+            ICmpEQ(index_typed_const(0),
+                   URem(multi_index[i],
+                        index_typed_const(pad_dim.interior_padding() + 1))),
+            "in_bounds");
+    multi_index[i] =
+        SDiv(multi_index[i], index_typed_const(pad_dim.interior_padding() + 1));
+    in_bounds =
+        And(in_bounds,
+            ICmpSLT(multi_index[i],
                     index_typed_const(hlo->operand(0)->shape().dimensions(i))),
             "in_bounds");
   }
@@ -2073,6 +2093,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   llvm_ir::LlvmIfData if_data =
       llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", b_);
   SetToFirstInsertPoint(if_data.true_block, b_);
+  llvm_ir::IrArray::Index index(multi_index, hlo->operand(0)->shape(),
+                                padded_index.GetType());
   TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
                       operand_to_generator.at(hlo->operand(0))(index));
   Store(operand_value, ret_value_addr);
@@ -2132,21 +2154,27 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   // Given an output index [a,b,c,d,e] in the result, we compute:
   //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
 
-  IrArray::Index lhs_index(index_type), rhs_index(index_type);
-
+  std::vector<llvm::Value*> lhs_multi_index, rhs_multi_index;
   for (int64 i = 0; i < lhs_dims - 1; i++) {
-    lhs_index.push_back(dot_result_index[i]);
+    lhs_multi_index.push_back(dot_result_index[i]);
   }
-  lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
+  lhs_multi_index.insert(lhs_multi_index.begin() + lhs_contracting_dim,
+                         inner_loop->GetIndVarValue());
+  IrArray::Index lhs_index(lhs_multi_index, hlo->operand(0)->shape(),
+                           index_type);
 
   int64 num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
   for (int64 i = 0; i < num_batch_dims; i++) {
-    rhs_index.push_back(dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
+    rhs_multi_index.push_back(
+        dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
   }
   for (int64 i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
-    rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
+    rhs_multi_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
-  rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
+  rhs_multi_index.insert(rhs_multi_index.begin() + rhs_contracting_dim,
+                         inner_loop->GetIndVarValue());
+  IrArray::Index rhs_index(rhs_multi_index, hlo->operand(1)->shape(),
+                           index_type);
 
   llvm::Value* current_accumulator = Load(accumulator_alloca);
   TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
@@ -2196,6 +2224,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kLog1p:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -2262,13 +2291,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
-        auto source_index = target_index;
+        std::vector<llvm::Value*> source_multi_index = target_index.multidim();
         for (int64 dim : hlo->dimensions()) {
-          source_index[dim] =
-              Sub(llvm::ConstantInt::get(target_index[dim]->getType(),
-                                         hlo->shape().dimensions(dim) - 1),
-                  target_index[dim]);
+          source_multi_index[dim] = Sub(target_index.GetConstantWithIndexType(
+                                            hlo->shape().dimensions(dim) - 1),
+                                        target_index[dim]);
         }
+        llvm_ir::IrArray::Index source_index(
+            source_multi_index, operand->shape(), target_index.GetType());
         return operand_to_generator.at(operand)(source_index);
       };
     case HloOpcode::kBroadcast:
@@ -2342,7 +2372,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         IrArray::Index sliced_index = index.SourceIndexOfSlice(
-            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*operand_shape=*/hlo->operand(0)->shape(),
+            /*starts=*/hlo->slice_starts(),
             /*strides=*/hlo->slice_strides(), /*builder=*/b_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
@@ -2382,8 +2413,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
       return [hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
-        IrArray::Index source_index = target_index;
-        source_index.ClearLinearIndex();
+        IrArray::Index source_index(target_index.multidim(),
+                                    hlo->operand(0)->shape(),
+                                    target_index.GetType());
         TF_ASSIGN_OR_RETURN(
             llvm::Value * operand_value,
             operand_to_generator.at(hlo->operand(0))(source_index));

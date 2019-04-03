@@ -40,6 +40,7 @@ fi
 
 # Setup a GOPATH that includes just the TensorFlow Go API.
 export GOPATH="${TEST_TMPDIR}/go"
+export GOCACHE="${TEST_TMPDIR}/cache"
 mkdir -p "${GOPATH}/src/github.com/tensorflow"
 ln -s "${PWD}" "${GOPATH}/src/github.com/tensorflow/tensorflow"
 

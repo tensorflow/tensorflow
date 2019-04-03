@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
@@ -308,6 +309,13 @@ class Encapsulator {
                      const std::unordered_map<const Node*, Node*>& node_images,
                      std::vector<std::pair<const Node*, Node*>>* src_arg_pairs);
 
+    // Records the src of the given edge as a control result of the graph.
+    // Used during graph to function conversion to tie control results to
+    // the function signature.
+    Status RecordControlResult(
+        const Edge* edge,
+        const std::unordered_map<const Node*, Node*>& node_images);
+
     // Creates a _Retval node for the src node of edge, and add it to results_,
     // if none exists yet. If a new _Retval node is created, also adds the edge
     // within the subgraph from the src to the _Retval node.
@@ -484,6 +492,11 @@ class Encapsulator {
 
     // Map from source tensor in the input graph to result #.
     std::unordered_map<OutputTensor, int, OutputTensor::Hash> results_;
+
+    // Set of node names that are the source of a control output of the
+    // subgraph. We store strings here so that we can tolerate nodes being
+    // removed from the graph.
+    absl::flat_hash_set<string> control_output_nodes_;
 
     // The outside_compilation clusters in this subgraph.
     std::unordered_map<string, OutsideCompilationSubgraph>
@@ -799,6 +812,15 @@ Status Encapsulator::Subgraph::RecordArg(
   int dst_slot = edge->dst_input();
   args_by_dst_[InputTensor(dst_node, dst_slot)] = arg_index;
   graph_->AddEdge(args_[arg_index], 0, dst_image, dst_slot);
+  return Status::OK();
+}
+
+Status Encapsulator::Subgraph::RecordControlResult(
+    const Edge* edge,
+    const std::unordered_map<const Node*, Node*>& node_images) {
+  Node* src_node = edge->src();
+  Node* src_image = node_images.at(src_node);
+  control_output_nodes_.insert(src_image->name());
   return Status::OK();
 }
 
@@ -1118,10 +1140,16 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   function_def_name_ = name;
 
   FunctionDef fdef;
+  auto lookup = [this](const Node* node) -> absl::optional<string> {
+    if (control_output_nodes_.contains(node->name())) {
+      return absl::make_optional(node->name());
+    }
+    return absl::nullopt;
+  };
   // Verify that the graph has well-formed control flow structure.
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &dummy));
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, lookup, &fdef));
 
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Build function def " << name;
@@ -1478,9 +1506,10 @@ Status Encapsulator::CopySubgraphEdges(
         src_subgraph.RecordOutsideCompilationInputOrControl(
             dst_outside_compilation_id, edge);
       } else {
-        // Ignore control edges leaving the subgraph. We will lift them onto the
-        // enclosing call operators in BuildOutputGraph().
-        if (!edge->IsControlEdge()) {
+        if (edge->IsControlEdge()) {
+          TF_RETURN_IF_ERROR(
+              src_subgraph.RecordControlResult(edge, node_images));
+        } else {
           TF_RETURN_IF_ERROR(src_subgraph.RecordResult(edge, node_images));
         }
       }
@@ -2319,20 +2348,15 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
       return errors::Internal("Failed to find function ", node->type_string(),
                               " in function library.");
     }
-    FunctionBody* fbody = nullptr;
-    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *fdef, node->attrs(), library,
-        [library](const string& op, const OpDef** sig) {
-          return library->LookUpOpDef(op, sig);
-        },
-        &fbody));
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBodyHelper(*fdef, node->attrs(), library, &fbody));
 
     InlineFunctionBodyOptions inline_opts;
     inline_opts.override_device = false;
 
     TF_RETURN_IF_ERROR(InlineFunctionBody(*library, pruned_graph->get(), node,
-                                          fbody, inline_opts));
-    delete fbody;
+                                          fbody.get(), inline_opts));
   }
 
   return Status::OK();
@@ -2538,12 +2562,25 @@ Status EncapsulateSubgraphsPass::Run(
   // Constant folding below might need to run part of the function to compute
   // constants. Create an FunctionLibraryRuntime with a single CPU device
   // that can run the part of the function.
+  // NOTE: If this turns out to be slow, we can cache the FLRs keyed by
+  // `options`.
   SessionOptions session_options;
   auto* device_count = session_options.config.mutable_device_count();
   device_count->insert({"CPU", 1});
   std::vector<std::unique_ptr<Device>> devices;
-  TF_CHECK_OK(DeviceFactory::AddDevices(
+
+  DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
+  if (!cpu_factory) {
+    return errors::NotFound(
+        "CPU Factory not registered. Can't run EncapsulateSubgraphsPass");
+  }
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
+  if (devices.empty()) {
+    return errors::NotFound(
+        "Failed to create a CPU device for EncapsulateSubgraphsPass");
+  }
+
   std::unique_ptr<DeviceMgr> device_mgr =
       absl::make_unique<DeviceMgr>(std::move(devices));
   OptimizerOptions opts;

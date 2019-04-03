@@ -381,10 +381,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, output, output_size));
 
   // The weights are of consistent type, so it suffices to check one.
-  // TODO(mirkov): create a utility/macro for this check, so all Ops can use it.
-  const bool is_hybrid_op = ((input_to_output_weights->type == kTfLiteUInt8 ||
-                              input_to_output_weights->type == kTfLiteInt8) &&
-                             input->type == kTfLiteFloat32);
+  const bool is_hybrid_op = IsHybridOp(input, input_to_output_weights);
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
@@ -843,6 +840,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     default:
       return nullptr;
   }
+  return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
   gemm_support::DecrementUsageCounter(context);
@@ -860,6 +858,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     default:
       return kTfLiteError;
   }
+  return kTfLiteError;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -872,6 +871,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       return kTfLiteError;
   }
+  return kTfLiteError;
 }
 
 }  // namespace lstm

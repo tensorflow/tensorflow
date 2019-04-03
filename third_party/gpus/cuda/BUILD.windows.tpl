@@ -155,6 +155,13 @@ cc_import(
     visibility = ["//visibility:public"],
 )
 
+cc_import(
+    name = "cusparse",
+    interface_library = "cuda/lib/%{cusparse_lib}",
+    system_provided = 1,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],

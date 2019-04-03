@@ -137,7 +137,6 @@ py_library(
         "tpu_strategy_util.py",
         "tpu_system_metadata.py",
         "training_loop.py",
-        "xla.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -164,6 +163,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/compiler/xla",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu/profiler",
     ],
@@ -307,9 +307,9 @@ py_library(
     deps = [
         ":tpu_lib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",

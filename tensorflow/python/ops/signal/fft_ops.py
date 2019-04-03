@@ -286,7 +286,8 @@ def _rfft_grad_helper(rank, irfft_fn):
     # The gradient of RFFT is the IRFFT of the incoming gradient times a scaling
     # factor, plus some additional terms to make up for the components dropped
     # due to Hermitian symmetry.
-    input_size = _math_ops.to_float(_fft_size_for_grad(op.inputs[0], rank))
+    input_size = _math_ops.cast(
+        _fft_size_for_grad(op.inputs[0], rank), _dtypes.float32)
     the_irfft = irfft_fn(grad, fft_length)
     return 0.5 * (the_irfft * input_size + _math_ops.real(extra_terms)), None
 
@@ -311,8 +312,8 @@ def _irfft_grad_helper(rank, rfft_fn):
         [[1.0], 2.0 * _array_ops.ones([input_last_dimension - 2 + is_odd]),
          _array_ops.ones([1 - is_odd])], 0)
 
-    rsize = _math_ops.reciprocal(_math_ops.to_float(
-        _fft_size_for_grad(grad, rank)))
+    rsize = _math_ops.reciprocal(_math_ops.cast(
+        _fft_size_for_grad(grad, rank), _dtypes.float32))
 
     # The gradient of IRFFT is the RFFT of the incoming gradient times a scaling
     # factor and a mask. The mask scales the gradient for the Hermitian

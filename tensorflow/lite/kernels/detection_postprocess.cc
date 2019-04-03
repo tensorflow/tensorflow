@@ -125,7 +125,6 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-// TODO(chowdhery): Add to kernel_util.h
 TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
                             std::initializer_list<int> values) {
   TfLiteIntArray* size = TfLiteIntArrayCreate(values.size());

@@ -914,13 +914,6 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
                     "Pooling is not yet supported on the batch dimension."));
     OP_REQUIRES_OK(context, context->GetAttr("include_batch_in_index",
                                              &include_batch_in_index_));
-    if (context->device_type() == DeviceType(DEVICE_GPU)) {
-      OP_REQUIRES(context, include_batch_in_index_ == false,
-                  errors::Unimplemented(
-                      "include_batch_in_index=true is not yet supported "
-                      "on the GPU kernel."));
-    }
-
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
                                    &propagate_nans_));
   }
@@ -1313,7 +1306,7 @@ struct LaunchMaxPoolingNoMask<Eigen::GpuDevice, T> {
         params.out_width, params.window_rows, params.window_cols,
         params.row_stride, params.col_stride, params.pad_rows, params.pad_cols,
         output->flat<T>().data(), nullptr, context->eigen_gpu_device(),
-        propagate_nans);
+        propagate_nans, false);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolForwardNoMask"));
@@ -1326,10 +1319,6 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
                      bool propagate_nans, bool include_batch_in_index) {
-    OP_REQUIRES(context, include_batch_in_index == false,
-                errors::Unimplemented(
-                    "include_batch_in_index=true is not yet supported "
-                    "on the GPU kernel."));
     bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
@@ -1337,7 +1326,7 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
         params.row_stride, params.col_stride, params.pad_rows, params.pad_cols,
         output->flat<T>().data(),
         reinterpret_cast<int64*>(argmax->flat<int64>().data()),
-        context->eigen_gpu_device(), propagate_nans);
+        context->eigen_gpu_device(), propagate_nans, include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolForwardWithArgmax"));
@@ -1350,10 +1339,6 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
-    OP_REQUIRES(context, include_batch_in_index == false,
-                errors::Unimplemented(
-                    "include_batch_in_index=true is not yet supported "
-                    "on the GPU kernel."));
     const int input_size = params.tensor_in_batch * params.tensor_in_rows *
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *
@@ -1364,7 +1349,8 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
     bool status = functor::MaxPoolBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
-        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
+        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device(),
+        include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolBackwardWithArgmax"));
@@ -1377,10 +1363,6 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
-    OP_REQUIRES(context, include_batch_in_index == false,
-                errors::Unimplemented(
-                    "include_batch_in_index=true is not yet supported "
-                    "on the GPU kernel."));
     const int input_size = params.tensor_in_batch * params.tensor_in_rows *
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *
@@ -1392,7 +1374,8 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
     bool status = functor::MaxPoolGradBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
-        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
+        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device(),
+        include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolGradBackwardWithArgmax"));
@@ -1473,32 +1456,32 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
 // default Eigen implementation so we are using the custom kernel as the
 // default. However, you can explicitly invoke the eigen version using
 // kernel_label_map.
-#define REGISTER_GPU_ONLY_POOL_KERNELS(T)                            \
-  REGISTER_KERNEL_BUILDER(Name("MaxPool")                            \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .Label("eigen_tensor"),                \
-                          MaxPoolingOp<GPUDevice, T>);               \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                          \
-                              .Device(DEVICE_GPU)                    \
-                              .HostMemory("ksize")                   \
-                              .HostMemory("strides")                 \
-                              .TypeConstraint<T>("T")                \
-                              .Label("eigen_tensor"),                \
-                          MaxPoolingV2Op<GPUDevice, T>);             \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"),     \
-      MaxPoolingNoMaskOp<GPUDevice, T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                          \
-                              .Device(DEVICE_GPU)                    \
-                              .HostMemory("ksize")                   \
-                              .HostMemory("strides")                 \
-                              .TypeConstraint<T>("T"),               \
-                          MaxPoolingNoMaskV2Op<GPUDevice, T>);       \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGradWithArgmax")          \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int64>("Targmax"),     \
+#define REGISTER_GPU_ONLY_POOL_KERNELS(T)                        \
+  REGISTER_KERNEL_BUILDER(Name("MaxPool")                        \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<T>("T")            \
+                              .Label("eigen_tensor"),            \
+                          MaxPoolingOp<GPUDevice, T>);           \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                      \
+                              .Device(DEVICE_GPU)                \
+                              .HostMemory("ksize")               \
+                              .HostMemory("strides")             \
+                              .TypeConstraint<T>("T")            \
+                              .Label("eigen_tensor"),            \
+                          MaxPoolingV2Op<GPUDevice, T>);         \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      MaxPoolingNoMaskOp<GPUDevice, T>);                         \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                      \
+                              .Device(DEVICE_GPU)                \
+                              .HostMemory("ksize")               \
+                              .HostMemory("strides")             \
+                              .TypeConstraint<T>("T"),           \
+                          MaxPoolingNoMaskV2Op<GPUDevice, T>);   \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGradWithArgmax")      \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<T>("T")            \
+                              .TypeConstraint<int64>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 

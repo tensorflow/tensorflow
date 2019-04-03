@@ -90,6 +90,18 @@ class DecodeRawOpTest(test.TestCase):
       self.assertAllEqual(expected_result, result)
 
   @test_util.run_deprecated_v1
+  def testToBool(self):
+    with self.cached_session():
+      in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+      decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.bool)
+      self.assertEqual([None, None], decode.get_shape().as_list())
+
+      expected_result = np.matrix([[True, False, False, True]], dtype="<b1")
+      result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
+
+      self.assertAllEqual(expected_result, result)
+
+  @test_util.run_deprecated_v1
   def testToComplex64(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])

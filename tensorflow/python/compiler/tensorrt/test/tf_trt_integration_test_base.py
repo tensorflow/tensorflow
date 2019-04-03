@@ -25,10 +25,10 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
-from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer

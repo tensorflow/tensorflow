@@ -81,3 +81,46 @@ platform(
         }
         """ % container_digests["cuda10.0-cudnn7-ubuntu14.04"],
 )
+
+# Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.0-cudnn7-centos7.
+platform(
+    name = "rbe_cuda10.0-cudnn7-centos7",
+    constraint_values = [
+        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:linux",
+    ],
+    remote_execution_properties = """
+        properties: {
+            name: "container-image"
+            value:"docker://gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-centos7@%s"
+        }
+        properties: {
+            name: "Pool"
+            value: "default"
+        }
+        """ % container_digests["cuda10.0-cudnn7-centos7"],
+)
+
+# The above platform with GPU support.
+platform(
+    name = "rbe_cuda10.0-cudnn7-centos7-gpu",
+    constraint_values = [
+        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:linux",
+        ":gpu_test",
+    ],
+    remote_execution_properties = """
+        properties: {
+            name: "container-image"
+            value: "docker://gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-centos7@%s"
+        }
+        properties: {
+            name: "dockerRuntime"
+            value: "nvidia"
+        }
+        properties: {
+            name: "Pool"
+            value: "gpu-pool"
+        }
+        """ % container_digests["cuda10.0-cudnn7-centos7"],
+)

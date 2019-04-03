@@ -94,7 +94,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
     axis_dim = (tensor_shape.dimension_value(input.shape[-1])
                 or _array_ops.shape(input)[-1])
-    axis_dim_float = _math_ops.to_float(axis_dim)
+    axis_dim_float = _math_ops.cast(axis_dim, _dtypes.float32)
 
     if type == 1:
       dct1_input = _array_ops.concat([input, input[..., -2:0:-1]], axis=-1)

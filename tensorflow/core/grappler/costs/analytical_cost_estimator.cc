@@ -70,8 +70,8 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     // All inputs should have been seen already unless this is a Merge node.
     if (name_to_id->find(input_name) == name_to_id->end()) {
       if (!IsMerge(*node_manager->GetCurrNode()))
-        LOG(ERROR) << "input: " << input
-                   << " not found for non-Merge node: " << op_name;
+        VLOG(1) << "input: " << input
+                << " not found for non-Merge node: " << op_name;
 
       // For Merge node, some of inputs may not be seen before
       // For example, for a typical while loop in tensorflow, Merge node
@@ -117,14 +117,28 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
     Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
     std::unique_ptr<ReadyNodeManager> node_manager, bool use_static_shapes,
     bool use_aggressive_shape_inference)
-    : cluster_(cluster),
-      node_estimator_(std::move(node_estimator)),
+    : node_estimator_(std::move(node_estimator)),
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes),
       use_aggressive_shape_inference_(use_aggressive_shape_inference) {
   scheduler_ = absl::make_unique<VirtualScheduler>(
-      use_static_shapes_, use_aggressive_shape_inference_, cluster_,
-      node_manager_.get());
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(),
+      absl::make_unique<VirtualPlacer>(cluster->GetDevices()));
+}
+
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager,
+    std::unique_ptr<VirtualPlacer> placer, bool use_static_shapes,
+    bool use_aggressive_shape_inference)
+    : node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)),
+      use_static_shapes_(use_static_shapes),
+      use_aggressive_shape_inference_(use_aggressive_shape_inference) {
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(), std::move(placer));
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {

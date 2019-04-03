@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+import string
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -179,9 +180,14 @@ def einsum(equation, *inputs, **kwargs):
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
   ```
 
+  To enable and control broadcasting, use an ellipsis.  For example, to do
+  batch matrix multiplication, you could use:
+  ```python
+  >>> einsum('...ij,...jk->...ik', u, v)
+  ```
+
   This function behaves like `numpy.einsum`, but does not support:
 
-  * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`) unless it is a trace (e.g. `ijji`).
 
@@ -204,39 +210,18 @@ def einsum(equation, *inputs, **kwargs):
         indices in its subscript, or
       - the input shapes are inconsistent along a particular axis.
   """
-  equation = equation.replace(' ', '')
-
   name = kwargs.pop('name', None)
   if kwargs:
     raise TypeError('invalid keyword arguments for this function: ' + ', '.join(
         [format(key) for key in sorted(list(kwargs.keys()))]))
   with ops.name_scope(name, 'einsum', [equation, inputs]) as name:
-    if '...' in equation:
-      raise ValueError('Subscripts with ellipses are not yet supported.')
-
-    match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
-    if not match:
-      raise ValueError('Indices have incorrect format: %s' % equation)
-
     inputs = list(inputs)
-    input_axis_labels = match.group(1).split(',')
-    if len(inputs) != len(input_axis_labels):
-      raise ValueError('Got %d arguments for equation "%s", expecting %d' %
-                       (len(inputs), equation, len(input_axis_labels)))
+    input_shapes = [x.get_shape() for x in inputs]
+    input_axis_labels, output_axis_labels = _einsum_parse_and_resolve_equation(
+        equation, input_shapes)
 
-    axis_labels = set(''.join(input_axis_labels))
-    if match.group(2):
-      output_axis_labels = match.group(2)[2:]
-    else:
-      # infer the output subscripts if not given, assume alphabetical order
-      indices = ''.join(sorted(axis_labels))
-      counts = {ax: 0 for ax in indices}
-      for axes_ in input_axis_labels:
-        for ax in axes_:
-          counts[ax] += 1
+    axis_labels = set(''.join(input_axis_labels) + output_axis_labels)
 
-      output_axis_labels = ''.join(
-          sorted(ax for ax in indices if counts[ax] == 1))
     for a in axis_labels:
       for input_labels in input_axis_labels:
         if (len(input_axis_labels) == 1 and input_labels.count(a) == 2 and
@@ -279,6 +264,89 @@ def einsum(equation, *inputs, **kwargs):
 
     perm = [temp_axis_labels.index(a) for a in output_axis_labels]
     return _transpose_if_necessary(temp, perm)
+
+
+def _einsum_parse_and_resolve_equation(equation, input_shapes):
+  """Helper for einsum() that splits/resolves inputs & outputs.
+
+  Args:
+    equation: Equation string given as argument to einsum().
+    input_shapes: List of the shapes of all inputs given to einsum()
+
+  Returns:
+    input_axis_labels, output_axis_labels where:
+      input_axis_labels: List of length len(input_shapes) of strings
+      representing the character label for each dimension of each given input,
+      resolving any broadcast (...) axes,
+    output_axis_labels: A string of character labels for each axes of output
+      tensor, filling in missing output subscripts and broadcast axes.
+
+  Raises:
+    ValueError: If equation is in the uncorrect format, incorrect number of
+      inputs given or broadcast axes "..." or output axes could not be resolved.
+  """
+  equation = equation.replace(' ', '')
+  match = re.match('^([a-zA-Z,.]+)(->[a-zA-Z.]*)?$', equation)
+  if not match:
+    raise ValueError('Indices have incorrect format: %s' % equation)
+
+  input_axis_labels = match.group(1).split(',')
+  output_axis_labels = match.group(2)[2:] if match.group(2) else None
+
+  if len(input_shapes) != len(input_axis_labels):
+    raise ValueError('Got %d arguments for equation "%s", expecting %d' %
+                     (len(input_shapes), equation, len(input_axis_labels)))
+
+  # Resolve Ellipsis
+  # Assign axes labels for unspecified dimensions in inputs. Labels taken
+  # from unused labels. Follow numpy einsum broadcasting conventions for
+  # tensors of different length and unlabeled output.
+  ellipsis_axes = ''
+  if '...' in equation:
+    unused = ''.join([c for c in string.ascii_letters
+                      if c not in ''.join(input_axis_labels)])
+    for i, ax in enumerate(input_axis_labels):
+      if '...' in ax:
+        parts = ax.split('...')
+        if len(parts) != 2:
+          raise ValueError('Unable to resolve ellipsis. Excess number found.')
+        if input_shapes[i].ndims is None:
+          raise ValueError('Unable to statically infer ellipsis axes.')
+        n = input_shapes[i].ndims - len(''.join(parts))
+        if n < 0:
+          raise ValueError('Ellipses lengths do not match.')
+        if len(unused) < n:
+          raise ValueError(
+              'Unable to resolve ellipsis, too many distinct labels.')
+        replace_axes = unused[-n:] if n > 0 else ''
+        input_axis_labels[i] = input_axis_labels[i].replace('...',
+                                                            replace_axes)
+        if len(replace_axes) > len(ellipsis_axes):
+          ellipsis_axes = replace_axes
+
+    if any(['.' in ax for ax in input_axis_labels]):
+      raise ValueError('period "." found outside of ellipsis')
+
+    if output_axis_labels is not None:
+      output_axis_labels = output_axis_labels.replace('...', ellipsis_axes)
+      if '.' in output_axis_labels:
+        raise ValueError('period "." found outside of ellipsis')
+
+  if output_axis_labels is None:
+    # infer the output subscripts if not given, assume alphabetical order,
+    # but always place ellipsis axes before given.
+    axis_labels = set(''.join(input_axis_labels)) - set(ellipsis_axes)
+    indices = ''.join(sorted(axis_labels))
+    counts = {ax: 0 for ax in indices}
+    for axes_ in input_axis_labels:
+      for ax in axes_:
+        if ax not in ellipsis_axes:
+          counts[ax] += 1
+
+    output_axis_labels = ellipsis_axes + ''.join(
+        sorted(ax for ax in axis_labels if counts[ax] == 1))
+
+  return input_axis_labels, output_axis_labels
 
 
 def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
@@ -457,33 +525,12 @@ def _total_size(shape_values):
 
 def _exponential_space_einsum(equation, *inputs):
   """Fallback implementation that supports summing an index over > 2 inputs."""
-  if '...' in equation:
-    raise ValueError('Subscripts with ellipses are not yet supported.')
-
-  match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
-  if not match:
-    raise ValueError('Indices have incorrect format: %s' % equation)
-
   inputs = list(inputs)
-  idx_in = match.group(1).split(',')
-  idx_all = set(''.join(idx_in))
+  input_shapes = [x.get_shape() for x in inputs]
+  idx_in, idx_out = _einsum_parse_and_resolve_equation(equation, input_shapes)
+
+  idx_all = set(''.join(idx_in) + idx_out)
   indices = ''.join(sorted(idx_all))
-
-  if match.group(2):
-    idx_out = match.group(2)[2:]
-
-  else:
-    # infer the output subscripts if not given, assume alphabetical order
-    counts = {ax: 0 for ax in indices}
-    for axes_ in idx_in:
-      for ax in axes_:
-        counts[ax] += 1
-
-    idx_out = ''.join(sorted(ax for ax in indices if counts[ax] == 1))
-
-  if len(idx_in) != len(inputs):
-    raise ValueError('Expected %d inputs but got %d' % (len(idx_in),
-                                                        len(inputs)))
 
   missing_idx = set(idx_out).difference(idx_all)
   if missing_idx:

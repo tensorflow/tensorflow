@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -38,7 +39,7 @@ constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
-constexpr char kChooseFastestOp[] = "ExperimentalChooseFastestDataset";
+constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
 constexpr char kPrefetchOp[] = "PrefetchDataset";
 constexpr char kAttrNameF[] = "f";
 constexpr char kAttrNameTarguments[] = "Targuments";
@@ -51,6 +52,19 @@ constexpr char kAttrNameValue[] = "value";
 constexpr char kAttrNameDtype[] = "dtype";
 
 using test::function::NDef;
+
+Status OptimizeWithMapVectorization(const GrapplerItem& item, GraphDef* output,
+                                    bool use_choose_fastest) {
+  MapVectorization optimizer;
+  RewriterConfig_CustomGraphOptimizer config;
+  if (use_choose_fastest) {
+    (*config.mutable_parameter_map())["use_choose_fastest"].set_s("true");
+  } else {
+    (*config.mutable_parameter_map())["use_choose_fastest"].set_s("false");
+  }
+  TF_RETURN_IF_ERROR(optimizer.Init(&config));
+  return optimizer.Optimize(nullptr, item, output);
+}
 
 // Adds a simple vectorizable map function that is akin to
 // dataset.map(lambda x: tf.identity(x))
@@ -171,119 +185,109 @@ void CheckNotVectorized(const GraphDef& output, const string& map_op,
   EXPECT_EQ(batch_node.input(0), map_node.name());
 }
 
-void CheckBranch(const GraphDef& graph, string input_name,
-                 gtl::ArraySlice<string> ops, const string& terminal_input) {
+void CheckBranch(const FunctionDef& function, gtl::ArraySlice<string> ops) {
   for (int i = 0, size = ops.size(); i < size; ++i) {
-    const NodeDef& input_node =
-        graph.node(graph_utils::FindGraphNodeWithName(input_name, graph));
-    EXPECT_EQ(input_node.op(), ops[size - i - 1]);
-    input_name = input_node.input(0);
+    EXPECT_EQ(function.node_def(i).op(), ops[i]);
   }
-  EXPECT_EQ(input_name, terminal_input);
 }
 
-// Checks that a graph has undergone the map_vectorization transformation
-// successfully, whereby the new graph has the shape:
-//
-//    input_node --> new batch --> new map -------+
-//         |                                      |
-//         |                                      v
-//         +-------> old map --> old batch ---> choose_fastest
-//
-void CheckVectorized(const GraphDef& output, const string& map_op,
-                     const string& batch_op, const string& map_input_name,
-                     bool fused = false, bool prefetch = false) {
-  ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(map_op, output).size(), 2);
-  ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(batch_op, output).size(), 2);
-  ASSERT_EQ(
-      graph_utils::FindAllGraphNodesWithOp(kChooseFastestOp, output).size(), 1);
-  const NodeDef& choose_fastest_node =
-      output.node(graph_utils::FindGraphNodeWithOp(kChooseFastestOp, output));
-
-  // Branch 0: vectorized
-  std::vector<string> vectorized_ops({batch_op, map_op});
-  std::vector<string> unvectorized_ops({map_op, batch_op});
-  if (prefetch) {
-    vectorized_ops.push_back(kPrefetchOp);
-    unvectorized_ops.insert(unvectorized_ops.begin() + 1, kPrefetchOp);
+const FunctionDef* GetFunction(const GraphDef& graph,
+                               const string& function_name) {
+  int found =
+      graph_utils::FindGraphFunctionWithName(function_name, graph.library());
+  if (found == -1) {
+    return nullptr;
   }
-  CheckBranch(output, choose_fastest_node.input(0), vectorized_ops,
-              map_input_name);
+  return &graph.library().function(found);
+}
 
-  // Branch 1: original
-  CheckBranch(output, choose_fastest_node.input(1), unvectorized_ops,
-              map_input_name);
-
-  const NodeDef* vectorized_map_node = nullptr;
-  auto tmp_node = &output.node(
-      graph_utils::FindGraphNodeWithName(choose_fastest_node.input(0), output));
-  if (prefetch) {
-    vectorized_map_node = &output.node(
-        graph_utils::FindGraphNodeWithName(tmp_node->input(0), output));
-  } else {
-    vectorized_map_node = tmp_node;
+void CheckVectorizedWithoutChooseFastest(
+    const GraphDef& output, gtl::ArraySlice<string> expected_vectorized_branch,
+    const string& input_name) {
+  std::vector<const NodeDef*> vectorized_branch;
+  for (const auto& op : expected_vectorized_branch) {
+    // This assumes that vectorized op is the only one that exists in the graph.
+    // For our test cases, this is true (we don't have superfluous map/batch
+    // nodes in other parts of the pipeline).
+    ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(op, output).size(), 1);
+    vectorized_branch.push_back(
+        &output.node(graph_utils::FindGraphNodeWithOp(op, output)));
   }
-  // Check that the function is actually vectorized.
-  // The vectorization of the identity function is itself.
+
+  for (int i = 1; i < vectorized_branch.size() - 1; ++i) {
+    const NodeDef* node = vectorized_branch[i];
+    const NodeDef* next_node = vectorized_branch[i + 1];
+    ASSERT_EQ(next_node->input(0), node->name());
+  }
+  ASSERT_EQ(vectorized_branch[0]->input(0), input_name);
+
+  const NodeDef* vectorized_map_node = vectorized_branch[1];
   string function_name =
       vectorized_map_node->attr().at(kAttrNameF).func().name();
-  int found =
-      graph_utils::FindGraphFunctionWithName(function_name, output.library());
-  ASSERT_NE(found, -1);
-  const auto& function = output.library().function(found);
-  EXPECT_EQ(function.node_def(0).op(), "Identity");
+
+  const FunctionDef* function = GetFunction(output, function_name);
+  ASSERT_NE(function, nullptr);
+  EXPECT_EQ(function->node_def(0).op(), "Identity");
 }
 
 // Checks that a graph has undergone the map_vectorization transformation
 // successfully, whereby the new graph has the shape:
 //
-//    input_node --> new batch -> new map --------+
-//         |                                      |
-//         |                                      v
-//         +-------> old map_and_batch ---> choose_fastest
+//    input_node -------------> choose_fastest --> ...
+//                               |f0    |f1
+//                               |      |
+//                               |      +---> new batch --> new map
+//                               |
+//                               +--> old map --> old batch
 //
-void CheckVectorizedFused(const GraphDef& output,
-                          const string& map_input_name) {
-  ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(kParallelMapOp, output).size(),
-            1);
-  ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(kBatchV2Op, output).size(), 1);
-  ASSERT_EQ(
-      graph_utils::FindAllGraphNodesWithOp(kExperimentalMapAndBatchOp, output)
-          .size(),
-      1);
+void CheckVectorizedWithChooseFastest(
+    const GraphDef& output, gtl::ArraySlice<string> expected_vectorized_branch,
+    gtl::ArraySlice<string> expected_original_branch,
+    const string& input_name) {
+  for (const auto& op : {kBatchOp, kBatchV2Op, kMapOp, kParallelMapOp,
+                         kExperimentalMapAndBatchOp}) {
+    // Check that the dataset nodes have been removed from the main graph.
+    ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(op, output).size(), 0);
+  }
   ASSERT_EQ(
       graph_utils::FindAllGraphNodesWithOp(kChooseFastestOp, output).size(), 1);
   const NodeDef& choose_fastest_node =
       output.node(graph_utils::FindGraphNodeWithOp(kChooseFastestOp, output));
+  ASSERT_EQ(choose_fastest_node.input(0), input_name);
+
+  const auto& functions_list = choose_fastest_node.attr().at("branches").list();
 
   // Branch 0: vectorized
-  CheckBranch(output, choose_fastest_node.input(0),
-              {kBatchV2Op, kParallelMapOp}, map_input_name);
+  const FunctionDef* branch_0 =
+      GetFunction(output, functions_list.func(0).name());
+  ASSERT_NE(branch_0, nullptr);
+  CheckBranch(*branch_0, expected_vectorized_branch);
 
   // Branch 1: original
-  CheckBranch(output, choose_fastest_node.input(1),
-              {kExperimentalMapAndBatchOp}, map_input_name);
+  const FunctionDef* branch_1 =
+      GetFunction(output, functions_list.func(1).name());
+  ASSERT_NE(branch_1, nullptr);
+  CheckBranch(*branch_1, expected_original_branch);
 
-  const NodeDef& vectorized_map_node = output.node(
-      graph_utils::FindGraphNodeWithName(choose_fastest_node.input(0), output));
-  // Check that the function is actually vectorized.
-  // The vectorization of the identity function is itself.
+  const NodeDef& vectorized_map_node =
+      branch_0->node_def(function_utils::FindFunctionNodeWithOp(
+          expected_vectorized_branch[1], *branch_0));
   string function_name =
       vectorized_map_node.attr().at(kAttrNameF).func().name();
-  int found =
-      graph_utils::FindGraphFunctionWithName(function_name, output.library());
-  ASSERT_NE(found, -1);
-  const auto& function = output.library().function(found);
-  EXPECT_EQ(function.node_def(0).op(), "Identity");
+
+  const FunctionDef* function = GetFunction(output, function_name);
+  ASSERT_NE(function, nullptr);
+  EXPECT_EQ(function->node_def(0).op(), "Identity");
 }
 
 class MapThenBatchTest
-    : public ::testing::TestWithParam<std::tuple<int, bool, int>> {};
+    : public ::testing::TestWithParam<std::tuple<int, bool, int, bool>> {};
 
 TEST_P(MapThenBatchTest, IsVectorized) {
   int num_parallel_calls = std::get<0>(GetParam());
   bool use_batch_v2 = std::get<1>(GetParam());
   int prefetch = std::get<2>(GetParam());
+  bool use_choose_fastest = std::get<3>(GetParam());
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
   auto range_dataset = AddRangeNode(&graph);
@@ -295,18 +299,44 @@ TEST_P(MapThenBatchTest, IsVectorized) {
     dataset = AddPrefetchNode(&graph, dataset->name(), prefetch);
   }
   dataset = AddBatchNode(&graph, dataset->name(), use_batch_v2);
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  CheckVectorized(output, num_parallel_calls > 0 ? kParallelMapOp : kMapOp,
-                  use_batch_v2 ? kBatchV2Op : kBatchOp, range_dataset->name(),
-                  /*fused=*/false, prefetch);
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, use_choose_fastest));
+
+  std::vector<string> expected_original_branch;
+  expected_original_branch.push_back(num_parallel_calls > 0 ? kParallelMapOp
+                                                            : kMapOp);
+  if (prefetch) {
+    expected_original_branch.push_back(kPrefetchOp);
+  }
+  expected_original_branch.push_back(use_batch_v2 > 0 ? kBatchV2Op : kBatchOp);
+
+  std::vector<string> expected_vectorized_branch;
+  expected_vectorized_branch.push_back(use_batch_v2 > 0 ? kBatchV2Op
+                                                        : kBatchOp);
+  expected_vectorized_branch.push_back(num_parallel_calls > 0 ? kParallelMapOp
+                                                              : kMapOp);
+  if (prefetch) {
+    expected_vectorized_branch.push_back(kPrefetchOp);
+  }
+
+  if (use_choose_fastest) {
+    CheckVectorizedWithChooseFastest(output, expected_vectorized_branch,
+                                     expected_original_branch,
+                                     range_dataset->name());
+
+  } else {
+    CheckVectorizedWithoutChooseFastest(output, expected_vectorized_branch,
+                                        range_dataset->name());
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(MapThenBatchTest, MapThenBatchTest,
                          ::testing::Combine(::testing::Values(0, 12),
                                             ::testing::Bool(),
-                                            ::testing::Values(0, 20)));
+                                            ::testing::Values(0, 20),
+                                            ::testing::Bool()));
+
+class MapAndBatchTest : public ::testing::TestWithParam<bool> {};
 
 NodeDef* AddMapAndBatchNode(MutableGraphView* graph,
                             const string& input_dataset, const string& map_fn,
@@ -334,7 +364,7 @@ NodeDef* AddMapAndBatchNode(MutableGraphView* graph,
   return graph->AddNode(std::move(result));
 }
 
-TEST(MapVectorizationTest, VectorizeExperimentalMapAndBatch) {
+TEST_P(MapAndBatchTest, VectorizeExperimentalMapAndBatch) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
   auto range_node = AddRangeNode(&graph);
@@ -343,22 +373,24 @@ TEST(MapVectorizationTest, VectorizeExperimentalMapAndBatch) {
                                                map_fn->signature().name());
   ASSERT_NE(map_and_batch_node, nullptr);
 
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  CheckVectorizedFused(output, "range");
+  bool use_choose_fastest = GetParam();
+
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, use_choose_fastest));
+  if (use_choose_fastest) {
+    CheckVectorizedWithChooseFastest(output, {kBatchV2Op, kParallelMapOp},
+                                     {kExperimentalMapAndBatchOp},
+                                     range_node->name());
+  } else {
+    CheckVectorizedWithoutChooseFastest(output, {kBatchV2Op, kParallelMapOp},
+                                        range_node->name());
+  }
 }
 
-void EvaluateNodes(const GraphDef& graph,
-                   const std::vector<string>& output_tensor_names,
-                   std::vector<Tensor>* output_tensors) {
-  std::unique_ptr<Session> session(NewSession(SessionOptions()));
-  TF_CHECK_OK(session->Create(graph));
-  TF_CHECK_OK(session->Run({}, output_tensor_names, {}, output_tensors));
-}
+INSTANTIATE_TEST_SUITE_P(MapAndBatchTest, MapAndBatchTest, ::testing::Bool());
 
 class ChainedMapAndBatchTest
-    : public ::testing::TestWithParam<std::tuple<bool, bool>> {};
+    : public ::testing::TestWithParam<std::tuple<bool, bool, bool>> {};
 
 // Tests:
 // 1) map.batch.map.batch
@@ -385,39 +417,76 @@ TEST_P(ChainedMapAndBatchTest, IsVectorized) {
 
   bool fuse_0 = std::get<0>(GetParam());
   bool fuse_1 = std::get<1>(GetParam());
+  bool use_choose_fastest = std::get<2>(GetParam());
   auto map_and_batch_0 = make_map_and_batch(input_node, fuse_0);
   auto map_and_batch_1 = make_map_and_batch(map_and_batch_0, fuse_1);
   ASSERT_NE(map_and_batch_1, nullptr);
 
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, use_choose_fastest));
   TF_ASSERT_OK(TopologicalSort(&output));
 
-  std::vector<int> choose_fastest_nodes =
-      graph_utils::FindAllGraphNodesWithOp(kChooseFastestOp, output);
-  ASSERT_EQ(choose_fastest_nodes.size(), 2);
+  if (use_choose_fastest) {
+    std::vector<int> choose_fastest_nodes =
+        graph_utils::FindAllGraphNodesWithOp(kChooseFastestOp, output);
+    ASSERT_EQ(choose_fastest_nodes.size(), 2);
 
-  std::vector<string> fused_sequence({kExperimentalMapAndBatchOp});
-  std::vector<string> unfused_sequence({kParallelMapOp, kBatchV2Op});
-  const NodeDef& range_node =
-      output.node(graph_utils::FindGraphNodeWithOp(kRangeOp, output));
-  const NodeDef& choose_fastest_0 = output.node(choose_fastest_nodes[0]);
-  CheckBranch(output, choose_fastest_0.input(0), {kBatchV2Op, kParallelMapOp},
-              range_node.name());
-  CheckBranch(output, choose_fastest_0.input(1),
-              fuse_0 ? fused_sequence : unfused_sequence, range_node.name());
+    std::vector<string> fused_sequence({kExperimentalMapAndBatchOp});
+    std::vector<string> unfused_sequence({kParallelMapOp, kBatchV2Op});
+    const NodeDef& range_node =
+        output.node(graph_utils::FindGraphNodeWithOp(kRangeOp, output));
+    const NodeDef& choose_fastest_0 = output.node(choose_fastest_nodes[0]);
+    ASSERT_EQ(choose_fastest_0.input(0), range_node.name());
+    const NodeDef& choose_fastest_1 = output.node(choose_fastest_nodes[1]);
+    ASSERT_EQ(choose_fastest_1.input(0), choose_fastest_0.name());
 
-  const NodeDef& choose_fastest_1 = output.node(choose_fastest_nodes[1]);
-  CheckBranch(output, choose_fastest_1.input(0), {kBatchV2Op, kParallelMapOp},
-              choose_fastest_0.name());
-  CheckBranch(output, choose_fastest_1.input(1),
-              fuse_1 ? fused_sequence : unfused_sequence,
-              choose_fastest_0.name());
+    auto check_branches = [&output](const NodeDef& choose_fastest_node,
+                                    gtl::ArraySlice<string> original_ops) {
+      const auto& functions_list =
+          choose_fastest_node.attr().at("branches").list();
+
+      // Branch 0: vectorized
+      const FunctionDef* branch_0 =
+          GetFunction(output, functions_list.func(0).name());
+      ASSERT_NE(branch_0, nullptr);
+      CheckBranch(*branch_0, {kBatchV2Op, kParallelMapOp});
+
+      // Branch 1: original
+      const FunctionDef* branch_1 =
+          GetFunction(output, functions_list.func(1).name());
+      ASSERT_NE(branch_1, nullptr);
+      CheckBranch(*branch_1, original_ops);
+    };
+
+    check_branches(choose_fastest_0,
+                   fuse_0 ? fused_sequence : unfused_sequence);
+    check_branches(choose_fastest_1,
+                   fuse_1 ? fused_sequence : unfused_sequence);
+  } else {
+    std::vector<int> map_nodes =
+        graph_utils::FindAllGraphNodesWithOp(kParallelMapOp, output);
+    std::vector<int> batch_nodes =
+        graph_utils::FindAllGraphNodesWithOp(kBatchV2Op, output);
+    ASSERT_EQ(map_nodes.size(), 2);
+    ASSERT_EQ(batch_nodes.size(), 2);
+
+    const NodeDef& range_node =
+        output.node(graph_utils::FindGraphNodeWithOp(kRangeOp, output));
+
+    const NodeDef& batch_node_0 = output.node(batch_nodes[0]);
+    EXPECT_EQ(batch_node_0.input(0), range_node.name());
+    const NodeDef& map_node_0 = output.node(map_nodes[0]);
+    EXPECT_EQ(map_node_0.input(0), batch_node_0.name());
+    const NodeDef& batch_node_1 = output.node(batch_nodes[1]);
+    EXPECT_EQ(batch_node_1.input(0), map_node_0.name());
+    const NodeDef& map_node_1 = output.node(map_nodes[1]);
+    EXPECT_EQ(map_node_1.input(0), batch_node_1.name());
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(ChainedMapAndBatchTest, ChainedMapAndBatchTest,
                          ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool(),
                                             ::testing::Bool()));
 
 // Not all dataset types have "output_shapes" and "output_types"
@@ -454,9 +523,8 @@ TEST(MapVectorizationTest, VectorizeWithUndefinedOutputShapes) {
   auto map_node =
       AddMapNode(&graph, input_node->name(), map_fn->signature().name());
   auto batch_node = AddBatchNode(&graph, map_node->name());
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, true));
   CheckNotVectorized(output, map_node->op(), batch_node->op(),
                      input_node->name());
 }
@@ -474,9 +542,8 @@ TEST(MapVectorizationTest, VectorizeWithUnknownRank) {
   auto map_node =
       AddMapNode(&graph, input_node->name(), map_fn->signature().name());
   auto batch_node = AddBatchNode(&graph, map_node->name());
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, true));
   CheckNotVectorized(output, map_node->op(), batch_node->op(),
                      input_node->name());
 }
@@ -494,9 +561,8 @@ TEST(MapVectorizationTest, VectorizeWithUnknownDim) {
   auto map_node =
       AddMapNode(&graph, input_node->name(), map_fn->signature().name());
   auto batch_node = AddBatchNode(&graph, map_node->name());
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, true));
   CheckNotVectorized(output, map_node->op(), batch_node->op(),
                      input_node->name());
 }
@@ -513,10 +579,12 @@ TEST(MapVectorizationTest, VectorizeWithUndefinedOutputTypes) {
   auto map_node =
       AddMapNode(&graph, input_node->name(), map_fn->signature().name());
   auto batch_node = AddBatchNode(&graph, map_node->name());
-  MapVectorization optimizer;
   GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  CheckVectorized(output, map_node->op(), batch_node->op(), input_node->name());
+  TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, true));
+  CheckVectorizedWithChooseFastest(
+      output, /*expected_vectorized_branch=*/{batch_node->op(), map_node->op()},
+      /*expected_original_branch=*/{map_node->op(), batch_node->op()},
+      input_node->name());
 }
 
 // TODO(rachelim): Add test that has a polymorphic function.

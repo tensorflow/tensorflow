@@ -26,7 +26,7 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
@@ -275,7 +275,7 @@ class CuDNNGRU(_CuDNNRNN):
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
-    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, self.units:self.units * 2],
             self.kernel[:, :self.units],
@@ -470,7 +470,7 @@ class CuDNNLSTM(_CuDNNRNN):
     input_h = array_ops.expand_dims(input_h, axis=0)
     input_c = array_ops.expand_dims(input_c, axis=0)
 
-    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, :self.units],
             self.kernel[:, self.units:self.units * 2],

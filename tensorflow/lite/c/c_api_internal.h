@@ -50,6 +50,8 @@ typedef enum {
   kTfLiteMaxExternalContexts = 3
 } TfLiteExternalContextType;
 
+struct TfLiteContext;
+
 // An external context is a collection of information unrelated to the TF Lite
 // framework, but useful to a subset of the ops. TF Lite knows very little
 // about about the actual contexts, but it keeps a list of them, and is able to
@@ -253,7 +255,7 @@ typedef struct {
 
 // A union of pointers that points to memory for a given tensor.
 typedef union {
-  int* i32;
+  int32_t* i32;
   int64_t* i64;
   float* f;
   char* raw;
@@ -279,7 +281,9 @@ typedef enum {
 // The delegates should use zero or positive integers to represent handles.
 // -1 is reserved from unallocated status.
 typedef int TfLiteBufferHandle;
-const TfLiteBufferHandle kTfLiteNullBufferHandle = -1;
+enum {
+  kTfLiteNullBufferHandle = -1,
+};
 
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).

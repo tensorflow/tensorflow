@@ -34,13 +34,14 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import training_distributed
+from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
-from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -54,7 +55,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.models.Model', 'keras.Model')
-class Model(Network):
+class Model(network.Network):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -140,6 +141,15 @@ class Model(Network):
       with self._distribution_strategy.scope():
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
+
+  def load_weights(self, filepath, by_name=False):
+    """Loads all layer weights, either from a TensorFlow or an HDF5 file."""
+    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+      if (self._distribution_strategy.extended.steps_per_run > 1 and
+          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+        raise ValueError('Load weights is not yet supported with TPUStrategy '
+                         'with steps_per_run greater than 1.')
+    return super(Model, self).load_weights(filepath, by_name)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
@@ -307,18 +317,9 @@ class Model(Network):
     self._feed_output_names = []
     self._feed_output_shapes = []
     self._feed_loss_fns = []
-    # if loss function is None, then this output will be skipped during total
-    # loss calculation and feed targets preparation.
-    skip_target_indices = []
-    skip_target_weighing_indices = []
-    for i, loss_function in enumerate(self.loss_functions):
-      if loss_function is None:
-        skip_target_indices.append(i)
-        skip_target_weighing_indices.append(i)
 
-    # Prepare output masks.
-    if not self.run_eagerly:
-      masks = [getattr(x, '_keras_mask', None) for x in self.outputs]
+    skip_target_indices = self._prepare_skip_target_indices()
+    self._skip_target_weighing_indices = skip_target_indices[:]
 
     # Prepare list loss weights, same size of model outputs.
     self.loss_weights_list = training_utils.prepare_loss_weights(
@@ -326,9 +327,12 @@ class Model(Network):
 
     # Initialization for Eager mode execution.
     if self.run_eagerly:
+      if isinstance(optimizer, loss_scale_optimizer.LossScaleOptimizer):
+        # TODO(reedwm): Support this.
+        raise ValueError('We currently do not support enabling `run_eagerly` '
+                         'with a LossScaleOptimizer.')
       # Prepare sample weights.
-      self._set_sample_weight_attributes(sample_weight_mode,
-                                         skip_target_weighing_indices)
+      self._set_sample_weight_attributes(sample_weight_mode)
       # Save all metric attributes per output of the model.
       self._cache_output_metric_attributes(metrics, weighted_metrics)
 
@@ -402,32 +406,24 @@ class Model(Network):
             self._feed_output_shapes.append(shape)
             self._feed_loss_fns.append(self.loss_functions[i])
           else:
-            skip_target_weighing_indices.append(i)
+            self._skip_target_weighing_indices.append(i)
           self.targets.append(target)
 
-      # Prepare sample weights.
-      self._set_sample_weight_attributes(sample_weight_mode,
-                                         skip_target_weighing_indices)
       # Save all metric attributes per output of the model.
       self._cache_output_metric_attributes(metrics, weighted_metrics)
 
       # Set metric attributes on model.
       self._set_metric_attributes(skip_target_indices=skip_target_indices)
 
-      # Invoke metric functions for all the outputs.
+      # Invoke metric functions (unweighted) for all the outputs.
       self._handle_metrics(
           self.outputs,
-          masks=masks,
+          masks=self._prepare_output_masks(),
           targets=self.targets,
-          skip_target_indices=skip_target_indices,
-          sample_weights=self.sample_weights)
+          skip_target_indices=skip_target_indices)
 
-      # Compute total loss.
-      # Used to keep track of the total loss value (stateless).
-      # eg., total_loss = loss_weight_1 * output_1_loss_fn(...) +
-      #                   loss_weight_2 * output_2_loss_fn(...) +
-      #                   layer losses.
-      self.total_loss = self._prepare_total_loss(skip_target_indices, masks)
+      # Creates the model loss and weighted metrics sub-graphs.
+      self._compile_weights_loss_and_weighted_metrics()
 
       # Functions for train, test and predict will
       # be compiled lazily when required.
@@ -820,11 +816,10 @@ class Model(Network):
       y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
       sample_weights, val_sample_weights = (slice_arrays(
           sample_weights, 0, split_at), slice_arrays(sample_weights, split_at))
-    elif validation_steps:
-      val_x = []
-      val_y = []
-      val_sample_weights = []
     else:
+      if validation_steps:
+        raise ValueError('`validation_steps` should not be specified if '
+                         '`validation_data` is None.')
       val_x = None
       val_y = None
       val_sample_weights = None
@@ -1618,7 +1613,50 @@ class Model(Network):
         verbose=verbose,
         callbacks=callbacks)
 
-  def _prepare_total_loss(self, skip_target_indices=None, masks=None):
+  def _compile_weights_loss_and_weighted_metrics(self):
+    """Compiles the model loss and weighted metric sub-graphs."""
+
+    with K.get_graph().as_default():
+
+      # Prepare sample weights.
+      self._set_sample_weight_attributes(self.sample_weight_mode)
+
+      masks = self._prepare_output_masks()
+      skip_target_indices = self._prepare_skip_target_indices()
+
+      # Compute weighted metrics.
+      self._handle_metrics(
+          self.outputs,
+          masks=masks,
+          targets=self.targets,
+          skip_target_indices=skip_target_indices,
+          sample_weights=self.sample_weights)
+
+      # Compute total loss.
+      # Used to keep track of the total loss value (stateless).
+      # eg., total_loss = loss_weight_1 * output_1_loss_fn(...) +
+      #                   loss_weight_2 * output_2_loss_fn(...) +
+      #                   layer losses.
+      self.total_loss = self._prepare_total_loss(skip_target_indices, masks)
+
+  def _prepare_skip_target_indices(self):
+    """Returns indices of outputs for which no targets are expected.
+
+    If the loss function corresponding to a model output is None, then this
+    output will be skipped during total loss calculation and feed targets
+    preparation.
+    """
+    skip_target_indices = []
+    for i, loss_function in enumerate(self.loss_functions):
+      if loss_function is None:
+        skip_target_indices.append(i)
+    return skip_target_indices
+
+  def _prepare_output_masks(self):
+    """Returns masks corresponding to model outputs."""
+    return [getattr(x, '_keras_mask', None) for x in self.outputs]
+
+  def _prepare_total_loss(self, skip_target_indices, masks):
     """Computes total loss from loss functions.
 
     Arguments:
@@ -1795,22 +1833,22 @@ class Model(Network):
         '_default_save_signature': saving_utils.trace_model_call(self)
     }
 
-  def _set_sample_weight_attributes(self, sample_weight_mode,
-                                    skip_target_weighing_indices):
+  def _set_sample_weight_attributes(self, sample_weight_mode):
     """Sets sample weight related attributes on the model."""
     sample_weights, sample_weight_modes = training_utils.prepare_sample_weights(
-        self.output_names, sample_weight_mode, skip_target_weighing_indices)
+        self.output_names, sample_weight_mode,
+        self._skip_target_weighing_indices)
     self.sample_weights = sample_weights
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = [
         sample_weight_modes[i]
         for i in range(len(self.outputs))
-        if i not in skip_target_weighing_indices
+        if i not in self._skip_target_weighing_indices
     ]
     self._feed_sample_weights = [
         sample_weights[i]
         for i in range(len(sample_weights))
-        if i not in skip_target_weighing_indices
+        if i not in self._skip_target_weighing_indices
     ]
 
   def _cache_output_metric_attributes(self, metrics, weighted_metrics):
@@ -2001,7 +2039,8 @@ class Model(Network):
                       skip_target_indices=None,
                       targets=None,
                       sample_weights=None,
-                      masks=None):
+                      masks=None,
+                      return_weighted_and_unweighted_metrics=False):
     """Handles calling metric functions.
 
     Arguments:
@@ -2010,6 +2049,10 @@ class Model(Network):
       targets: List of targets.
       sample_weights: Optional list of sample weight arrays.
       masks: List of computed output mask values.
+      return_weighted_and_unweighted_metrics: Flag that is used to indicate
+        whether both weighted and unweighted metrics should be computed. When
+        this is not enabled, we use `sample_weights` param to indicate whether
+        weighted or unweighted metrics should be returned.
 
     Returns:
       A list of metric result tensors.
@@ -2024,22 +2067,19 @@ class Model(Network):
         output = outputs[i] if outputs else None
         target = targets[i] if targets else None
         output_mask = masks[i] if masks else None
-        metric_results.extend(
-            self._handle_per_output_metrics(self._per_output_metrics[i], target,
-                                            output, output_mask))
-        metric_results.extend(
-            self._handle_per_output_metrics(
-                self._per_output_weighted_metrics[i],
-                target,
-                output,
-                output_mask,
-                weights=sample_weights[i]))
 
-    # Add metric results from the `add_metric` metrics in eager mode.
-    if context.executing_eagerly():
-      for m in self.metrics:
-        if m not in self._compile_metric_functions:
-          metric_results.append(m.result())
+        if return_weighted_and_unweighted_metrics or sample_weights is None:
+          metric_results.extend(
+              self._handle_per_output_metrics(self._per_output_metrics[i],
+                                              target, output, output_mask))
+        if return_weighted_and_unweighted_metrics or sample_weights is not None:
+          metric_results.extend(
+              self._handle_per_output_metrics(
+                  self._per_output_weighted_metrics[i],
+                  target,
+                  output,
+                  output_mask,
+                  weights=sample_weights[i]))
     return metric_results
 
   def _check_trainable_weights_consistency(self):
@@ -2151,7 +2191,7 @@ class Model(Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=True,
+                                          repeat=False,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
@@ -2603,7 +2643,7 @@ class Model(Network):
           'However we received `validation_data=%s`' % validation_data)
     return val_x, val_y, val_sample_weight
 
-  @trackable.no_automatic_dependency_tracking
+  # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):
     """Set model's input and output specs based on the input data received.
 
@@ -2630,6 +2670,22 @@ class Model(Network):
       ValueError: If dict inputs are passed to a Sequential Model where the
         first layer isn't FeatureLayer.
     """
+    inputs = self._set_input_attrs(inputs)
+
+    if outputs is None:
+      kwargs = {'training': training} if self._expects_training_arg else {}
+      try:
+        outputs = self(inputs, **kwargs)
+      except NotImplementedError:
+        # This Model or a submodel is dynamic and hasn't overridden
+        # `compute_output_shape`.
+        outputs = None
+
+    self._set_output_attrs(outputs)
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_input_attrs(self, inputs):
+    """Sets attributes related to the inputs of the Model."""
     if self.inputs:
       raise ValueError('Model inputs are already set.')
 
@@ -2666,33 +2722,11 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_shapes.append(K.int_shape(v))
 
-    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
-    if outputs is None:
-      if not self._dynamic:
-        # The network may include dynamic layers but its `call`
-        # itself isn't dynamic.
-        # Obtain symbolic outputs by calling the model.
-        with K.get_graph().as_default():
-          contains_symbolic_tensors = getattr(
-              self, '_contains_symbolic_tensors', False)
-          if self._expects_training_arg:
-            outputs = self.call(inputs, training=training)
-          else:
-            outputs = self.call(inputs)
-          # Reset to the previously saved value. If `call()` had `add_metric`
-          # or `add_loss`, then `_contains_symbolic_tensors` will have been set
-          # to True since we are not in `__call__` context. Hence we are
-          # resetting to the old value here.
-          self._contains_symbolic_tensors = contains_symbolic_tensors
-      else:
-        # Case: network's `call` is dynamic.
-        try:
-          outputs = self._symbolic_call(inputs)
-        except NotImplementedError:
-          # Static shape inference was not implemented for this dynamic net.
-          # Do not specify symbolic outputs.
-          outputs = None
+    return inputs
 
+  @trackable.no_automatic_dependency_tracking
+  def _set_output_attrs(self, outputs):
+    """Sets attributes related to the outputs of the Model."""
     outputs = nest.flatten(outputs)
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)

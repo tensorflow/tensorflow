@@ -145,13 +145,13 @@ class WorkerHeartbeatManager(object):
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
         watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
-        shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR)
+        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT)
     self.configure(req)
 
-    # Wait for workers to shutdown.  This isn't strictly required
-    # but it avoids triggering multiple checkpoints with the same lame worker.
-    logging.info('Waiting %dms for worker shutdown.', timeout_ms)
-    time.sleep(timeout_ms / 1000)
+    # Wait for workers to shutdown.
+    sleep_sec = 10.0 + timeout_ms / 1000
+    logging.info('Waiting %.2f seconds for worker shutdown.', sleep_sec)
+    time.sleep(sleep_sec)
 
 
 def all_worker_devices(session):

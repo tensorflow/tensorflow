@@ -24,77 +24,45 @@ from six import PY3
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
+from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn  # pylint: disable=unused-import
 from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell  # pylint: disable=unused-import
 from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell  # pylint: disable=unused-import
+from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_supported_ops  # pylint: disable=unused-import
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import OpsSet
-from tensorflow.lite.python.convert import tensor_name as _tensor_name
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
 from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_impl
 from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
-from tensorflow.lite.python.convert_saved_model import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
-from tensorflow.lite.python.convert_saved_model import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
-from tensorflow.core.framework import graph_pb2 as _graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
-from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
+from tensorflow.lite.python.util import freeze_graph as _freeze_graph
+from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
+from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
+from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
+from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
+from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import def_function as _def_function
 from tensorflow.python.eager import function as _function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
-from tensorflow.python.framework import graph_util as _tf_graph_util
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.grappler import tf_optimizer as _tf_optimizer
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
-from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-
-def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
-                             graph=None):
-  """Apply standard TensorFlow optimizations to the graph_def.
-
-  Args:
-    graph_def: Frozen GraphDef to be optimized.
-    input_arrays: List of arrays that are considered inputs of the graph.
-    output_arrays: List of arrays that are considered outputs of the graph.
-    graph: TensorFlow Graph. Required when Eager mode is enabled. (default None)
-
-  Returns:
-    A new, optimized GraphDef.
-  """
-  meta_graph = _export_meta_graph(graph_def=graph_def, graph=graph)
-
-  # We need to add a collection called 'train_op' so that grappler
-  # knows what the outputs are.
-  fetch_collection = _meta_graph_pb2.CollectionDef()
-  for array in input_arrays + output_arrays:
-    fetch_collection.node_list.value.append(array.name)
-  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
-
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-  # Avoid remapping as it creates ops like _FusedConv2D, which are not
-  # supported by TF Lite.
-  rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
-  return _tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
 @_tf_export("lite.Optimize")
@@ -251,21 +219,27 @@ class TFLiteConverterV2(object):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(frozen_func.graph.as_graph_def(),
-                                         input_tensors, output_tensors,
-                                         frozen_func.graph)
+    is_only_flex_enabled = set(
+        [OpsSet.SELECT_TF_OPS]) == self.target_spec.supported_ops
+    config = _get_grappler_config(enable_layout_optimizer=is_only_flex_enabled)
+    graph_def = _run_graph_optimizations(
+        frozen_func.graph.as_graph_def(),
+        input_tensors,
+        output_tensors,
+        config,
+        graph=frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
       # Note that shape_list might be empty for scalar shapes.
-      shape_list = tensor.get_shape().as_list()
+      shape_list = tensor.shape.as_list()
       if None in shape_list[1:]:
         raise ValueError(
             "None is only supported in the 1st dimension. Tensor '{0}' has "
-            "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
+            "invalid shape '{1}'.".format(_get_tensor_name(tensor), shape_list))
       elif shape_list and shape_list[0] is None:
         # Set the batch size to 1 if undefined.
-        shape = tensor.get_shape().as_list()
+        shape = tensor.shape.as_list()
         shape[0] = 1
         tensor.set_shape(shape)
 
@@ -411,7 +385,7 @@ class TFLiteConverter(object):
     Args:
       graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
@@ -460,13 +434,13 @@ class TFLiteConverter(object):
     Args:
       sess: TensorFlow Session.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
 
     Returns:
       TFLiteConverter class.
     """
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   @classmethod
@@ -639,7 +613,7 @@ class TFLiteConverter(object):
       output_tensors = keras_model.outputs
     _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   def __setattr__(self, name, value):
@@ -678,16 +652,17 @@ class TFLiteConverter(object):
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
-        shape = tensor.get_shape()
+        shape = tensor.shape
         if not shape:
           raise ValueError("Provide an input shape for input array "
-                           "'{0}'.".format(_tensor_name(tensor)))
+                           "'{0}'.".format(_get_tensor_name(tensor)))
         # Note that shape_list might be empty for scalar shapes.
         shape_list = shape.as_list()
         if None in shape_list[1:]:
           raise ValueError(
               "None is only supported in the 1st dimension. Tensor '{0}' has "
-              "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
+              "invalid shape '{1}'.".format(
+                  _get_tensor_name(tensor), shape_list))
         elif shape_list and shape_list[0] is None:
           self._set_batch_size(batch_size=1)
 
@@ -748,8 +723,11 @@ class TFLiteConverter(object):
       optimized_graph = self._graph_def
     else:
       try:
+        is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == self.target_ops
+        config = _get_grappler_config(
+            enable_layout_optimizer=is_only_flex_enabled)
         optimized_graph = _run_graph_optimizations(
-            self._graph_def, self._input_tensors, self._output_tensors)
+            self._graph_def, self._input_tensors, self._output_tensors, config)
       except Exception:
         optimized_graph = self._graph_def
 
@@ -781,7 +759,7 @@ class TFLiteConverter(object):
       List of strings.
     """
     if self._has_valid_tensors():
-      return [_tensor_name(tensor) for tensor in self._input_tensors]
+      return [_get_tensor_name(tensor) for tensor in self._input_tensors]
     else:
       return [name for name, _ in self._input_arrays_with_shape]
 
@@ -808,7 +786,7 @@ class TFLiteConverter(object):
                        "use input_shapes parameter.")
 
     for tensor in self._input_tensors:
-      shape = tensor.get_shape().as_list()
+      shape = tensor.shape.as_list()
       shape[0] = batch_size
       tensor.set_shape(shape)
 
@@ -865,42 +843,3 @@ class TocoConverter(object):
     """Creates a TocoConverter class from a tf.keras model file."""
     return TFLiteConverter.from_keras_model_file(model_file, input_arrays,
                                                  input_shapes, output_arrays)
-
-
-def _is_frozen_graph(sess):
-  """Determines if the graph is frozen.
-
-  Determines if a graph has previously been frozen by checking for any
-  operations of type Variable*. If variables are found, the graph is not frozen.
-
-  Args:
-    sess: TensorFlow Session.
-
-  Returns:
-    Bool.
-  """
-  for op in sess.graph.get_operations():
-    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
-      return False
-  return True
-
-
-def _freeze_graph(sess, output_tensors):
-  """Returns a frozen GraphDef.
-
-  Freezes a graph with Variables in it. Otherwise the existing GraphDef is
-  returned.
-
-  Args:
-    sess: TensorFlow Session.
-    output_tensors: List of output tensors (only .name is used from this).
-
-  Returns:
-    Frozen GraphDef.
-  """
-  if not _is_frozen_graph(sess):
-    output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
-    return _tf_graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, output_arrays)
-  else:
-    return sess.graph_def

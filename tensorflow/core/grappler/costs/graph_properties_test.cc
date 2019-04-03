@@ -1204,6 +1204,61 @@ TEST_F(GraphPropertiesTest, FunctionReturnTensorValue) {
                      properties.GetInputProperties("MyFunc")[0].value());
 }
 
+TEST_F(GraphPropertiesTest, ArithmeticFunctionReturnTensorValue) {
+  FunctionDefLibrary library;
+  // Function that adds two input values.
+  *library.add_function() = FunctionDefHelper::Create(
+      "MyFunc",                                                   // Name
+      {"x: int32", "y: int32"},                                   // Inputs
+      {"out: int32"},                                             // Outputs
+      {},                                                         // Attrs
+      {{{"a"}, "Add", {"x", "y"}, {{"T", DataType::DT_INT32}}}},  // Nodes
+      {{"out", "a:z:0"}});                                        // Returns
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(s.graph()->AddFunctionLibrary(library));
+
+  Output shape = ops::Const(s.WithOpName("shape"), {5, 7}, {2});
+  auto _shape = tensorflow::ops::AsNodeOut(s, shape);
+  auto builder =
+      tensorflow::NodeBuilder("MyFunc", "MyFunc", s.graph()->op_registry());
+  tensorflow::Node* func_op;
+  TF_CHECK_OK(
+      builder.Input(_shape).Input(_shape).Finalize(s.graph(), &func_op));
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  {
+    GraphProperties properties(item);
+    // Without aggressive_shape_inference, the internal function does not
+    // evaluate output value.
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/false));
+    const auto out_props = properties.GetOutputProperties("MyFunc");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("int32: [2]", PropToString(out_prop0));
+    EXPECT_FALSE(out_prop0.has_value());
+  }
+
+  {
+    GraphProperties properties(item);
+    // With aggressive_shape_inference, output value is evaluated.
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("MyFunc");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("int32: [2]", PropToString(out_prop0));
+    EXPECT_TRUE(out_prop0.has_value());
+
+    ExpectTensorValues({10, 14}, out_prop0.value());
+    ExpectTensorValues({5, 7},
+                       properties.GetInputProperties("MyFunc")[0].value());
+    ExpectTensorValues({5, 7},
+                       properties.GetInputProperties("MyFunc")[1].value());
+  }
+}
+
 TEST_F(GraphPropertiesTest, FunctionWithScalarInput) {
   // Create graph with a function that takes a scalar value so that we use
   // Placeholder with scalar as for input to the function shape inference.

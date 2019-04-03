@@ -266,7 +266,7 @@ class BatchNormalization(bijector.Bijector):
     else:
       # At training-time, ildj is computed from the mean and log-variance across
       # the current minibatch.
-      _, v = nn.moments(y, axes=reduction_axes, keep_dims=True)
+      _, v = nn.moments(y, axes=reduction_axes, keepdims=True)
       log_variance = math_ops.log(v + self.batchnorm.epsilon)
 
     # `gamma` and `log Var(y)` reductions over event_dims.

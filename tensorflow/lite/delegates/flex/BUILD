@@ -86,6 +86,7 @@ cc_library(
         "@com_google_absl//absl/strings:strings",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
     ] + select({

@@ -19,7 +19,8 @@ namespace tensorflow {
 
 REGISTER6(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
           int32, bfloat16);
-REGISTER2(BinaryOp, CPU, "MulNoNan", functor::mul_no_nan, float, double);
+REGISTER5(BinaryOp, CPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
+          double, complex64, complex128);
 
 #if defined(__ANDROID_TYPES_SLIM__)
 // We only register the first type when we have multi-argument calls in the

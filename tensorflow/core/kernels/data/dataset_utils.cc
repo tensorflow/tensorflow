@@ -14,14 +14,28 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
+
+Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+                  GraphDef* graph_def) {
+  GraphDefBuilder b;
+  DatasetBase::DatasetGraphDefBuilder db(&b);
+  Node* input_node = nullptr;
+  SerializationContext serialization_ctx({});
+  TF_RETURN_IF_ERROR(
+      db.AddInputDataset(&serialization_ctx, dataset, &input_node));
+  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
+  return Status::OK();
+}
 
 Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
                                   const NameAttrList& func,

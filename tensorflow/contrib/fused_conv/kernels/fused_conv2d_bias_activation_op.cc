@@ -334,6 +334,7 @@ void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
   *log.mutable_cudnn_version() = internal::GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() =
       internal::GetComputeCapability(stream_exec);
+  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
   for (const auto& result : results) {
     *log.add_results() = result;
   }
@@ -342,38 +343,29 @@ void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo) {
-  // For the "!xhs.has_success()" below, this is because we want successful ones
-  // to order first, therefore they need a smaller key per "min_element".
   const AutotuneResult* best_result = std::min_element(
       results.begin(), results.end(),
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return std::make_tuple(
-                   !lhs.has_success(),
-                   internal::FromDurationProto(lhs.success().run_time())) <
-               std::make_tuple(
-                   !rhs.has_success(),
-                   internal::FromDurationProto(rhs.success().run_time()));
+        return internal::FromDurationProto(lhs.run_time()) <
+               internal::FromDurationProto(rhs.run_time());
       });
 
   const AutotuneResult* best_result_no_scratch = std::min_element(
       results.begin(), results.end(),
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return std::make_tuple(
-                   !lhs.has_success(), lhs.success().scratch_bytes(),
-                   internal::FromDurationProto(lhs.success().run_time())) <
-               std::make_tuple(
-                   !rhs.has_success(), rhs.success().scratch_bytes(),
-                   internal::FromDurationProto(rhs.success().run_time()));
+        return std::make_tuple(lhs.scratch_bytes(),
+                               internal::FromDurationProto(lhs.run_time())) <
+               std::make_tuple(rhs.scratch_bytes(),
+                               internal::FromDurationProto(rhs.run_time()));
       });
 
-  if (best_result == results.end() || !best_result->has_success()) {
+  if (best_result == results.end()) {
     return errors::NotFound("No algorithm worked!");
   }
   algo->set_algorithm({best_result->conv().algorithm(),
                        best_result->conv().tensor_ops_enabled()});
   if (best_result_no_scratch != results.end() &&
-      best_result_no_scratch->has_success() &&
-      best_result_no_scratch->success().scratch_bytes() == 0) {
+      best_result_no_scratch->scratch_bytes() == 0) {
     algo->set_algorithm_no_scratch(
         {best_result_no_scratch->conv().algorithm(),
          best_result_no_scratch->conv().tensor_ops_enabled()});
@@ -726,19 +718,15 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                   output_desc, &output_ptr, &scratch_allocator,
                   dnn::AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
-      if (cudnn_launch_status) {
-        if (profile_result.is_valid()) {
-          results.emplace_back();
-          auto& result = results.back();
-          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-          result.mutable_conv()->set_tensor_ops_enabled(
-              profile_algorithm.tensor_ops_enabled());
-          result.mutable_success()->set_scratch_bytes(
-              scratch_allocator.TotalByteSize());
-          *result.mutable_success()->mutable_run_time() =
-              internal::ToDurationProto(
-                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-        }
+      if (cudnn_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = internal::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
     internal::LogFusedConvAutotuneResults(ctx->op_kernel().def(), *conv_input,

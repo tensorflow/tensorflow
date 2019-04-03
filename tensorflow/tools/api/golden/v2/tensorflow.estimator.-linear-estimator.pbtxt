@@ -21,7 +21,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'head\', \'feature_columns\', \'model_dir\', \'optimizer\', \'config\', \'partitioner\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'Ftrl\', \'None\', \'None\', \'sum\'], "
+    argspec: "args=[\'self\', \'head\', \'feature_columns\', \'model_dir\', \'optimizer\', \'config\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'Ftrl\', \'None\', \'sum\'], "
   }
   member_method {
     name: "eval_dir"

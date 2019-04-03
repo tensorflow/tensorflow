@@ -186,7 +186,8 @@ class GraphDefBuilderWrapper {
   // returns an InvalidArgumentError. If the function with name `function_name`
   // or any of its dependent functions are stateful, and the context does not
   // explicitly permit stateful functions, returns an InvalidArgument error.
-  Status AddFunction(SerializationContext* ctx, const string& function_name);
+  Status AddFunction(SerializationContext* ctx, const string& function_name,
+                     const FunctionLibraryDefinition& lib_def);
 
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
@@ -197,16 +198,17 @@ class GraphDefBuilderWrapper {
   void AddPlaceholderInternal(const Tensor& val, Node** output);
   void AddTensorInternal(const Tensor& val, Node** output);
 
-  Status EnsureFunctionIsStateless(const FunctionLibraryDefinition& flib_def,
-                                   const string& function_name) const {
-    const FunctionDef* function_def = flib_def.Find(function_name);
+  Status EnsureFunctionIsStateless(
+      const string& function_name,
+      const FunctionLibraryDefinition& lib_def) const {
+    const FunctionDef* function_def = lib_def.Find(function_name);
     if (!function_def) {
       return errors::InvalidArgument("Unable to find FunctionDef for ",
                                      function_name, " in registry.");
     }
     for (const NodeDef& node_def : function_def->node_def()) {
       const OpDef* op_def;
-      TF_RETURN_IF_ERROR(flib_def.LookUpOpDef(node_def.op(), &op_def));
+      TF_RETURN_IF_ERROR(lib_def.LookUpOpDef(node_def.op(), &op_def));
       // TODO(b/65524810): Hack to allow functions to capture Dataset op
       // nodes needed for FlatMap. Currently, source datasets nodes have been
       // marked stateful to avoid constant folding since we do not have a
@@ -248,12 +250,13 @@ class GraphDefBuilderWrapper {
   }
 
   Status AddAttrFunctions(SerializationContext* ctx,
-                          const AttrValue& attr_value) {
+                          const AttrValue& attr_value,
+                          const FunctionLibraryDefinition& lib_def) {
     if (attr_value.has_func()) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name(), lib_def));
     } else if (attr_value.has_list()) {
       for (const NameAttrList& name_attr_list : attr_value.list().func()) {
-        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
+        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name(), lib_def));
       }
     }
     return Status::OK();
@@ -282,7 +285,6 @@ class IteratorContext {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
           env(ctx->env()),
-          function_library(ctx->function_library()),
           lib(ctx->lib()),
           function_handle_cache(ctx->function_handle_cache()),
           resource_mgr(ctx->resource_mgr()),
@@ -317,10 +319,10 @@ class IteratorContext {
     // Interface to operating system functionality.
     Env* env = nullptr;
 
-    // The FunctionLibraryDefinition used to look up user-defined functions.
-    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
-
     // The FunctionLibraryRuntime object to be used to make function calls.
+    //
+    // TODO(jsimsa): Rename to `flr` and possibly consolidate with `lib_def`
+    // using `FunctionLibraryRuntimeOverlay`.
     FunctionLibraryRuntime* lib = nullptr;
 
     // A FunctionHandleCache that owns all the function handles. Not owned.
@@ -362,10 +364,6 @@ class IteratorContext {
   }
 
   Env* env() const { return params_.env; }
-
-  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
-    return params_.function_library;
-  }
 
   FunctionLibraryRuntime* lib() { return params_.lib; }
 
@@ -411,14 +409,11 @@ class IteratorContext {
 class SerializationContext {
  public:
   struct Params {
-    const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
     bool optimization_only = false;
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
-
-  const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
@@ -521,6 +516,12 @@ class IteratorBase {
   virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
+  }
+
+  // Returns the number of elements produced by this itertaor.
+  int64 num_elements() const {
+    if (node_) return node_->num_elements();
+    return 0;
   }
 
  private:
@@ -656,7 +657,10 @@ class DatasetBase : public core::RefCounted {
                       IteratorStateWriter* writer) const;
 
  protected:
-  friend class DatasetToGraphOp;  // For access to graph related members.
+  friend Status AsGraphDef(
+      OpKernelContext* ctx, DatasetBase* dataset,
+      GraphDef* graph_def);  // For access to graph related members.
+  friend class CapturedFunction;
 
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
