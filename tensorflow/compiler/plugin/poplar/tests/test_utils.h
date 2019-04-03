@@ -34,6 +34,14 @@ bool HasOperand(const HloInstruction* parent, const HloInstruction* arg) {
   return false;
 }
 
+bool HasOperandIn(const HloInstruction* parent,
+                  const std::set<const HloInstruction*> arg_list) {
+  for (const auto* inst : parent->operands()) {
+    if (arg_list.count(inst) == 1) return true;
+  }
+  return false;
+}
+
 namespace reference_util {
 // Implementations of 3D functions which are missing from the reference util.
 std::vector<float> Reduce3DTo1D(

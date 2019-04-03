@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/tests/test_utils.h"
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 #include "tensorflow/compiler/xla/test.h"
@@ -38,40 +39,38 @@ using ExpressionOutlinerTest = HloTestBase;
 //     c
 //     |
 TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, shape, "input3"));
-  auto in4 = builder.AddInstruction(
-      HloInstruction::CreateParameter(3, shape, "input4"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, in3, in4));
-  auto mul = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, add, sub));
-  builder.AddInstruction(HloInstruction::CreateTuple({mul}));
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] parameter(3)
+  add1 = f16[] add(a0, a1)
+  sub1 = f16[] subtract(a2, a3)
+  mul1 = f16[] multiply(add1, sub1), sharding={maximal device=1}
+  ROOT %tuple = (f16[]) tuple(mul1)
+}
+  )";
 
-  mul->set_sharding(HloSharding::AssignDevice(1));
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto computation = builder.Build();
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(module);
   ExpressionOutliner eo(annotations);
-  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
-  auto* comp = hlo_module->entry_computation();
+  auto* comp = module->entry_computation();
   auto* inst = comp->root_instruction();
 
   EXPECT_THAT(comp->instruction_count(), 6);
+  ASSERT_THAT(inst->operand_count(), 1);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(0)->operand_count(), 4);
   ASSERT_TRUE(inst->operand(0)->has_sharding());
@@ -87,33 +86,33 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
 //     c
 //     |
 TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, shape, "input3"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, in1, in3));
-  auto mul = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, add, sub));
-  builder.AddInstruction(HloInstruction::CreateTuple({mul}));
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  add1 = f16[] add(a0, a1)
+  sub1 = f16[] subtract(a0, a2)
+  mul1 = f16[] multiply(add1, sub1), sharding={maximal device=1}
+  ROOT %tuple = (f16[]) tuple(mul1)
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  CompilerAnnotations annotations(hlo_module.get());
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
   ExpressionOutliner eo(annotations);
-  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
-  auto* comp = hlo_module->entry_computation();
+  auto* comp = module->entry_computation();
   auto* inst = comp->root_instruction();
 
   EXPECT_THAT(comp->instruction_count(), 5);
@@ -123,34 +122,38 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
 
 // Don't outline a single operation
 TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
-  builder.AddInstruction(HloInstruction::CreateTuple({add}));
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  add1 = f16[] add(a0, a1)
+  ROOT %tuple = (f16[]) tuple(add1)
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  CompilerAnnotations annotations(hlo_module.get());
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
   ExpressionOutliner eo(annotations);
-  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
-  auto* comp = hlo_module->entry_computation();
+  auto* comp = module->entry_computation();
   auto* inst = comp->root_instruction();
 
   EXPECT_THAT(comp->instruction_count(), 4);
+  ASSERT_THAT(inst->operand_count(), 1);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kAdd);
 }
 
-// Test correct tree outlining in a DAG
+// Test correct tree outlining in a DAG (either a or b are not outlined)
 //
 //  i i i i
 //  \ / \ /
@@ -161,49 +164,51 @@ TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
 //  e
 //  |
 TEST_F(ExpressionOutlinerTest, OutlineTreeInDAG) {
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, shape, "input3"));
-  auto in4 = builder.AddInstruction(
-      HloInstruction::CreateParameter(3, shape, "input4"));
-  auto add_in1_in2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
-  auto add_in3_in4 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in3, in4));
-  auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add_in1_in2));
-  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape, HloOpcode::kAdd, add_in1_in2, add_in3_in4));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, sin, add));
-  builder.AddInstruction(HloInstruction::CreateTuple({sub}));
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] parameter(3)
+  add1 = f16[] add(a0, a1)
+  add2 = f16[] add(a2, a3)
+  sin1 = f16[] sine(add1)
+  sub1 = f16[] subtract(add1, add2)
+  mul1 = f16[] multiply(sin1, sub1), sharding={maximal device=1}
+  ROOT %tuple = (f16[]) tuple(mul1)
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  CompilerAnnotations annotations(hlo_module.get());
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
   ExpressionOutliner eo(annotations);
-  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
-  auto* comp = hlo_module->entry_computation();
+  auto* comp = module->entry_computation();
   auto* inst = comp->root_instruction();
+  auto* add1 = comp->GetInstructionWithName("add1");
+  auto* add2 = comp->GetInstructionWithName("add2");
 
   EXPECT_THAT(comp->instruction_count(), 7);
+  ASSERT_THAT(inst->operand_count(), 1);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(0)->operand_count(), 3);
-  EXPECT_TRUE(HasOperand(inst->operand(0), add_in1_in2));
+  EXPECT_TRUE(HasOperandIn(inst->operand(0), {add1, add2}));
 }
 
 // Don't outline op 'b' where 'X' is not part of the outline (only outline c+d)
 //
+//    i i
+//    \ /
 //     a
 //    / \
 //   b  c
@@ -211,37 +216,37 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeInDAG) {
 // X   d
 // |   |
 TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
-  auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
-  auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, cos, sin));
-  builder.AddInstruction(HloInstruction::CreateTuple({sub, cos}));
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  add1 = f16[] add(a0, a1)
+  sin1 = f16[] sine(add1)
+  cos1 = f16[] cosine(add1)
+  mul1 = f16[] multiply(sin1, cos1)
+  ROOT %tuple = (f16[], f16[]) tuple(mul1, cos1)
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  CompilerAnnotations annotations(hlo_module.get());
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
   ExpressionOutliner eo(annotations);
-  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
-  auto* comp = hlo_module->entry_computation();
+  auto* comp = module->entry_computation();
   auto* inst = comp->root_instruction();
 
   EXPECT_THAT(comp->instruction_count(), 6);
-  EXPECT_THAT(inst->operand_count(), 2);
+  ASSERT_THAT(inst->operand_count(), 2);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(0)->operand_count(), 2);
   EXPECT_THAT(inst->operand(1)->opcode(), HloOpcode::kCos);
@@ -249,41 +254,144 @@ TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
 
 // Do two independent outlines
 TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  std::string hlo_string = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, shape, "input2"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
-  auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, in1, in2));
-  auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
-  auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCos, sub));
-  builder.AddInstruction(HloInstruction::CreateTuple({sin, cos}));
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  mul1 = f16[] multiply(a0, a1)
+  sub1 = f16[] subtract(a0, a1)
+  sin1 = f16[] sine(mul1)
+  cos1 = f16[] cosine(sub1)
+  ROOT %tuple = (f16[], f16[]) tuple(sin1, cos1)
+}
+  )";
 
-  auto computation = builder.Build();
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
 
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
 
-  CompilerAnnotations annotations(hlo_module.get());
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
   ExpressionOutliner eo(annotations);
-  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
-  auto* comp = hlo_module->entry_computation();
+  auto* comp = module->entry_computation();
   auto* inst = comp->root_instruction();
 
   EXPECT_THAT(comp->instruction_count(), 5);
-  EXPECT_THAT(inst->operand_count(), 2);
+  ASSERT_THAT(inst->operand_count(), 2);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(0)->operand_count(), 2);
   EXPECT_THAT(inst->operand(1)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(1)->operand_count(), 2);
+}
+
+// Two independent networks outlined separately
+//
+//  i i  i i
+//  | |  | |
+//  a b  c d
+//  \ /  \ /
+//   e    f
+//   --\/--
+//     o
+TEST_F(ExpressionOutlinerTest, OutlineTwoExpressions) {
+  std::string hlo_string = R"(
+HloModule top
+
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] parameter(3)
+  sin1 = f16[] sine(a0)
+  sin2 = f16[] sine(a1)
+  sin3 = f16[] sine(a2)
+  sin4 = f16[] sine(a3)
+  sub1 = f16[] subtract(sin1, sin2)
+  sub2 = f16[] subtract(sin3, sin4)
+  ROOT %tuple = (f16[], f16[]) tuple(sub1, sub2)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
+  ExpressionOutliner eo(annotations);
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
+
+  auto* comp = module->entry_computation();
+  auto* inst = comp->root_instruction();
+
+  EXPECT_THAT(comp->instruction_count(), 7);
+  ASSERT_THAT(inst->operand_count(), 2);
+  EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
+  EXPECT_THAT(inst->operand(0)->operand_count(), 2);
+  EXPECT_THAT(inst->operand(1)->opcode(), HloOpcode::kCall);
+  EXPECT_THAT(inst->operand(1)->operand_count(), 2);
+}
+
+// Don't outline expressions on different shards
+//
+//  i i  i  i
+//  | |  |  |
+//  a b  c* d*
+//  \ /  \ /
+//   e    f*
+//   --\/--
+//     g
+//     |
+TEST_F(ExpressionOutlinerTest, DontOutlineDifferentShardsTogether) {
+  std::string hlo_string = R"(
+HloModule top
+
+%cluster_1  {
+  a0 = f16[] parameter(0)
+  a1 = f16[] parameter(1)
+  a2 = f16[] parameter(2)
+  a3 = f16[] parameter(3)
+  sin1 = f16[] sine(a0), sharding={maximal device=0}
+  sin2 = f16[] sine(a1), sharding={maximal device=0}
+  sin3 = f16[] sine(a2), sharding={maximal device=1}
+  sin4 = f16[] sine(a3), sharding={maximal device=1}
+  sub1 = f16[] subtract(sin1, sin2), sharding={maximal device=0}
+  sub2 = f16[] subtract(sin3, sin4), sharding={maximal device=1}
+  mul1 = f16[] multiply(sub1, sub2), sharding={maximal device=0}
+  ROOT %tuple = (f16[]) tuple(mul1)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
+  ExpressionOutliner eo(annotations);
+  EXPECT_TRUE(eo.Run(module).ValueOrDie());
+
+  auto* comp = module->entry_computation();
+  auto* inst = comp->root_instruction();
+
+  EXPECT_THAT(comp->instruction_count(), 7);
+  ASSERT_THAT(inst->operand_count(), 1);
+  EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
+  EXPECT_THAT(inst->operand(0)->operand_count(), 3);
+  EXPECT_THAT(inst->operand(0)->to_apply()->instruction_count(), 7);
 }
 
 }  // namespace

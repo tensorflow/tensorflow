@@ -187,6 +187,12 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
           ok_to_outline = false;
         }
 
+        if (inst->has_sharding() && op->has_sharding()) {
+          if (inst->sharding() != op->sharding()) {
+            ok_to_outline = false;
+          }
+        }
+
         bool all_users_ok = true;
         for (auto* user : op->users()) {
           all_users_ok &=
