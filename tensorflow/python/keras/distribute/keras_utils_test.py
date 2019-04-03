@@ -319,26 +319,19 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       combinations.combine(
           distribution=[strategy_combinations.one_device_strategy],
           mode=['graph']))
-  def test_distribution_strategy_with_add_metric_add_loss(self, distribution):
+  def test_distribution_strategy_with_add_metric(self, distribution):
     with distribution.scope():
       x = keras.layers.Input(shape=(1,))
       y = keras.layers.Dense(1, kernel_initializer='ones')(x)
 
       err_msg = (
           'We currently do not support compiling the model with distribution '
-          r'strategy if `model.add_loss\(tensor\)` or '
-          r'`model.add_metric\(tensor\)` has been called.')
+          r'strategy if `model.add_metric\(tensor\)` has been called.')
 
       # Test with add_metric.
       model = keras.models.Model(x, y)
       model.add_metric(
           math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.compile('sgd',)
-
-      # Test with add_loss.
-      model = keras.models.Model(x, y)
-      model.add_loss(math_ops.reduce_mean(y))
       with self.assertRaisesRegex(ValueError, err_msg):
         model.compile('sgd',)
 

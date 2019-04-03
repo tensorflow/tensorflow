@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import tf2
+from tensorflow.python.keras.engine.base_layer import AddLoss
 from tensorflow.python.keras.engine.base_layer import TensorFlowOpLayer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer

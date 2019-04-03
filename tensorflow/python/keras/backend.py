@@ -2821,19 +2821,21 @@ def get_value(x):
 
   Returns:
       A Numpy array.
-
-  Raises:
-      RuntimeError: If this method is called inside defun.
   """
+  if not tensor_util.is_tensor(x):
+    return x
   if context.executing_eagerly():
     return x.numpy()
-  elif not getattr(x, '_in_graph_mode', True):
+  if not getattr(x, '_in_graph_mode', True):
     # This is a variable which was created in an eager context, but is being
     # evaluated from a Graph.
     with context.eager_mode():
       return x.numpy()
-  elif ops.inside_function():
-    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
+
+  if ops.executing_eagerly_outside_functions():
+    # This method of evaluating works inside the Keras FuncGraph.
+    return function([], x)(x)
+
   return x.eval(session=get_session((x,)))
 
 

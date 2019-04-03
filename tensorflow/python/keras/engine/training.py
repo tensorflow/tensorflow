@@ -219,8 +219,7 @@ class Model(network.Network):
     if run_eagerly and getattr(self, '_contains_symbolic_tensors', False):
       raise ValueError(
           'We currently do not support enabling `run_eagerly` on compile if '
-          '`model.add_loss(tensor)` or `model.add_metric(tensor)` '
-          'has been called.')
+          '`model.add_metric(tensor)` has been called.')
 
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
@@ -265,8 +264,7 @@ class Model(network.Network):
       if getattr(self, '_contains_symbolic_tensors', False):
         raise ValueError(
             'We currently do not support compiling the model with distribution '
-            'strategy if `model.add_loss(tensor)` or `model.add_metric(tensor)`'
-            ' has been called.')
+            'strategy if `model.add_metric(tensor)` has been called.')
 
       if not self.built or not self.inputs or not self.outputs:
         raise ValueError(
@@ -1744,9 +1742,11 @@ class Model(network.Network):
           total_loss = 0.
 
       # Add regularization penalties and other layer-specific losses.
-      if self.losses:
+      custom_losses = self.get_losses_for(None) + self.get_losses_for(
+          self.inputs)
+      if custom_losses:
         total_loss += losses_utils.scale_loss_for_distribution(
-            math_ops.add_n(self.losses))
+            math_ops.add_n(custom_losses))
     return total_loss
 
   def _get_callback_model(self):
