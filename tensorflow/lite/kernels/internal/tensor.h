@@ -76,8 +76,7 @@ class VectorOfTensors {
   //   f[0][1] is the second element of the first tensor.
   // NOTE: This function should be called only in Eval/Invoke context
   T* const* data() {
-    for (std::vector<TfLiteTensor*>::iterator it = all_tensors_.begin();
-         it != all_tensors_.end(); ++it) {
+    for (auto it = all_tensors_.begin(); it != all_tensors_.end(); ++it) {
       all_data_.push_back(GetTensorData<T>(*it));
     }
     return all_data_.data();

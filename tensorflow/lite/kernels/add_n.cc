@@ -85,7 +85,7 @@ void EvalAddN(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   VectorOfTensors<T>* all_inputs =
       static_cast<VectorOfTensors<T>*>(data->all_inputs);
-  int num_inputs = data->num_inputs;
+  const int num_inputs = data->num_inputs;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
   reference_ops::AddN<T>(GetTensorShape(input1), num_inputs, all_inputs->data(),
