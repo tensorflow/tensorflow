@@ -87,7 +87,7 @@ git merge upstream/master --no-edit
   unit tests introduced from new commits upstream. Examine the reason behind
   those failed cases.
 - In case those cases can't be easily fixed, modify the bazel target for that
-  test to add the `no_rocm` and/or `no_cuda` tags to it.
+  test to add one more of the`no_rocm`, `no_rocm_v2`, `no_cuda` tags to it.
 
   For example:\
   for the test `//tensorflow/python/kernel_tests:conv_ops_test`\
@@ -95,6 +95,8 @@ git merge upstream/master --no-edit
   `tensorflow/python/kernel_tests/BUILD`.
   - Adding `tags = ["no_rocm",]` to that target, will result in removing this
     test from rocm* CI runs.
+  - Adding `tags = ["no_rocm_v2",]` to that target, will result in removing this
+    test from rocm-v2 CI run.
   - Adding `tags = ["no_cuda",]` to that target, will result in removing this
     test from cuda* CI runs.
   - Adding `tags = ["no_rocm","no_cuda",]` to that target, will result in
@@ -104,6 +106,7 @@ git merge upstream/master --no-edit
   how to add tags to a target
 
   Note that
+  - `no_rocm_v2` tag is for tests that pass when run with TF 1.X, but fail when run with TF 2.X
   - `no_cuda` tag is for "our" consumption only, it should not be upstreamed.
   - `no_gpu` tag is used to indicate which tests are excluded from GPU CI in the
     upstream repo. We should not add this tag to any tests.
