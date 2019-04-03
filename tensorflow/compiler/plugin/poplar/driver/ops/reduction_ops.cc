@@ -906,8 +906,6 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
-  poplar::Graph& graph = GetGraph(res, inst);
-
   // If we aren't part of a replicated graph, then it's just an identity op
   if (!res.replicated_graph) {
     for (int i = 0; i < inst->operand_count(); ++i) {
@@ -942,12 +940,12 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
       //  v itr       v p
       // [|i32,i32,i32|f16,f32,f16,f32,f16,f32]
       auto p = std::partition(itr, input_tensors_perm.end(), pred);
-
       // Create a concatenated and flattened tensor of the partitioned inputs
-      auto t = input_tensors[*itr].flatten();
-      for (auto i = itr + 1; i != p; ++i) {
-        t = poplar::concat(t, input_tensors[*i].flatten());
-      }
+      std::vector<poplar::Tensor> flat_tensors(std::distance(itr, p));
+      std::transform(itr, p, flat_tensors.begin(), [&](const uint32 idx) {
+        return input_tensors[idx].flatten();
+      });
+      auto t = poplar::concat(flat_tensors);
 
       // Replicated sum the concatenated tensor
       auto out = popops::replicatedAllReduce(

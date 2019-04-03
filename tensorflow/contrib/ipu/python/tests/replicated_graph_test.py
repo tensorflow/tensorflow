@@ -49,7 +49,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
     out = ipu_compiler.compile(my_graph, [inp])
 
-    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
     ipu.utils.configure_ipu_system(cfg)
@@ -79,7 +80,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
     out = ipu_compiler.compile(my_graph, [])
 
-    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
     ipu.utils.configure_ipu_system(cfg)
@@ -115,7 +117,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
     outfed = outfeed_queue.dequeue()
 
-    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
     ipu.utils.configure_ipu_system(cfg)
@@ -165,7 +168,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
     outfed = outfeed_queue.dequeue()
 
-    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
     ipu.utils.configure_ipu_system(cfg)
@@ -226,7 +230,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
     outfed = outfeed_queue.dequeue()
 
-    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
     ipu.utils.configure_ipu_system(cfg)
@@ -308,8 +313,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
         ]
 
     out = ipu_compiler.compile(my_graph, [])
-
-    cfg = ipu.utils.create_ipu_config(profiling=False)
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
     ipu.utils.configure_ipu_system(cfg)
