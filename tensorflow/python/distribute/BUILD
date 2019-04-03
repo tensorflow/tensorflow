@@ -676,6 +676,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
     ],
+    grpc_enabled = True,
 )
 
 py_library(

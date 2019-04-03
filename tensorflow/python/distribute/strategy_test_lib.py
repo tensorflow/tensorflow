@@ -25,17 +25,20 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
@@ -48,7 +51,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util import nest
-
 
 class _TestException(Exception):
   pass
@@ -467,6 +469,35 @@ class OneDeviceDistributionTestBase(test.TestCase):
         expected_grads,
         self.evaluate(strategy.experimental_local_results(
             strategy.experimental_run(step, inputs))))
+
+  def _test_device_and_input_device_are_colocated(self, strategy):
+    if context.executing_eagerly():
+      self.skipTest(
+          "cross-device tests are not supported with eager execution.")
+    workers, _ = test_util.create_local_cluster(2, 0)
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.range(5))
+    comm_fn = lambda x: x + 1
+    run_op = strategy.experimental_run(comm_fn, inputs)
+    with session_lib.Session(target=workers[1].target) as sess:
+      sess.run(inputs.initialize())
+      sess.run(run_op)
+
+  def _test_device_and_input_device_are_colocated_with_function(self, strategy):
+    if context.executing_eagerly():
+      self.skipTest(
+          "cross-device tests are not supported with eager execution.")
+    workers, _ = test_util.create_local_cluster(2, 0)
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.range(5))
+    comm_fn = lambda x: x + 1
+    experimental_run = def_function.function()(strategy.experimental_run)
+    with ops.device("/job:worker/replica:0/task:1/device:CPU:0"):
+      # The tf.function must be defined on the right device as well.
+      run_op = experimental_run(comm_fn, inputs)
+    with session_lib.Session(target=workers[1].target) as sess:
+      sess.run(inputs.initialize())
+      sess.run(run_op)
 
 
 class TwoDeviceDistributionTestBase(test.TestCase):
