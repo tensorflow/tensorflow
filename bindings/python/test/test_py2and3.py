@@ -308,6 +308,18 @@ class EdscTest(unittest.TestCase):
     self.assertIn("%true_2 = constant 1 : i1", code)
     self.assertIn("%8 = subi %true_2, %7 : i1", code)
 
+  def testDivisions(self):
+    with self.module.function_context(
+        "division", [self.indexType, self.i32Type, self.i32Type], []) as fun:
+      # indices only support floor division
+      fun.arg(0) // E.constant_index(42)
+      # regular values only support regular division
+      fun.arg(1) / fun.arg(2)
+
+    code = str(self.module)
+    self.assertIn("floordiv 42", code)
+    self.assertIn("divis %arg1, %arg2 : i32", code)
+
   def testCustom(self):
     with self.module.function_context("custom", [self.indexType, self.f32Type],
                                       []) as fun:

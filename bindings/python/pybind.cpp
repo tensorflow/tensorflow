@@ -1234,6 +1234,9 @@ PYBIND11_MODULE(pybind, m) {
         .def("__truediv__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value / rhs.value; })
+        .def("__floordiv__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return floorDiv(lhs, rhs); })
         .def("__mod__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value % rhs.value; })
