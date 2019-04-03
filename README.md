@@ -7,15 +7,6 @@ include the application of HPC techniques, along with integration of search
 algorithms like reinforcement learning. This project aims to reduce the cost to
 bring up new hardware, and improve usability for existing TensorFlow users.
 
-## What is this doc?
-
-Whereas the [MLIR draft specification](g3doc/LangRef.md) discusses the details
-of the IR in a dry style intended to be a long-lived reference document, this
-document discusses higher level issues. This includes:
-* How we see the IR being used
-* How the compiler will be implemented
-* What capabilities the IR enables
-
 ## More resources
 
 For more information on MLIR, please see:
