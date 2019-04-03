@@ -759,6 +759,7 @@ class Conv2DTest(test.TestCase):
                                    data_format=data_format,
                                    dtype=dtypes.float32)
 
+  @test_util.deprecated_graph_mode_only
   @test_util.run_cuda_only
   def testInputGradientGroupConv(self):
     for data_format in ["NCHW", "NHWC"]:
@@ -779,6 +780,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=True)
 
+  @test_util.deprecated_graph_mode_only
   @test_util.run_cuda_only
   def testFilterGradientGroupConv(self):
     for data_format in ["NCHW", "NHWC"]:
