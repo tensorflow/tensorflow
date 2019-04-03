@@ -53,11 +53,13 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
+#define GPU_GET_ERROR_STRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
 
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
+#define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif

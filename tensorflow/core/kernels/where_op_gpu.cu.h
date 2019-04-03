@@ -168,7 +168,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to calculate "
           "temp_storage_bytes, status: ",
-          GPUGETERRORSTRING(first_success));
+          GPU_GET_ERROR_STRING(first_success));
     }
 
     Tensor temp_storage;
@@ -187,7 +187,8 @@ struct NumTrue<GPUDevice, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to count "
           "number of true / nonzero indices.  temp_storage_bytes: ",
-          temp_storage_bytes, ", status: ", GPUGETERRORSTRING(second_success));
+          temp_storage_bytes, ", status: ",
+          GPU_GET_ERROR_STRING(second_success));
     }
 
     return Status::OK();
@@ -302,9 +303,10 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                  /*stream*/ cu_stream);
     if (first_success != gpuSuccess) {
       return errors::Internal(
-          "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to calculate "
+          "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to "
+          "calculate "
           "temp_storage_bytes, status: ",
-          GPUGETERRORSTRING(first_success));
+          GPU_GET_ERROR_STRING(first_success));
     }
 
     Tensor temp_storage;
@@ -324,7 +326,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to copy "
           "indices out, status: ",
-          GPUGETERRORSTRING(second_success));
+          GPU_GET_ERROR_STRING(second_success));
     }
 
     // TODO(ebrevdo): Find a way to synchronously copy back data from
