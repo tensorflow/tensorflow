@@ -2396,6 +2396,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       int32 diff = input_data[c] - input_zero_point;
       square_l2_norm += diff * diff;
     }
+    // TODO(b/29395854): add clamping to TOCO and TF Lite kernel
+    // for all zero tensors in the input_data
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
     GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
