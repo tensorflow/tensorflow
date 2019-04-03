@@ -158,6 +158,9 @@ def IsVectorOrTensorTypePred : CPred<"{0}.isa<VectorOrTensorType>()">;
 // Whether a type is a TupleType.
 def IsTupleTypePred : CPred<"{0}.isa<TupleType>()">;
 
+// Whether a type is a MemRefType.
+def IsMemRefTypePred : CPred<"{0}.isa<MemRefType>()">;
+
 // For a TensorType, verify that it is a statically shaped tensor.
 def IsStaticShapeTensorTypePred :
   CPred<"{0}.cast<TensorType>().hasStaticShape()">;
@@ -317,6 +320,26 @@ def F64Tensor  : TypedTensor<F64>;
 // ranks, or size. As Tuples can contain tensors, vectors, or scalar values
 // there is not only a single elemental type.
 def Tuple : Type<IsTupleTypePred, "tuple">;
+
+// Memref type.
+
+// Memrefs are blocks of data with fixed type and rank.
+class MemRef<Type t>
+    : ContainerType<t, IsMemRefTypePred,
+                    "{0}.cast<MemRefType>().getElementType()", "memref">;
+
+// Memref declarations handle any memref, independent of rank, size, (static or
+// dynamic), layout, or memory space.
+def I1MemRef  : MemRef<I1>;
+def I8MemRef  : MemRef<I8>;
+def I16MemRef : MemRef<I16>;
+def I32MemRef : MemRef<I32>;
+def I64MemRef : MemRef<I64>;
+
+def BF16MemRef : MemRef<BF16>;
+def F16MemRef  : MemRef<F16>;
+def F32MemRef  : MemRef<F32>;
+def F64MemRef  : MemRef<F64>;
 
 //===----------------------------------------------------------------------===//
 // Common type constraints
