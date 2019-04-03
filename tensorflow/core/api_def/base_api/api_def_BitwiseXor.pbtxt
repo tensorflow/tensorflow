@@ -17,7 +17,7 @@ for dtype in dtype_list:
   lhs = tf.constant([0, 5, 3, 14], dtype=dtype)
   rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
   exp = tf.constant([5, 5, 4, 5],  dtype=tf.float32)
-  
+
   res = bitwise_ops.bitwise_xor(lhs, rhs)
   tf.assert_equal(tf.cast(res, tf.float32), exp) # TRUE
 ```
