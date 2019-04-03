@@ -2,6 +2,7 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -75,5 +76,205 @@ distribute_py_test(
     ],
     deps = [
         ":distribute_strategy_test_lib",
+    ],
+)
+
+py_library(
+    name = "keras_correctness_test_lib",
+    srcs = [
+        "keras_correctness_test_base.py",
+        "keras_dnn_correctness_test.py",
+        "keras_embedding_model_correctness_test.py",
+        "keras_image_model_correctness_test.py",
+        "keras_lstm_model_correctness_test.py",
+        "keras_stateful_lstm_model_correctness_test.py",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_dnn_correctness_test",
+    size = "medium",
+    srcs = ["keras_dnn_correctness_test.py"],
+    full_precision = True,
+    main = "keras_dnn_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 19,
+    tags = [
+        "multi_and_single_gpu",
+        "no_gpu",  # b/129793413
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_embedding_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_embedding_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_embedding_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_gpu",  # b/129793413
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_image_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_image_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_image_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_gpu",  # b/129793413
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_lstm_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_lstm_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_lstm_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_gpu",  # b/129793413
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_stateful_lstm_model_correctness_test",
+    size = "medium",
+    srcs = ["keras_stateful_lstm_model_correctness_test.py"],
+    full_precision = True,
+    main = "keras_stateful_lstm_model_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 31,
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_utils_test",
+    srcs = ["keras_utils_test.py"],
+    full_precision = True,
+    main = "keras_utils_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_gpu",  # b/129793413
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_test_lib",
+        "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
+    ],
+)
+
+py_library(
+    name = "keras_test_lib",
+    srcs = [
+        "keras_utils_test.py",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_optimizer_v2_test",
+    srcs = ["keras_optimizer_v2_test.py"],
+    additional_deps = [
+        ":keras_test_lib",
+    ],
+    shard_count = 4,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
+        "tf_integration_test",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_two_input_layers_correctness_test",
+    size = "medium",
+    srcs = ["keras_two_input_layers_correctness_test.py"],
+    full_precision = True,
+    main = "keras_two_input_layers_correctness_test.py",
+    # Shard count is set to an odd number to distribute tasks across
+    # shards more evenly.
+    shard_count = 1,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        # TODO(b/129775793): Re-enable this test on TAP.
+        "notap",
+        "notsan",
+    ],
+    deps = [
+        ":keras_correctness_test_lib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
     ],
 )

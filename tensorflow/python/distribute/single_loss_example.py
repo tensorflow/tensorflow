@@ -17,9 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.contrib.distribute.python import step_fn
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import step_fn
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2

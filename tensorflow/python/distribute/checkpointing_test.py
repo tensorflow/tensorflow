@@ -21,7 +21,7 @@ import functools
 import os
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.contrib.distribute.python import tpu_strategy
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import training

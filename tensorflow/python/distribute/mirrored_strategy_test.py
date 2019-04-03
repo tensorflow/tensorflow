@@ -23,17 +23,17 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -946,12 +946,6 @@ class MirroredStrategyNameScopeTest(test.TestCase):
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.MirroredStrategy(
                     ["/device:GPU:0", "/device:GPU:1", "/device:CPU:0"]),
-                required_gpus=2),
-            combinations.NamedDistribution(
-                "CoreMirrored3Devices",
-                # pylint: disable=g-long-lambda
-                lambda: mirrored_strategy.CoreMirroredStrategy(
-                    ["/device:GPU:0", "/device:GPU:1", "/device:CPU:0"]),
                 required_gpus=2)
         ],
         mode=["graph", "eager"]))
@@ -1470,14 +1464,8 @@ class MirroredStrategyDefunTest(test.TestCase):
             combinations.NamedDistribution(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
-                lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=
-                                                           context.num_gpus()),
-                required_gpus=1),
-            combinations.NamedDistribution(
-                "CoreMirrored",
-                # pylint: disable=g-long-lambda
-                lambda: mirrored_strategy.CoreMirroredStrategy(
-                    mirrored_strategy.all_local_devices()),
+                lambda: mirrored_strategy.MirroredStrategy(mirrored_strategy.
+                                                           all_local_devices()),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1580,24 +1568,23 @@ class MultiWorkerMirroredStrategyTestWithChief(
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
   def testMinimizeLossGraph(self):
-    strategy = mirrored_strategy.MirroredStrategy(
-        num_gpus_per_worker=context.num_gpus())
+    strategy = mirrored_strategy.MirroredStrategy()
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
-  def testMinimizeLossGraphCoreMirroredStrategy(self):
-    strategy = mirrored_strategy.CoreMirroredStrategy(
+  def testMinimizeLossGraphMirroredStrategy(self):
+    strategy = mirrored_strategy.MirroredStrategy(
         mirrored_strategy.all_local_devices())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
-  def testMinimizeLossGraphCoreMirroredStrategyWithOneNode(self):
+  def testMinimizeLossGraphMirroredStrategyWithOneNode(self):
     cluster_spec = {}
     cluster_spec["chief"] = self._cluster_spec["chief"]
     tf_config = {"cluster": cluster_spec}
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):
-      strategy = mirrored_strategy.CoreMirroredStrategy()
+      strategy = mirrored_strategy.MirroredStrategy()
       self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                             cross_device_ops_lib.NcclAllReduce)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
@@ -1606,12 +1593,12 @@ class MultiWorkerMirroredStrategyTestWithChief(
     tf_config = {"cluster": self._cluster_spec}
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):
-      strategy = mirrored_strategy.CoreMirroredStrategy()
+      strategy = mirrored_strategy.MirroredStrategy()
       self.assertEqual(
           max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
 
   def testSummaryForReplicaZeroOnly(self):
-    strategy = mirrored_strategy.CoreMirroredStrategy(
+    strategy = mirrored_strategy.MirroredStrategy(
         mirrored_strategy.all_local_devices())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_summary_for_replica_zero_only(strategy)

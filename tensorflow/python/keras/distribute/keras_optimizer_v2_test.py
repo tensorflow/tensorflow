@@ -20,10 +20,10 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
-from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

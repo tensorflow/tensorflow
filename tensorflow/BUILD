@@ -422,7 +422,10 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//tensorflow/...",
+        "//tensorflow_estimator/python/estimator/...",
+    ],
 )
 
 load(

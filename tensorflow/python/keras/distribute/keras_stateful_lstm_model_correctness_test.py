@@ -18,11 +18,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow.contrib.distribute.python import keras_correctness_test_base
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
+from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.training import gradient_descent
 
 

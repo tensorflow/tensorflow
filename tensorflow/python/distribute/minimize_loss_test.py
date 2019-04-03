@@ -20,12 +20,12 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy
-from tensorflow.contrib.distribute.python.single_loss_example import batchnorm_example
-from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute.single_loss_example import batchnorm_example
+from tensorflow.python.distribute.single_loss_example import minimize_loss_example
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op

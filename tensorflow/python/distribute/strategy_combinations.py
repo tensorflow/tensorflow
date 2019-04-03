@@ -124,6 +124,9 @@ optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 graph_and_eager_modes = ["graph", "eager"]
 
 
+optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
+
+
 def distributions_and_v1_optimizers():
   """A common set of combination with DistributionStrategies and Optimizers."""
   return combinations.combine(

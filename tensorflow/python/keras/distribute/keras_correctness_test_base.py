@@ -21,13 +21,13 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 import six
-from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
@@ -286,7 +286,6 @@ def compare_results(results_with_ds, results_without_ds, distribution,
     # so use larger tolerance for now. Predict should be related to weights.
     if (isinstance(distribution, (
         mirrored_strategy.MirroredStrategy,
-        mirrored_strategy.CoreMirroredStrategy,
         distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance
@@ -374,6 +373,14 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def skip_unsupported_test_configuration(self, distribution):
     if should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
+
+    if context.executing_eagerly() and self.use_numpy:
+      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
+
+    if context.executing_eagerly() and self.use_validation_data:
+      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
+                    'data for eager execution.')
+    return
 
   def run_correctness_test(self,
                            distribution,

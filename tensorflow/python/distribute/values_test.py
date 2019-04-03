@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import os
 from absl.testing import parameterized
-from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context

@@ -22,14 +22,13 @@ import itertools
 
 from absl.testing import parameterized
 import numpy as np
-
-from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
@@ -376,16 +375,19 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
       cross_device_ops=[
           combinations.NamedObject(
               "MultiWorkerAllReduce",
-              cross_device_ops_lib.MultiWorkerAllReduce(
-                  worker_devices, 2, ("pscpu/pscpu", 2, -1), 0, 0, 0)),
+              cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
+                                                        ("pscpu/pscpu", 2, -1),
+                                                        0, 0, 0)),
           combinations.NamedObject(
               "MultiWorkerAllReducePack",
-              cross_device_ops_lib.MultiWorkerAllReduce(
-                  worker_devices, 2, ("pscpu/pscpu", 2, -1), 1, 0, 0)),
+              cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
+                                                        ("pscpu/pscpu", 2, -1),
+                                                        1, 0, 0)),
           combinations.NamedObject(
               "MultiWorkerAllReduceAggregation",
-              cross_device_ops_lib.MultiWorkerAllReduce(
-                  worker_devices, 2, ("pscpu/pscpu", 2, -1), 0, 100, 10)),
+              cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
+                                                        ("pscpu/pscpu", 2, -1),
+                                                        0, 100, 10)),
           combinations.NamedObject(
               "MultiWorkerAllReduceMultipleSpecs",
               cross_device_ops_lib.MultiWorkerAllReduce(
@@ -395,28 +397,16 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
       distribution=[
           combinations.NamedDistribution(
               "MirroredCPU",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=0),
+              lambda: mirrored_strategy.MirroredStrategy(["/device:CPU:0"]),
               required_gpus=0),
           combinations.NamedDistribution(
               "Mirrored1GPU",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=1),
+              lambda: mirrored_strategy.MirroredStrategy(["/device:GPU:0"]),
               required_gpus=1),
           combinations.NamedDistribution(
               "Mirrored2GPUs",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=2),
-              required_gpus=2),
-          # pylint: disable=g-long-lambda
-          combinations.NamedDistribution(
-              "CoreMirroredCPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:CPU:0"]),
-              required_gpus=0),
-          combinations.NamedDistribution(
-              "CoreMirrored1GPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:GPU:0"]),
-              required_gpus=1),
-          combinations.NamedDistribution(
-              "CoreMirrored2GPUs",
-              lambda: mirrored_strategy.CoreMirroredStrategy(
+              # pylint: disable=g-long-lambda
+              lambda: mirrored_strategy.MirroredStrategy(
                   ["/device:GPU:0", "/device:GPU:1"]),
               required_gpus=2),
       ],
@@ -472,10 +462,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
-        # Still using contrib CollectiveAllReduceStrategy because we can specify
-        # num_gpus in its constructor.
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-            num_gpus_per_worker=num_gpus)
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
         strategy.extended._collective_keys = collective_keys
         strategy.extended._cross_device_ops._collective_keys = collective_keys
         return strategy, devices, ""
@@ -495,8 +482,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         ]
 
       if use_strategy_object:
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-            num_gpus_per_worker=num_gpus)
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
         strategy.configure(
             cluster_spec=self._cluster_spec,
             task_type=task_type,
