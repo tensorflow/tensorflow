@@ -152,10 +152,30 @@ void RunInference(Settings* s) {
     LOG(INFO) << "number of inputs: " << inputs.size() << "\n";
     LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
   }
+#if defined(ANDROID) || defined(__ANDROID__)
+  TfLiteGpuDelegateOptions kMyOptions = {
+      .metadata = nullptr,
+      .compile_options =
+          {
+              .precision_loss_allowed = 0,
+              .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
+              .dynamic_batch_enabled = 0,
+          },
+  };
+  if (s->allow_fp16) kMyOptions.compile_options.precision_loss_allowed = 1;
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
+  TfLiteDelegate* delegate;
+  if (s->gl_backend) {
+    delegate = TfLiteGpuDelegateCreate(&kMyOptions);
+    if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return;
+  } else {
+#endif
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+      LOG(FATAL) << "Failed to allocate tensors!";
+    }
+#if defined(ANDROID) || defined(__ANDROID__)
   }
+#endif
 
   if (s->verbose) PrintInterpreterState(interpreter.get());
 
@@ -263,6 +283,7 @@ void display_usage() {
       << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
+      << "--gl_backend, -g: use GL GPU Delegate on Android\n"
       << "--input_mean, -b: input mean\n"
       << "--input_std, -s: input standard deviation\n"
       << "--image, -i: image_name.bmp\n"
@@ -295,12 +316,13 @@ int Main(int argc, char** argv) {
         {"input_std", required_argument, nullptr, 's'},
         {"num_results", required_argument, nullptr, 'r'},
         {"warmup_runs", required_argument, nullptr, 'w'},
+        {"gl_backend", required_argument, nullptr, 'g'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:p:r:s:t:v:", long_options,
+    c = getopt_long(argc, argv, "a:b:c:f:g:i:l:m:p:r:s:t:v:w:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -319,6 +341,10 @@ int Main(int argc, char** argv) {
         break;
       case 'f':
         s.allow_fp16 =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'g':
+        s.gl_backend =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'i':
