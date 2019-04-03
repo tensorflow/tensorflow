@@ -273,20 +273,6 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
 
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   CHECK(fbody);
-  const FunctionDef& fdef = fbody->fdef;
-  bool noinline = false;
-  if (GetNodeAttr(AttrSlice(&fdef.attr()), "_noinline", &noinline).ok() &&
-      noinline) {
-    // The underlying mechanism that calls non-inlined functions uses
-    // LocalExecutor, which interacts poorly with the LocalExecutor used by
-    // tf2xla to translate the TF graph into XLA.  So we avoid this for now.
-    //
-    // TODO(b/36139787): Create a mechanism to set inlining hints.
-    VLOG(2) << "Rejecting " << call_def.op()
-            << ": can't compile noinline function.";
-    return false;
-  }
-
   for (Node* node : fbody->graph->op_nodes()) {
     if (!IsCompilableNode(*node, depth + 1, lib_runtime)) {
       return false;

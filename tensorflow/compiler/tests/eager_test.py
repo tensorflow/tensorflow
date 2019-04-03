@@ -341,7 +341,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       var = f()
       self.assertEqual(1.0, var.numpy())
 
-  def DISALBED_testResourceVariableNoInlineReadWrite(self):
+  def testResourceVariableNoInlineReadWrite(self):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(1.0)
       w = resource_variable_ops.ResourceVariable(0.0)
@@ -359,8 +359,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertEqual(145.0, f().numpy())
       self.assertEqual(15.0, w.read_value().numpy())
 
-  # TODO(b/36139787)
-  def DISABLED_testResourceVariableNoInlineReadOnly(self):
+  def testResourceVariableNoInlineReadOnly(self):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(10.0)
 
@@ -374,8 +373,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       self.assertEqual(50.0, f().numpy())
 
-  # TODO(b/36139787)
-  def DISABLED_testResourceVariableNoInlineWriteOnly(self):
+  def testResourceVariableNoInlineWriteOnly(self):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(0.0)
 
