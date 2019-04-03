@@ -31,7 +31,10 @@ cc_library(
     srcs = [
         "llvm_target_features.cc",
     ],
-    hdrs = ["llvm_target_features.h"],
+    hdrs = [
+        "llvm_target_features.h",
+        "llvm_target_ir_builder.h",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@llvm//:support",
@@ -74,8 +77,7 @@ tf_cc_test(
 cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
-    hdrs = ["llvm_util.h",
-            "llvm_target_ir_builder.h",],
+    hdrs = ["llvm_util.h"],
     deps = [
         ":llvm_target_features",
         "//tensorflow/compiler/xla:literal",
@@ -156,8 +158,7 @@ cc_library(
 cc_library(
     name = "kernel_tiling",
     srcs = ["kernel_tiling.cc"],
-    hdrs = ["kernel_tiling.h", 
-            "llvm_target_ir_builder.h",],
+    hdrs = ["kernel_tiling.h"],
     deps = [
         ":ir_array",
         ":llvm_util",
