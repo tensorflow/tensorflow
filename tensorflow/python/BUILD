@@ -1093,6 +1093,22 @@ py_library(
     ],
 )
 
+py_library(
+    name = "composite_tensor_utils",
+    srcs = ["framework/composite_tensor_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":composite_tensor",
+        ":sparse_ops",
+        ":sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_concat_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
@@ -1106,6 +1122,23 @@ py_test(
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
+)
+
+tf_py_test(
+    name = "framework_composite_tensor_utils_test",
+    srcs = ["framework/composite_tensor_utils_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":composite_tensor",
+        ":composite_tensor_utils",
+        ":framework_test_lib",
+        ":sparse_ops",
+        ":sparse_tensor",
+        "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+    ],
+    main = "framework/composite_tensor_utils_test.py",
 )
 
 # This target is maintained separately from :util to provide separate visibility
@@ -1210,6 +1243,8 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
