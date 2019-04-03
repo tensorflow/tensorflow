@@ -1874,8 +1874,7 @@ def make_initializable_iterator(dataset, shared_name=None):
     return DatasetV1Adapter(dataset)._make_initializable_iterator(shared_name)  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Replace this method with a public API for reflecting on
-# dataset structure.
+@tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
   """Returns the `tf.data.experimental.Structure` of a `Dataset` or `Iterator`.
 
@@ -2170,6 +2169,34 @@ class _VariantDataset(DatasetV2):
   @property
   def _element_structure(self):
     return self._structure
+
+
+@tf_export("data.experimental.from_variant")
+def from_variant(variant, structure):
+  """Constructs a dataset from the given variant and structure.
+
+  Args:
+    variant: A scalar `tf.variant` tensor representing a dataset.
+    structure: A `tf.data.experimental.Structure` object representing the
+      structure of each element in the dataset.
+
+  Returns:
+    A `tf.data.Dataset` instance.
+  """
+  return _VariantDataset(variant, structure)  # pylint: disable=protected-access
+
+
+@tf_export("data.experimental.to_variant")
+def to_variant(dataset):
+  """Returns a variant representing the given dataset.
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A scalar `tf.variant` tensor representing the given dataset.
+  """
+  return dataset._variant_tensor  # pylint: disable=protected-access
 
 
 @tf_export("data.experimental.DatasetStructure")

@@ -117,12 +117,20 @@ tf_module {
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
+    name: "from_variant"
+    argspec: "args=[\'variant\', \'structure\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_next_as_optional"
     argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_single_element"
     argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_structure"
+    argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group_by_reducer"
@@ -187,6 +195,10 @@ tf_module {
   member_method {
     name: "take_while"
     argspec: "args=[\'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_variant"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unbatch"
