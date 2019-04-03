@@ -1,4 +1,4 @@
-//===- Ops.h - Linalg Ops single entry point ------------------------------===//
+//===- Intrinsics.h - Linalg intrinsics definitions -----------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,11 +15,17 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG3_OPS_H_
-#define LINALG3_OPS_H_
+#ifndef LINALG3_INTRINSICS_H_
+#define LINALG3_INTRINSICS_H_
 
-#include "linalg2/Ops.h"
-#include "linalg3/LoadStoreOps.h"
-#include "linalg3/TensorOps.h"
+#include "linalg2/Intrinsics.h"
+#include "linalg3/Ops.h"
 
-#endif // LINALG3_OPS_H_
+namespace linalg {
+namespace intrinsics {
+using load = mlir::edsc::intrinsics::ValueBuilder<LoadOp>;
+using store = mlir::edsc::intrinsics::OperationBuilder<StoreOp>;
+} // namespace intrinsics
+} // namespace linalg
+
+#endif // LINALG3_INTRINSICS_H_

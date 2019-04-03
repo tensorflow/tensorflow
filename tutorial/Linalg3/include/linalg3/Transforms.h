@@ -30,9 +30,16 @@ namespace linalg {
 /// to only use linalg.view operations.
 void composeSliceOps(mlir::Function *f);
 
-/// Traverses `f` and rewrites linalg.matmul (resp. linalg.matvec, linalg.dot)
-/// as linalg.matvec (resp. linalg.dot, loop form).
+/// Traverses `f` and rewrites linalg.load and linalg.store to affine.load and
+/// affine.store operations.
+void lowerLinalgLoadStores(mlir::Function *f);
+
+/// Traverses `f` and rewrites linalg.matmul (resp. linalg.matvec)
+/// as linalg.matvec (resp. linalg.dot).
 void lowerToFinerGrainedTensorContraction(mlir::Function *f);
+
+/// Traverses `f` and rewrites linalg operations in loop form.
+void lowerToLoops(mlir::Function *f);
 
 } // namespace linalg
 

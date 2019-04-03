@@ -1,4 +1,4 @@
-//===- Ops.h - Linalg Ops single entry point ------------------------------===//
+//===- Analysis.h - Linalg dialect Analysis function definitions ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,11 +15,23 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG3_OPS_H_
-#define LINALG3_OPS_H_
+#ifndef LINALG3_ANALYSIS_H_
+#define LINALG3_ANALYSIS_H_
 
-#include "linalg2/Ops.h"
-#include "linalg3/LoadStoreOps.h"
-#include "linalg3/TensorOps.h"
+#include "linalg2/Analysis.h"
 
-#endif // LINALG3_OPS_H_
+namespace mlir {
+class AffineMap;
+} // namespace mlir
+
+namespace linalg {
+
+/// Given a `map` specification and a subset of its results
+/// `[beginResult, endResult)`, returns the inverse map that maps result
+/// positions to dim positions.
+mlir::AffineMap inverseSubMap(mlir::AffineMap map, unsigned beginResult = 0,
+                              unsigned endResult = 0);
+
+} // namespace linalg
+
+#endif // LINALG3_ANALYSIS_H_

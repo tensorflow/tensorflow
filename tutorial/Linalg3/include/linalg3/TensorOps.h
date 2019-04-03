@@ -20,6 +20,32 @@
 
 #include "linalg2/TensorOps.h"
 
+namespace linalg {
+
+///
+/// Ideally all these functions would go in an Analysis but until
+/// TensorContractionBase is templated, they need to remain close enough.
+///
+
+/// Takes a `tensorContraction` and a returns an AffineMap that can be used to
+/// map ranges to enclosing loops for all the operands' ranges.
+template <class ConcreteOp>
+mlir::AffineMap operandRangesToLoopsMap(
+    linalg::TensorContractionBase<ConcreteOp> &tensorContraction);
+
+/// Takes a `tensorContraction` and returns the ranges of all its operands.
+/// When an operand comes from a ViewOp, things are simple:
+///   just traverse the indexings and get all the ranges
+///     (i.e. drop the rank-reducing indices).
+/// In the case of a SliceOp, things are more involved because we need to handle
+/// potential rank-reductions.
+/// This function abstracts this complexity away and returns all the ranges.
+template <class ConcreteOp>
+llvm::SmallVector<mlir::Value *, 8>
+getRanges(linalg::TensorContractionBase<ConcreteOp> &tensorContraction);
+
+} // namespace linalg
+
 /// The TensorOp-inl.h inclusion pattern is chosen to allow gradual extension of
 /// TensorOps by adding implementations as they are needed in the appropriate
 /// step in the tutorial.
