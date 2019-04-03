@@ -1310,8 +1310,13 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
         // If the data buffer is non-empty, we copy it into the context.
         ArrayRef<char> copy;
         if (!data.empty()) {
+          // Rounding up the allocate size to multiples of APINT_WORD_SIZE, so
+          // the `readBits` will not fail when it accesses multiples of
+          // APINT_WORD_SIZE each time.
+          size_t sizeToAllocate =
+              llvm::alignTo(data.size(), APInt::APINT_WORD_SIZE);
           auto *rawCopy =
-              (char *)impl.attributeAllocator.Allocate(data.size(), 64);
+              (char *)impl.attributeAllocator.Allocate(sizeToAllocate, 64);
           std::uninitialized_copy(data.begin(), data.end(), rawCopy);
           copy = {rawCopy, data.size()};
         }
