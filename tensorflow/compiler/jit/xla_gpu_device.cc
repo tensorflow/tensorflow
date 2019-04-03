@@ -67,7 +67,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
   registration.autoclustering_policy =
       XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.cluster_resource_variable_ops_unsafely = true;
-  registration.cluster_stack_ops = true;
+  registration.cluster_stack_ops = false;
   registration.cluster_tensor_array_ops = true;
   registration.cluster_stateful_rng_ops = true;
   registration.cluster_control_trigger = true;
