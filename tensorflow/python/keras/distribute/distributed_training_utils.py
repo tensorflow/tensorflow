@@ -565,8 +565,15 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   strategy = model._distribution_strategy
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
+
+  # When the inputs are dict, then we want to flatten it in the same order as
+  # the input layers, such that the data are fed into the input layers in the
+  # correct order.
+  if isinstance(inputs, dict):
+    inputs = [inputs[key] for key in model._feed_input_names]
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+
   # Expand 1-dimensional inputs.
   # TODO(b/124535720): Remove once this standarize data logic is shared with
   # main flow.

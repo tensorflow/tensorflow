@@ -825,9 +825,9 @@ class Layer(trackable.Trackable):
       if callable(loss):
         callable_losses.append(functools.partial(_tag_unconditional, loss))
       elif tf_utils.is_symbolic_tensor(loss):
-        symbolic_losses.append(loss)
+        symbolic_losses.append(_tag_unconditional(loss))
       elif tensor_util.is_tensor(loss):
-        eager_losses.append(loss)
+        eager_losses.append(_tag_unconditional(loss))
       elif loss is not None:  # `None` is valid but should be ignored.
         raise ValueError('Found non-Tensor loss: ' + str(loss))
 
@@ -843,7 +843,6 @@ class Layer(trackable.Trackable):
 
     if call_context:
       for symbolic_loss in symbolic_losses:
-        symbolic_loss._unconditional_loss = (inputs is None)
         self._losses.append(symbolic_loss)
     else:
       for symbolic_loss in symbolic_losses:
@@ -857,7 +856,6 @@ class Layer(trackable.Trackable):
           self._insert_layers(new_layers)
         else:
           # Possible a loss was added in a Layer's `build`.
-          symbolic_loss._unconditional_loss = (inputs is None)
           self._losses.append(symbolic_loss)
 
   @trackable.no_automatic_dependency_tracking
