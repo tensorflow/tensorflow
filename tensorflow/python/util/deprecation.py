@@ -626,5 +626,5 @@ class _HiddenTfApiAttribute(object):
 # For example, this is used in V2 Estimator to hide the deprecated
 # export_savedmodel method:
 #   class EstimatorV2(Estimator):
-#     exprot_savedmodel = deprecation.HIDDEN_ATTRIBUTE
+#     export_savedmodel = deprecation.HIDDEN_ATTRIBUTE
 HIDDEN_ATTRIBUTE = _HiddenTfApiAttribute()
