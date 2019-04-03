@@ -875,3 +875,17 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
     ],
 )
+
+distribute_py_test(
+    name = "zero_batch_test",
+    srcs = ["zero_batch_test.py"],
+    main = "zero_batch_test.py",
+    deps = [
+        ":mirrored_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
