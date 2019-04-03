@@ -55,7 +55,7 @@ TEST_FUNC(view_op) {
     v2 = view(A2, ArrayRef<ValueHandle>{r0, r0});
   some_consumer(ArrayRef<ValueHandle>{v0, v1, v2});
   ret();
-  // CHECK-LABEL: func @view_op(%arg0: index, %arg1: index, %arg2: index) {
+  // CHECK-LABEL: func @view_op
   //       CHECK:   %[[R:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
   //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[] : !linalg<"view<0xf32>">
   //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[%[[R]]] : !linalg<"view<f32>">

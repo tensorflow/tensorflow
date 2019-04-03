@@ -78,6 +78,10 @@ public:
   /// Returns the element Type of the ViewType of `getParentView()`.
   mlir::Type getParentElementType();
 
+  /// Returns true if the rank of the part view is greater than the rank of
+  /// the child view.
+  bool isRankDecreasing();
+
   // Get all the indexings in this slice.
   mlir::Operation::operand_range getIndexings();
 };

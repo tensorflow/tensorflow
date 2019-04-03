@@ -65,8 +65,7 @@ mlir::LogicalResult linalg::SliceOp::verify() {
     return emitOpError(
         "first operand must be of ViewType (i.e. a ViewOp or a SliceOp)");
   auto type = getOperand(1)->getType().dyn_cast<IndexType>();
-  auto *op = getOperand(1)->getDefiningOp();
-  auto range = op ? op->dyn_cast<RangeOp>() : RangeOp();
+  auto range = getOperand(1)->getType().dyn_cast<RangeType>();
   if (!range && !type)
     return emitOpError(
         "second operand must be of RangeType (i.e. a RangeOp) or IndexType");
@@ -124,6 +123,10 @@ unsigned linalg::SliceOp::getParentRank() {
 
 mlir::Type linalg::SliceOp::getParentElementType() {
   return getParentViewType().getElementType();
+}
+
+bool linalg::SliceOp::isRankDecreasing() {
+  return getParentRank() != getRank();
 }
 
 mlir::Operation::operand_range linalg::SliceOp::getIndexings() {
