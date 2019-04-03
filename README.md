@@ -94,6 +94,9 @@ cmake -G Ninja ../llvm/  -DLLVM_BUILD_EXAMPLES=ON
 ninja check-mlir
 ```
 
+As a starter, you may try [the tutorial](g3doc/Tutorials/Toy/Ch-1.md) on
+building a compiler for a Toy language.
+
 # MLIR talks {#talks}
 
 *   "[MLIR Primer: A Compiler Infrastructure for the End of Moore’s Law](https://drive.google.com/file/d/1hUeAJXcAXwz82RXA5VtO5ZoH8cVQhrOK/view?usp=sharing)",
