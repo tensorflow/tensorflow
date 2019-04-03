@@ -819,6 +819,12 @@ class TPUMirroredVariable(trackable.Trackable):
     device = device_util.canonicalize(device)
     return self._device_map.select_for_device(self._values, device)
 
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    raise NotImplementedError(
+        "numpy() is only available when eager execution is enabled.")
+
   @property
   def primary(self):
     """Returns a representative component."""
