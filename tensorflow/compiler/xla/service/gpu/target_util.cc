@@ -18,85 +18,259 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 
 #include "llvm/IR/MDBuilder.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
+
+
 namespace xla {
+
+using absl::StrAppend;
+
 namespace gpu {
 namespace {
 // Utility functions to obtain NVPTX/AMDGPU specific information.
+  struct TargetIntrinsicInfo {
+    TargetIntrinsicInfo() : intrinsic(llvm::Intrinsic::not_intrinsic) {}
+    TargetIntrinsicInfo(llvm::Intrinsic::ID x) : intrinsic(x) {}
+    llvm::Intrinsic::ID intrinsic;
+  };
+
+  struct TargetFunctionInfo {
+    TargetFunctionInfo() : callee_name(""), 
+                  input_types({ PRIMITIVE_TYPE_INVALID }),
+                  output_type(PRIMITIVE_TYPE_INVALID),
+                  use_bitcast(false) {}
+    TargetFunctionInfo(const string callee_name_) : callee_name(callee_name_), 
+                  input_types({ PRIMITIVE_TYPE_INVALID }),
+                  output_type(PRIMITIVE_TYPE_INVALID),
+                  use_bitcast(false) {}
+    TargetFunctionInfo(const string callee_name_, 
+                       absl::Span<const PrimitiveType> input_types_, 
+                       const PrimitiveType output_type_,
+                       bool use_bitcast_) : 
+                  callee_name(callee_name_), 
+                  input_types(input_types_),
+                  output_type(output_type_),
+                  use_bitcast(use_bitcast_) {}
+    const string callee_name;
+    absl::Span<const PrimitiveType> input_types;
+    PrimitiveType output_type;
+    bool use_bitcast;
+  } target_function_info; 
+
+struct TargetInfo {
+  struct TargetIntrinsicInfo target_intrinsic_info;
+  struct TargetFunctionInfo target_function_info; 
+  TargetInfo( struct TargetIntrinsicInfo x, struct TargetFunctionInfo y): 
+                     target_intrinsic_info(x), target_function_info(y) {}
+};
+
 
 // Wrapper structure for carrying llvm intrinsic ids for NVPTX/AMDGPU platforms.
-struct TargetIntrinsics {
-  llvm::Intrinsic::ID nvptx_intrinsic;
-  llvm::Intrinsic::ID amdgpu_intrinsic;
+struct MultipleTargetInfo {
+  struct TargetInfo nvptx_info;
+  struct TargetInfo amdgpu_info;
+  MultipleTargetInfo( struct TargetInfo x, struct TargetInfo y): 
+                     nvptx_info(x), amdgpu_info(y) {}
 };
 
 // Gets the llvm intrinsic ids on different platforms (NVPTX, AMDGPU)
 // corresponding to the give TargetIntrinsicID.
-struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
-  switch (intrin) {
-    case TargetIntrinsicID::kShflDownF32: {
-      return {llvm::Intrinsic::nvvm_shfl_sync_down_f32,
-              llvm::Intrinsic::not_intrinsic};
+struct MultipleTargetInfo GetTargetInfo(TargetFunctionID function_id) {
+  TargetFunctionInfo default_nvptx_function_info, default_amdgpu_function_info;
+  TargetIntrinsicInfo default_nvptx_intrinsic_info, default_amdgpu_intrinsic_info;
+  switch (function_id) {
+    case TargetFunctionID::kShflDownF32:{ 
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_shfl_sync_down_f32);
+      TargetFunctionInfo amdgpu_function_info(
+           "__ockl_readuplane" ,
+           { PRIMITIVE_TYPE_INVALID, S32, S32, PRIMITIVE_TYPE_INVALID}, 
+                  S32, true);
+
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(default_amdgpu_intrinsic_info, amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kShflDownI32: {
-      return {llvm::Intrinsic::nvvm_shfl_sync_down_i32,
-              llvm::Intrinsic::not_intrinsic};
+    case TargetFunctionID::kShflDownI32:{ 
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_shfl_sync_down_i32);
+      TargetFunctionInfo amdgpu_function_info(
+           "__ockl_readuplane" ,
+           { PRIMITIVE_TYPE_INVALID, S32, S32, PRIMITIVE_TYPE_INVALID}, 
+                  S32, true);
+
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(default_amdgpu_intrinsic_info, amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kThreadIdx: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
-              llvm::Intrinsic::amdgcn_workitem_id_x};
+    case TargetFunctionID::kThreadIdx: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x);
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workitem_id_x);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kThreadIdy: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y,
-              llvm::Intrinsic::amdgcn_workitem_id_y};
+
+    case TargetFunctionID::kThreadIdy: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y);
+
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workitem_id_y);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kThreadIdz: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z,
-              llvm::Intrinsic::amdgcn_workitem_id_z};
+
+    case TargetFunctionID::kThreadIdz: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z);
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workitem_id_z);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kBlockIdx: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
-              llvm::Intrinsic::amdgcn_workgroup_id_x};
+
+    case TargetFunctionID::kBlockIdx: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x);
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workgroup_id_x);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kBlockIdy: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y,
-              llvm::Intrinsic::amdgcn_workgroup_id_y};
+    case TargetFunctionID::kBlockIdy: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y);
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workgroup_id_y);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kBlockIdz: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z,
-              llvm::Intrinsic::amdgcn_workgroup_id_z};
+    case TargetFunctionID::kBlockIdz: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z);
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workgroup_id_z);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
-    case TargetIntrinsicID::kBarrierId: {
-      return {llvm::Intrinsic::nvvm_barrier0,
-              llvm::Intrinsic::amdgcn_s_barrier};
+    case TargetFunctionID::kBarrierId: {
+      TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_barrier0);
+      TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_s_barrier);
+      TargetInfo nvptx_info(nvptx_intrinsic_info, default_nvptx_function_info);
+      TargetInfo amdgpu_info(amdgpu_intrinsic_info, default_amdgpu_function_info);
+      return MultipleTargetInfo(nvptx_info, amdgpu_info);
     }
   }
 }
 }  // namespace
 
-llvm::CallInst* EmitCallToTargetIntrinsic(
-    TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
+llvm::Value* EmitCallToTargetFunction(
+    TargetFunctionID function_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes,
+    absl::Span<llvm::Type* const> overloaded_types,
+    llvm::IRBuilder<>* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
-  struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
+  struct MultipleTargetInfo all_gpu_info = GetTargetInfo(function_id);
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  llvm::Intrinsic::ID llvm_intrinsic_id = llvm::Intrinsic::not_intrinsic;
+  struct TargetInfo* gpu_info;
 
   if ((target_triple.getArch() == llvm::Triple::nvptx) ||
       (target_triple.getArch() == llvm::Triple::nvptx64)) {
-    llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
+    gpu_info  = &(all_gpu_info.nvptx_info);
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    llvm_intrinsic_id = gpu_intrinsic_id.amdgpu_intrinsic;
+    gpu_info  = &(all_gpu_info.amdgpu_info);
   } else {
     LOG(FATAL) << "Invalid triple " << target_triple.str();
   }
 
-  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
-      module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
-}
+  if (gpu_info->target_intrinsic_info.intrinsic
+      != llvm::Intrinsic::not_intrinsic){
+    llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+      module, gpu_info->target_intrinsic_info.intrinsic, llvm_ir::AsArrayRef(overloaded_types));
+    return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
+  }
+  else { 
+    std::vector<llvm::Value*> converted_operands;
+    std::vector<llvm::Type*> ir_input_types;
+    auto indices = gpu_info->target_function_info.input_types.size();
+    PrimitiveType from_type, to_type;
+    CHECK_EQ(input_types.size(), 
+       gpu_info->target_function_info.input_types.size());
+    CHECK_EQ(input_types.size(), operands.size());
+    for (unsigned int index = 0; index < operands.size(); ++index){
+     to_type = gpu_info->target_function_info.input_types[index];
+     from_type = input_types[index];
+    if (to_type == PRIMITIVE_TYPE_INVALID)
+      continue;
+     if (from_type == to_type){
+	converted_operands.push_back(const_cast<llvm::Value*>(operands[index]));
+     }
+     else if (gpu_info->target_function_info.use_bitcast){
+        converted_operands.push_back(b->CreateBitCast(operands[index],
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module)));
+     }
+     else if( primitive_util::IsFloatingPointType(from_type) && 
+             primitive_util::IsSignedIntegralType(to_type) ) {
+        converted_operands.push_back(b->CreateFPToSI(operands[index],
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module)));
+      }
+      else {
+       LOG(FATAL) << "unhandled conversion operation from " << PrimitiveType_Name(from_type) << "to" << PrimitiveType_Name(to_type);
+      }
+      ir_input_types.push_back(
+          llvm_ir::PrimitiveTypeToIrType(to_type, module));
+    }
+    llvm::FunctionType* callee_type = llvm::FunctionType::get(
+        llvm_ir::PrimitiveTypeToIrType(output_type, module),  // Return type.
+       ir_input_types,                                       // Parameter types.
+        false);  // No variadic arguments.
+
+   string munged_callee = gpu_info->target_function_info.callee_name;
+   switch (gpu_info->target_function_info.output_type) {
+    case S32:
+      StrAppend(&munged_callee, "_i32");
+      break;
+    case S64:
+      StrAppend(&munged_callee, "_i64");
+      break;
+    case F32:
+      StrAppend(&munged_callee, "_f32");
+      break;
+    case F64:
+      StrAppend(&munged_callee, "_f64");
+      break;
+    default:
+       LOG(FATAL) << "Bad Type " << PrimitiveType_Name(output_type) << "\n";
+   }
+    // Declares the callee if it is not declared already.
+    llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
+            b->GetInsertBlock()->getModule()->getOrInsertFunction(
+            llvm_ir::AsStringRef(munged_callee), callee_type).getCallee());
+    for (auto attribute : attributes) {
+      callee->addFnAttr(attribute);
+    }
+    llvm::Value* result =  b->CreateCall(callee, llvm_ir::AsArrayRef(converted_operands));
+
+    from_type = gpu_info->target_function_info.output_type;
+    to_type = output_type;
+    if (from_type == to_type){
+      return result;
+    }
+    else if (gpu_info->target_function_info.use_bitcast){
+        int bit_width = result->getType()->getPrimitiveSizeInBits();
+        llvm::Value* converted_result= b->CreateBitCast(result,
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module));
+        return converted_result;
+    }
+    else if( primitive_util::IsFloatingPointType(to_type) && 
+             primitive_util::IsSignedIntegralType(from_type) ) {
+        llvm::Value* converted_result= b->CreateSIToFP(result,
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module));
+        return converted_result;
+    }
+   }
+  }
 
 }  // namespace gpu
 }  // namespace xla

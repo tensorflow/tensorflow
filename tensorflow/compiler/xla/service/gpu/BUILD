@@ -153,6 +153,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
