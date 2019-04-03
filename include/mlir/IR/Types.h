@@ -34,7 +34,7 @@ class TypeStorage;
 
 namespace detail {
 struct FunctionTypeStorage;
-struct UnknownTypeStorage;
+struct OpaqueTypeStorage;
 } // namespace detail
 
 /// Instances of the Type class are immutable and uniqued.  They wrap a pointer
@@ -101,8 +101,8 @@ public:
   enum Kind {
     // Builtin types.
     Function,
-    Unknown,
-    LAST_BUILTIN_TYPE = Unknown,
+    Opaque,
+    LAST_BUILTIN_TYPE = Opaque,
 
   // Reserve type kinds for dialect specific type system extensions.
 #define DEFINE_TYPE_KIND_RANGE(Dialect)                                        \
@@ -280,37 +280,37 @@ public:
   static bool kindof(unsigned kind) { return kind == Kind::Function; }
 };
 
-/// Unknown types represent types of non-registered dialects. These are types
+/// Opaque types represent types of non-registered dialects. These are types
 /// represented in their raw string form, and can only usefully be tested for
 /// type equality.
-class UnknownType
-    : public Type::TypeBase<UnknownType, Type, detail::UnknownTypeStorage> {
+class OpaqueType
+    : public Type::TypeBase<OpaqueType, Type, detail::OpaqueTypeStorage> {
 public:
   using Base::Base;
 
-  /// Get or create a new UnknownType with the provided dialect and string data.
-  static UnknownType get(Identifier dialect, StringRef typeData,
-                         MLIRContext *context);
+  /// Get or create a new OpaqueType with the provided dialect and string data.
+  static OpaqueType get(Identifier dialect, StringRef typeData,
+                        MLIRContext *context);
 
-  /// Get or create a new UnknownType with the provided dialect and string data.
+  /// Get or create a new OpaqueType with the provided dialect and string data.
   /// If the given identifier is not a valid namespace for a dialect, then a
   /// null type is returned.
-  static UnknownType getChecked(Identifier dialect, StringRef typeData,
-                                MLIRContext *context, Location location);
+  static OpaqueType getChecked(Identifier dialect, StringRef typeData,
+                               MLIRContext *context, Location location);
 
-  /// Returns the dialect namespace of the unknown type.
+  /// Returns the dialect namespace of the opaque type.
   Identifier getDialectNamespace() const;
 
-  /// Returns the raw type data of the unknown type.
+  /// Returns the raw type data of the opaque type.
   StringRef getTypeData() const;
 
-  /// Verify the construction of an unknown type.
+  /// Verify the construction of an opaque type.
   static LogicalResult
   verifyConstructionInvariants(llvm::Optional<Location> loc,
                                MLIRContext *context, Identifier dialect,
                                StringRef typeData);
 
-  static bool kindof(unsigned kind) { return kind == Kind::Unknown; }
+  static bool kindof(unsigned kind) { return kind == Kind::Opaque; }
 };
 
 // Make Type hashable.

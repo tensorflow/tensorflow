@@ -495,8 +495,8 @@ private:
       }
       typeName += ">";
     }
-    return mlir::UnknownType::get(mlir::Identifier::get("toy", &context),
-                                  typeName, &context);
+    return mlir::OpaqueType::get(mlir::Identifier::get("toy", &context),
+                                 typeName, &context);
   }
 
   /// Build an MLIR type from a Toy AST variable type

@@ -278,7 +278,7 @@ public:
     // types. Dialects are expected to verify that tensor types have a valid
     // element type within that dialect.
     return type.isIntOrFloat() || type.isa<VectorType>() ||
-           type.isa<UnknownType>() ||
+           type.isa<OpaqueType>() ||
            (type.getKind() > Type::Kind::LAST_STANDARD_TYPE);
   }
 

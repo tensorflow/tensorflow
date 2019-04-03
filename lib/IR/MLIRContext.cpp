@@ -104,7 +104,7 @@ namespace {
 /// validity of the IR.
 struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
-    addTypes<FunctionType, UnknownType, FloatType, IndexType, IntegerType,
+    addTypes<FunctionType, OpaqueType, FloatType, IndexType, IntegerType,
              VectorType, RankedTensorType, UnrankedTensorType, MemRefType,
              ComplexType, TupleType>();
   }

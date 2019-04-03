@@ -526,9 +526,9 @@ Type Parser::parseExtendedType() {
     if (!result)
       return nullptr;
   } else {
-    // Otherwise, form a new unknown type.
-    result = UnknownType::getChecked(Identifier::get(identifier, state.context),
-                                     typeData, state.context, loc);
+    // Otherwise, form a new opaque type.
+    result = OpaqueType::getChecked(Identifier::get(identifier, state.context),
+                                    typeData, state.context, loc);
   }
 
   // Consume the '>'.

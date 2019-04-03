@@ -104,7 +104,7 @@ To build the `custom.operation` from the listing above, assuming you have a
 ```c++
 // The return type for the operation: `!another_dialect<"other_type">`
 auto another_dialect_prefix = mlir::Identifier::get("another_dialect", &context);
-auto returnType = mlir::UnknownType::get(another_dialect_prefix,
+auto returnType = mlir::OpaqueType::get(another_dialect_prefix,
                                          "custom_type", &context);
 // Creation of the state defining the operation:
 mlir::OperationState state(&context, location, "custom.operation");
@@ -128,7 +128,7 @@ mlir::Operation *createTransposeOp(FuncBuilder *builder,
   // We bundle our custom type in a `toy` dialect.
   auto toyDialect = mlir::Identifier::get("toy", builder->getContext());
   // Create a custom type, in the MLIR assembly it is:  !toy<"array<2, 2>">
-  auto type = mlir::UnknownType::get(toyDialect, "array<2, 2>", builder->getContext());
+  auto type = mlir::OpaqueType::get(toyDialect, "array<2, 2>", builder->getContext());
 
   // Fill the `OperationState` with the required fields
   mlir::OperationState result(builder->getContext(), location, "toy.transpose");

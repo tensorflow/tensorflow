@@ -719,10 +719,10 @@ void ModulePrinter::printType(Type type) {
     os << "\">";
     return;
   }
-  case Type::Kind::Unknown: {
-    auto unknownTy = type.cast<UnknownType>();
-    os << '!' << unknownTy.getDialectNamespace() << "<\""
-       << unknownTy.getTypeData() << "\">";
+  case Type::Kind::Opaque: {
+    auto opaqueTy = type.cast<OpaqueType>();
+    os << '!' << opaqueTy.getDialectNamespace() << "<\""
+       << opaqueTy.getTypeData() << "\">";
     return;
   }
   case StandardTypes::Index:

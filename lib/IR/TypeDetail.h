@@ -34,9 +34,9 @@ class MLIRContext;
 
 namespace detail {
 
-/// Unknown Type Storage and Uniquing.
-struct UnknownTypeStorage : public TypeStorage {
-  UnknownTypeStorage(Identifier dialectNamespace, StringRef typeData)
+/// Opaque Type Storage and Uniquing.
+struct OpaqueTypeStorage : public TypeStorage {
+  OpaqueTypeStorage(Identifier dialectNamespace, StringRef typeData)
       : dialectNamespace(dialectNamespace), typeData(typeData) {}
 
   /// The hash key used for uniquing.
@@ -45,17 +45,17 @@ struct UnknownTypeStorage : public TypeStorage {
     return key == KeyTy(dialectNamespace, typeData);
   }
 
-  static UnknownTypeStorage *construct(TypeStorageAllocator &allocator,
-                                       const KeyTy &key) {
+  static OpaqueTypeStorage *construct(TypeStorageAllocator &allocator,
+                                      const KeyTy &key) {
     StringRef tyData = allocator.copyInto(key.second);
-    return new (allocator.allocate<UnknownTypeStorage>())
-        UnknownTypeStorage(key.first, tyData);
+    return new (allocator.allocate<OpaqueTypeStorage>())
+        OpaqueTypeStorage(key.first, tyData);
   }
 
   // The unknown dialect namespace.
   Identifier dialectNamespace;
 
-  // The parser type data for this unknown type.
+  // The parser type data for this opaque type.
   StringRef typeData;
 };
 

@@ -50,28 +50,28 @@ ArrayRef<Type> FunctionType::getResults() const {
   return getImpl()->getResults();
 }
 
-/// UnknownType
+/// OpaqueType
 
-UnknownType UnknownType::get(Identifier dialect, StringRef typeData,
-                             MLIRContext *context) {
-  return Base::get(context, Type::Kind::Unknown, dialect, typeData);
+OpaqueType OpaqueType::get(Identifier dialect, StringRef typeData,
+                           MLIRContext *context) {
+  return Base::get(context, Type::Kind::Opaque, dialect, typeData);
 }
 
-UnknownType UnknownType::getChecked(Identifier dialect, StringRef typeData,
-                                    MLIRContext *context, Location location) {
-  return Base::getChecked(location, context, Kind::Unknown, dialect, typeData);
+OpaqueType OpaqueType::getChecked(Identifier dialect, StringRef typeData,
+                                  MLIRContext *context, Location location) {
+  return Base::getChecked(location, context, Kind::Opaque, dialect, typeData);
 }
 
-/// Returns the dialect namespace of the unknown type.
-Identifier UnknownType::getDialectNamespace() const {
+/// Returns the dialect namespace of the opaque type.
+Identifier OpaqueType::getDialectNamespace() const {
   return getImpl()->dialectNamespace;
 }
 
-/// Returns the raw type data of the unknown type.
-StringRef UnknownType::getTypeData() const { return getImpl()->typeData; }
+/// Returns the raw type data of the opaque type.
+StringRef OpaqueType::getTypeData() const { return getImpl()->typeData; }
 
-/// Verify the construction of an unknown type.
-LogicalResult UnknownType::verifyConstructionInvariants(
+/// Verify the construction of an opaque type.
+LogicalResult OpaqueType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
     StringRef typeData) {
   if (!Dialect::isValidNamespace(dialect.strref())) {

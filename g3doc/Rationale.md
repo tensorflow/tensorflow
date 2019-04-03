@@ -440,10 +440,10 @@ necessary for IR validity.
 
 MLIR supports unregistered operations in generic assembly form. MLIR also
 supports a similar concept for types. When parsing, if the dialect for dialect
-type has not been registered the type is modeled as an 'UnknownType'. This
-allows for types to be round-tripped without needing to link in the dialect
-library that defined them. No additional information about unknown types,
-outside of parsing/printing, will be available.
+type has not been registered the type is modeled as an 'OpaqueType'. This allows
+for types to be round-tripped without needing to link in the dialect library
+that defined them. No additional information about opaque types, outside of
+parsing/printing, will be available.
 
 #### Dialect type syntax
 

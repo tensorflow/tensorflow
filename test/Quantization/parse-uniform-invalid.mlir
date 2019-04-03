@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -split-input-file -verify
 
 // -----
-// Unknown type.
+// Invalid type.
 // expected-error@+1 {{unknown quantized type foobar}}
 !qalias = type !quant<"foobar">
 
