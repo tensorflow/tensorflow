@@ -164,7 +164,8 @@ $$
 
 ## Usage within MLIR {#usage-within-mlir}
 
-There are several components to the quantization system within MLIR:
+There are several components to the quantization system being developed within
+MLIR:
 
 *   *Quantization* dialect containing:
 
@@ -179,53 +180,35 @@ There are several components to the quantization system within MLIR:
         instrumentation points within the computation where runtime statistics
         may help guide the quantization process.
 
-*   *QuantizedMath* dialect containing:
+*   [Integration with simulated quantization at training time](#fake-quant)
+
+*   [TFLite native quantization](#tflite-native-quantization)
+
+    *   The TFLite op-set natively supports uniform-quantized variants.
+    *   Passes and tools exist to convert directly from the *TensorFlow* dialect
+        to the TFLite quantized op-set.
+
+*   [*FxpMath* dialect](#fxp-math-dialect) containing (experimental) generalized
+    representations of fixed-point math ops and conversions:
 
     *   [Real math ops](#real-math-ops) representing common combinations of
         arithmetic operations that closely match corresponding fixed-point math
         concepts (as opposed to being spread across multiple ops as is typical
         in source dialects).
-    *   [Fixed-point math ops](#fixed-point-math-ops) that for carrying out
-        computations on integers, as are typically needed by uniform
-        quantization schemes.
+    *   [Fixed-point math ops](#fxp-math-ops) that for carrying out computations
+        on integers, as are typically needed by uniform quantization schemes.
     *   Passes to lower from real math ops to fixed-point math ops.
 
-*   [Solver tools](#solver-tools) which can generically operate on computations
-    expressed in the *QuantizedMath* dialect in order to convert from floating
-    point types to appropriate *QuantizedTypes*, allowing the computation to be
-    further lowered to integral math ops.
+*   [Solver tools](#solver-tools) which can (experimentally and generically
+    operate on computations expressed in the *FxpMath* dialect in order to
+    convert from floating point types to appropriate *QuantizedTypes*, allowing
+    the computation to be further lowered to integral math ops.
 
 Not every application of quantization will use all facilities. Specifically, the
 TensorFlow to TensorFlow Lite conversion uses the QuantizedTypes but has its own
 ops for type conversion and expression of the backing math.
 
-## Interactions with simulated quantization at training time {#training-time}
-
-TensorFlow has historically used the
-[tf.quantization.fake_quant_\*](https://www.tensorflow.org/api_docs/python/tf/quantization/fake_quant_with_min_max_args)
-family of operations to simulate the effect of quantization at training time.
-
-As originally implemented, TensorFlow Lite was the primary user of such
-operations at inference time. When quantized inference was enabled, if every
-eligible tensor passed through an appropriate fake_quant node (the rules of
-which tensors can have fake_quant applied are somewhat involved), then
-TensorFlow Lite would use the attributes of the fake_quant ops to make a
-judgment about how to convert to use kernels from its quantized ops subset.
-
-In MLIR-based quantization, fake_quant_\* ops are handled by converting them to
-a sequence of *qcast* (quantize) followed by *dcast* (dequantize) with an
-appropriate *UniformQuantizedType* as the target of the qbarrier operation.
-
-This allows subsequent compiler passes to preserve the knowledge that
-quantization was simulated in a certain way while giving the compiler
-flexibility to move the barriers as it simplifies the computation and converts
-it to a form based on integral arithmetic.
-
-This scheme also naturally allows computations that are *partially quantized*
-where the parts which could not be reduced to integral ops are still carried out
-in floating point with appropriate conversions at the boundaries.
-
-## Quantization Dialect
+## Quantization Dialect {#quantization-dialect}
 
 ### Quantized type {#quantized-type}
 
@@ -251,7 +234,51 @@ TODO : These ops are not defined yet
     fixed-point values, underlying storage type, or whether to constrain to
     power of two scales.
 
-## QuantizedMath Dialect
+## Integration with simulated quantization at training time {#fake-quant}
+
+TensorFlow has historically used the
+[tf.quantization.fake_quant_\*](https://www.tensorflow.org/api_docs/python/tf/quantization/fake_quant_with_min_max_args)
+family of operations to simulate the effect of quantization at training time.
+
+As originally implemented, TensorFlow Lite was the primary user of such
+operations at inference time. When quantized inference was enabled, if every
+eligible tensor passed through an appropriate fake_quant node (the rules of
+which tensors can have fake_quant applied are somewhat involved), then
+TensorFlow Lite would use the attributes of the fake_quant ops to make a
+judgment about how to convert to use kernels from its quantized ops subset.
+
+In MLIR-based quantization, fake_quant_\* ops are handled by converting them to
+a sequence of *qcast* (quantize) followed by *dcast* (dequantize) with an
+appropriate *UniformQuantizedType* as the target of the qcast operation.
+
+This allows subsequent compiler passes to preserve the knowledge that
+quantization was simulated in a certain way while giving the compiler
+flexibility to move the casts as it simplifies the computation and converts it
+to a form based on integral arithmetic.
+
+This scheme also naturally allows computations that are *partially quantized*
+where the parts which could not be reduced to integral ops are still carried out
+in floating point with appropriate conversions at the boundaries.
+
+## TFLite Native Quantization {#tflite-native-quantization}
+
+TODO : Flesh this out
+
+### General algorithm
+
+1.  Take input min/max information and set the ArrayInfo (which really is
+    InputOrOutputArrayInfo.
+1.  In LegalizeTF, convert ArrayInfo min/max to tf.Quantize and tf.Dequantize
+    nodes. (or tf.FakeQuant) Convert all constant FakeQuants to (tf.FQ -> tfl.Q
+    -> tfl.DQ).
+1.  Hardcode logic/propagation needs to happen here.
+1.  Run TF constant folding.
+1.  In PrepareTFL, convert all tf.FQ to (tfl.Q -> tfl.DQ).
+1.  Run quantization pass that take (tfl.DQ (for both input and weights) -> op
+    -> tfl.Q) and replaces with (op). Also replace (constant_float -> tfl.Q)
+    with (constant_quant).
+
+## FxpMath Dialect {#fxp-math-dialect}
 
 ### Real math ops {#real-math-ops}
 
@@ -283,7 +310,7 @@ TODO: This op set is still evolving and needs to be completed.
     *   CMPLZ
     *   CMPGZ
 
-### Fixed-point math ops {#fixed-point-math-ops}
+### Fixed-point math ops {#fxp-math-ops}
 
 TODO: This op set only has enough ops to lower a simple power-of-two
 RealAddEwOp.
