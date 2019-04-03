@@ -30,7 +30,7 @@ namespace grappler {
 
 class AutoMixedPrecisionLists {
  private:
-  static void UpdateList(std::set<string>* list, const string& to_add,
+  static void UpdateList(gtl::FlatSet<string>* list, const string& to_add,
                          const string& to_remove) {
     for (auto x : str_util::Split(to_add, ",")) {
       list->insert(x);
@@ -51,7 +51,7 @@ class AutoMixedPrecisionLists {
  public:
   // Returns the set of ops that are considered numerically-safe (for execution
   // in fp16) and performance-critical. These ops are always converted to fp16.
-  static std::set<string> WhiteList() {
+  static gtl::FlatSet<string> WhiteList() {
     string to_add, to_remove;
     ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD",
                          "", &to_add);
@@ -59,7 +59,7 @@ class AutoMixedPrecisionLists {
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_REMOVE", "",
         &to_remove);
 
-    auto list = std::set<string> {
+    auto list = gtl::FlatSet<string> {
 #if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
       "BatchMatMul",
 #endif
@@ -88,9 +88,9 @@ class AutoMixedPrecisionLists {
 
   // Returns the set of ops that are considered numerically-safe (for execution
   // in fp16), but which may be made unsafe by an upstream blacklist op.
-  static std::set<string> GrayList() {
+  static gtl::FlatSet<string> GrayList() {
     if (IsPseudoFastMath()) {
-      return std::set<string>{};
+      return gtl::FlatSet<string>{};
     }
     string to_add, to_remove;
     ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_GRAYLIST_ADD",
@@ -99,7 +99,7 @@ class AutoMixedPrecisionLists {
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_GRAYLIST_REMOVE", "",
         &to_remove);
 
-    auto list = std::set<string>{
+    auto list = gtl::FlatSet<string>{
         "Add",
         "AddN",
         "AddV2",
@@ -140,9 +140,9 @@ class AutoMixedPrecisionLists {
   // Returns the set of ops that are considered numerically-dangerous (i.e.,
   // unsafe for execution in fp16) and whose effects may also be observed in
   // downstream nodes (e.g., in Exp -> Add, the Add is unsafe due to the Exp).
-  static std::set<string> BlackList() {
+  static gtl::FlatSet<string> BlackList() {
     if (IsPseudoFastMath()) {
-      return std::set<string>{};
+      return gtl::FlatSet<string>{};
     }
     string to_add, to_remove;
     ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_BLACKLIST_ADD",
@@ -151,7 +151,7 @@ class AutoMixedPrecisionLists {
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_BLACKLIST_REMOVE", "",
         &to_remove);
 
-    auto list = std::set<string>{
+    auto list = gtl::FlatSet<string>{
         "Exp",
         "Expm1",
         "L2Loss",
@@ -172,9 +172,9 @@ class AutoMixedPrecisionLists {
 
   // Returns the set of ops that do not have numerically-significant effects
   // (i.e., they are always considered safe for execution in fp16 precision).
-  static std::set<string> ClearList() {
+  static gtl::FlatSet<string> ClearList() {
     if (IsPseudoFastMath()) {
-      return std::set<string>{};
+      return gtl::FlatSet<string>{};
     }
     // Note: if a stateful op (such as StackPopV2) is added to the clearlist,
     // you must also modify the AutoMixedPrecisionImpl class to call
@@ -186,7 +186,7 @@ class AutoMixedPrecisionLists {
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_REMOVE", "",
         &to_remove);
 
-    auto list = std::set<string>{
+    auto list = gtl::FlatSet<string>{
         "Abs",
         "ArgMax",
         "ArgMin",

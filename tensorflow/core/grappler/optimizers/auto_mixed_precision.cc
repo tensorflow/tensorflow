@@ -850,12 +850,12 @@ NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_fp16,
   return node;
 }
 
-Status ValidateLists(const std::set<string>& white_list,
-                     const std::set<string>& black_list,
-                     const std::set<string>& gray_list,
-                     const std::set<string>& clear_list) {
-  std::vector<std::set<string>> lists{white_list, black_list, gray_list,
-                                      clear_list};
+Status ValidateLists(const gtl::FlatSet<string>& white_list,
+                     const gtl::FlatSet<string>& black_list,
+                     const gtl::FlatSet<string>& gray_list,
+                     const gtl::FlatSet<string>& clear_list) {
+  std::vector<gtl::FlatSet<string>> lists{white_list, black_list, gray_list,
+                                          clear_list};
   std::multiset<string> counts;
   for (auto list : lists) {
     counts.insert(list.begin(), list.end());
@@ -962,10 +962,10 @@ class AutoMixedPrecisionImpl {
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
-  std::set<string> fp16_whitelist_;
-  std::set<string> fp16_blacklist_;
-  std::set<string> fp16_graylist_;
-  std::set<string> fp16_clearlist_;
+  gtl::FlatSet<string> fp16_whitelist_;
+  gtl::FlatSet<string> fp16_blacklist_;
+  gtl::FlatSet<string> fp16_graylist_;
+  gtl::FlatSet<string> fp16_clearlist_;
   absl::flat_hash_set<const NodeDef*> should_process_nodes_;
 };
 
