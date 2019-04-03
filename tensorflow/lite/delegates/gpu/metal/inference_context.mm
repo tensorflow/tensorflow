@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "third_party/absl/strings/substitute.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
