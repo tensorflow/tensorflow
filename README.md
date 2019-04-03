@@ -7,6 +7,10 @@ include the application of HPC techniques, along with integration of search
 algorithms like reinforcement learning. This project aims to reduce the cost to
 bring up new hardware, and improve usability for existing TensorFlow users.
 
+Note that this repository contains the core of the MLIR framework, the
+Tensorflow compilers we are building on top of MLIR will be part of the
+main Tensorflow repository soon.
+
 ## More resources
 
 For more information on MLIR, please see:
