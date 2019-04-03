@@ -136,8 +136,8 @@ Module:
     } // Block
 ```
 
-You can reproduce this result and play with the example in the `examples/Ch1/`
-directory, try running `path/to/BUILD/bin/toyc test/ast.toy -emit=ast`.
+You can reproduce this result and play with the example in the `examples/toy/Ch1/`
+directory, try running `path/to/BUILD/bin/toyc-ch1 test/ast.toy -emit=ast`.
 
 The code for the lexer is fairly straighforward, it is all in a single header:
 `examples/toy/Ch1/include/toy/Lexer.h`. The parser can be found in
