@@ -24,9 +24,7 @@ high performance target specific code.
 MLIR stands for one of "Multi-Level IR" or "Multi-dimensional Loop IR" or
 "Machine Learning IR" or "Mid Level IR", we prefer the first. This document only
 provides the rationale behind MLIR -- its actual
-[specification document](LangRef.md),
-[system design documentation](https://docs.google.com/document/d/1yRqja94Da6NtKmPxSYtTx6xbUtughLANyeD7dZ7mOBM/edit#)
-and other content is hosted elsewhere.
+[specification document](LangRef.md) and other content is hosted elsewhere.
 
 ## Introduction and Motivation {#introduction-and-motivation}
 
@@ -716,7 +714,7 @@ multi-dimensional schedule information), discussed the benefits of schedule tree
 forms, and eventually decided to go with a syntactic tree of affine if/else
 conditionals and affine for loops. Discussion of the tradeoff was captured in
 this document:
-[ MLIR: The case for a simplified polyhedral form](https://docs.google.com/document/d/1OhVC19xOGpZPLYWu8lhQESQRYBo0SOcNl5tO29HuKXA/edit#).
+[ MLIR: The case for a simplified polyhedral form](RationaleSimplifiedPolyhedralForm.md).
 
 At a high level, we have two alternatives here:
 
