@@ -465,6 +465,9 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         dtypes.string, shape=(len(example_weights),))
     examples['example_ids'] = example_ids
     variables = make_variable_dict(1, 1)
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     for num_shards in _SHARD_NUMBERS:
       for num_loss_partitions in _NUM_LOSS_PARTITIONS:
         with self._single_threaded_test_session():

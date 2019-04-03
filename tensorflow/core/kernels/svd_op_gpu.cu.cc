@@ -196,14 +196,16 @@ class SvdOpGpu : public AsyncOpKernel {
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
       Cuda2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
-      ComputeValueOfVKernel<<<cfg2D.block_count, cfg2D.thread_per_block, 0,
-                              d.stream()>>>(
-          cfg2D, m, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(),
-          outputU_ptr, outputS_ptr, outputV_ptr);
+      TF_CHECK_OK(CudaLaunchKernel(ComputeValueOfVKernel<Scalar>,
+                                   cfg2D.block_count, cfg2D.thread_per_block, 0,
+                                   d.stream(), cfg2D, m, full_matrices_ ? m : p,
+                                   input_copy.flat<Scalar>().data(),
+                                   outputU_ptr, outputS_ptr, outputV_ptr));
       // 2. clamp V to -1 or +1
       CudaLaunchConfig cfg1D = GetCudaLaunchConfig(batch_size, d);
-      ExtractSignOfVKernel<<<cfg1D.block_count, cfg1D.thread_per_block, 0,
-                             d.stream()>>>(cfg1D, outputV_ptr);
+      TF_CHECK_OK(CudaLaunchKernel(ExtractSignOfVKernel<Scalar>,
+                                   cfg1D.block_count, cfg1D.thread_per_block, 0,
+                                   d.stream(), cfg1D, outputV_ptr));
     }
 
     if (compute_uv_) {

@@ -20,8 +20,8 @@ limitations under the License.
 namespace tflite {
 namespace logging_internal {
 
-void MinimalLogger::VLog(LogSeverity severity, const char* format,
-                         va_list args) {
+void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
+                                 va_list args) {
   fprintf(stderr, "%s: ", GetSeverityName(severity));
   vfprintf(stderr, format, args);
   fputc('\n', stderr);

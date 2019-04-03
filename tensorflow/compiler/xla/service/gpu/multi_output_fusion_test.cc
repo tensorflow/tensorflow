@@ -303,21 +303,21 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
-      p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
-      ROOT mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
+      p0.1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
+      ROOT mul = f32[8,1,5,16,1,2]{5,4,3,2,1,0} multiply(p0.1, p0.1)
     }
 
     fused_computation_2 {
-      p0.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
+      p0.2 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
       const.2 = f32[] constant(0)
-      ROOT reduce = f32[8,1,5,1,1]{4,3,2,1,0} reduce(p0.2, const.2), dimensions={3}, to_apply=scalar_add_computation
+      ROOT reduce = f32[1,5,1,2]{3,2,1,0} reduce(p0.2, const.2), dimensions={0,3}, to_apply=scalar_add_computation
     }
 
     ENTRY entry {
-      p0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
-      fusion.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[8,1,5,1,1]{4,3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
-      ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,1,1]{4,3,2,1,0}) tuple(fusion.1, fusion.2)
+      p0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
+      fusion.1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_1
+      fusion.2 = f32[1,5,1,2]{3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (f32[8,1,5,16,1,2]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0}) tuple(fusion.1, fusion.2)
     })"))
                     .ValueOrDie();
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
@@ -329,7 +329,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
       exp = f32[8,1,5,16,1,1]{5,4,3,2,1,0} exponential(p0.1)
-      ROOT tuple = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(mul, exp)
+      ROOT tuple = (f32[8,1,5,16,1,1]{5,4,3,2,1,0},
+        f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(mul, exp)
     }
 
     fused_computation_2 {
@@ -340,11 +341,16 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
 
     ENTRY entry {
       p0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
-      fusion.1 = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) fusion(p0), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      fusion.1 = (f32[8,1,5,16,1,1]{5,4,3,2,1,0},
+        f32[8,1,5,16,1,1]{5,4,3,2,1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      fusion.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation_2
       gte0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=0
       gte1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
-      ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(gte0, gte1, fusion.2)
+      ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0},
+        f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0})
+        tuple(gte0, gte1, fusion.2)
     })"))
                     .ValueOrDie();
   ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
@@ -360,25 +366,32 @@ TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingLoopAndMultiOutputLoopDifferentShapes) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
-      p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
-      mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
-      exp = f32[8,1,5,16,1,1]{5,4,3,2,1,0} exponential(p0.1)
-      ROOT tuple = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) tuple(mul, exp)
+      p0.1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
+      mul = f32[8,1,5,16,1,2]{5,4,3,2,1,0} multiply(p0.1, p0.1)
+      exp = f32[8,1,5,16,1,2]{5,4,3,2,1,0} exponential(p0.1)
+      ROOT tuple = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
+        f32[8,1,5,16,1,2]{5,4,3,2,1,0}) tuple(mul, exp)
     }
 
     fused_computation_2 {
-      p0.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
+      p0.2 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
       const.2 = f32[] constant(0)
-      ROOT reduce = f32[8,1,5,1,1]{4,3,2,1,0} reduce(p0.2, const.2), dimensions={3}, to_apply=scalar_add_computation
+      ROOT reduce = f32[1,5,1,2]{3,2,1,0} reduce(p0.2, const.2),
+        dimensions={0,3}, to_apply=scalar_add_computation
     }
 
     ENTRY entry {
-      p0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
-      fusion.1 = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}) fusion(p0), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[8,1,5,1,1]{4,3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
-      gte0 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=0
-      gte1 =  f32[8,1,5,16,1,1]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
-      ROOT root = (f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,1,1]{4,3,2,1,0}) tuple(gte0, gte1, fusion.2)
+      p0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} parameter(0)
+      fusion.1 = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
+        f32[8,1,5,16,1,1]{5,4,3,2,1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      fusion.2 = f32[8,1,5,1,2]{4,3,2,1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      gte0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
+      ROOT root = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
+        f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,1,1]{4,3,2,1,0})
+        tuple(gte0, gte1, fusion.2)
     })"))
                     .ValueOrDie();
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
@@ -437,7 +450,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
       broadcast = f32[2,2,2]{2,1,0} broadcast(f32[] c0), dimensions={}
-      greater-than = pred[2,2,2]{2,1,0} greater-than(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast)
+      greater-than = pred[2,2,2]{2,1,0} compare(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast), direction=GT
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       ROOT select = f32[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f32[2,2,2]{2,1,0} p0.1, f32[2,2,2]{2,1,0} broadcast)
     }
@@ -482,9 +495,12 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
 
     fused_reduce {
       p0.2 = f32[2,2,2]{2,1,0} parameter(0)
-      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2, f32[2,2,2]{2,1,0} p0.2)
+      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2,
+        f32[2,2,2]{2,1,0} p0.2)
+      broadcast = f32[2,2,2,2]{3,2,1,0} broadcast(mul), dimensions={3,2,1}
       c1 = f32[] constant(0)
-      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} mul, f32[] c1), dimensions={1}, to_apply=scalar_add_computation
+      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2,2]{3,2,1,0} broadcast,
+        f32[] c1), dimensions={1,3}, to_apply=scalar_add_computation
     }
 
     ENTRY reduce {
@@ -505,7 +521,7 @@ TEST_F(MultiOutputFusionTest,
       p1.1 = f16[2,2,2]{2,1,0} parameter(1)
       c0 = f16[] constant(0)
       broadcast = f16[2,2,2]{2,1,0} broadcast(f16[] c0), dimensions={}
-      greater-than = pred[2,2,2]{2,1,0} greater-than(f16[2,2,2]{2,1,0} p1.1, f16[2,2,2]{2,1,0} broadcast)
+      greater-than = pred[2,2,2]{2,1,0} compare(f16[2,2,2]{2,1,0} p1.1, f16[2,2,2]{2,1,0} broadcast), direction=GT
       p0.1 = f16[2,2,2]{2,1,0} parameter(0)
       ROOT select = f16[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f16[2,2,2]{2,1,0} p0.1, f16[2,2,2]{2,1,0} broadcast)
     }
@@ -548,7 +564,7 @@ TEST_F(MultiOutputFusionTest,
       copy = f16[128,1024,32,32]{1,3,2,0} copy(p1.1)
       c0 = f16[] constant(0)
       broadcast = f16[128,1024,32,32]{1,3,2,0} broadcast(c0), dimensions={}
-      greater-than = pred[128,1024,32,32]{1,3,2,0} greater-than(copy, broadcast)
+      greater-than = pred[128,1024,32,32]{1,3,2,0} compare(copy, broadcast), direction=GT
       ROOT root = f16[128,1024,32,32]{1,3,2,0} select(greater-than, p0.1, broadcast)
     }
     fused_reduce {

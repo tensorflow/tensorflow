@@ -535,6 +535,24 @@ FunctionDef RandomUniformLess() {
          {"shrink_axis_mask", 0}}}});
 }
 
+FunctionDef MakeTensorSliceDataset() {
+  return FDH::Define(
+      // Name
+      "MakeTensorSliceDataset",
+      // Args
+      {"x:Toutput_types"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"Toutput_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TensorSliceDataset",
+        {"x"},
+        {{"Toutput_types", "$Toutput_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
 void FunctionTestSchedClosure(std::function<void()> fn) {
   static thread::ThreadPool* w =
       new thread::ThreadPool(Env::Default(), "Test", 8);

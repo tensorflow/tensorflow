@@ -221,7 +221,7 @@ HloModule foobar
   %x = (f32[2,2], f32[2,2]) parameter(0)
   %constant.0 = s32[] constant(0)
   %constant.1 = s32[] constant(1)
-  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %constant.0)
+  ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %constant.0), direction=GT
 }
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
@@ -258,7 +258,7 @@ HloModule foobar
   %x = (f32[2,2], f32[2,2]) parameter(0)
   %constant.0 = s32[] constant(0)
   %constant.1 = s32[] constant(1)
-  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %constant.0)
+  ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %constant.0), direction=GT
 }
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
@@ -296,7 +296,7 @@ HloModule foobar
   %x = (f32[2,2], f32[2,2]) parameter(0)
   %constant.0 = s32[] constant(0)
   %constant.1 = s32[] constant(1)
-  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %constant.0)
+  ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %constant.0), direction=GT
 }
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {

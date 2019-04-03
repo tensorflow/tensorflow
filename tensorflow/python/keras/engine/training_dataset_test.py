@@ -294,7 +294,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     predict_dataset_dict = dataset_ops.Dataset.from_tensor_slices(
         input_dict)
     predict_dataset_dict = predict_dataset_dict.repeat(100)
-    predict_dataset_dict = dataset_dict.batch(10)
+    predict_dataset_dict = predict_dataset_dict.batch(10)
     model.predict(predict_dataset_dict, steps=1)
 
   @keras_parameterized.run_with_all_model_types

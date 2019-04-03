@@ -965,7 +965,7 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    ::tflite::LSTMKernelType kernel_type;
+    ::tflite::LSTMKernelType kernel_type = ::tflite::LSTMKernelType_FULL;
     switch (op.kernel_type) {
       case LstmCellOperator::KERNEL_BASIC:
         kernel_type = ::tflite::LSTMKernelType_BASIC;
@@ -973,6 +973,8 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
       case LstmCellOperator::KERNEL_FULL:
         kernel_type = ::tflite::LSTMKernelType_FULL;
         break;
+      default:
+        return -1;
     }
 
     // Current toco converter only supports tanh, no clip.
@@ -2474,7 +2476,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<ReverseSequence>(::tflite::BuiltinOperator_REVERSE_SEQUENCE,
                                   OperatorType::kReverseSequence));
-
+  ops.push_back(MakeUnique<SimpleOperator<MatrixDiagOperator>>(
+      "MATRIX_DIAG", OperatorType::kMatrixDiag));
+  ops.push_back(MakeUnique<SimpleOperator<MatrixSetDiagOperator>>(
+      "MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag));
   // Custom Operators.
   ops.push_back(
       MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));

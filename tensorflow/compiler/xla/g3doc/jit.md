@@ -144,7 +144,8 @@ Execute the python script to train the model with XLA and turn on a debugging
 feature of XLA via an environmental variable that outputs the XLA graph.
 
 ```shell
-XLA_FLAGS="--xla_hlo_graph_path=/tmp --xla_generate_hlo_graph=.*" python mnist_softmax_xla.py
+XLA_FLAGS="--xla_hlo_profile --xla_dump_to=/tmp/foo --xla_dump_hlo_as_text"
+python mnist_softmax_xla.py
 ```
 
 Open the timeline file created (`timeline.ctf.json`).  The rendered timeline
@@ -153,28 +154,10 @@ should look similar to the picture below with one long bar labeled `XlaLaunch`.
   <img style="width:100%" src="./images/jit_timeline_gpu_xla.png">
 </div>
 
-To understand what is happening in `XlaLaunch`, look at the console output for
-statements similar to the following:
+To understand what is happening in `XlaLaunch`, look at the console output. Each
+XLA cluster that's launched will have a corresponding profile (from
+`--xla_hlo_profile`) showing how long each HLO took to run.
 
-```shell
-computation cluster_0[_XlaCompiledKernel=true,_XlaNumConstantArgs=1].v82 [CPU:
-pipeline start, before inline]: /tmp/hlo_graph_0.dot
-
-```
-
-The console statements point to the location of `hlo_graph_xx.dot` files that
-contain information about the graph created by XLA. The process that XLA takes
-to fuse Ops is visible by starting at `hlo_graph_0.dot` and viewing each diagram
-in succession.
-
-To Render the .dot file into a png, install
-[GraphViz](https://www.graphviz.org/download/) and run:
-
-```shell
-dot -Tpng hlo_graph_80.dot -o hlo_graph_80.png
-```
-
-The result will look like the following:
-<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="./images/jit_gpu_xla_graph.png">
-</div>
+`/tmp/foo` will contain the HLO before and after optimizations for each HLO
+module that's run. You can read this as-is, or you can visualize it using
+`tensorflow/compiler/xla/tools:interactive_graphviz`.

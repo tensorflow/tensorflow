@@ -500,7 +500,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                     hipDeviceptr_t location,
                                                     uint8 value, size_t size) {
   ScopedActivateContext activation{context};
-  hipError_t res = tensorflow::wrap::hipMemset(location, value, size);
+  hipError_t res = tensorflow::wrap::hipMemsetD8(location, value, size);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -514,15 +514,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                      size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  unsigned char valueC = static_cast<unsigned char>(value);
-  uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC);
-  if (value32 != value) {
-    //  mismatch indicates case where hipMemsetAsyc can't emulate hipMemSetD32
-    LOG(ERROR) << "failed to memset memory";
-    return false;
-  }
-  hipError_t res = tensorflow::wrap::hipMemset(pointer, static_cast<int>(value),
-                                               uint32_count * 4);
+  hipError_t res = tensorflow::wrap::hipMemsetD32(pointer, value, uint32_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -553,17 +545,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                       GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-
-  // FIXME - need to set a 32-bit value here
-  unsigned char valueC = static_cast<unsigned char>(value);
-  uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC);
-  if (value32 != value) {
-    // mismatch indicates case where hipMemsetAsyc can't emulate hipMemSetD32
-    LOG(ERROR) << "failed to memset memory";
-    return false;
-  }
-  hipError_t res = tensorflow::wrap::hipMemsetAsync(pointer, value,
-                                                    uint32_count * 4, stream);
+  hipError_t res =
+      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -671,7 +654,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                              uint64 bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
-  hipError_t res = tensorflow::wrap::hipMallocVanilla(&result, bytes);
+  hipError_t res = tensorflow::wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to allocate "
                << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
@@ -717,8 +700,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = tensorflow::wrap::hipHostMallocVanilla(
-      &host_mem, bytes, hipHostMallocPortable);
+  hipError_t res =
+      tensorflow::wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to alloc " << bytes
                << " bytes on host: " << ToString(res);

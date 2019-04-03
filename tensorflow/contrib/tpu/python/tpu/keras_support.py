@@ -308,10 +308,11 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
-  mask = math_ops.to_float(
-      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id))
+  mask = math_ops.cast(
+      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id),
+      dtypes.float32)
   mask = array_ops.reshape(mask, [num_cores] + [1] * tensor.shape.ndims)
-  result = mask * math_ops.to_float(tensor)
+  result = mask * math_ops.cast(tensor, dtypes.float32)
   local_tensor_with_holes = array_ops.reshape(result,
                                               [-1] + result.shape.as_list()[2:])
   concat_tensor = tpu_ops.cross_replica_sum(local_tensor_with_holes)
@@ -1044,29 +1045,29 @@ class TPUFunction(object):
           # the Momentum optimizer) when _make_train_function is invoked.
           with keras_tpu_variables.replicated_variable_for_optimizer(
               self._tpu_assignment.num_towers):
-            self._cloned_model._make_fit_function()
+            self._cloned_model._make_train_function()
         else:
-          self._cloned_model._make_fit_function()
+          self._cloned_model._make_train_function()
 
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model._fit_function.outputs
+            for tensor in self._cloned_model.train_function.outputs
         ]
         return [
-            self._cloned_model._fit_function.updates_op,
+            self._cloned_model.train_function.updates_op,
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model._fit_function.outputs,
+                self._cloned_model.train_function.outputs,
                 name='outfeed-enqueue-train')
         ]
       elif is_test:
-        self._cloned_model._make_eval_function()
+        self._cloned_model._make_test_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model._eval_function.outputs
+            for tensor in self._cloned_model.test_function.outputs
         ]
         return [
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model._eval_function.outputs,
+                self._cloned_model.test_function.outputs,
                 name='outfeed-enqueue-test')
         ]
       elif is_predict:
@@ -1405,8 +1406,6 @@ class KerasTPUModel(models.Model):
     self.predict_function = None
     self.test_function = None
     self.train_function = None
-    self._fit_function = None
-    self._eval_function = None
     self._stateful_metric_functions = []
 
     cluster_resolver = strategy._tpu_cluster_resolver
@@ -2046,21 +2045,6 @@ class KerasTPUModel(models.Model):
       self.test_function = TPUFunction(
           self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
     return self.test_function
-
-  def _make_fit_function(self):
-    if not self._fit_function:
-      self._fit_function = TPUFunction(
-          self,
-          model_fn_lib.ModeKeys.TRAIN,
-          tpu_assignment=self._tpu_assignment)
-
-    return self._fit_function
-
-  def _make_eval_function(self):
-    if not self._eval_function:
-      self._eval_function = TPUFunction(
-          self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
-    return self._eval_function
 
   def _make_predict_function(self):
     if not self.predict_function:

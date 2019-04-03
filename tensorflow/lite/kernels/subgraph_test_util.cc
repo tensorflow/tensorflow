@@ -27,9 +27,11 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 // ADD and MUL are used to test simple branch.
+// ADD and MUL can be used to test dynamic sized subgraphs with the
+// use of IF op.
 TfLiteRegistration* Register_ADD();
 TfLiteRegistration* Register_MUL();
-// ADD and MUL are used to test dynamic sized subgraphs.
+// PAD is used to test dynamic sized subgraphs.
 TfLiteRegistration* Register_PAD();
 TfLiteRegistration* Register_LESS_EQUAL();
 }  // namespace builtin

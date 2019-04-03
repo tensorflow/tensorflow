@@ -55,7 +55,10 @@ class TestBenchmark : public BenchmarkTfLiteModel {
       : BenchmarkTfLiteModel(std::move(params)) {}
   const tflite::Interpreter* GetInterpreter() { return interpreter.get(); }
 
-  void Prepare() { PrepareInputsAndOutputs(); }
+  void Prepare() {
+    PrepareInputData();
+    ResetInputsAndOutputs();
+  }
 };
 
 TEST(BenchmarkTest, DoesntCrash) {

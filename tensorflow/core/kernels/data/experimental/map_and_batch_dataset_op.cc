@@ -60,6 +60,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
  protected:
@@ -84,15 +86,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
-
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       map_func = [](IteratorContext* ctx,
                     InstantiatedCapturedFunction* instantiated_captured_func,
                     const string& prefix, std::vector<Tensor> args,
@@ -102,7 +102,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             ctx, std::move(args), out_tensors.get(), std::move(done), prefix);
       };
     } else {
-      std::vector<bool> can_move = ComputeMoveVector(indices);
+      std::vector<bool> can_move = ComputeMoveVector(short_circuit_indices_);
+      const auto& indices = short_circuit_indices_;
       map_func = [raw_captured_func, indices, can_move](
                      IteratorContext* ctx,
                      InstantiatedCapturedFunction* instantiated_captured_func,
@@ -136,8 +137,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     *output = new Dataset(ctx, input, func_, batch_size, num_parallel_calls,
                           drop_remainder, output_types_, output_shapes_,
-                          std::move(captured_func), &ctx->eigen_cpu_device(),
-                          std::move(map_func), preserve_cardinality_);
+                          std::move(captured_func), std::move(map_func),
+                          preserve_cardinality_);
   }
 
  private:
@@ -149,7 +150,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func,
-            const Eigen::ThreadPoolDevice* device,
             MapAndBatchIteratorFunction map_func, bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
@@ -160,7 +160,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           captured_func_(std::move(captured_func)),
-          device_(device),
           map_func_(std::move(map_func)),
           preserve_cardinality_(preserve_cardinality) {
       input_->Ref();
@@ -200,7 +199,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* batch_size_node;
@@ -210,23 +208,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
       Node* drop_remainder_node;
       TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder_node));
-
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;
@@ -263,8 +248,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             max_batch_results_(std::min(kMaxBatchResults,
                                         (params.dataset->num_parallel_calls_ +
                                          params.dataset->batch_size_ - 1) /
-                                            params.dataset->batch_size_)) {
-      }
+                                            params.dataset->batch_size_)) {}
 
       ~Iterator() override {
         mutex_lock l(*mu_);
@@ -403,7 +387,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           stats_aggregator->AddScalar(
               stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
               static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value));
+                  static_cast<float>(num_parallel_calls_->value),
+              num_elements());
         }
         cond_var_->notify_all();
       }
@@ -649,7 +634,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 stats_utils::ThreadUtilizationScalarName(
                     dataset()->node_name()),
                 static_cast<float>(num_calls_) /
-                    static_cast<float>(num_parallel_calls_->value));
+                    static_cast<float>(num_parallel_calls_->value),
+                num_elements());
           }
           for (const auto& call : new_calls) {
             CallFunction(ctx, call.first, call.second);
@@ -815,7 +801,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const Eigen::ThreadPoolDevice* device_;  // not owned
     const MapAndBatchIteratorFunction map_func_;
     const bool preserve_cardinality_;
   };
@@ -824,6 +809,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
   bool preserve_cardinality_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(

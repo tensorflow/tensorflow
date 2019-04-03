@@ -206,6 +206,7 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
   util.maybe_set_lowering_attr(if_op)
+  util.maybe_propagate_compile_time_consts_in_xla(if_op)
 
   # Return identities for each output of the If op, rather than the output of
   # the If op directly. This makes pruning work if the output of cond() is

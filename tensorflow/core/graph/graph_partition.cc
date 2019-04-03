@@ -262,11 +262,34 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
   }
 
   // host_memory = true iff we need to use HostRecv/HostCast.
+  // Also log the introduction of the send-recv pair, for performance debugging.
   bool host_memory = false;
   if (!edge->IsControlEdge()) {
     auto dst_it = g_info.input_types.find({dst->id(), dst_port});
     DCHECK(dst_it != g_info.input_types.end());
     host_memory = (dst_it->second == HOST_MEMORY);
+    bool src_host_memory = false;
+    if (VLOG_IS_ON(1)) {
+      const int src_port = edge->src_output();
+      auto src_it = g_info.output_types.find({src->id(), src_port});
+      DCHECK(src_it != g_info.output_types.end());
+      src_host_memory = (src_it->second == HOST_MEMORY);
+    }
+    VLOG(1) << "Receiving data"
+            << " from " << src->name() << " (" << src->type_string() << ")"
+            << " on " << src->assigned_device_name() << " in "
+            << (src_host_memory ? "host memory" : "device memory") << " for "
+            << dst->name() << " (" << dst->type_string() << ")"
+            << " on " << dst->assigned_device_name() << " in "
+            << (host_memory ? "host memory" : "device memory");
+  } else {
+    // Log control-edge transfers too, but don't mention memory space since it's
+    // irrelevant.
+    VLOG(1) << "Receiving control"
+            << " from " << src->name() << " (" << src->type_string() << ")"
+            << " on " << src->assigned_device_name() << " for " << dst->name()
+            << " (" << dst->type_string() << ")"
+            << " on " << dst->assigned_device_name();
   }
 
   // Add the recv node.

@@ -63,6 +63,20 @@ cc_library(
 )
 
 cc_library(
+    name = "rocm_activation",
+    srcs = [],
+    hdrs = if_rocm_is_configured(["rocm_activation.h"]),
+    deps = if_rocm_is_configured([
+        ":rocm_driver",
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:stream_executor_internal",
+        "//tensorflow/stream_executor/gpu:gpu_activation",
+        "//tensorflow/stream_executor/platform",
+    ]),
+)
+
+cc_library(
     name = "rocm_event",
     srcs = if_rocm_is_configured(["rocm_event.cc"]),
     hdrs = [],
@@ -218,7 +232,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:logging_proto_cc",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
 namespace xla {
 namespace cpu {
@@ -30,6 +31,7 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
   // These are the only ones we fuse since we rely on effective elemental IR
   // generation.
   return hlo.IsElementwise() ||  //
+         hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
@@ -117,6 +119,14 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  // Don't fuse if fusing would cause too much code duplication because of
+  // inefficiencies in the fusion emitter.
+  // TODO(b/119692968): Remove this once the fusion emitter can handle
+  // arbitrary fusion nodes.
+  if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
+    return false;
+  }
+
   if (consumer->opcode() == HloOpcode::kDot) {
     // In the general case we call out to optimized "black box" GEMM routines
     // for Dot, which precludes fusion.  However, in very specific cases, we try
@@ -144,8 +154,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     }
   }
 
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  if (consumer->IsLoopFusion()) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
     return true;
   }

@@ -750,19 +750,18 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
   result.v = Mul(result.v, sign, broadcast_dims);
 
   d = BroadcastInDim(d, dimensions, broadcast_dims);
-  auto zero = Zero(builder, S32);
 
   // As m >= n, only first m columns vectors are needed to be permuted, and the
   // rest of m - n vectors are appended after the sorting is done.
   XlaOp sort_u_result =
-      Sort({-d, DynamicSliceInMinorDims(result.u, {zero, zero}, {m, n})},
+      Sort({-d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
            CreateScalarLtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
 
   // TODO(kuny): using CreateScalarGtComputation after b/124862300 is fixed.
   XlaOp sort_v_result =
-      Sort({DynamicSliceInMinorDims(-d, {zero, zero}, {n, n}), result.v},
+      Sort({SliceInMinorDims(-d, {0, 0}, {n, n}), result.v},
            CreateScalarLtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
@@ -779,12 +778,10 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
       broadcast_dims);
 
   // Append the rest of m - n vectors.
-  result.u =
-      ConcatInDim(builder,
-                  {GetTupleElement(sort_u_result, 1),
-                   DynamicSliceInMinorDims(
-                       result.u, {zero, ScalarLike(zero, n)}, {m, m - n})},
-                  num_dims - 1);
+  result.u = ConcatInDim(builder,
+                         {GetTupleElement(sort_u_result, 1),
+                          SliceInMinorDims(result.u, {0, n}, {m, m})},
+                         num_dims - 1);
   result.u = Mul(
       result.u,
       Rsqrt(Reduce(Square(result.u), ScalarLike(d, 0.0),

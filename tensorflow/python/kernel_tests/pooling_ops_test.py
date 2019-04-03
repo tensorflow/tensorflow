@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import numpy as np
 
@@ -37,6 +38,15 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+
+
+def GetDeviceScope(self, use_gpu=False):
+  if context.executing_eagerly():
+    if use_gpu and test.is_gpu_available():
+      return ops.device("GPU:0")
+    return ops.device("CPU:0")
+  else:
+    return self.session(use_gpu=use_gpu)
 
 
 def GetTestConfigs(include_nchw_vect_c=False):
@@ -802,12 +812,7 @@ class PoolingTest(test.TestCase):
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
-      def get_device_scope():
-        if context.executing_eagerly():
-          return ops.device("GPU:0")
-        else:
-          return self.cached_session(use_gpu=True)
-      with get_device_scope():
+      with self.cached_session(use_gpu=False):
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         argmax = self.evaluate(argmax_op)
@@ -835,12 +840,18 @@ class PoolingTest(test.TestCase):
         1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 1.0
     ]
-    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
-               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
-               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
 
-    for use_gpu, include_batch_in_index, argmax_exp in configs:
-      with self.session(use_gpu=use_gpu):
+    Config = collections.namedtuple(
+        "Config", ["use_gpu", "include_batch_in_index", "argmax"])
+    configs = [
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8]),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17]),
+        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8]),
+        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17])
+    ]
+
+    for config in configs:
+      with GetDeviceScope(self, use_gpu=config.use_gpu):
         t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
         out_op, argmax_op = nn_ops.max_pool_with_argmax(
             t,
@@ -848,13 +859,13 @@ class PoolingTest(test.TestCase):
             strides=[1, 1, 1, 1],
             Targmax=dtypes.int64,
             padding="VALID",
-            include_batch_in_index=include_batch_in_index)
+            include_batch_in_index=config.include_batch_in_index)
         out, argmax = self.evaluate([out_op, argmax_op])
         self.assertShapeEqual(out, out_op)
         self.assertShapeEqual(argmax, argmax_op)
         self.assertAllClose(out.ravel(),
                             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-        self.assertAllEqual(argmax.ravel(), argmax_exp)
+        self.assertAllEqual(argmax.ravel(), config.argmax)
 
   def testMaxPoolingGradWithArgmax(self):
     orig_input = [
@@ -863,16 +874,21 @@ class PoolingTest(test.TestCase):
     ]
     tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
 
-    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
-               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
-               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
+    Config = collections.namedtuple(
+        "Config", ["use_gpu", "include_batch_in_index", "argmax"])
+    configs = [
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8]),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17]),
+        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8]),
+        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17])
+    ]
 
-    for use_gpu, include_batch_in_index, argmax in configs:
-      with self.session(use_gpu=use_gpu):
+    for config in configs:
+      with GetDeviceScope(self, config.use_gpu):
         orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
         t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
         argmax_t = constant_op.constant(
-            argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
+            config.argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
         out_op = gen_nn_ops.max_pool_grad_with_argmax(
             orig_in,
             t,
@@ -880,7 +896,7 @@ class PoolingTest(test.TestCase):
             ksize=[1, 2, 2, 1],
             strides=[1, 1, 1, 1],
             padding="VALID",
-            include_batch_in_index=include_batch_in_index)
+            include_batch_in_index=config.include_batch_in_index)
         out = self.evaluate(out_op).flatten()
         self.assertAllClose(out, [
             11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0, 21.0, 0.0, 22.0,
@@ -899,22 +915,31 @@ class PoolingTest(test.TestCase):
         11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 21.0, 22.0, 23.0,
         24.0, 25.0, 26.0, 27.0, 28.0, 29.0
     ]
-    tensor_argmax = list(np.array([0, 1, 3, 5, 0, 2, 6, 8], dtype=np.int64))
-    with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
-      argmax = constant_op.constant(
-          tensor_argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
-      out_op = gen_nn_ops.max_pool_grad_grad_with_argmax(
-          orig_in,
-          t,
-          argmax,
-          ksize=[1, 2, 2, 1],
-          strides=[1, 1, 1, 1],
-          padding="VALID",
-          include_batch_in_index=False)
-      out = self.evaluate(out_op).flatten()
-      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0, 21.0, 23.0, 27.0, 29.0])
+
+    Config = collections.namedtuple(
+        "Config", ["use_gpu", "include_batch_in_index", "argmax"])
+    configs = [
+        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8]),
+        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17])
+    ]
+
+    for config in configs:
+      with GetDeviceScope(self, config.use_gpu):
+        orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+        t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
+        argmax_t = constant_op.constant(
+            config.argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
+        out_op = gen_nn_ops.max_pool_grad_grad_with_argmax(
+            orig_in,
+            t,
+            argmax_t,
+            ksize=[1, 2, 2, 1],
+            strides=[1, 1, 1, 1],
+            padding="VALID",
+            include_batch_in_index=config.include_batch_in_index)
+        out = self.evaluate(out_op).flatten()
+        self.assertAllClose(out,
+                            [11.0, 12.0, 14.0, 16.0, 21.0, 23.0, 27.0, 29.0])
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
@@ -1932,19 +1957,9 @@ if __name__ == "__main__":
        padding_) in GetShrunkInceptionMaxPoolShapes():
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
-    if name_ == "maxpool5":
-      setattr(
-          PoolingTest, "testMaxPoolGrad_" + name_,
-          test_util.run_deprecated_v1(
-              test_util.disable_xla(
-                  "b/123926014: incorrect output with only constants")(
-                      GetMaxPoolGradTest(input_size_, filter_size_,
-                                         output_size_, stride_, padding_))))
-    else:
-      setattr(
-          PoolingTest, "testMaxPoolGrad_" + name_,
-          GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
-                             padding_))
+    setattr(PoolingTest, "testMaxPoolGrad_" + name_,
+            GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
+                               padding_))
     setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
             GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
                                    stride_, padding_))

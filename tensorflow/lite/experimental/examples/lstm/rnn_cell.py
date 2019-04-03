@@ -107,7 +107,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     input_depth = inputs_shape[-1]
 
     def add_variable_wrapped(name, shape, initializer, index):
-      var = self.add_variable(name, shape=shape, initializer=initializer)
+      var = self.add_weight(name, shape=shape, initializer=initializer)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
 
@@ -308,7 +308,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     bias_shape = [self._num_units]
 
     def add_variable_wrapped(name, shape, initializer, index, partitioner):
-      var = self.add_variable(
+      var = self.add_weight(
           name, shape=shape, initializer=initializer, partitioner=partitioner)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
@@ -318,6 +318,8 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
       bias_initializer = init_ops.zeros_initializer
     else:
       bias_initializer = init_ops.zeros_initializer(dtype=self.dtype)
+
+    forget_bias_initializer = init_ops.constant_initializer(self._forget_bias)
 
     self.input_to_input_w = add_variable_wrapped(
         "input_to_input_w", input_weight_shape, weight_initializer, 1,
@@ -346,8 +348,9 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
 
     self.input_bias = add_variable_wrapped(
         "input_bias", bias_shape, bias_initializer, 12, maybe_partitioner)
-    self.forget_bias = add_variable_wrapped(
-        "forget_bias", bias_shape, bias_initializer, 13, maybe_partitioner)
+    self.forget_bias = add_variable_wrapped("forget_bias", bias_shape,
+                                            forget_bias_initializer, 13,
+                                            maybe_partitioner)
     self.cell_bias = add_variable_wrapped(
         "cell_bias", bias_shape, bias_initializer, 14, maybe_partitioner)
     self.output_bias = add_variable_wrapped(
@@ -433,9 +436,9 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
         aggregate="first",
         index_override=18)
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.shape.with_rank(2)[1]
     if input_size.value is None:
-      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+      raise ValueError("Could not infer input size from inputs.shape[-1]")
 
     inputs_and_m_prev = array_ops.concat([inputs, m_prev], axis=1)
 
@@ -473,12 +476,10 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     # Diagonal connections
     if self._use_peepholes:
       c = (
-          sigmoid(f + self._forget_bias + self._w_f_diag * c_prev) * c_prev +
+          sigmoid(f + self._w_f_diag * c_prev) * c_prev +
           sigmoid(i + self._w_i_diag * c_prev) * self._activation(j))
     else:
-      c = (
-          sigmoid(f + self._forget_bias) * c_prev +
-          sigmoid(i) * self._activation(j))
+      c = (sigmoid(f) * c_prev + sigmoid(i) * self._activation(j))
 
     if self._cell_clip is not None:
       # pylint: disable=invalid-unary-operand-type

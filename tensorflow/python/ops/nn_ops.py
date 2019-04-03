@@ -1754,9 +1754,10 @@ def conv1d_transpose(
 
     input = array_ops.expand_dims(input, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
-    output_shape = list(output_shape)
-    output_shape = output_shape[: spatial_start_dim] + [1] + \
-                   output_shape[spatial_start_dim:]
+    output_shape = list(output_shape) if not isinstance(
+        output_shape, ops.Tensor) else output_shape
+    output_shape = array_ops.concat([output_shape[: spatial_start_dim], [1],
+                                     output_shape[spatial_start_dim:]], 0)
 
     result = gen_nn_ops.conv2d_backprop_input(
         input_sizes=output_shape,
@@ -2599,10 +2600,12 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if output_shape is not None:
+    if isinstance(output_shape, collections.Sized):
       n = len(output_shape) - 2
+    elif isinstance(output_shape, ops.Tensor):
+      n = output_shape.shape[0] - 2
     else:
-      raise ValueError("output_shape cannot be None")
+      raise ValueError("output_shape must be a tensor or sized collection.")
 
     if not 1 <= n <= 3:
       raise ValueError(
@@ -2755,7 +2758,7 @@ def leaky_relu(features, alpha=0.2, name=None):
   with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
-      features = math_ops.to_float(features)
+      features = math_ops.cast(features, dtypes.float32)
     if compat.forward_compatible(2018, 11, 1):
       if isinstance(alpha, np.ndarray):
         alpha = alpha.item()
@@ -3240,7 +3243,7 @@ def softmax_cross_entropy_with_logits(
       labels=labels, logits=logits, axis=dim, name=name)
 
 
-@tf_export("nn.sparse_softmax_cross_entropy_with_logits")
+@tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
 def sparse_softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
@@ -3362,6 +3365,58 @@ def sparse_softmax_cross_entropy_with_logits(
         return math_ops.cast(cost, dtypes.float16)
       else:
         return cost
+
+
+@tf_export("nn.sparse_softmax_cross_entropy_with_logits", v1=[])
+def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
+  """Computes sparse softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**  For this operation, the probability of a given label is considered
+  exclusive.  That is, soft classes are not allowed, and the `labels` vector
+  must provide a single specific index for the true class for each row of
+  `logits` (each minibatch entry).  For soft softmax classification with
+  a probability distribution for each entry, see
+  `softmax_cross_entropy_with_logits_v2`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  A common use case is to have logits of shape
+  `[batch_size, num_classes]` and have labels of shape
+  `[batch_size]`, but higher dimensions are supported, in which
+  case the `dim`-th dimension is assumed to be of size `num_classes`.
+  `logits` must have the dtype of `float16`, `float32`, or `float64`, and
+  `labels` must have the dtype of `int32` or `int64`.
+
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
+  Args:
+    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+      `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
+      must be an index in `[0, num_classes)`. Other values will raise an
+      exception when this op is run on CPU, and return `NaN` for corresponding
+      loss and gradient rows on GPU.
+    logits: Unscaled log probabilities of shape `[d_0, d_1, ..., d_{r-1},
+      num_classes]` and dtype `float16`, `float32`, or `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same shape as `labels` and of the same type as `logits`
+    with the softmax cross entropy loss.
+
+  Raises:
+    ValueError: If logits are scalars (need to have rank >= 1) or if the rank
+      of the labels is not equal to the rank of the logits minus one.
+  """
+  return sparse_softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits, name=name)
 
 
 @tf_export("nn.avg_pool", v1=["nn.avg_pool_v2"])
@@ -4203,7 +4258,9 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
 
 
 def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
-  r"""Finds values of the `n`-th order statistic for the last dmension.
+  r"""Finds values of the `n`-th smallest value for the last dimension.
+
+  Note that n is zero-indexed.
 
   If the input is a vector (rank-1), finds the entries which is the nth-smallest
   value in the vector and outputs their values as scalar tensor.

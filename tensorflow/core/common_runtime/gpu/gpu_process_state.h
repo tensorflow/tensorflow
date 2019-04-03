@@ -83,7 +83,7 @@ class GPUProcessState {
   virtual Allocator* GetGPUAllocator(const GPUOptions& options,
                                      TfGpuId tf_gpu_id, size_t total_bytes);
 
-  virtual Allocator* GetCUDAHostAllocator(int numa_node);
+  virtual Allocator* GetGpuHostAllocator(int numa_node);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by the
   // SubAllocator of every GPU proximate to the specified bus.  The AllocVisitor
@@ -98,14 +98,14 @@ class GPUProcessState {
                                   const SubAllocator::Visitor& visitor);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by
-  // the SubAllocator of the CUDAHostAllocator for the given numa_node.
-  virtual void AddCUDAHostAllocVisitor(int numa_node,
-                                       const SubAllocator::Visitor& visitor);
+  // the SubAllocator of the GpuHostAllocator for the given numa_node.
+  virtual void AddGpuHostAllocVisitor(int numa_node,
+                                      const SubAllocator::Visitor& visitor);
 
   // Registers a Visitor to be invoked on each chunk handed back for freeing to
-  // the SubAllocator of the CUDAHostAllocator for the given numa_node.
-  virtual void AddCUDAHostFreeVisitor(int numa_node,
-                                      const SubAllocator::Visitor& visitor);
+  // the SubAllocator of the GpuHostAllocator for the given numa_node.
+  virtual void AddGpuHostFreeVisitor(int numa_node,
+                                     const SubAllocator::Visitor& visitor);
 
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(TfGpuId tf_gpu_id);
@@ -143,10 +143,10 @@ class GPUProcessState {
   std::vector<AllocatorParts> gpu_allocators_ GUARDED_BY(mu_);
   std::vector<std::vector<SubAllocator::Visitor>> gpu_visitors_ GUARDED_BY(mu_);
 
-  std::vector<AllocatorParts> cuda_host_allocators_ GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>> cuda_host_alloc_visitors_
+  std::vector<AllocatorParts> gpu_host_allocators_ GUARDED_BY(mu_);
+  std::vector<std::vector<SubAllocator::Visitor>> gpu_host_alloc_visitors_
       GUARDED_BY(mu_);
-  std::vector<std::vector<SubAllocator::Visitor>> cuda_host_free_visitors_
+  std::vector<std::vector<SubAllocator::Visitor>> gpu_host_free_visitors_
       GUARDED_BY(mu_);
 };
 

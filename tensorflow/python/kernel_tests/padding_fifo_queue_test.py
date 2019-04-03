@@ -120,6 +120,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertEqual(4, q.size().eval())
 
   def testParallelEnqueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
@@ -146,6 +149,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
@@ -184,6 +190,9 @@ class PaddingFIFOQueueTest(test.TestCase):
         self.assertEqual([elems[i]], vals)
 
   def testEnqueueAndBlockingDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(3, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0]
@@ -627,6 +636,9 @@ class PaddingFIFOQueueTest(test.TestCase):
         self.evaluate(dequeued_t)
 
   def testParallelEnqueueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(1000, dtypes_lib.float32, shapes=((),))
       elems = [10.0 * x for x in range(100)]
@@ -646,6 +658,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertItemsEqual(dequeued_t.eval(), elems * 10)
 
   def testParallelDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(1000, dtypes_lib.float32, shapes=((),))
       elems = [10.0 * x for x in range(1000)]
@@ -668,6 +683,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelDequeueUpTo(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(1000, dtypes_lib.float32, shapes=((),))
       elems = [10.0 * x for x in range(1000)]
@@ -692,6 +710,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelEnqueueAndDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(50, dtypes_lib.float32, shapes=((),))
       initial_elements = [10.0] * 49
@@ -795,6 +816,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -822,6 +846,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertAllEqual(elems, dequeued_elems)
 
   def testBlockingDequeueUpTo(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -892,6 +919,9 @@ class PaddingFIFOQueueTest(test.TestCase):
         self.evaluate(dequeued_t)
 
   def testBlockingDequeueFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -940,6 +970,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       close_op = q.close()
@@ -960,6 +993,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueManyFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -985,6 +1021,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueManyButNotAllFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1010,6 +1049,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testEnqueueManyLargerThanCapacityWithConcurrentDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(4, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1080,6 +1122,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingDequeueManyFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       close_op = q.close()
@@ -1100,6 +1145,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueUpToFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),))
       close_op = q.close()
@@ -1147,6 +1195,9 @@ class PaddingFIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(4, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1170,6 +1221,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       thread.join()
 
   def testBlockingEnqueueManyToFullQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(4, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1197,6 +1251,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       thread.join()
 
   def testBlockingEnqueueBeforeClose(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(4, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1234,6 +1291,9 @@ class PaddingFIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingEnqueueManyBeforeClose(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PaddingFIFOQueue(4, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0]
@@ -1360,7 +1420,7 @@ class PaddingFIFOQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(
             data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),)))
@@ -1397,6 +1457,9 @@ class PaddingFIFOQueueTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testResetOfBlockingOperation(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q_empty = data_flow_ops.PaddingFIFOQueue(5, dtypes_lib.float32, ((),))
       dequeue_op = q_empty.dequeue()

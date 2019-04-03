@@ -31,7 +31,6 @@ def create_inference_graph(
     is_dynamic_op=False,
     maximum_cached_engines=1,
     cached_engine_batches=None,
-    use_calibration=True,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
     output_saved_model_dir=None,
@@ -46,13 +45,7 @@ def create_inference_graph(
       is_dynamic_op=is_dynamic_op,
       maximum_cached_engines=maximum_cached_engines,
       cached_engine_batches=cached_engine_batches,
-      use_calibration=use_calibration,
       input_saved_model_dir=input_saved_model_dir,
       input_saved_model_tags=input_saved_model_tags,
       output_saved_model_dir=output_saved_model_dir,
       session_config=session_config)
-
-
-def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
-  return trt_convert.calib_graph_to_infer_graph(
-      calibration_graph_def=calibration_graph_def, is_dynamic_op=is_dynamic_op)

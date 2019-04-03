@@ -113,8 +113,8 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testListOfScalarTensors(self):
-    a = math_ops.to_int32(5)
-    b = math_ops.to_int32(6)
+    a = math_ops.cast(5, dtypes.int32)
+    b = math_ops.cast(6, dtypes.int32)
 
     value = np.random.rand(11, 11)
 

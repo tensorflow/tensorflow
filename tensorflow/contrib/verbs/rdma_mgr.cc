@@ -277,8 +277,8 @@ void RdmaMgr::InitAllocators() {
   ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
 
 #if GOOGLE_CUDA
-  GPUProcessState::singleton()->AddCUDAHostAllocVisitor(0, alloc_visitor);
-  GPUProcessState::singleton()->AddCUDAHostFreeVisitor(0, free_visitor);
+  GPUProcessState::singleton()->AddGpuHostAllocVisitor(0, alloc_visitor);
+  GPUProcessState::singleton()->AddGpuHostFreeVisitor(0, free_visitor);
 
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor

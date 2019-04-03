@@ -158,6 +158,10 @@ class TensorBoard(callbacks.Callback):
     # One profiler session is running if it is True.
     self._is_profiling = False
 
+    # TensorBoard should only write summaries on the chief when in a
+    # Multi-Worker setting.
+    self._chief_worker_only = True
+
   def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
@@ -375,10 +379,10 @@ class TensorBoard(callbacks.Callback):
       self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
-      self.model._make_eval_function()
-      if self.merged not in self.model._eval_function.fetches:
-        self.model._eval_function.fetches.append(self.merged)
-        self.model._eval_function.fetch_callbacks[
+      self.model._make_test_function()
+      if self.merged not in self.model.test_function.fetches:
+        self.model.test_function.fetches.append(self.merged)
+        self.model.test_function.fetch_callbacks[
             self.merged] = self._fetch_callback
       # pylint: enable=protected-access
 
@@ -399,10 +403,10 @@ class TensorBoard(callbacks.Callback):
     # pop the histogram summary op after each epoch
     if self.histogram_freq:
       # pylint: disable=protected-access
-      if self.merged in self.model._eval_function.fetches:
-        self.model._eval_function.fetches.remove(self.merged)
-      if self.merged in self.model._eval_function.fetch_callbacks:
-        self.model._eval_function.fetch_callbacks.pop(self.merged)
+      if self.merged in self.model.test_function.fetches:
+        self.model.test_function.fetches.remove(self.merged)
+      if self.merged in self.model.test_function.fetch_callbacks:
+        self.model.test_function.fetch_callbacks.pop(self.merged)
       # pylint: enable=protected-access
 
     if self.embeddings_data is None and self.embeddings_freq:

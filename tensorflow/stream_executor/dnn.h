@@ -563,6 +563,10 @@ class ConvolutionDescriptor {
                                      : ConvolutionMode::CROSS_CORRELATION);
     return *this;
   }
+  ConvolutionDescriptor& set_name(const string& name) {
+    proto_.set_name(name);
+    return *this;
+  }
   int64 zero_padding_height() const { return GetDim(padding(), DimIndex::Y); }
   int64 zero_padding_width() const { return GetDim(padding(), DimIndex::X); }
   int64 vertical_filter_stride() const {
@@ -601,6 +605,8 @@ class ConvolutionDescriptor {
   absl::Span<const int64> padding() const {
     return AsInt64Slice(proto_.paddings());
   }
+
+  string name() const { return proto_.name(); }
 
  private:
   absl::Span<int64> strides() { return AsInt64Slice(proto_.mutable_strides()); }
@@ -2070,7 +2076,7 @@ class DnnSupport {
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
-                                    dnn::DataType data_type) {
+                                    bool time_major, dnn::DataType data_type) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "createRnnSequenceTensorDescriptor is unimplemented");
   }

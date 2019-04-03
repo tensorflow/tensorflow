@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import tensorflow.lite.python.op_hint as op_hint
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -215,11 +216,11 @@ def dynamic_rnn(cell,
 
     parallel_iterations = parallel_iterations or 32
     if sequence_length is not None:
-      sequence_length = math_ops.to_int32(sequence_length)
-      if sequence_length.get_shape().rank not in (None, 1):
+      sequence_length = math_ops.cast(sequence_length, dtypes.int32)
+      if sequence_length.shape.rank not in (None, 1):
         raise ValueError(
             "sequence_length must be a vector of length batch_size, "
-            "but saw shape: %s" % sequence_length.get_shape())
+            "but saw shape: %s" % sequence_length.shape)
       sequence_length = array_ops.identity(  # Just to find it in the graph.
           sequence_length,
           name="sequence_length")

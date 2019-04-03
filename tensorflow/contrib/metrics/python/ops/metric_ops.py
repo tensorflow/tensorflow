@@ -772,7 +772,7 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
 
   if weights is not None:
     broadcast_weights = weights_broadcast_ops.broadcast_weights(
-        math_ops.to_float(weights), predictions)
+        math_ops.cast(weights, dtypes.float32), predictions)
     weights_tiled = array_ops.tile(
         array_ops.reshape(broadcast_weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
@@ -786,8 +786,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'tp' in includes:
     true_positives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='true_positives')
-    is_true_positive = math_ops.to_float(
-        math_ops.logical_and(label_is_pos, pred_is_pos))
+    is_true_positive = math_ops.cast(
+        math_ops.logical_and(label_is_pos, pred_is_pos), dtypes.float32)
     if weights_tiled is not None:
       is_true_positive *= weights_tiled
     update_ops['tp'] = state_ops.assign_add(true_positives,
@@ -798,8 +798,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'fn' in includes:
     false_negatives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='false_negatives')
-    is_false_negative = math_ops.to_float(
-        math_ops.logical_and(label_is_pos, pred_is_neg))
+    is_false_negative = math_ops.cast(
+        math_ops.logical_and(label_is_pos, pred_is_neg), dtypes.float32)
     if weights_tiled is not None:
       is_false_negative *= weights_tiled
     update_ops['fn'] = state_ops.assign_add(false_negatives,
@@ -810,8 +810,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'tn' in includes:
     true_negatives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='true_negatives')
-    is_true_negative = math_ops.to_float(
-        math_ops.logical_and(label_is_neg, pred_is_neg))
+    is_true_negative = math_ops.cast(
+        math_ops.logical_and(label_is_neg, pred_is_neg), dtypes.float32)
     if weights_tiled is not None:
       is_true_negative *= weights_tiled
     update_ops['tn'] = state_ops.assign_add(true_negatives,
@@ -822,8 +822,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'fp' in includes:
     false_positives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='false_positives')
-    is_false_positive = math_ops.to_float(
-        math_ops.logical_and(label_is_neg, pred_is_pos))
+    is_false_positive = math_ops.cast(
+        math_ops.logical_and(label_is_neg, pred_is_pos), dtypes.float32)
     if weights_tiled is not None:
       is_false_positive *= weights_tiled
     update_ops['fp'] = state_ops.assign_add(false_positives,
@@ -2164,7 +2164,7 @@ def streaming_recall_at_k(predictions,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  in_top_k = math_ops.to_float(nn.in_top_k(predictions, labels, k))
+  in_top_k = math_ops.cast(nn.in_top_k(predictions, labels, k), dtypes.float32)
   return streaming_mean(in_top_k, weights, metrics_collections,
                         updates_collections, name or _at_k_name('recall', k))
 
@@ -3205,7 +3205,8 @@ def streaming_covariance(predictions,
         [], dtypes.float32, name='comoment')
 
     if weights is None:
-      batch_count = math_ops.to_float(array_ops.size(labels))  # n_B in eqn
+      batch_count = math_ops.cast(
+          array_ops.size(labels), dtypes.float32)  # n_B in eqn
       weighted_predictions = predictions
       weighted_labels = labels
     else:
@@ -3765,15 +3766,15 @@ def count(values,
     count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
 
     if weights is None:
-      num_values = math_ops.to_float(array_ops.size(values))
+      num_values = math_ops.cast(array_ops.size(values), dtypes.float32)
     else:
-      values = math_ops.to_float(values)
+      values = math_ops.cast(values, dtypes.float32)
       values, _, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
           predictions=values,
           labels=None,
           weights=weights)
       weights = weights_broadcast_ops.broadcast_weights(
-          math_ops.to_float(weights), values)
+          math_ops.cast(weights, dtypes.float32), values)
       num_values = math_ops.reduce_sum(weights)
 
     with ops.control_dependencies([values]):
@@ -3895,10 +3896,11 @@ def cohen_kappa(labels,
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
           math_ops.div_no_nan(
-              math_ops.to_double(pe_row * pe_col), math_ops.to_double(total)))
-      po_sum, pe_sum, total = (math_ops.to_double(po_sum),
-                               math_ops.to_double(pe_sum),
-                               math_ops.to_double(total))
+              math_ops.cast(pe_row * pe_col, dtypes.float64),
+              math_ops.cast(total, dtypes.float64)))
+      po_sum, pe_sum, total = (math_ops.cast(po_sum, dtypes.float64),
+                               math_ops.cast(pe_sum, dtypes.float64),
+                               math_ops.cast(total, dtypes.float64))
       # kappa = (po - pe) / (N - pe)
       k = metrics_impl._safe_scalar_div(  # pylint: disable=protected-access
           po_sum - pe_sum,

@@ -28,8 +28,26 @@ limitations under the License.
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+namespace {
+
+bool OverrideGlobalThreadPoolFromEnvironment() {
+  static const bool override_global_threadpool = [] {
+    bool flag;
+    auto status = ReadBoolFromEnvVar("TF_OVERRIDE_GLOBAL_THREADPOOL",
+                                     /*default_val=*/false, &flag);
+    if (!status.ok()) {
+      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.error_message();
+      return false;
+    }
+    return flag;
+  }();
+  return override_global_threadpool;
+}
+
+}  // namespace
 
 /* static */
 bool LocalDevice::use_global_threadpool_ = true;
@@ -107,6 +125,11 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   // could speed up performance and are available on the current CPU.
   port::InfoAboutUnusedCPUFeatures();
   LocalDevice::EigenThreadPoolInfo* tp_info;
+
+  if (OverrideGlobalThreadPoolFromEnvironment()) {
+    set_use_global_threadpool(false);
+  }
+
   if (use_global_threadpool_) {
     mutex_lock l(global_tp_mu_);
     if (options.config.experimental().use_numa_affinity()) {

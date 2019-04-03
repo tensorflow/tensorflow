@@ -296,14 +296,13 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     field_names = ['sizes']
     field_types = [dtypes.int32]
 
-    with self.cached_session() as sess:
-      ctensor, vtensor = self._decode_module.decode_proto(
-          batch,
-          message_type=msg_type,
-          field_names=field_names,
-          output_types=field_types,
-          sanitize=sanitize)
-      with self.assertRaisesRegexp(errors.DataLossError,
-                                   'Unable to parse binary protobuf'
-                                   '|Failed to consume entire buffer'):
-        _ = sess.run([ctensor] + vtensor)
+    with self.assertRaisesRegexp(
+        errors.DataLossError, 'Unable to parse binary protobuf'
+        '|Failed to consume entire buffer'):
+      self.evaluate(
+          self._decode_module.decode_proto(
+              batch,
+              message_type=msg_type,
+              field_names=field_names,
+              output_types=field_types,
+              sanitize=sanitize))

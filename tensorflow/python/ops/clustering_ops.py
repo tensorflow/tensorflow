@@ -613,7 +613,7 @@ class _InitializeClustersOpFactory(object):
     if self._distance_metric == COSINE_DISTANCE:
       inp = nn_impl.l2_normalize(inp, dim=1)
     return gen_clustering_ops.kmeans_plus_plus_initialization(
-        inp, math_ops.to_int64(self._num_remaining), self._seed,
+        inp, math_ops.cast(self._num_remaining, dtypes.int64), self._seed,
         self._kmeans_plus_plus_num_retries)
 
   def _kmc2_multiple_centers(self):

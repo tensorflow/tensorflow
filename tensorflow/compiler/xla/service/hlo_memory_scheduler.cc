@@ -23,9 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -208,17 +206,6 @@ class ListScheduler {
   // improve accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
     auto instruction = entry.instruction;
-    auto opcode = instruction->opcode();
-    // To keep the device busy between a host send and send-done, we schedule
-    // the send done as late as possible. Same for host recv-done. This is a
-    // hack because packing of computation between channel instructions
-    // normally happens in the module group scheduler, and the memory scheduler
-    // only tries to minimize memory.
-    if ((opcode == HloOpcode::kSendDone || opcode == HloOpcode::kRecvDone) &&
-        DynCast<HloSendRecvInstruction>(instruction)->is_host_transfer()) {
-      return INT_MIN;
-    }
-
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
       auto buffer = kv->first;
@@ -240,6 +227,7 @@ class ListScheduler {
       }
     }
     int64 bytes_defined;
+    auto opcode = instruction->opcode();
     if (max_subcomputation_bytes > 0 &&
         (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
          opcode == HloOpcode::kConditional)) {

@@ -123,7 +123,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SkipErrorsIfGraphNotModified) {
   // Standard XTimesTwo() function.
   FunctionDef x_times_two = test::function::XTimesTwo();
 
-  // Function with sequence of tensors as an input (currently not supported).
+  // Function signature has non-type attribute (currently not supported).
   FunctionDef my_identity_n = FunctionDefHelper::Create(
       // Name
       "MyIdentityN",
@@ -641,14 +641,20 @@ TEST_F(FunctionOptimizerTest, InlineSymbolicGradient_IdentityFunc) {
   EXPECT_EQ("SymbolicGradient", output.node(3).name());
   EXPECT_EQ("SymbolicGradient/SymbolicGradient/Identity",
             output.node(4).name());
-  EXPECT_EQ("SymbolicGradient/Func/_0", output.node(5).name());
-  EXPECT_EQ("SymbolicGradient/Func/_1", output.node(6).name());
-  EXPECT_EQ("SymbolicGradient/Func/_2", output.node(7).name());
+  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/input/_0",
+            output.node(5).name());
+  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/input/_1",
+            output.node(6).name());
+  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/output/_2",
+            output.node(7).name());
   EXPECT_EQ("SymbolicGradient/SymbolicGradient/Func/_1/dx",
             output.node(8).name());
-  EXPECT_EQ("SymbolicGradient/Func/_3", output.node(9).name());
-  EXPECT_EQ("SymbolicGradient/Func/_4", output.node(10).name());
-  EXPECT_EQ("SymbolicGradient/Func/_5", output.node(11).name());
+  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/input/_3",
+            output.node(9).name());
+  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/input/_4",
+            output.node(10).name());
+  EXPECT_EQ("SymbolicGradient/Func/SymbolicGradient/Func/_1/output/_5",
+            output.node(11).name());
   EXPECT_EQ("out", output.node(12).name());
   for (int i = 2; i < 4; ++i) {
     EXPECT_EQ("IdentityN", output.node(i).op());

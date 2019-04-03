@@ -92,14 +92,14 @@ ComputeArgAndRetvalCores(const Graph& graph) {
   std::map<int, int> arg_cores;
   std::map<int, int> retval_cores;
   for (const Node* n : graph.nodes()) {
-    if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       TF_ASSIGN_OR_RETURN(int core, get_sharding_for_node(n));
       if (core < 0) continue;
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Arg index";
       arg_cores[index] = core;
-    } else if (n->type_string() == FunctionLibraryDefinition::kRetOp) {
+    } else if (n->IsRetval()) {
       TF_ASSIGN_OR_RETURN(int core, get_sharding_for_node(n));
       if (core < 0) continue;
       int index;
@@ -367,6 +367,9 @@ bool XlaCompiler::Argument::operator==(
   if (constant_value.shape() != other.constant_value.shape()) {
     return false;
   }
+  if (is_same_data_across_replicas != other.is_same_data_across_replicas) {
+    return false;
+  }
   return constant_value.tensor_data() == other.constant_value.tensor_data();
 }
 
@@ -377,6 +380,8 @@ string XlaCompiler::Argument::HumanString() const {
   }
   absl::StrAppend(&common, " type=", DataTypeString(type),
                   " shape=", ShapeHumanString());
+  absl::StrAppend(
+      &common, " is_same_data_across_replicas=", is_same_data_across_replicas);
   switch (kind) {
     case kInvalid:
       return "invalid";
@@ -436,11 +441,10 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version,
-      local_flib_def_.get(), OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
+      local_flib_def_.get(), OptimizerOptions()));
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
-      OptimizerOptions(), nullptr /* custom_kernel_creator */));
+      OptimizerOptions()));
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
@@ -540,11 +544,12 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
 }
 
 Status XlaCompiler::CompileFunction(
-    const XlaCompiler::CompileOptions& options, const NameAttrList& function,
+    const XlaCompiler::CompileOptions& options,
+    const NameAttrList& fn_name_attrs,
     absl::Span<const XlaCompiler::Argument> args,
     XlaCompiler::CompilationResult* result) {
   const string function_id =
-      Canonicalize(function.name(), AttrSlice(&function.attr()));
+      Canonicalize(fn_name_attrs.name(), AttrSlice(&fn_name_attrs.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
   const std::vector<XlaCompiler::Argument> arg_vector(args.begin(), args.end());
@@ -555,11 +560,11 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(FindFunctionBody(function, &fbody));
+  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody));
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       CheckSignature(fbody->arg_types, args),
-      "Signature check failure while compiling: ", function.name());
+      "Signature check failure while compiling: ", fn_name_attrs.name());
 
   std::unique_ptr<Graph> graph = GetGraph(fbody);
 
@@ -581,16 +586,14 @@ Status XlaCompiler::CompileFunction(
   // lowest-numbered core that consumes the argument. We choose the
   // lowest-numbered core so the assignment is deterministic.
   for (Node* n : graph->nodes()) {
-    if (absl::string_view(n->type_string()) ==
-        FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
     }
   }
   // Do _Retval as a second loop, in case the retval's input is an _Arg (which
   // may have gotten a device assignment from the first loop).
   for (Node* n : graph->nodes()) {
-    if (absl::string_view(n->type_string()) ==
-        FunctionLibraryDefinition::kRetOp) {
+    if (n->IsRetval()) {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/false));
     }
   }
@@ -799,9 +802,18 @@ Status XlaCompiler::BuildArguments(
         *tuple_sharding.add_tuple_shardings() =
             xla::sharding_builder::AssignDevice(core);
       }
+      std::vector<bool> is_same_across_replicas;
+      for (int i = 0; i < input_to_args->size(); ++i) {
+        // Add an entry to is_same_across_replicas for every leaf buffer.
+        is_same_across_replicas.insert(
+            is_same_across_replicas.end(),
+            xla::ShapeUtil::GetLeafCount(arg_shapes[i]),
+            args[input_to_args->at(i)].is_same_data_across_replicas);
+      }
       xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
                                                              tuple_sharding);
-      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
+                             is_same_across_replicas);
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
@@ -832,8 +844,18 @@ Status XlaCompiler::BuildArguments(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
-                                      absl::StrCat("arg", i));
+      if (is_entry_computation) {
+        // Add an entry to is_same_across_replicas for every leaf buffer.
+        std::vector<bool> is_same_across_replicas(
+            xla::ShapeUtil::GetLeafCount((*input_shapes)[i]),
+            args[input_to_args->at(i)].is_same_data_across_replicas);
+        arg_handles[i] =
+            xla::Parameter(builder, i, (*input_shapes)[i],
+                           absl::StrCat("arg", i), is_same_across_replicas);
+      } else {
+        arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
+                                        absl::StrCat("arg", i));
+      }
     }
 
     for (int i = 0; i < input_to_args->size(); ++i) {
@@ -956,6 +978,28 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
   return Status::OK();
 }
 
+// If node is PartitionedCall or StatefulPartitionedCall, returns the
+// name from the "f" attr, else returns node.def().op().
+// Returned pointer points to the internal string either in node's attributes
+// or in its NodeDef. This pointer is valid as long as the node has not been
+// modified.
+Status GetPotentialFunctionName(const Node& node, const string** name) {
+  if (node.IsPartitionedCall()) {
+    const AttrValue* attr_value;
+    TF_RETURN_IF_ERROR(
+        node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
+    if (!attr_value->has_func()) {
+      return errors::InvalidArgument(
+          "The attribute value for attribute 'f' in node ", node.DebugString(),
+          " does not have 'func' field set");
+    }
+    *name = &attr_value->func().name();
+    return Status::OK();
+  }
+  *name = &node.type_string();
+  return Status::OK();
+}
+
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
 // given device_type, invalid data type, missing attributes...)
 Status ValidateGraph(const Graph* graph,
@@ -975,7 +1019,9 @@ Status ValidateGraph(const Graph* graph,
     if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
       continue;
     }
-    const FunctionDef* fdef = flib_def.Find(node->def().op());
+    const string* function_name;
+    TF_RETURN_IF_ERROR(GetPotentialFunctionName(*node, &function_name));
+    const FunctionDef* fdef = flib_def.Find(*function_name);
     Status s;
     if (fdef) {
       s = ValidateFunctionDef(fdef, flib_def);

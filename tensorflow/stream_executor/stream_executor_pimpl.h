@@ -421,7 +421,7 @@ class StreamExecutor {
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int> &seq_lengths,
-                                    dnn::DataType data_type);
+                                    bool time_major, dnn::DataType data_type);
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.

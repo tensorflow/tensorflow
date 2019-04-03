@@ -94,7 +94,7 @@ TEST_F(ReferenceUtilTest, Reduce4Dto1DZeroSizedArray) {
 }
 
 TEST_F(ReferenceUtilTest, MapArray2D) {
-  auto identity = [](float value) { return log(exp(value)); };
+  auto identity = [](float value) { return std::log(std::exp(value)); };
   auto result = ReferenceUtil::MapArray2D(*matrix_, identity);
   auto actual_literal = LiteralUtil::CreateR2FromArray2D(*result);
   LiteralTestUtil::ExpectR2NearArray2D(*matrix_, actual_literal,

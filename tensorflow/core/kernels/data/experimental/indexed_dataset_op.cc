@@ -149,7 +149,7 @@ class MaterializedDatasetResource : public ResourceBase {
 
 // A wrapper class for storing an `IndexedDataset` instance in a DT_VARIANT
 // tensor. Objects of the wrapper class own a reference on an instance of an
-// `IndexedTensor` and the wrapper's copy constructor and desctructor take care
+// `IndexedTensor` and the wrapper's copy constructor and destructor take care
 // of managing the reference count.
 //
 // NOTE: This is not a feature-complete implementation of the DT_VARIANT

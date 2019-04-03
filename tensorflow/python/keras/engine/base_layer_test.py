@@ -568,6 +568,19 @@ class NestedTrackingTest(test.TestCase):
     del l.a
     self.assertEqual([], l._layers)
 
+  def test_assign_op_not_tracked_as_variable(self):
+
+    class LayerWithAssignAttr(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.v = variables.Variable(1.)
+        self.v_assign = self.v.assign_add(2.)
+
+    layer = LayerWithAssignAttr()
+    layer.build((10, 10))
+
+    self.assertEqual([layer.v], layer.variables)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NameScopingTest(keras_parameterized.TestCase):

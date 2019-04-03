@@ -43,11 +43,14 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-
+from tensorflow.python.util import compat
 
 _profiler = None
 _profiler_lock = threading.Lock()
 _run_num = 0
+# This suffix should be kept in sync with kProfileEmptySuffix in
+# tensorflow/core/profiler/rpc/client/capture_profile.cc.
+_EVENT_FILE_SUFFIX = '.profile-empty'
 
 
 class ProfilerAlreadyRunningError(Exception):
@@ -109,6 +112,24 @@ def stop():
   return result
 
 
+def maybe_create_event_file(logdir):
+  """Create an empty event file if not already exists.
+
+  This event file indicates that we have a plugins/profile/ directory in the
+  current logdir.
+
+  Args:
+    logdir: log directory.
+  """
+  for file_name in gfile.ListDirectory(logdir):
+    if file_name.endswith(_EVENT_FILE_SUFFIX):
+      return
+  # TODO(b/127330388): Use summary_ops_v2.create_file_writer instead.
+  event_writer = pywrap_tensorflow.EventsWriter(
+      compat.as_bytes(os.path.join(logdir, 'events')))
+  event_writer.InitWithSuffix(compat.as_bytes(_EVENT_FILE_SUFFIX))
+
+
 def save(logdir, result):
   """Save profile result to TensorBoard logdir.
 
@@ -120,6 +141,7 @@ def save(logdir, result):
       logdir, 'plugins', 'profile',
       datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
   gfile.MakeDirs(plugin_dir)
+  maybe_create_event_file(logdir)
   with gfile.Open(os.path.join(plugin_dir, 'local.trace'), 'wb') as f:
     f.write(result)
 

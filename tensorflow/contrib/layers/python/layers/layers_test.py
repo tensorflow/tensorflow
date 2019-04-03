@@ -1399,9 +1399,10 @@ class DropoutTest(test.TestCase):
     with self.cached_session() as sess:
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(images > 0, dtypes.float32))
       output = _layers.dropout(images)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
       self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
@@ -1421,9 +1422,10 @@ class DropoutTest(test.TestCase):
     with self.cached_session() as sess:
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(images > 0, dtypes.float32))
       output = _layers.dropout(images, is_training=False)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertEqual(num_elem, num_elem_initial)
       outputs, inputs = sess.run([output, images])
@@ -1435,9 +1437,10 @@ class DropoutTest(test.TestCase):
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
       output = _layers.fully_connected(images, 50)
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(output > 0, dtypes.float32))
       output = _layers.dropout(output)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
@@ -1450,7 +1453,7 @@ class DropoutTest(test.TestCase):
           (5, height, width, 3), seed=1, name='images')
       output = _layers.fully_connected(
           images, 50, normalizer_fn=_layers.dropout)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       sess.run(variables_lib.global_variables_initializer())
       num_elem = sess.run(num_elem)
       self.assertLess(num_elem, 0.5)
