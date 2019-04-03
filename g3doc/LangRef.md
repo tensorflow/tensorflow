@@ -14,9 +14,8 @@ high-performance target-specific code.
 MLIR stands for one of "Multi-Level IR" or "Multi-dimensional Loop IR" or
 "Machine Learning IR" - the MLIR team prefers the first interpretation. This
 document defines and describes the key concepts in MLIR, and is intended to be a
-dry reference document - [rationale documentation](Rationale.md),
-[system overview documentation](https://docs.google.com/document/d/1yRqja94Da6NtKmPxSYtTx6xbUtughLANyeD7dZ7mOBM/edit#)
-and other content is hosted elsewhere.
+dry reference document - [rationale documentation](Rationale.md) and other
+content is hosted elsewhere.
 
 MLIR is designed to be used in three different forms: a human-readable textual
 form suitable for debugging, an in-memory form suitable for programmatic
