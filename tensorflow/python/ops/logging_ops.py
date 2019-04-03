@@ -72,13 +72,10 @@ except NameError:
                           "only a concern in graph mode. Below is an example "
                           "of how to ensure tf.print executes in graph mode:\n"
                           """```python
-    sess = tf.Session()
-    with sess.as_default():
-        tensor = tf.range(10)
-        print_op = tf.print(tensor)
-        with tf.control_dependencies([print_op]):
-          out = tf.add(tensor, tensor)
-        sess.run(out)
+    tensor = tf.range(10)
+    print_op = tf.print(tensor)
+    with tf.control_dependencies([print_op]):
+      out = tf.add(tensor, tensor)
     ```
 Additionally, to use tf.print in python 2.7, users must make sure to import
 the following:
@@ -159,7 +156,6 @@ def print_v2(*inputs, **kwargs):
   Example:
     Single-input usage:
     ```python
-    tf.enable_eager_execution()
     tensor = tf.range(10)
     tf.print(tensor, output_stream=sys.stderr)
     ```
@@ -167,7 +163,6 @@ def print_v2(*inputs, **kwargs):
 
     Multi-input usage:
     ```python
-    tf.enable_eager_execution()
     tensor = tf.range(10)
     tf.print("tensors:", tensor, {2: tensor * 2}, output_stream=sys.stdout)
     ```
@@ -176,9 +171,8 @@ def print_v2(*inputs, **kwargs):
 
     Usage in a defun:
     ```python
-    tf.enable_eager_execution()
-
-    @tf.contrib.eager.defun
+    from tensorflow.python.eager import function
+    @function.defun
     def f():
         tensor = tf.range(10)
         tf.print(tensor, output_stream=sys.stderr)
@@ -190,14 +184,11 @@ def print_v2(*inputs, **kwargs):
 
     Usage when constructing graphs:
     ```python
-    sess = tf.Session()
-    with sess.as_default():
-        tensor = tf.range(10)
-        print_op = tf.print("tensors:", tensor, {2: tensor * 2},
-                            output_stream=sys.stdout)
-        with tf.control_dependencies([print_op]):
-          tripled_tensor = tensor * 3
-        sess.run(tripled_tensor)
+    tensor = tf.range(10)
+    print_op = tf.print("tensors:", tensor, {2: tensor * 2},
+                        output_stream=sys.stdout)
+    with tf.control_dependencies([print_op]):
+      tripled_tensor = tensor * 3
     ```
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
     sys.stdout)
