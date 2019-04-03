@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,6 +43,13 @@ class StringLowerOpTest(test.TestCase):
       output = self.evaluate(output)
       self.assertAllEqual(output, [[b"pigs on the wing", b"animals"],
                                    [b" hello ", b"\n\tworld! \r \n"]])
+
+  def test_string_upper_unicode(self):
+    strings = [["ÓÓSSCHLOË"]]
+    with self.cached_session() as sess:
+      output = string_ops.string_lower(strings, encoding='utf-8')
+      output = self.evaluate(output)
+      self.assertAllEqual(output, [[b"óósschloë"]]),
 
 
 if __name__ == "__main__":

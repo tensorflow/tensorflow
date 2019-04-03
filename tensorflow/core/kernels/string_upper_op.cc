@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "unicode/unistr.h"  // TF:icu
+
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,7 +30,12 @@ namespace tensorflow {
 
 class StringUpperOp : public OpKernel {
  public:
-  explicit StringUpperOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit StringUpperOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding_));
+    OP_REQUIRES(
+        context, encoding_ != "" || encoding_ != "utf-8",
+        errors::InvalidArgument("only utf-8 or '' (no encoding) is supported, received ", encoding_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
@@ -39,12 +46,22 @@ class StringUpperOp : public OpKernel {
 
     const auto input = input_tensor->flat<string>();
     auto output = output_tensor->flat<string>();
-
-    for (int64 i = 0; i < input.size(); ++i) {
-      StringPiece entry(input(i));
-      output(i) = str_util::Uppercase(entry);
+    if (encoding_ == "") {
+      for (int64 i = 0; i < input.size(); ++i) {
+        StringPiece entry(input(i));
+        output(i) = str_util::Uppercase(entry);
+      }
+    } else {
+      // The validation of utf-8 has already been done in GetAttr above.
+      for (int64 i = 0; i < input.size(); ++i) {
+        icu::UnicodeString us(input(i).c_str(), "UTF-8");
+        us.toUpper();
+        us.toUTF8String(output(i));
+      }
     }
   }
+ private:
+  string encoding_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringUpper").Device(DEVICE_CPU), StringUpperOp);
