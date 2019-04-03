@@ -33,8 +33,10 @@ class TestVirtualScheduler : public VirtualScheduler {
   TestVirtualScheduler(const bool use_static_shapes,
                        const bool use_aggressive_shape_inference,
                        Cluster* cluster)
-      : VirtualScheduler(use_static_shapes, use_aggressive_shape_inference,
-                         cluster, &ready_node_manager_) {
+      : VirtualScheduler(
+            use_static_shapes, use_aggressive_shape_inference, cluster,
+            &ready_node_manager_,
+            absl::make_unique<VirtualPlacer>(cluster->GetDevices())) {
     enable_mem_usage_tracking();
   }
 
