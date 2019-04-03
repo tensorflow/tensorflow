@@ -49,17 +49,15 @@ namespace metal {
 namespace {
 
 std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
-    int id, ValueId input_id, ValueId output_id,
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
-  LOG(INFO) << "RRRRRRR - " << GetAppleSocVersion();
+  const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
+  if (GetAppleSocVersion() >= 12 &&
+      GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+    return ConvolutionPrecise(id, input_id, output_id, attr, options);
+  }
   if (GetAppleSocVersion() >= 11) {
-    bool conv1x1 = attr.weights.shape.h == 1 && attr.weights.shape.w == 1 &&
-                   attr.strides.h == 1 && attr.strides.w == 1 &&
-                   attr.dilations.h == 1 && attr.dilations.w == 1 &&
-                   attr.padding.prepended.h == 0 &&
-                   attr.padding.prepended.w == 0 &&
-                   attr.padding.appended.h == 0 && attr.padding.appended.w == 0;
-    if (conv1x1) {
+    if (CheckConvolution1x1Support(attr)) {
       return Convolution1x1(id, input_id, output_id, attr, options);
     } else {
       return ConvolutionGeneric(id, input_id, output_id, attr, options);
@@ -115,7 +113,7 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       } break;
       case OperationType::CONVOLUTION_2D:
         tasks = SelectConvolution(
-            node_id, inputs[0], outputs[0],
+            graph, node_id, inputs[0], outputs[0],
             absl::any_cast<Convolution2DAttributes>(node->operation.attributes),
             options);
         break;
