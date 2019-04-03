@@ -691,34 +691,25 @@ void OpEmitter::genBuilder() {
       std::string("Builder *, OperationState *") + builderOpState +
       ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
       "ArrayRef<NamedAttribute> attributes";
-  auto &method =
-      opClass.newMethod("void", "build", params, OpMethod::MP_Static);
+  auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
+  auto &body = m.body();
 
   // Result types
-  method.body() << "  assert(resultTypes.size()"
-                << (hasVariadicResult ? " >= " : " == ")
-                << numNonVariadicResults
-                << "u && \"mismatched number of return types\");\n"
-                << "  " << builderOpState << "->addTypes(resultTypes);\n";
+  body << "  assert(resultTypes.size()" << (hasVariadicResult ? " >= " : " == ")
+       << numNonVariadicResults
+       << "u && \"mismatched number of return types\");\n"
+       << "  " << builderOpState << "->addTypes(resultTypes);\n";
 
   // Operands
-  method.body() << "  assert(operands.size()"
-                << (hasVariadicOperand ? " >= " : " == ")
-                << numNonVariadicOperands
-                << "u && \"mismatched number of parameters\");\n"
-                << "  " << builderOpState << "->addOperands(operands);\n\n";
+  body << "  assert(operands.size()" << (hasVariadicOperand ? " >= " : " == ")
+       << numNonVariadicOperands
+       << "u && \"mismatched number of parameters\");\n"
+       << "  " << builderOpState << "->addOperands(operands);\n\n";
 
   // Attributes
-  if (op.getNumAttributes() > 0) {
-    method.body()
-        << "  assert(!attributes.size() && \"no attributes expected\");\n";
-  } else {
-    method.body() << "  assert(attributes.size() >= " << op.getNumAttributes()
-                  << "u && \"not enough attributes\");\n"
-                  << "  for (const auto& pair : attributes)\n"
-                  << "    " << builderOpState
-                  << "->addAttribute(pair.first, pair.second);\n";
-  }
+  body << "  for (const auto& pair : attributes)\n"
+       << "    " << builderOpState
+       << "->addAttribute(pair.first, pair.second);\n";
 
   // 3. Deduced result types
 

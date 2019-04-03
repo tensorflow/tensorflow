@@ -7,9 +7,15 @@ def OneResultOp : Op<"one_result_op", []> {
 }
 
 // CHECK-LABEL: OneResultOp definitions
-// CHECK:      LogicalResult OneResultOp::verify() {
-// CHECK:        if (!((this->getOperation()->getResult(0)->getType().isInteger(32))))
-// CHECK-NEXT:     return emitOpError("result #0 must be 32-bit integer");
+
+// CHECK:       void OneResultOp::build
+// CHECK:         ArrayRef<Type> resultTypes, ArrayRef<Value *> operands
+// CHECK:         assert(resultTypes.size() == 1u && "mismatched number of return types");
+// CHECK-NEXT:    tblgen_state->addTypes(resultTypes);
+
+// CHECK:       LogicalResult OneResultOp::verify() {
+// CHECK:         if (!((this->getOperation()->getResult(0)->getType().isInteger(32))))
+// CHECK-NEXT:      return emitOpError("result #0 must be 32-bit integer");
 
 
 def SameTypeOp : Op<"same_type_op", [SameValueType]> {
@@ -55,6 +61,12 @@ def VariadicResultOp : Op<"variadic_op", []> {
 }
 
 // CHECK-LABEL: VariadicResultOp definitions
+
 // CHECK: void VariadicResultOp::build(Builder *, OperationState *tblgen_state, Type x, ArrayRef<Type> y)
 // CHECK:   tblgen_state->addTypes({x});
 // CHECK:   tblgen_state->addTypes(y);
+
+// CHECK: 			void VariadicResultOp::build
+// CHECK:         ArrayRef<Type> resultTypes
+// CHECK:         assert(resultTypes.size() >= 1u && "mismatched number of return types");
+// CHECK-NEXT:    tblgen_state->addTypes(resultTypes);
