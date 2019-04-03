@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Test multi-worker Keras.
-
-TODO(b/123845258): Move this to tensorflow core.
-"""
+"""Test multi-worker Keras."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,16 +28,15 @@ import threading
 from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
-from tensorflow.contrib.distribute.python import collective_all_reduce_strategy as collective_strategy
-from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
-from tensorflow.python.eager import context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -287,11 +283,11 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
 
 
 def get_strategy_object(strategy_cls):
-  if (strategy_cls == mirrored_strategy.MirroredStrategy or
-      strategy_cls == mirrored_strategy.CoreMirroredStrategy):
+  if strategy_cls == mirrored_strategy.MirroredStrategy:
     return strategy_cls(mirrored_strategy.all_local_devices())
   else:
-    return strategy_cls(num_gpus_per_worker=context.num_gpus())
+    # CollectiveAllReduceStrategy and ParameterServerStrategy.
+    return strategy_cls()
 
 
 class KerasMultiWorkerTestStandaloneClient(test.TestCase,
@@ -309,7 +305,6 @@ class KerasMultiWorkerTestStandaloneClient(test.TestCase,
           mode=['graph'],
           strategy_cls=[
               mirrored_strategy.MirroredStrategy,
-              mirrored_strategy.CoreMirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
@@ -336,7 +331,6 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
           mode=['graph'],
           strategy_cls=[
               mirrored_strategy.MirroredStrategy,
-              mirrored_strategy.CoreMirroredStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
@@ -415,7 +409,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
                                   self._make_mock_run_std_server()):
         batch_size = 64
         steps = 10
-        strategy = strategy_cls(num_gpus_per_worker=context.num_gpus())
+        strategy = strategy_cls()
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph
 

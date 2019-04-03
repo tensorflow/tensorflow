@@ -278,3 +278,37 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
     ],
 )
+
+cuda_py_test(
+    name = "multi_worker_test",
+    srcs = ["multi_worker_test.py"],
+    additional_deps = [":multi_worker_test_main_lib"],
+    shard_count = 32,
+    tags = [
+        # TODO(b/124344198): Add "multi_and_single_gpu",
+    ],
+)
+
+py_library(
+    name = "multi_worker_test_main_lib",
+    testonly = True,
+    srcs = ["multi_worker_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+    ],
+)
