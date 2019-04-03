@@ -1,5 +1,6 @@
 add_llvm_library(MLIREDSC
   Builders.cpp
+  CoreAPIs.cpp
   Helpers.cpp
   Intrinsics.cpp
 
