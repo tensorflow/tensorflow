@@ -4986,5 +4986,25 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
                                              m::Sqrt(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, CopyReshape) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[168,168,48,48]{3,2,1,0} parameter(0)
+      r0 = f32[1,168,168,2304]{3,2,1,0} reshape(p0)
+      ROOT c0 = f32[1,168,168,2304]{3,0,2,1} copy(r0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  Shape result_shape = m->entry_computation()->root_instruction()->shape();
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
+  options.set_is_layout_sensitive(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  LOG(INFO) << "\n" << m->ToString();
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Parameter(0)).WithShapeEqualTo(&result_shape)));
+}
+
 }  // namespace
 }  // namespace xla
