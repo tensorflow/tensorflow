@@ -1,4 +1,4 @@
-//===- LowerTF.cpp - Passes for lowering from TensorFlow ------------------===//
+//===- ConvertSimQuant.cpp - Converts simulated quant ops------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -23,44 +23,42 @@
 #include "mlir/Quantization/Passes.h"
 #include "mlir/Quantization/QuantOps.h"
 #include "mlir/Quantization/UniformSupport.h"
-#include "mlir/TensorFlow/TFOps.h"
 
 using namespace mlir;
 using namespace mlir::quant;
 
 namespace {
 
-class LowerTFPass : public FunctionPass<LowerTFPass> {
+class ConvertSimulatedQuantPass
+    : public FunctionPass<ConvertSimulatedQuantPass> {
 public:
   void runOnFunction() override;
 };
 
 } // end anonymous namespace
 
-/// Rewrites TensorFlow FakeQuantWithMinMaxArgs into a qbarrier/dbarrier pair.
-class FakeQuantWithMinMaxArgsRewrite : public RewritePattern {
+/// Rewrites ConstFakeQuant into a qbarrier/dbarrier pair.
+class ConstFakeQuantRewrite : public RewritePattern {
 public:
   bool *hadFailure;
 
-  FakeQuantWithMinMaxArgsRewrite(MLIRContext *context, bool *hadFailure)
-      : RewritePattern(TF::FakeQuantWithMinMaxArgsOp::getOperationName(), 1,
-                       context),
+  ConstFakeQuantRewrite(MLIRContext *context, bool *hadFailure)
+      : RewritePattern(ConstFakeQuant::getOperationName(), 1, context),
         hadFailure(hadFailure) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    return matchSuccess();
-  }
-
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
     // TODO: If this pattern comes up more frequently, consider adding core
     // support for failable rewrites.
     if (failableRewrite(op, rewriter)) {
       *hadFailure = true;
     }
+
+    return matchSuccess();
   }
 
   bool failableRewrite(Operation *op, PatternRewriter &rewriter) const {
-    auto fqOp = op->template cast<TF::FakeQuantWithMinMaxArgsOp>();
+    auto fqOp = op->cast<ConstFakeQuant>();
 
     auto converter =
         ExpressedToUniformQuantizedConverter::forInputType(fqOp.getType());
@@ -93,20 +91,23 @@ public:
   }
 };
 
-void LowerTFPass::runOnFunction() {
+void ConvertSimulatedQuantPass::runOnFunction() {
   bool hadFailure = false;
   OwningRewritePatternList patterns;
   auto &func = getFunction();
   auto *context = &getContext();
   patterns.push_back(
-      llvm::make_unique<FakeQuantWithMinMaxArgsRewrite>(context, &hadFailure));
+      llvm::make_unique<ConstFakeQuantRewrite>(context, &hadFailure));
   applyPatternsGreedily(func, std::move(patterns));
   if (hadFailure)
     signalPassFailure();
 }
 
-FunctionPassBase *createLowerTFPass() { return new LowerTFPass(); }
+FunctionPassBase *createConvertSimulatedQuantPass() {
+  return new ConvertSimulatedQuantPass();
+}
 
-static PassRegistration<LowerTFPass>
-    pass("quant-lower-tf",
-         "Lowers TensorFlow constraint ops to the quantization dialect");
+static PassRegistration<ConvertSimulatedQuantPass>
+    pass("quant-convert-simulated-quantization",
+         "Converts training-time simulated quantization ops to corresponding "
+         "quantize/dequantize casts.");

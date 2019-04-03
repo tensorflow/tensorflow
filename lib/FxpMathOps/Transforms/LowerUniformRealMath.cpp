@@ -15,15 +15,16 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/FxpMathOps/FxpMathOps.h"
+#include "mlir/FxpMathOps/Passes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Quantization/Passes.h"
-#include "mlir/Quantization/QuantOps.h"
 #include "mlir/Quantization/UniformSupport.h"
 
 #include <functional>
 
 using namespace mlir;
+using namespace mlir::fxpmath;
 using namespace mlir::quant;
 
 namespace {
@@ -198,7 +199,7 @@ static LogicalResult tryRewriteFixedPOTAddEw(const RealBinaryOpInfo &constInfo,
   if (rhsRightShift != 0) {
     rhsStorageValue =
         rewriter
-            .create<RoundingDivideByPotIOp>(
+            .create<RoundingDivideByPotFxpOp>(
                 mathOp->getLoc(), rhsStorageValue,
                 IntegerAttr::get(IntegerType::get(32, rewriter.getContext()),
                                  rhsRightShift))
@@ -206,7 +207,7 @@ static LogicalResult tryRewriteFixedPOTAddEw(const RealBinaryOpInfo &constInfo,
   }
 
   // Add.
-  Value *sumValue = rewriter.create<SaturatingAddIOp>(
+  Value *sumValue = rewriter.create<SaturatingAddFxpOp>(
       mathOp->getLoc(), lhsStorageValue, rhsStorageValue, clampMinMax.first,
       clampMinMax.second);
 
@@ -255,5 +256,5 @@ FunctionPassBase *createLowerUniformRealMathPass() {
 }
 
 static PassRegistration<LowerUniformRealMathPass>
-    pass("quant-lower-uniform-real-math",
+    pass("fxpmath-lower-uniform-real-math",
          "Lowers uniform-quantized real math ops to integer arithmetic.");
