@@ -908,6 +908,16 @@ class ResourceVariable(variables.VariableV1):
 
     return array_ops.identity(value)
 
+  def gather_nd(self, indices, name=None):
+    """Reads the value of this variable sparsely, using `gather_nd`."""
+    with ops.name_scope("GatherNd" if name is None else name) as name:
+      if self.trainable:
+        variable_accessed(self)
+      value = gen_resource_variable_ops.resource_gather_nd(
+          self._handle, indices, dtype=self._dtype, name=name)
+
+    return array_ops.identity(value)
+
   def to_proto(self, export_scope=None):
     """Converts a `ResourceVariable` to a `VariableDef` protocol buffer.
 

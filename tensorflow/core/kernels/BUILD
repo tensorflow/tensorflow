@@ -2391,6 +2391,7 @@ tf_kernel_library(
         ":bounds_check",
         ":dense_update_functor",
         ":gather_functor",
+        ":gather_nd_op",
         ":scatter_functor",
         ":training_op_helpers",
         ":variable_ops",
