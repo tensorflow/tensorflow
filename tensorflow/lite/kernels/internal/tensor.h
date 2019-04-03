@@ -76,6 +76,11 @@ class VectorOfTensors {
   //   f[0][1] is the second element of the first tensor.
   // NOTE: This function should be called only in Eval/Invoke context
   T* const* data() {
+    // Reset before writing all tensor data, as this function can be called
+    // multiple times
+    // NOTE: It should always read fresh data from Tensors, even though over
+    // head if Tensors are not changed, but desirable
+    all_data_.clear();
     for (auto it = all_tensors_.begin(); it != all_tensors_.end(); ++it) {
       all_data_.push_back(GetTensorData<T>(*it));
     }
