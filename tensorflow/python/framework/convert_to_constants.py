@@ -101,16 +101,18 @@ def _construct_concrete_function(input_func, graph_def):
   output_graph.structured_input_signature = (
       input_func.graph.structured_input_signature)
 
+  # pylint: disable=protected-access
   # Create the ConcreteFunction and add it to the global context.
-  output_func = function.ConcreteFunction(output_graph)
+  output_func = function.ConcreteFunction(
+      output_graph, attrs=input_func._attrs, signature=input_func._signature)
   output_func.add_to_graph()
 
   # Inject the captured inputs into the ConcreteFunction.
-  output_func._captured_inputs = input_func.captured_inputs  # pylint: disable=protected-access
+  output_func._captured_inputs = input_func.captured_inputs
   output_func.graph.variables = input_func.graph.variables
-
-  output_func._arg_keywords = input_func._arg_keywords  # pylint: disable=protected-access
-  output_func._num_position_args = input_func._num_positional_args  # pylint: disable=protected-access
+  output_func._arg_keywords = input_func._arg_keywords
+  output_func._num_positional_args = input_func._num_positional_args
+  # pylint: enable=protected-access
 
   # Register the gradients in the current root context.
   with ops.init_scope():
