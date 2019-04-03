@@ -2787,10 +2787,11 @@ def add_n(inputs, name=None):
 
   Converts `IndexedSlices` objects into dense tensors prior to adding.
   
-  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n` but it waits
-  for all of its inputs to be ready before beginning to sum.This can consume more 
-  memory when inputs are ready at different times, since the minimum temporary storage 
-  required is proportional to the input size rather than the output size.
+  `add_n` performs the same operation as `accumulate_n` but it waits
+  for all of its inputs to be ready before beginning to sum.This can 
+  consume more memory when inputs are ready at different times, since 
+  the minimum temporary storage required is proportional to the input 
+  size rather than the output size.
   For example:
   
   ```python
