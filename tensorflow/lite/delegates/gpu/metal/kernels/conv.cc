@@ -587,33 +587,33 @@ kernel void ComputeFunction(
     int x0 = gid_x0 * params.stride_padding.x + params.stride_padding.z;
     int x1 = gid_x1 * params.stride_padding.x + params.stride_padding.z;
 )";
-  code += R"("
-    int y = 0;\n";
-    do {\n";
-    int coord_y0 = y * params.kernel_dilation.w + y0;\n";
-    int coord_y1 = y * params.kernel_dilation.w + y1;\n";
-    bool y0_out = coord_y0 < 0 || coord_y0 >= params.src_size.y;\n";
-    bool y1_out = coord_y1 < 0 || coord_y1 >= params.src_size.y;\n";
-    coord_y0 = clamp(coord_y0, 0, params.src_size.y - 1);\n";
-    coord_y1 = clamp(coord_y1, 0, params.src_size.y - 1);\n";
-    int x = 0;\n";
-    do {\n";
-    int coord_x0 = x * params.kernel_dilation.z + x0;\n";
-    int coord_x1 = x * params.kernel_dilation.z + x1;\n";
-    bool x0_out = coord_x0 < 0 || coord_x0 >= params.src_size.x;\n";
-    bool x1_out = coord_x1 < 0 || coord_x1 >= params.src_size.x;\n";
-    coord_x0 = clamp(coord_x0, 0, params.src_size.x - 1);\n";
-    coord_x1 = clamp(coord_x1, 0, params.src_size.x - 1);\n";
-    FLT m0 = !(y0_out || x0_out);\n";
-    FLT m1 = !(y1_out || x1_out);\n";
-    device FLT4* src_loc_0 = src_buffer + coord_y0 * params.src_size.x + coord_x0;\n";
-    device FLT4* src_loc_1 = src_buffer + coord_y1 * params.src_size.x + coord_x1;\n";
-    int s = 0;\n";
-    do {\n";
-        FLT4 src_0 = *src_loc_0 * m0;\n";
-        FLT4 src_1 = *src_loc_1 * m1;\n";
-        src_loc_0 += params.src_size.z;\n";
-        src_loc_1 += params.src_size.z;\n";
+  code += R"(
+    int y = 0;
+    do {
+    int coord_y0 = y * params.kernel_dilation.w + y0;
+    int coord_y1 = y * params.kernel_dilation.w + y1;
+    bool y0_out = coord_y0 < 0 || coord_y0 >= params.src_size.y;
+    bool y1_out = coord_y1 < 0 || coord_y1 >= params.src_size.y;
+    coord_y0 = clamp(coord_y0, 0, params.src_size.y - 1);
+    coord_y1 = clamp(coord_y1, 0, params.src_size.y - 1);
+    int x = 0;
+    do {
+    int coord_x0 = x * params.kernel_dilation.z + x0;
+    int coord_x1 = x * params.kernel_dilation.z + x1;
+    bool x0_out = coord_x0 < 0 || coord_x0 >= params.src_size.x;
+    bool x1_out = coord_x1 < 0 || coord_x1 >= params.src_size.x;
+    coord_x0 = clamp(coord_x0, 0, params.src_size.x - 1);
+    coord_x1 = clamp(coord_x1, 0, params.src_size.x - 1);
+    FLT m0 = !(y0_out || x0_out);
+    FLT m1 = !(y1_out || x1_out);
+    device FLT4* src_loc_0 = src_buffer + coord_y0 * params.src_size.x + coord_x0;
+    device FLT4* src_loc_1 = src_buffer + coord_y1 * params.src_size.x + coord_x1;
+    int s = 0;
+    do {
+        FLT4 src_0 = *src_loc_0 * m0;
+        FLT4 src_1 = *src_loc_1 * m1;
+        src_loc_0 += params.src_size.z;
+        src_loc_1 += params.src_size.z;
 )";
   for (int i = 0; i < z_out * 4; ++i) {
     const std::string s_i = std::to_string(i);
