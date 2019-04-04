@@ -22,6 +22,7 @@
 
 #include "toy/MLIRGen.h"
 #include "toy/AST.h"
+#include "toy/Dialect.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -215,28 +216,18 @@ private:
 
     // Derive the operation name from the binary operator. At the moment we only
     // support '+' and '*'.
-    const char *op_name = nullptr;
     switch (binop.getOp()) {
     case '+':
-      op_name = "toy.add";
+      return builder->create<AddOp>(location, L, R).getResult();
       break;
     case '*':
-      op_name = "toy.mul";
-      break;
+      return builder->create<MulOp>(location, L, R).getResult();
     default:
       context.emitError(loc(binop.loc()),
                         Twine("Error: invalid binary operator '") +
                             Twine(binop.getOp()) + "'");
       return nullptr;
     }
-
-    // Build the MLIR operation from the name and the two operands. The return
-    // type is always a generic array for binary operators.
-    mlir::OperationState result(&context, location, op_name);
-    result.types.push_back(getType(VarType{}));
-    result.operands.push_back(L);
-    result.operands.push_back(R);
-    return builder->createOperation(result)->getResult(0);
   }
 
   // This is a reference to a variable in an expression. The variable is
@@ -254,14 +245,14 @@ private:
   bool mlirGen(ReturnExprAST &ret) {
     auto location = loc(ret.loc());
     // `return` takes an optional expression, we need to account for it here.
-    mlir::OperationState result(&context, location, "toy.return");
-    if (ret.getExpr().hasValue()) {
-      auto *expr = mlirGen(*ret.getExpr().getValue());
-      if (!expr)
-        return false;
-      result.operands.push_back(expr);
+    if (!ret.getExpr().hasValue()) {
+      builder->create<ReturnOp>(location);
+      return true;
     }
-    builder->createOperation(result);
+    auto *expr = mlirGen(*ret.getExpr().getValue());
+    if (!expr)
+      return false;
+    builder->create<ReturnOp>(location, expr);
     return true;
   }
 
@@ -286,8 +277,6 @@ private:
   //
   mlir::Value *mlirGen(LiteralExprAST &lit) {
     auto location = loc(lit.loc());
-    auto type = getType(lit.getDims());
-
     // The attribute is a vector with an attribute per element (number) in the
     // array, see `collectData()` below for more details.
     std::vector<mlir::Attribute> data;
@@ -302,15 +291,12 @@ private:
 
     // This is the actual attribute that actually hold the list of values for
     // this array literal.
-    auto dataAttribute = builder->getNamedAttr(
-        "value", builder->getDenseElementsAttr(dataType, data)
-                     .cast<mlir::DenseElementsAttr>());
+    auto dataAttribute = builder->getDenseElementsAttr(dataType, data)
+                             .cast<mlir::DenseElementsAttr>();
 
     // Build the MLIR op `toy.constant`, only boilerplate below.
-    mlir::OperationState result(&context, location, "toy.constant");
-    result.types.push_back(type);
-    result.attributes.push_back(dataAttribute);
-    return builder->createOperation(result)->getResult(0);
+    return builder->create<ConstantOp>(location, lit.getDims(), dataAttribute)
+        .getResult();
   }
 
   // Recursive helper function to accumulate the data that compose an array
@@ -339,7 +325,18 @@ private:
   mlir::Value *mlirGen(CallExprAST &call) {
     auto location = loc(call.loc());
     std::string callee = call.getCallee();
-    // Codegen the operands first.
+    if (callee == "transpose") {
+      if (call.getArgs().size() != 1) {
+        context.emitError(
+            location, Twine("MLIR codegen encountered an error: toy.transpose "
+                            "does not accept multiple arguments"));
+        return nullptr;
+      }
+      mlir::Value *arg = mlirGen(*call.getArgs()[0]);
+      return builder->create<TransposeOp>(location, arg).getResult();
+    }
+
+    // Codegen the operands first
     SmallVector<mlir::Value *, 4> operands;
     for (auto &expr : call.getArgs()) {
       auto *arg = mlirGen(*expr);
@@ -347,22 +344,10 @@ private:
         return nullptr;
       operands.push_back(arg);
     }
-    // builtin have their custom operation, this is a straightforward emission.
-    if (callee == "transpose") {
-      mlir::OperationState result(&context, location, "toy.transpose");
-      result.types.push_back(getType(VarType{}));
-      result.operands = std::move(operands);
-      return builder->createOperation(result)->getResult(0);
-    }
-
-    // Calls to user-defined functions are mapped to a custom call that takes
+    // Calls to user-defined function are mapped to a custom call that takes
     // the callee name as an attribute.
-    mlir::OperationState result(&context, location, "toy.generic_call");
-    result.types.push_back(getType(VarType{}));
-    result.operands = std::move(operands);
-    auto calleeAttr = builder->getStringAttr(call.getCallee());
-    result.attributes.push_back(builder->getNamedAttr("callee", calleeAttr));
-    return builder->createOperation(result)->getResult(0);
+    return builder->create<GenericCallOp>(location, call.getCallee(), operands)
+        .getResult();
   }
 
   // Emit a call expression. It emits specific operations for two builtins:
@@ -373,22 +358,17 @@ private:
     if (!arg)
       return false;
     auto location = loc(call.loc());
-    mlir::OperationState result(&context, location, "toy.print");
-    result.operands.push_back(arg);
-    builder->createOperation(result);
+    builder->create<PrintOp>(location, arg);
     return true;
   }
 
   // Emit a constant for a single number (FIXME: semantic? broadcast?)
   mlir::Value *mlirGen(NumberExprAST &num) {
     auto location = loc(num.loc());
-    mlir::OperationState result(&context, location, "toy.constant");
     mlir::Type elementType = mlir::FloatType::getF64(&context);
-    result.types.push_back(builder->getMemRefType({1}, elementType));
     auto attr = mlir::FloatAttr::getChecked(elementType, num.getValue(),
                                             loc(num.loc()));
-    result.attributes.push_back(builder->getNamedAttr("value", attr));
-    return builder->createOperation(result)->getResult(0);
+    return builder->create<ConstantOp>(location, attr).getResult();
   }
 
   // Dispatch codegen for the right expression subclass using RTTI.
@@ -428,10 +408,11 @@ private:
       // with specific shape, we emit a "reshape" operation. It will get
       // optimized out later as needed.
       if (!vardecl.getType().shape.empty()) {
-        mlir::OperationState result(&context, location, "toy.reshape");
-        result.types.push_back(getType(vardecl.getType()));
-        result.operands.push_back(value);
-        value = builder->createOperation(result)->getResult(0);
+        value = builder
+                    ->create<ReshapeOp>(
+                        location, value,
+                        getType(vardecl.getType()).cast<ToyArrayType>())
+                    .getResult();
       }
     } else {
       context.emitError(loc(vardecl.loc()),
@@ -477,20 +458,8 @@ private:
   /// They are wrapped in a `toy` dialect (see next chapter) and get printed:
   ///   !toy<"array<2, 2>">
   template <typename T> mlir::Type getType(T shape) {
-    mlir::Type elementType = mlir::FloatType::getF64(&context);
-    std::string typeName = "array";
-    if (!shape.empty()) {
-      typeName += "<";
-      const char *sep = "";
-      for (auto dim : shape) {
-        typeName += sep;
-        typeName += llvm::Twine(dim).str();
-        sep = ", ";
-      }
-      typeName += ">";
-    }
-    return mlir::OpaqueType::get(mlir::Identifier::get("toy", &context),
-                                 typeName, &context);
+    SmallVector<int64_t, 8> shape64(shape.begin(), shape.end());
+    return ToyArrayType::get(&context, shape64);
   }
 
   /// Build an MLIR type from a Toy AST variable type

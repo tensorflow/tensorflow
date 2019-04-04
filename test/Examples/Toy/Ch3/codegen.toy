@@ -1,4 +1,4 @@
-# RUN: toyc-ch2 %s -emit=mlir 2>&1 | FileCheck %s
+# RUN: toyc-ch3 %s -emit=mlir 2>&1 | FileCheck %s
 
 # User defined generic function that operates on unknown shaped arguments
 def multiply_transpose(a, b) {

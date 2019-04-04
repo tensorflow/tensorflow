@@ -27,6 +27,7 @@ DEFINE_TYPE_KIND_RANGE(LLVM)
 DEFINE_TYPE_KIND_RANGE(QUANTIZATION)
 DEFINE_TYPE_KIND_RANGE(IREE) // IREE stands for IR Execution Engine
 DEFINE_TYPE_KIND_RANGE(LINALG) // Linear Algebra Dialect
+DEFINE_TYPE_KIND_RANGE(TOY) // Toy language (tutorial) Dialect
 
 // The following ranges are reserved for experimenting with MLIR dialects in a
 // private context without having to register them here.
