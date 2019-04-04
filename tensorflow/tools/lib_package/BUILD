@@ -5,9 +5,10 @@ package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "tf_binary_additional_data_deps")
+load("//tensorflow:tensorflow.bzl", "tf_shared_library_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -54,7 +55,7 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    files = tf_binary_additional_srcs(),
+    files = tf_binary_additional_data_deps(),
     tags = ["manual"],
 )
 
@@ -88,16 +89,7 @@ pkg_tar(
 
 pkg_tar(
     name = "clib",
-    files = select({
-        "//tensorflow:macos": [
-            "//tensorflow:libtensorflow.dylib",
-        ],
-        "//tensorflow:windows": [
-            "//tensorflow:tensorflow.dll",
-            "//tensorflow:tensorflow_dll_import_lib",
-        ],
-        "//conditions:default": ["//tensorflow:libtensorflow.so"],
-    }),
+    srcs = tf_shared_library_deps(),
     package_dir = "lib",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
