@@ -61,10 +61,18 @@ void TestConstantFold::runOnFunction() {
   opsToErase.clear();
 
   auto &f = getFunction();
+  ConstantFoldHelper helper(&f);
 
-  ConstantFoldHelper helper(&f, /*insertAtHead=*/false);
+  // Collect and fold the operations within the function.
+  SmallVector<Operation *, 8> ops;
+  f.walk([&](Operation *op) { ops.push_back(op); });
 
-  f.walk([&](Operation *op) { foldOperation(op, helper); });
+  // Fold the constants in reverse so that the last generated constants from
+  // folding are at the beginning. This creates somewhat of a linear ordering to
+  // the newly generated constants that matches the operation order and improves
+  // the readability of test cases.
+  for (Operation *op : llvm::reverse(ops))
+    foldOperation(op, helper);
 
   // At this point, these operations are dead, remove them.
   for (auto *op : opsToErase) {

@@ -265,8 +265,8 @@ func @dim(%x : tensor<8x4xf32>) -> index {
 func @cmpi() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
   %c42 = constant 42 : i32
   %cm1 = constant -1 : i32
-// CHECK-NEXT: %false = constant 0 : i1
-// CHECK-NEXT: %true = constant 1 : i1
+// CHECK-DAG: %false = constant 0 : i1
+// CHECK-DAG: %true = constant 1 : i1
 // CHECK-NEXT: return %false,
   %0 = cmpi "eq", %c42, %cm1 : i32
 // CHECK-SAME: %true,

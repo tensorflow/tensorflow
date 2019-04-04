@@ -29,8 +29,7 @@
 
 using namespace mlir;
 
-ConstantFoldHelper::ConstantFoldHelper(Function *f, bool insertAtHead)
-    : function(f), isInsertAtHead(insertAtHead) {}
+ConstantFoldHelper::ConstantFoldHelper(Function *f) : function(f) {}
 
 bool ConstantFoldHelper::tryToConstantFold(
     Operation *op, std::function<void(Operation *)> preReplaceAction) {
@@ -146,18 +145,7 @@ bool ConstantFoldHelper::tryToUnify(Operation *op) {
 }
 
 void ConstantFoldHelper::moveConstantToEntryBlock(Operation *op) {
+  // Insert at the very top of the entry block.
   auto &entryBB = function->front();
-  if (isInsertAtHead || entryBB.empty()) {
-    // Insert at the very top of the entry block.
-    op->moveBefore(&entryBB, entryBB.begin());
-  } else {
-    // TODO: This is only used by TestConstantFold and not very clean. We should
-    // figure out a better way to work around this.
-
-    // Move to be ahead of the first non-constant op.
-    auto it = entryBB.begin();
-    while (it != entryBB.end() && it->isa<ConstantOp>())
-      ++it;
-    op->moveBefore(&entryBB, it);
-  }
+  op->moveBefore(&entryBB, entryBB.begin());
 }

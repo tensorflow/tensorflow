@@ -42,14 +42,12 @@ class ConstantFoldHelper {
 public:
   /// Constructs an instance for managing constants in the given function `f`.
   /// Constants tracked by this instance will be moved to the entry block of
-  /// `f`. If `insertAtHead` is true, the insertion always happen at the very
-  /// top of the entry block; otherwise, the insertion happens after the last
-  /// one of consecutive constant ops at the beginning of the entry block.
+  /// `f`. The insertion always happens at the very top of the entry block.
   ///
   /// This instance does not proactively walk the operations inside `f`;
   /// instead, users must invoke the following methods to manually handle each
   /// operation of interest.
-  ConstantFoldHelper(Function *f, bool insertAtHead = true);
+  ConstantFoldHelper(Function *f);
 
   /// Tries to perform constant folding on the given `op`, including unifying
   /// deplicated constants. If successful, calls `preReplaceAction` (if
@@ -81,9 +79,6 @@ private:
 
   /// The function where we are managing constant.
   Function *function;
-
-  /// Whether to always insert constants at the very top of the entry block.
-  bool isInsertAtHead;
 
   /// This map keeps track of uniqued constants.
   DenseMap<std::pair<Attribute, Type>, Operation *> uniquedConstants;
