@@ -19,7 +19,7 @@ For more information on MLIR, please see:
     itself.
 *   [The MLIR rationale document](g3doc/Rationale.md), covering motivation
     behind some decisions.
-*   Previous external [talks](#talks).
+*   Previous external [talks](#mlir-talks).
 
 Join the [MLIR mailing list](https://groups.google.com/a/tensorflow.org/forum/#!forum/mlir)
 to hear about announcements and discussions.
@@ -40,7 +40,7 @@ requirements in a unified infrastructure. For example, this includes:
 *   Representation of kernels for ML operations in a form suitable for
     optimization.
 *   Ability to host high-performance-computing-style loop optimizations across
-    kernels (fusion, loop interchange, tiling, etc), and transform memory
+    kernels (fusion, loop interchange, tiling, etc) and to transform memory
     layouts of data.
 *   Code generation "lowering" transformations such as DMA insertion, explicit
     cache management, memory tiling, and vectorization for 1D and 2D register
@@ -60,7 +60,7 @@ end-users would themselves write kernels in (analogous to CUDA C++). While we
 would love to see a kernel language happen someday, that will be an independent
 project that compiles down to MLIR.
 
-## Compiler Infrastructure {#compiler-infrastructure}
+## Compiler infrastructure
 
 We benefitted from experience gained from building other IRs (HLO, LLVM and SIL)
 when building MLIR. We will directly adopt existing best practices, e.g. writing
@@ -83,19 +83,19 @@ MLIR has been tested on Linux and macOS, with recent versions of clang and with 
 
 ```
 git clone https://github.com/llvm/llvm-project.git
-cd llvm-projects/llvm/projects/
+cd llvm-project/llvm/projects/
 git clone https://github.com/tensorflow/mlir
-cd ../../
+cd ../..
 mkdir build
 cd build
-cmake -G Ninja ../llvm/  -DLLVM_BUILD_EXAMPLES=ON
+cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON
 ninja check-mlir
 ```
 
 As a starter, you may try [the tutorial](g3doc/Tutorials/Toy/Ch-1.md) on
 building a compiler for a Toy language.
 
-# MLIR talks {#talks}
+# MLIR talks
 
 * "[MLIR Primer: A Compiler Infrastructure for the End of Moore’s
     Law](https://drive.google.com/file/d/1hUeAJXcAXwz82RXA5VtO5ZoH8cVQhrOK/view?usp=sharing)"
