@@ -1637,7 +1637,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.22.0', '0.24.0')
+  current_bazel_version = check_bazel_version('0.22.0', '0.24.1')
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
