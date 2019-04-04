@@ -56,7 +56,6 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-      print(cs_list)
 
       # Note how there are two convolutions
       ok = [
