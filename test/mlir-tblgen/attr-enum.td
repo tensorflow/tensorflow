@@ -20,8 +20,9 @@ def NS_OpA : Op<"op_a_with_enum_attr", []> {
 // DEF-NEXT:    return attr.getValue();
 
 // DEF-LABEL: OpA::verify()
-// DEF:       if (!(((this->getAttr("attr").cast<StringAttr>().getValue() == "A")) || ((this->getAttr("attr").cast<StringAttr>().getValue() == "B")) || ((this->getAttr("attr").cast<StringAttr>().getValue() == "C"))))
-// DEF-SAME:    return emitOpError("attribute 'attr' failed to satisfy some enum attribute constraints");
+// DEF:         auto tblgen_attr = this->getAttr("attr");
+// DEF:         if (!(((tblgen_attr.cast<StringAttr>().getValue() == "A")) || ((tblgen_attr.cast<StringAttr>().getValue() == "B")) || ((tblgen_attr.cast<StringAttr>().getValue() == "C"))))
+// DEF-SAME:      return emitOpError("attribute 'attr' failed to satisfy constraint: some enum");
 
 def NS_OpB : Op<"op_b_with_enum_attr", []> {
   let arguments = (ins NS_SomeEnum:$attr);

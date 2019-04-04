@@ -36,8 +36,9 @@ using namespace mlir;
 
 using mlir::tblgen::Operator;
 
+static const char *const tblgenNamePrefix = "tblgen_";
+static const char *const generatedArgName = "tblgen_arg";
 static const char *const builderOpState = "tblgen_state";
-static const char *const generatedArgName = "_arg";
 
 static const char *const opCommentHeader = R"(
 //===----------------------------------------------------------------------===//
@@ -785,7 +786,8 @@ void OpEmitter::genVerifier() {
   auto valueInit = def.getValueInit("verifier");
   CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
   bool hasCustomVerify = codeInit && !codeInit->getValue().empty();
-  if (!hasCustomVerify && op.getNumArgs() == 0 && op.getNumResults() == 0)
+  if (!hasCustomVerify && op.getNumArgs() == 0 && op.getNumResults() == 0 &&
+      op.getNumPredOpTraits() == 0)
     return;
 
   auto &method = opClass.newMethod("LogicalResult", "verify", /*params=*/"");
@@ -798,38 +800,33 @@ void OpEmitter::genVerifier() {
     if (attr.isDerivedAttr())
       continue;
 
-    auto name = namedAttr.getName();
-    if (!attr.hasStorageType() && !attr.hasDefaultValue()) {
-      // TODO: Some verification can be done even without storage type.
-      body << "  if (!this->getAttr(\"" << name
-           << "\")) return emitOpError(\"requires attribute '" << name
-           << "'\");\n";
-      continue;
-    }
+    auto attrName = namedAttr.getName();
+    // Prefix with `tblgen_` to avoid hiding the attribute accessor.
+    auto varName = tblgenNamePrefix + namedAttr.name;
+    body << formatv("  auto {0} = this->getAttr(\"{1}\");\n", varName,
+                    attrName);
 
     bool allowMissingAttr = attr.hasDefaultValue() || attr.isOptional();
     if (allowMissingAttr) {
       // If the attribute has a default value, then only verify the predicate if
       // set. This does effectively assume that the default value is valid.
       // TODO: verify the debug value is valid (perhaps in debug mode only).
-      body << "  if (this->getAttr(\"" << name << "\")) {\n";
+      body << "  if (" << varName << ") {\n";
+    } else {
+      body << "  if (!" << varName
+           << ") return emitOpError(\"requires attribute '" << attrName
+           << "'\");\n  {\n";
     }
-
-    body << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
-         << attr.getStorageType() << ">()) return emitOpError(\"requires "
-         << attr.getDescription() << " attribute '" << name << "'\");\n";
 
     auto attrPred = attr.getPredicate();
     if (!attrPred.isNull()) {
       body << formatv("    if (!({0})) return emitOpError(\"attribute '{1}' "
-                      "failed to satisfy {2} attribute constraints\");\n",
-                      formatv(attrPred.getCondition(),
-                              formatv("this->getAttr(\"{0}\")", name)),
-                      name, attr.getDescription());
+                      "failed to satisfy constraint: {2}\");\n",
+                      formatv(attrPred.getCondition(), varName), attrName,
+                      attr.getDescription());
     }
 
-    if (allowMissingAttr)
-      body << "  }\n";
+    body << "  }\n";
   }
 
   // Emits verification code for an operand or result.

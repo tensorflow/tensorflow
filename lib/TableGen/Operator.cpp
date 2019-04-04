@@ -99,6 +99,12 @@ StringRef tblgen::Operator::getArgName(int index) const {
   return argumentValues->getArgName(index)->getValue();
 }
 
+int tblgen::Operator::getNumPredOpTraits() const {
+  return std::count_if(traits.begin(), traits.end(), [](const OpTrait &trait) {
+    return isa<tblgen::PredOpTrait>(&trait);
+  });
+}
+
 bool tblgen::Operator::hasTrait(StringRef trait) const {
   for (auto t : getTraits()) {
     if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&t)) {

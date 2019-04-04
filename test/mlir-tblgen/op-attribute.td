@@ -50,6 +50,21 @@ def AOp : Op<"a_op", []> {
 // CHECK:        for (const auto& pair : attributes)
 // CHECK-NEXT:     tblgen_state->addAttribute(pair.first, pair.second);
 
+// Test verify method
+// ---
+
+// CHECK:      AOp::verify()
+// CHECK:      auto tblgen_aAttr = this->getAttr("aAttr");
+// CHECK-NEXT: if (!tblgen_aAttr) return emitOpError("requires attribute 'aAttr'");
+// CHECK:        if (!((some-condition))) return emitOpError("attribute 'aAttr' failed to satisfy constraint: some attribute kind");
+// CHECK:      auto tblgen_bAttr = this->getAttr("bAttr");
+// CHECK-NEXT: if (tblgen_bAttr) {
+// CHECK-NEXT:   if (!((some-condition))) return emitOpError("attribute 'bAttr' failed to satisfy constraint: some attribute kind");
+// CHECK:      auto tblgen_cAttr = this->getAttr("cAttr");
+// CHECK-NEXT: if (tblgen_cAttr) {
+// CHECK-NEXT:   if (!((some-condition))) return emitOpError("attribute 'cAttr' failed to satisfy constraint: some attribute kind");
+ 
+
 def MixOperandsAndAttrs : Op<"mix_operands_and_attrs", []> {
   let arguments = (ins F32Attr:$attr, F32:$operand, F32Attr:$otherAttr, F32:$otherArg);
 }

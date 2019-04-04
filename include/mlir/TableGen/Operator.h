@@ -119,6 +119,9 @@ public:
   Argument getArg(int index);
   StringRef getArgName(int index) const;
 
+  // Returns the number of `PredOpTrait` traits.
+  int getNumPredOpTraits() const;
+
   // Returns true if this op has the given MLIR C++ `trait`.
   // TODO: We should add a C++ wrapper class for TableGen OpTrait instead of
   // requiring the raw MLIR trait here.
