@@ -356,6 +356,7 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
     switch (fusion) {
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
+        break;
 
       case FusedComputationType::kBiasAdd:
         OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
