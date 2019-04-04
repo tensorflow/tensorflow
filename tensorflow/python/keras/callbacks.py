@@ -844,7 +844,7 @@ class ModelCheckpoint(Callback):
     self.save_weights_only = save_weights_only
     self.save_freq = save_freq
     self.load_weights_on_restart = load_weights_on_restart
-    self._epochs_since_last_save = 0
+    self.epochs_since_last_save = 0
     self._samples_seen_since_last_saving = 0
 
     # Deprecated field `period` is for the number of epochs between which
@@ -920,7 +920,7 @@ class ModelCheckpoint(Callback):
     self._current_epoch = epoch
 
   def on_epoch_end(self, epoch, logs=None):
-    self._epochs_since_last_save += 1
+    self.epochs_since_last_save += 1
     if self.save_freq == 'epoch':
       self._save_model(epoch=epoch, logs=logs)
 
@@ -943,8 +943,8 @@ class ModelCheckpoint(Callback):
       return
 
     if isinstance(self.save_freq,
-                  int) or self._epochs_since_last_save >= self.period:
-      self._epochs_since_last_save = 0
+                  int) or self.epochs_since_last_save >= self.period:
+      self.epochs_since_last_save = 0
 
       filepath = self.filepath.format(epoch=epoch + 1, **logs)
       if self.save_best_only:
