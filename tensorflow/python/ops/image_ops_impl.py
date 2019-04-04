@@ -2831,7 +2831,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=_SSIM_K1, k2=_SSIM
     compensation: Compensation factor. See above.
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
+      lower values, so it would be better if we taken the values in range
       of 0< K2 <0.4).
 
   Returns:
