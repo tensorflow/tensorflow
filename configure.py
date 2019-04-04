@@ -700,8 +700,9 @@ def create_android_ndk_rule(environ_cp):
       error_msg=('The path %s or its child file "source.properties" '
                  'does not exist.'))
   write_action_env_to_bazelrc('ANDROID_NDK_HOME', android_ndk_home_path)
-  write_action_env_to_bazelrc('ANDROID_NDK_API_LEVEL',
-                              check_ndk_level(android_ndk_home_path))
+  write_action_env_to_bazelrc(
+      'ANDROID_NDK_API_LEVEL',
+      get_ndk_api_level(environ_cp, android_ndk_home_path))
 
 
 def create_android_sdk_rule(environ_cp):
@@ -768,8 +769,10 @@ def create_android_sdk_rule(environ_cp):
   write_action_env_to_bazelrc('ANDROID_SDK_HOME', android_sdk_home_path)
 
 
-def check_ndk_level(android_ndk_home_path):
-  """Check the revision number of an Android NDK path."""
+def get_ndk_api_level(environ_cp, android_ndk_home_path):
+  """Gets the appropriate NDK API level to use for the provided Android NDK path."""
+
+  # First check to see if we're using a blessed version of the NDK.
   properties_path = '%s/source.properties' % android_ndk_home_path
   if is_windows() or is_cygwin():
     properties_path = cygpath(properties_path)
@@ -778,17 +781,40 @@ def check_ndk_level(android_ndk_home_path):
 
   revision = re.search(r'Pkg.Revision = (\d+)', filedata)
   if revision:
-    ndk_api_level = revision.group(1)
+    ndk_version = revision.group(1)
   else:
     raise Exception('Unable to parse NDK revision.')
-  if int(ndk_api_level) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
-    print(
-        'WARNING: The API level of the NDK in %s is %s, which is not '
-        'supported by Bazel (officially supported versions: %s). Please use '
-        'another version. Compiling Android targets may result in confusing '
-        'errors.\n' %
-        (android_ndk_home_path, ndk_api_level, _SUPPORTED_ANDROID_NDK_VERSIONS))
-  return ndk_api_level
+  if int(ndk_version) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
+    print('WARNING: The NDK version in %s is %s, which is not '
+          'supported by Bazel (officially supported versions: %s). Please use '
+          'another version. Compiling Android targets may result in confusing '
+          'errors.\n' % (android_ndk_home_path, ndk_version,
+                         _SUPPORTED_ANDROID_NDK_VERSIONS))
+
+  # Now grab the NDK API level to use. Note that this is different from the
+  # SDK API level, as the NDK API level is effectively the *min* target SDK
+  # version.
+  platforms = os.path.join(android_ndk_home_path, 'platforms')
+  api_levels = sorted(os.listdir(platforms))
+  api_levels = [
+      x.replace('android-', '') for x in api_levels if 'android-' in x
+  ]
+
+  def valid_api_level(api_level):
+    return os.path.exists(
+        os.path.join(android_ndk_home_path, 'platforms',
+                     'android-' + api_level))
+
+  android_ndk_api_level = prompt_loop_or_load_from_env(
+      environ_cp,
+      var_name='ANDROID_NDK_API_LEVEL',
+      var_default='18',  # 18 is required for GPU acceleration.
+      ask_for_var=('Please specify the (min) Android NDK API level to use. '
+                   '[Available levels: %s]') % api_levels,
+      check_success=valid_api_level,
+      error_msg='Android-%s is not present in the NDK path.')
+
+  return android_ndk_api_level
 
 
 def set_gcc_host_compiler_path(environ_cp):
