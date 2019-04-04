@@ -234,9 +234,8 @@ static void buildDimAndSymbolPositionMaps(
   };
 
   SmallVector<Value *, 4> srcValues, destValues;
-  srcDomain.getAllIdValues(&srcValues);
-  dstDomain.getAllIdValues(&destValues);
-
+  srcDomain.getIdValues(0, srcDomain.getNumDimAndSymbolIds(), &srcValues);
+  dstDomain.getIdValues(0, dstDomain.getNumDimAndSymbolIds(), &destValues);
   // Update value position map with identifiers from src iteration domain.
   updateValuePosMap(srcValues, /*isSrc=*/true);
   // Update value position map with identifiers from dst iteration domain.
@@ -248,7 +247,7 @@ static void buildDimAndSymbolPositionMaps(
 }
 
 // Sets up dependence constraints columns appropriately, in the format:
-// [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers, const_term]
+// [src-dim-ids, dst-dim-ids, symbol-ids, local-ids, const_term]
 void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
                                const FlatAffineConstraints &dstDomain,
                                const AffineValueMap &srcAccessMap,
@@ -264,12 +263,13 @@ void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
   unsigned numEq = srcMap.getNumResults();
   unsigned numDims = srcDomain.getNumDimIds() + dstDomain.getNumDimIds();
   unsigned numSymbols = valuePosMap.getNumSymbols();
-  unsigned numIds = numDims + numSymbols;
+  unsigned numLocals = srcDomain.getNumLocalIds() + dstDomain.getNumLocalIds();
+  unsigned numIds = numDims + numSymbols + numLocals;
   unsigned numCols = numIds + 1;
 
   // Set flat affine constraints sizes and reserving space for constraints.
   dependenceConstraints->reset(numIneq, numEq, numCols, numDims, numSymbols,
-                               /*numLocals=*/0);
+                               numLocals);
 
   // Set values corresponding to dependence constraint identifiers.
   SmallVector<Value *, 4> srcLoopIVs, dstLoopIVs;
@@ -314,43 +314,53 @@ static void addDomainConstraints(const FlatAffineConstraints &srcDomain,
                                  const FlatAffineConstraints &dstDomain,
                                  const ValuePositionMap &valuePosMap,
                                  FlatAffineConstraints *dependenceDomain) {
-  unsigned srcNumIneq = srcDomain.getNumInequalities();
-  unsigned srcNumDims = srcDomain.getNumDimIds();
-  unsigned srcNumSymbols = srcDomain.getNumSymbolIds();
-  unsigned srcNumIds = srcNumDims + srcNumSymbols;
+  unsigned depNumDimsAndSymbolIds = dependenceDomain->getNumDimAndSymbolIds();
 
-  unsigned dstNumIneq = dstDomain.getNumInequalities();
-  unsigned dstNumDims = dstDomain.getNumDimIds();
-  unsigned dstNumSymbols = dstDomain.getNumSymbolIds();
-  unsigned dstNumIds = dstNumDims + dstNumSymbols;
+  SmallVector<int64_t, 4> cst(dependenceDomain->getNumCols());
 
-  SmallVector<int64_t, 4> ineq(dependenceDomain->getNumCols());
+  auto addDomain = [&](bool isSrc, bool isEq, unsigned localOffset) {
+    const FlatAffineConstraints &domain = isSrc ? srcDomain : dstDomain;
+    unsigned numCsts =
+        isEq ? domain.getNumEqualities() : domain.getNumInequalities();
+    unsigned numDimAndSymbolIds = domain.getNumDimAndSymbolIds();
+    auto at = [&](unsigned i, unsigned j) -> int64_t {
+      return isEq ? domain.atEq(i, j) : domain.atIneq(i, j);
+    };
+    auto map = [&](unsigned i) -> int64_t {
+      return isSrc ? valuePosMap.getSrcDimOrSymPos(domain.getIdValue(i))
+                   : valuePosMap.getDstDimOrSymPos(domain.getIdValue(i));
+    };
+
+    for (unsigned i = 0; i < numCsts; ++i) {
+      // Zero fill.
+      std::fill(cst.begin(), cst.end(), 0);
+      // Set coefficients for identifiers corresponding to domain.
+      for (unsigned j = 0; j < numDimAndSymbolIds; ++j)
+        cst[map(j)] = at(i, j);
+      // Local terms.
+      for (unsigned j = 0, e = domain.getNumLocalIds(); j < e; j++)
+        cst[depNumDimsAndSymbolIds + localOffset + j] =
+            at(i, numDimAndSymbolIds + j);
+      // Set constant term.
+      cst[cst.size() - 1] = at(i, domain.getNumCols() - 1);
+      // Add constraint.
+      if (isEq)
+        dependenceDomain->addEquality(cst);
+      else
+        dependenceDomain->addInequality(cst);
+    }
+  };
+
+  // Add equalities from src domain.
+  addDomain(/*isSrc=*/true, /*isEq=*/true, /*localOffset=*/0);
   // Add inequalities from src domain.
-  for (unsigned i = 0; i < srcNumIneq; ++i) {
-    // Zero fill.
-    std::fill(ineq.begin(), ineq.end(), 0);
-    // Set coefficients for identifiers corresponding to src domain.
-    for (unsigned j = 0; j < srcNumIds; ++j)
-      ineq[valuePosMap.getSrcDimOrSymPos(srcDomain.getIdValue(j))] =
-          srcDomain.atIneq(i, j);
-    // Set constant term.
-    ineq[ineq.size() - 1] = srcDomain.atIneq(i, srcNumIds);
-    // Add inequality constraint.
-    dependenceDomain->addInequality(ineq);
-  }
+  addDomain(/*isSrc=*/true, /*isEq=*/false, /*localOffset=*/0);
+  // Add equalities from dst domain.
+  addDomain(/*isSrc=*/false, /*isEq=*/true,
+            /*localOffset=*/srcDomain.getNumLocalIds());
   // Add inequalities from dst domain.
-  for (unsigned i = 0; i < dstNumIneq; ++i) {
-    // Zero fill.
-    std::fill(ineq.begin(), ineq.end(), 0);
-    // Set coefficients for identifiers corresponding to dst domain.
-    for (unsigned j = 0; j < dstNumIds; ++j)
-      ineq[valuePosMap.getDstDimOrSymPos(dstDomain.getIdValue(j))] =
-          dstDomain.atIneq(i, j);
-    // Set constant term.
-    ineq[ineq.size() - 1] = dstDomain.atIneq(i, dstNumIds);
-    // Add inequality constraint.
-    dependenceDomain->addInequality(ineq);
-  }
+  addDomain(/*isSrc=*/false, /*isEq=*/false,
+            /*localOffset=*/srcDomain.getNumLocalIds());
 }
 
 // Adds equality constraints that equate src and dst access functions
@@ -376,15 +386,11 @@ static void addDomainConstraints(const FlatAffineConstraints &srcDomain,
 //
 // Returns failure if any AffineExpr cannot be flattened (due to it being
 // semi-affine). Returns success otherwise.
-// TODO(bondhugula): assumes that dependenceDomain doesn't have local
-// variables already. Fix this soon.
 static LogicalResult
 addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
                            const AffineValueMap &dstAccessMap,
                            const ValuePositionMap &valuePosMap,
                            FlatAffineConstraints *dependenceDomain) {
-  if (dependenceDomain->getNumLocalIds() != 0)
-    return failure();
   AffineMap srcMap = srcAccessMap.getAffineMap();
   AffineMap dstMap = dstAccessMap.getAffineMap();
   assert(srcMap.getNumResults() == dstMap.getNumResults());
@@ -404,6 +410,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       failed(getFlattenedAffineExprs(dstMap, &destFlatExprs, &destLocalVarCst)))
     return failure();
 
+  unsigned domNumLocalIds = dependenceDomain->getNumLocalIds();
   unsigned srcNumLocalIds = srcLocalVarCst.getNumLocalIds();
   unsigned dstNumLocalIds = destLocalVarCst.getNumLocalIds();
   unsigned numLocalIdsToAdd = srcNumLocalIds + dstNumLocalIds;
@@ -414,6 +421,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   unsigned numDims = dependenceDomain->getNumDimIds();
   unsigned numSymbols = dependenceDomain->getNumSymbolIds();
   unsigned numSrcLocalIds = srcLocalVarCst.getNumLocalIds();
+  unsigned newLocalIdOffset = numDims + numSymbols + domNumLocalIds;
 
   // Equality to add.
   SmallVector<int64_t, 8> eq(dependenceDomain->getNumCols());
@@ -428,7 +436,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       eq[valuePosMap.getSrcDimOrSymPos(srcOperands[j])] = srcFlatExpr[j];
     // Local terms.
     for (unsigned j = 0, e = srcNumLocalIds; j < e; j++)
-      eq[numDims + numSymbols + j] = srcFlatExpr[srcNumIds + j];
+      eq[newLocalIdOffset + j] = srcFlatExpr[srcNumIds + j];
     // Set constant term.
     eq[eq.size() - 1] = srcFlatExpr[srcFlatExpr.size() - 1];
 
@@ -439,8 +447,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       eq[valuePosMap.getDstDimOrSymPos(dstOperands[j])] -= destFlatExpr[j];
     // Local terms.
     for (unsigned j = 0, e = dstNumLocalIds; j < e; j++)
-      eq[numDims + numSymbols + numSrcLocalIds + j] =
-          -destFlatExpr[dstNumIds + j];
+      eq[newLocalIdOffset + numSrcLocalIds + j] = -destFlatExpr[dstNumIds + j];
     // Set constant term.
     eq[eq.size() - 1] -= destFlatExpr[destFlatExpr.size() - 1];
 
@@ -486,7 +493,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
           srcLocalVarCst.atIneq(r, j);
     // Local terms.
     for (unsigned j = 0, e = srcNumLocalIds; j < e; j++)
-      ineq[numDims + numSymbols + j] = srcLocalVarCst.atIneq(r, srcNumIds + j);
+      ineq[newLocalIdOffset + j] = srcLocalVarCst.atIneq(r, srcNumIds + j);
     // Set constant term.
     ineq[ineq.size() - 1] =
         srcLocalVarCst.atIneq(r, srcLocalVarCst.getNumCols() - 1);
@@ -501,7 +508,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
           destLocalVarCst.atIneq(r, j);
     // Local terms.
     for (unsigned j = 0, e = dstNumLocalIds; j < e; j++)
-      ineq[numDims + numSymbols + numSrcLocalIds + j] =
+      ineq[newLocalIdOffset + numSrcLocalIds + j] =
           destLocalVarCst.atIneq(r, dstNumIds + j);
     // Set constant term.
     ineq[ineq.size() - 1] =

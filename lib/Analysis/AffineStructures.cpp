@@ -1171,6 +1171,7 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
       normalizeConstraintByGCD</*isEq=*/false>(this, i);
     }
     removeEquality(pivotRow);
+    GCDTightenInequalities();
   }
   // Update position limit based on number eliminated.
   posLimit = pivotCol;
@@ -2512,6 +2513,8 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
     }
   }
 
+  LLVM_DEBUG(llvm::dbgs() << "FM isResultIntegerExact: " << (lcmProducts == 1)
+                          << "\n");
   if (lcmProducts == 1 && isResultIntegerExact)
     *isResultIntegerExact = 1;
 

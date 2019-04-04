@@ -782,3 +782,71 @@ func @delinearize_mod_floordiv() {
 }
 
 // TODO(bondhugula): add more test cases involving mod's/div's.
+
+// -----
+
+// Load and store ops access the same elements in strided loop.
+// CHECK-LABEL: func @strided_loop_with_dependence_at_depth2
+func @strided_loop_with_dependence_at_depth2() {
+  %0 = alloc() : memref<10xf32>
+  %cf0 = constant 0.0 : f32
+  affine.for %i0 = 0 to 8 step 2 {
+    store %cf0, %0[%i0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-note@-4 {{dependence from 0 to 1 at depth 2 = true}}
+    %v0 = load %0[%i0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-note@-4 {{dependence from 1 to 1 at depth 2 = false}}
+  }
+  return
+}
+
+// -----
+
+// Load and store ops access alternating memref elements: no dependence.
+// CHECK-LABEL: func @strided_loop_with_no_dependence
+func @strided_loop_with_no_dependence() {
+  %0 = alloc() : memref<10xf32>
+  %cf0 = constant 0.0 : f32
+  affine.for %i0 = 0 to 8 step 2 {
+    %a0 = affine.apply (d0) -> (d0 + 1)(%i0)
+    store %cf0, %0[%a0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-note@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    %v0 = load %0[%i0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-note@-4 {{dependence from 1 to 1 at depth 2 = false}}
+  }
+  return
+}
+
+// -----
+
+// Store op accesses memref elements at offset causing loop-carried dependence.
+// CHECK-LABEL: func @strided_loop_with_loop_carried_dependence_at_depth1
+func @strided_loop_with_loop_carried_dependence_at_depth1() {
+  %0 = alloc() : memref<10xf32>
+  %cf0 = constant 0.0 : f32
+  affine.for %i0 = 0 to 8 step 2 {
+    %a0 = affine.apply (d0) -> (d0 + 4)(%i0)
+    store %cf0, %0[%a0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = [4, 4]}}
+    // expected-note@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    %v0 = load %0[%i0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-note@-4 {{dependence from 1 to 1 at depth 2 = false}}
+  }
+  return
+}
