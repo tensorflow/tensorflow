@@ -241,10 +241,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LinearModel"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "LocallyConnected1D"
     mtype: "<type \'type\'>"
   }
