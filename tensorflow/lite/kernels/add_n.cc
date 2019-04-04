@@ -29,6 +29,7 @@ constexpr int kOutputTensor = 0;
 struct OpData {
   int num_inputs;
   void* all_inputs;
+  TfLiteType type;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -39,7 +40,16 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
+  auto* data = reinterpret_cast<OpData*>(buffer);
+  if (data->type == kTfLiteFloat32) {
+    delete static_cast<VectorOfTensors<float>*>(data->all_inputs);
+  } else if (data->type == kTfLiteInt32) {
+    delete static_cast<VectorOfTensors<int32_t>*>(data->all_inputs);
+  } else {
+    context->ReportError(context, "Unexpected data type - [%s] received.",
+                         TfLiteTypeGetName(data->type));
+  }
+  delete data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -60,6 +70,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   data->num_inputs = NumInputs(node);
+  data->type = output->type;
   if (output->type == kTfLiteFloat32) {
     data->all_inputs = reinterpret_cast<void*>(
         new VectorOfTensors<float>(*context, *node->inputs));
