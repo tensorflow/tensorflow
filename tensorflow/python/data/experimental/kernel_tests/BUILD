@@ -752,6 +752,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "variant_test",
+    srcs = ["variant_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 cuda_py_test(
     name = "wrap_unwrap_test",
     size = "small",

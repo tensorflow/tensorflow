@@ -23,14 +23,11 @@
 # ci_build_micro_projects.sh mbed "CMSIS disco_f746ng"
 
 set -e
-set -x
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../../..
 cd ${ROOT_DIR}
 pwd
-
-tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh
 
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
   TARGET=${1} \

@@ -655,7 +655,7 @@ Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
 }
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
-                                        Tensor** output) {
+                                        Tensor** tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
   bool forward_expected =
@@ -667,7 +667,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
         "turning off the ScopedAllocator optimizer.");
   }
   AllocatorAttributes attr = output_alloc_attr(index);
-  return allocate_output(index, shape, output, attr);
+  return allocate_output(index, shape, tensor, attr);
 }
 
 Status OpKernelContext::allocate_output(StringPiece name,

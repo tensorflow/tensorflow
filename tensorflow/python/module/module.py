@@ -21,6 +21,7 @@ from __future__ import print_function
 import re
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
@@ -136,7 +137,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_IS_VARIABLE))
+    return tuple(self._flatten(predicate=_is_variable_like))
 
   @property
   def trainable_variables(self):
@@ -151,7 +152,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
+    return tuple(self._flatten(predicate=_is_trainable_variable))
 
   @property
   def submodules(self):
@@ -172,7 +173,7 @@ class Module(tracking.AutoTrackable):
     Returns:
       A sequence of all submodules.
     """
-    return tuple(self._flatten(predicate=_IS_MODULE))
+    return tuple(self._flatten(predicate=_is_module))
 
   def _flatten(self,
                recursive=True,
@@ -269,9 +270,18 @@ class Module(tracking.AutoTrackable):
     return tf_decorator.make_decorator(method, method_with_name_scope)
 
 
-_IS_VARIABLE = lambda o: isinstance(o, variables.Variable)
-_IS_TRAINABLE_VARIABLE = lambda o: (_IS_VARIABLE(o) and o.trainable)
-_IS_MODULE = lambda o: isinstance(o, Module)
+def _is_variable_like(obj):
+  return (isinstance(obj, variables.Variable) or
+          resource_variable_ops.is_resource_variable(obj))
+
+
+def _is_trainable_variable(obj):
+  return _is_variable_like(obj) and getattr(obj, "trainable", False)
+
+
+def _is_module(obj):
+  return isinstance(obj, Module)
+
 _CAMEL_TO_SNAKE_R = re.compile(r"((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))")
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_]([a-zA-Z0-9_])*$")
 
@@ -325,7 +335,7 @@ def _flatten_module(module,
         else:
           yield leaf
 
-      if recursive and isinstance(leaf, Module):
+      if recursive and _is_module(leaf):
         # Walk direct properties first then recurse.
         submodules.append((module_path + leaf_path, leaf))
 

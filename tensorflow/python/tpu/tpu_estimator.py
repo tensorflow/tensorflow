@@ -891,7 +891,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     """Generates the per_host enqueue ops."""
     control_deps = []
     per_host_sharded_inputs = []
-    sparse_features_list = []
+    enqueue_datas_list = []
     num_replicas_per_host = ctx.num_of_replicas_per_host
     cached_signals = None
     with ops.device(device):
@@ -910,9 +910,9 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
           else:
             cached_signals = signals
 
-        features, labels, sparse_features = (
+        features, labels, enqueue_data = (
             _tpu_estimator_embedding.split_inputs(ctx, features, labels))
-        sparse_features_list.append(sparse_features)
+        enqueue_datas_list.append(enqueue_data)
 
         inputs_structure_recorder.validate_and_record_structure(
             features, labels)
@@ -945,7 +945,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     if ctx.embedding_config:
       per_host_enqueue_ops.extend(
           ctx.embedding_config.tpu_embedding.generate_enqueue_ops(
-              sparse_features_list))
+              enqueue_datas_list))
 
     if signals is None:
       return per_host_enqueue_ops
@@ -1488,8 +1488,14 @@ class _ModelFnWrapper(object):
             tpu_embedding_gradient.get_gradients_through_dummy_table_variables(
                 tpu_embedding_)
         )
+        grad_multiplier = self._ctx.embedding_config.get_grad_multiplier()
+        if grad_multiplier is not None:
+          scaled_gradients = collections.OrderedDict(
+              (k, v * grad_multiplier) for k, v in six.iteritems(gradients))
+        else:
+          scaled_gradients = gradients
         apply_sparse_grads = [
-            tpu_embedding_.generate_send_gradients_op(gradients)
+            tpu_embedding_.generate_send_gradients_op(scaled_gradients)
         ]
 
       # We must run train_op to update the variables prior to running the

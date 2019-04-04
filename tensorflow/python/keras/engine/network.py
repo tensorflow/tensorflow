@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import json
 import os
@@ -185,6 +186,7 @@ class Network(base_layer.Layer):
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
+    self._callable_losses = []
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
@@ -542,6 +544,10 @@ class Network(base_layer.Layer):
       losses.extend(self._eager_losses)
     else:
       losses.extend(self._losses)
+    for regularizer in self._callable_losses:
+      loss_tensor = regularizer()
+      if loss_tensor is not None:
+        losses.append(loss_tensor)
     for layer in self.layers:
       if isinstance(layer, Network):
         losses += layer._unfiltered_losses
@@ -1261,7 +1267,15 @@ class Network(base_layer.Layer):
 
     input_tensors = nest.pack_sequence_as(input_layers, input_tensors)
     output_tensors = nest.pack_sequence_as(output_layers, output_tensors)
-    return cls(inputs=input_tensors, outputs=output_tensors, name=name)
+    model = cls(inputs=input_tensors, outputs=output_tensors, name=name)
+
+    # Layers not connected to outputs, such as those added in `add_loss`.
+    ancillary_layers = [
+        layer for layer in created_layers.values() if layer not in model.layers
+    ]
+    if ancillary_layers:
+      model._insert_layers(ancillary_layers)
+    return model
 
   def save(self, filepath, overwrite=True, include_optimizer=True):
     """Saves the model to a single HDF5 file.
@@ -1637,6 +1651,84 @@ class Network(base_layer.Layer):
                          'the output of a TensorFlow `Layer` '
                          '(thus holding past layer metadata). Found: ' + str(x))
 
+  def _insert_layers(self, layers, relevant_nodes=None):
+    """Inserts Layers into the Network after Network creation.
+
+    This is only valid for Keras Graph Networks.  Layers added via this function
+    will be included in the `call` computation and `get_config` of this Network.
+    They will not be added to the Network's outputs.
+
+
+    Arguments:
+      layers: Arbitrary nested structure of Layers. Layers must be reachable
+        from one or more of the `keras.Input` Tensors that correspond to this
+        Network's inputs.
+      relevant_nodes: Nodes from the Layers that should be considered part of
+        this Network. If `None`, all Nodes will be considered part of this
+        Network.
+
+    Raises:
+      ValueError: If the layers depend on `Input`s not found in this Model.
+    """
+    layers = nest.flatten(layers)
+    node_to_depth = {}
+    for depth, nodes in self._nodes_by_depth.items():
+      node_to_depth.update({node: depth for node in nodes})
+    # The nodes of these Layers that are relevant to this Network. If not
+    # provided, assume all Nodes are relevant
+    if not relevant_nodes:
+      relevant_nodes = nest.flatten([layer._inbound_nodes for layer in layers])
+    network_nodes = set(relevant_nodes + list(node_to_depth.keys()))
+
+    def _get_min_depth(node):
+      """Gets the minimum depth at which node can be computed."""
+      min_depth = 0
+      for layer, node_id, _, _ in node.iterate_inbound():
+        inbound_node = layer._inbound_nodes[node_id]
+        if inbound_node in node_to_depth:
+          min_depth = min(min_depth, node_to_depth[inbound_node])
+        elif inbound_node not in network_nodes:
+          continue
+        else:
+          # Previous relevant nodes haven't been processed yet.
+          return None
+      # New node is one shallower than its shallowest input.
+      return min_depth - 1
+
+    # Insert nodes into `_nodes_by_depth` and other node attrs.
+    unprocessed_nodes = copy.copy(relevant_nodes)
+    i = 0
+    while unprocessed_nodes:
+      i += 1
+      # Do a sanity check. This can occur if `Input`s from outside this Model
+      # are being relied on.
+      if i > 10000:
+        raise ValueError('Layers could not be added due to missing '
+                         'dependencies.')
+
+      node = unprocessed_nodes.pop(0)
+      depth = _get_min_depth(node)
+      if depth is None:
+        unprocessed_nodes.append(node)
+      else:
+        node_key = _make_node_key(
+            node.outbound_layer.name,
+            node.outbound_layer._inbound_nodes.index(node))
+        node_to_depth[node] = depth
+        self._network_nodes.add(node_key)
+        self._nodes_by_depth[depth].append(node)
+
+    # Insert layers into `_layer_by_depth` and other layer attrs.
+    for layer in layers:
+      depth = min([
+          node_to_depth[node]
+          for node in layer.inbound_nodes
+          if node in network_nodes
+      ])
+      self._layers_by_depth[depth].append(layer)
+      self._layers.append(layer)
+      self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
 
 def _is_hdf5_filepath(filepath):
   return (filepath.endswith('.h5') or filepath.endswith('.keras') or
@@ -1758,18 +1850,22 @@ def _map_graph_network(inputs, outputs):
       previous_depth = nodes_depths.get(inbound_node, 0)
       nodes_depths[inbound_node] = max(depth + 1, previous_depth)
 
+  # Handle inputs that are not connected to outputs.
+  for input_t in inputs:
+    input_layer = input_t._keras_history[0]
+    if input_layer not in layers_depths:
+      layers_depths[input_layer] = 0
+      layer_indices[input_layer] = -1
+      nodes_depths[input_layer._inbound_nodes[0]] = 0
+
   # Build a dict {depth: list of nodes with this depth}
-  nodes_by_depth = {}
+  nodes_by_depth = collections.defaultdict(list)
   for node, depth in nodes_depths.items():
-    if depth not in nodes_by_depth:
-      nodes_by_depth[depth] = []
     nodes_by_depth[depth].append(node)
 
   # Build a dict {depth: list of layers with this depth}
-  layers_by_depth = {}
+  layers_by_depth = collections.defaultdict(list)
   for layer, depth in layers_depths.items():
-    if depth not in layers_by_depth:
-      layers_by_depth[depth] = []
     layers_by_depth[depth].append(layer)
 
   # Get sorted list of layer depths.

@@ -281,6 +281,41 @@ class AttentionTest(test.TestCase):
     expected = np.array([[[0.58127362329]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
+  def test_multi_dim_with_query_mask(self):
+    # Query tensor of shape [1, 2, 1]
+    q = np.array([[[1.1], [-0.5]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 1]
+    v = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
+    # Query mask tensor of shape [1, 2]
+    q_mask = np.array([[True, False]], dtype=np.bool_)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.Attention()
+    actual = attention_layer([q, v], mask=[q_mask, v_mask])
+
+    # Expected scores of shape [1, 2, 3]
+    # scores = [[[1.1*1.6, 1.1*0.7, -1.1*0.8], [-0.5*1.6, -0.5*0.7, 0.5*0.8]]]
+    #        = [[[1.76, 0.77, -0.88], [-0.8, -0.35, 0.4]]]
+    # Expected attention distribution = softmax(scores) with zeros in
+    # positions where v_mask == False.
+    # => attention_distribution000 = exp(1.76)/(exp(1.76) + exp(0.77))
+    #                              = 0.72908792234
+    #    attention_distribution001 = exp(0.77)/(exp(1.76) + exp(0.77))
+    #                              = 0.27091207765
+    #    attention_distribution002 = 0
+    # => attention_distribution010 = exp(-0.8)/(exp(-0.8) + exp(-0.35))
+    #                              = 0.38936076605
+    #    attention_distribution011 = exp(-0.35)/(exp(-0.8) + exp(-0.35))
+    #                              = 0.61063923394
+    #    attention_distribution012 = 0
+    #
+    # Expected tensor of shape [1, 2, 1] with zeros where  q_mask == False.
+    # expected000 = 0.72908792234 * 1.6 + 0.27091207765 * 0.7 - 0 * 0.8
+    #             = 1.3561791301
+    # expected000 = 0
+    expected = np.array([[[1.3561791301], [0.]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
   def test_scale_None(self):
     """Tests that scale is None by default."""
     attention_layer = dense_attention.Attention()
@@ -330,14 +365,6 @@ class AttentionTest(test.TestCase):
     expected = np.array(
         [[[0.5], [0.66791409477], [0.26678872577]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
-
-  def test_query_mask_not_implemented(self):
-    attention_layer = dense_attention.Attention()
-    q = np.array([[[1.1]]], dtype=np.float32)
-    mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
-        NotImplementedError, 'query_mask is not supported yet'):
-      attention_layer([q, q], mask=[mask, mask])
 
   def test_inputs_not_list(self):
     attention_layer = dense_attention.Attention()

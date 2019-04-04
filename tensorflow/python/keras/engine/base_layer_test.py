@@ -541,11 +541,13 @@ class NestedTrackingTest(test.TestCase):
       inputs = array_ops.ones((3, 1))
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
+      self.assertLen(layer.get_losses_for(None), 3)
     else:
       inputs = keras.Input((1,))
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
       self.assertEqual(len(layer.updates), 3)
+      self.assertLen(layer.get_losses_for(None), 3)
 
   def test_attribute_reassignment(self):
     l = keras.layers.Layer()

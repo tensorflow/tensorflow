@@ -571,6 +571,22 @@ TEST_F(HloVerifierTest, IotaNonArrayResult) {
               HasSubstr("does not support non-array result"));
 }
 
+TEST_F(HloVerifierTest, IotaNegativeDimension) {
+  const char* const hlo_string = R"(
+  HloModule IotaTupleResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = s32[128,1001]{1,0} iota(), iota_dimension=-1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("negative"));
+}
+
 static const char* const kMapOperandComputationMismatchHlo = R"(
   HloModule MapOperandComputationMismatch
 

@@ -1036,42 +1036,6 @@ class AddOperationParser : public TFLiteOperationParser {
   }
 };
 
-class SubtractOperationParser : public TFLiteOperationParser {
- public:
-  Status IsSupported(const TfLiteContext* context,
-                     const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/2, /*outputs=*/1));
-    TfLiteSubParams* tf_options = nullptr;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
-    return OkStatus();
-  }
-  Status Parse(const TfLiteNode* tflite_node,
-               const TfLiteRegistration* registration, GraphFloat32* graph,
-               ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::SUB);
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    if (tflite_node->inputs->size != 2) {
-      return InvalidArgumentError("Applies only two input tensors");
-    }
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddInput(node, 1));
-
-    const auto* tf_options =
-        reinterpret_cast<const TfLiteSubParams*>(tflite_node->builtin_data);
-    if (tf_options != nullptr) {
-      RETURN_IF_ERROR(MaybeFuseActivationToTheSingleOutput(
-          tf_options->activation, graph, node));
-    }
-    return OkStatus();
-  }
-};
-
 // Basic LSTM Cell:
 //
 //  1name = name is at input  index 1
@@ -1270,6 +1234,17 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    if (IsTwoArgumentOperation()) {
+      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/2,
+                                         /*outputs=*/1));
+      TfLiteSubParams* tf_options = nullptr;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      RETURN_IF_ERROR(CheckActivationSupported(tf_options->activation));
+    }
+    if (!IsOneArgumentOperation()) {
+      return InvalidArgumentError("Incorrect operation type passed");
+    }
+
     return OkStatus();
   }
   Status Parse(const TfLiteNode* tflite_node,
@@ -1277,11 +1252,80 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                ObjectReader* reader) final {
     Node* node = graph->NewNode();
     node->operation.type = ToString(operation_type_);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
+
+    if (IsOneArgumentOperation()) {
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+    } else if (IsTwoArgumentOperation()) {
+      if (tflite_node->inputs->size != 2) {
+        return InvalidArgumentError("Applies only two input tensors");
+      }
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+
+      TfLiteFusedActivation activation = kTfLiteActNone;
+      switch (operation_type_) {
+        case OperationType::SUB: {
+          const auto* tf_options = reinterpret_cast<const TfLiteSubParams*>(
+              tflite_node->builtin_data);
+          if (tf_options != nullptr) {
+            activation = tf_options->activation;
+          }
+          break;
+        }
+        case OperationType::DIV: {
+          const auto* tf_options = reinterpret_cast<const TfLiteDivParams*>(
+              tflite_node->builtin_data);
+          if (tf_options != nullptr) {
+            activation = tf_options->activation;
+          }
+          break;
+        }
+        default:
+          // No activation expected.
+          activation = kTfLiteActNone;
+      }
+
+      if (activation) {
+        RETURN_IF_ERROR(
+            MaybeFuseActivationToTheSingleOutput(activation, graph, node));
+      }
+    } else {
+      return InvalidArgumentError("Incorrect operation type passed");
+    }
+
     return reader->AddOutputs(node);
   }
 
  private:
+  bool IsOneArgumentOperation() const {
+    switch (operation_type_) {
+      case OperationType::ABS:
+      case OperationType::SIN:
+      case OperationType::COS:
+      case OperationType::LOG:
+      case OperationType::SQRT:
+      case OperationType::RSQRT:
+      case OperationType::SQUARE:
+      case OperationType::SIGMOID:
+      case OperationType::TANH:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool IsTwoArgumentOperation() const {
+    switch (operation_type_) {
+      case OperationType::SUB:
+      case OperationType::DIV:
+      case OperationType::POW:
+      case OperationType::SQUARED_DIFF:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   OperationType operation_type_;
 };
 
@@ -1341,8 +1385,11 @@ class ReLuOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::RELU);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
+
     ReLUAttributes attr;
-    attr.alpha = 0;
+    TfLiteLeakyReluParams* tf_options = nullptr;
+    RetrieveBuiltinData(tflite_node, &tf_options).IgnoreError();
+    attr.alpha = tf_options ? tf_options->alpha : 0;
     attr.clip = clip_;
     node->operation.attributes = attr;
     return reader->AddOutputs(node);
@@ -1732,6 +1779,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return make_unique<ElementwiseOperationParser>(OperationType::COS);
     case kTfLiteBuiltinDepthwiseConv2d:
       return make_unique<DepthwiseConvolutionOperationParser>();
+    case kTfLiteBuiltinDiv:
+      return make_unique<ElementwiseOperationParser>(OperationType::DIV);
     case kTfLiteBuiltinFullyConnected:
       return make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinLogistic:
@@ -1746,10 +1795,14 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return make_unique<MulOperationParser>();
     case kTfLiteBuiltinPad:
       return make_unique<PadOperationParser>();
+    case kTfLiteBuiltinPow:
+      return make_unique<ElementwiseOperationParser>(OperationType::POW);
     case kTfLiteBuiltinRelu:
       return make_unique<ReLuOperationParser>(0);
     case kTfLiteBuiltinRelu6:
       return make_unique<ReLuOperationParser>(6);
+    case kTfLiteBuiltinLeakyRelu:
+      return make_unique<ReLuOperationParser>(0);
     case kTfLiteBuiltinPrelu:
       return make_unique<PReLuOperationParser>();
     case kTfLiteBuiltinReshape:
@@ -1768,8 +1821,11 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return make_unique<ElementwiseOperationParser>(OperationType::SQRT);
     case kTfLiteBuiltinSquare:
       return make_unique<ElementwiseOperationParser>(OperationType::SQUARE);
+    case kTfLiteBuiltinSquaredDifference:
+      return make_unique<ElementwiseOperationParser>(
+          OperationType::SQUARED_DIFF);
     case kTfLiteBuiltinSub:
-      return make_unique<SubtractOperationParser>();
+      return make_unique<ElementwiseOperationParser>(OperationType::SUB);
     case kTfLiteBuiltinTanh:
       return make_unique<ElementwiseOperationParser>(OperationType::TANH);
     case kTfLiteBuiltinTransposeConv:

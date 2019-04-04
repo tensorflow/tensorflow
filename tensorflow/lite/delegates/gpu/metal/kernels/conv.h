@@ -45,6 +45,9 @@ std::vector<ComputeTaskDescriptorPtr> Convolution1x1(
     int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& params, const RuntimeOptions& options);
 
+// TODO(impjdi): Move it inside module.
+bool CheckConvolution1x1Support(const Convolution2DAttributes& attr);
+
 // This convolution pass all conv parameters (beside output_channels)
 // as dynamic arguments (uniform buffer) to kernel.
 // Depending on output_channels can be generated different kernels
@@ -53,6 +56,24 @@ std::vector<ComputeTaskDescriptorPtr> Convolution1x1(
 std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
     int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& params, const RuntimeOptions& options);
+
+// This convolution makes more precise mapping of threads on elements.
+// For example, if we have output tensor 12x7 and work group = 8x4,
+// then we need 4 workgroups to cover this tensor in usual case.
+// But in general we have only 84 elements(12*7), and we can cover it with 3
+// workgroups of size 32. So this version of convolution use this precise
+// mapping.
+// But this convolution, due to some hardware limitations, doesn't work better
+// always. In general it works good on A12.
+std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise(
+    int id, ValueId input_id, ValueId output_id,
+    const Convolution2DAttributes& params, const RuntimeOptions& options);
+
+// This function calculates amount of threads that should be launched for
+// ConvolutionGeneric or Convolution1x1 (threads_count1) and amount of threads
+// that should be launched for ConvolutionPrecise (threads_count2) and returns
+// threads_count1 / threads_count2.
+float GetThreadsRatioUsualToPreciseConvolution(const BHWC& dst_shape);
 
 }  // namespace metal
 }  // namespace gpu

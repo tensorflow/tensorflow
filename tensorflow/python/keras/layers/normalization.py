@@ -424,7 +424,7 @@ class BatchNormalizationBase(Layer):
         self._scope.set_partitioner(partitioner)
     self.built = True
 
-  def _assign_moving_average(self, variable, value, momentum):
+  def _assign_moving_average(self, variable, value, momentum, inputs_size):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
       with ops.colocate_with(variable):
@@ -433,12 +433,23 @@ class BatchNormalizationBase(Layer):
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (
             variable - math_ops.cast(value, variable.dtype)) * decay
+        if inputs_size is not None:
+          update_delta = array_ops.where(inputs_size > 0, update_delta,
+                                         K.zeros_like(update_delta))
         return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
+
+    # TODO(b/129279393): Support zero batch input in non DistributionStrategy
+    # code as well.
+    if distribution_strategy_context.has_strategy(
+    ) and not inputs.shape.is_fully_defined():
+      inputs_size = array_ops.size(inputs)
+    else:
+      inputs_size = None
 
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
@@ -482,21 +493,23 @@ class BatchNormalizationBase(Layer):
         strategy = distribution_strategy_context.get_strategy()
         mean_update = strategy.extended.update(
             self.moving_mean, self._assign_moving_average,
-            (mean, self.momentum))
+            (mean, self.momentum, inputs_size))
         variance_update = strategy.extended.update(
             self.moving_variance, self._assign_moving_average,
-            (variance, self.momentum))
+            (variance, self.momentum, inputs_size))
       else:
         mean_update = self._assign_moving_average(self.moving_mean, mean,
-                                                  momentum)
+                                                  momentum, inputs_size)
         variance_update = self._assign_moving_average(self.moving_variance,
-                                                      variance, momentum)
+                                                      variance, momentum,
+                                                      inputs_size)
       self.add_update(mean_update, inputs=True)
       self.add_update(variance_update, inputs=True)
 
     return output
 
-  def _renorm_correction_and_moments(self, mean, variance, training):
+  def _renorm_correction_and_moments(self, mean, variance, training,
+                                     inputs_size):
     """Returns the correction and update values for renorm."""
     stddev = math_ops.sqrt(variance + self.epsilon)
     # Compute the average mean and standard deviation, as if they were
@@ -527,7 +540,7 @@ class BatchNormalizationBase(Layer):
                             lambda: d,
                             lambda: array_ops.zeros_like(d))
 
-    def _update_renorm_variable(var, weight, value):
+    def _update_renorm_variable(var, weight, value, inputs_size):
       """Updates a moving average and weight, returns the unbiased value."""
       value = array_ops.identity(value)
       def _do_update():
@@ -540,9 +553,11 @@ class BatchNormalizationBase(Layer):
         # Make sure the weight is not updated until before r and d computation.
         with ops.control_dependencies([value]):
           weight_value = array_ops.constant(1., dtype=weight.dtype)
-        new_var = self._assign_moving_average(var, value, self.renorm_momentum)
+        new_var = self._assign_moving_average(var, value, self.renorm_momentum,
+                                              inputs_size)
         new_weight = self._assign_moving_average(weight, weight_value,
-                                                 self.renorm_momentum)
+                                                 self.renorm_momentum,
+                                                 inputs_size)
         # TODO(yuefengz): the updates to var and weighted can not be batched
         # together if we fetch their updated values here. Consider calculating
         # new values and delaying the updates.
@@ -554,16 +569,27 @@ class BatchNormalizationBase(Layer):
 
     # TODO(yuefengz): colocate the operations
     new_mean = _update_renorm_variable(self.renorm_mean,
-                                       self.renorm_mean_weight, mean)
+                                       self.renorm_mean_weight, mean,
+                                       inputs_size)
     new_stddev = _update_renorm_variable(self.renorm_stddev,
-                                         self.renorm_stddev_weight, stddev)
+                                         self.renorm_stddev_weight, stddev,
+                                         inputs_size)
     # Make sqrt(moving_variance + epsilon) = new_stddev.
     new_variance = math_ops.square(new_stddev) - self.epsilon
 
     return (r, d, new_mean, new_variance)
 
   def _moments(self, inputs, reduction_axes, keep_dims):
-    return nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+    mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+    # TODO(b/129279393): Support zero batch input in non DistributionStrategy
+    # code as well.
+    if distribution_strategy_context.has_strategy(
+    ) and not inputs.shape.is_fully_defined():
+      inputs_size = array_ops.size(inputs)
+      mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
+      variance = array_ops.where(inputs_size > 0, variance,
+                                 K.zeros_like(variance))
+    return mean, variance
 
   def call(self, inputs, training=None):
     if training is None:
@@ -661,9 +687,14 @@ class BatchNormalizationBase(Layer):
       else:
         new_mean, new_variance = mean, variance
 
+      if distribution_strategy_context.has_strategy(
+      ) and not inputs.shape.is_fully_defined():
+        inputs_size = array_ops.size(inputs)
+      else:
+        inputs_size = None
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
-            new_mean, new_variance, training)
+            new_mean, new_variance, training, inputs_size)
         # When training, the normalized values (say, x) will be transformed as
         # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
         # = x * (r * gamma) + (d * gamma + beta) with renorm.
@@ -679,7 +710,8 @@ class BatchNormalizationBase(Layer):
           if in_eager_mode and not self.trainable:
             return
           return strategy.extended.update(
-              var, self._assign_moving_average, (value, self.momentum),
+              var,
+              self._assign_moving_average, (value, self.momentum, inputs_size),
               group=False)
         # We need to unwrap the moving_mean or moving_variance in the case of
         # training being false to match the output of true_fn and false_fn
@@ -697,7 +729,9 @@ class BatchNormalizationBase(Layer):
           """Compute the updates for mean and variance."""
           if in_eager_mode and not self.trainable:
             return
-          return self._assign_moving_average(var, value, self.momentum)
+          return self._assign_moving_average(var, value, self.momentum,
+                                             inputs_size)
+
         mean_update = tf_utils.smart_cond(
             training,
             lambda: _do_update(self.moving_mean, new_mean),

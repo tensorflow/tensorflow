@@ -748,18 +748,56 @@ class Layer(trackable.Trackable):
     be dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
+    This method can be used inside a subclassed layer or model's `call`
+    function, in which case `losses` should be a Tensor or list of Tensors.
+
+    Example:
+
+    ```python
+    class MyLayer(tf.keras.layers.Layer):
+      def call(inputs, self):
+        self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
+        return 2*inputs
+    ```
+
+    This method can also be called directly on a Functional Model during
+    construction. In this case, any loss Tensors passed to this Model must
+    be symbolic and be able to be traced back to the model's `Input`s. These
+    losses become part of the model's topology and are tracked in `get_config`.
+
+    Example:
+
+    ```python
+    inputs = tf.keras.Input(shape=(10,))
+    x = tf.keras.layers.Dense(10)(inputs)
+    outputs = tf.keras.layers.Dense(1)(x)
+    model = tf.keras.Model(inputs, outputs)
+    # Actvity regularization.
+    model.add_loss(tf.abs(tf.reduce_mean(x)))
+    ````
+
+    If this is not the case for your loss (if, for example, your loss references
+    a `Variable` of one of the model's layers), you can wrap your loss in a
+    zero-argument lambda. These losses are not tracked as part of the model's
+    topology since they can't be serialized.
+
+    Example:
+
+    ```python
+    inputs = tf.keras.Input(shape=(10,))
+    x = tf.keras.layers.Dense(10)(inputs)
+    outputs = tf.keras.layers.Dense(1)(x)
+    model = tf.keras.Model(inputs, outputs)
+    # Weight regularization.
+    model.add_loss(lambda: tf.reduce_mean(x.kernel))
+    ```
+
     The `get_losses_for` method allows to retrieve the losses relevant to a
     specific set of inputs.
-
-    Note that `add_loss` is not supported when executing eagerly. Instead,
-    variable regularizers may be added through `add_variable`. Activity
-    regularization is not supported directly (but such losses may be returned
-    from `Layer.call()`).
 
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
-        Other types of input are ignored.
       inputs: Ignored when executing eagerly. If anything other than None is
         passed, it signals the losses are conditional on some of the layer's
         inputs, and thus they should only be run where these inputs are
@@ -768,8 +806,6 @@ class Layer(trackable.Trackable):
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
     """
-    losses = generic_utils.to_list(losses)
-
     def _tag_unconditional(loss):
       if callable(loss):
         loss = loss()
@@ -780,20 +816,47 @@ class Layer(trackable.Trackable):
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
+    losses = nest.flatten(losses)
+
+    callable_losses = []
+    eager_losses = []
+    symbolic_losses = []
     for loss in losses:
       if callable(loss):
-        self._callable_losses.append(
-            functools.partial(_tag_unconditional, loss))
-      else:
-        if not tensor_util.is_tensor(loss):
-          # Ignoring constant values as this does not affect the gradients.
-          return
-        if tf_utils.is_symbolic_tensor(loss):
-          if not base_layer_utils.is_in_call_context():
-            self._contains_symbolic_tensors = True
-          self._losses.append(_tag_unconditional(loss))
+        callable_losses.append(functools.partial(_tag_unconditional, loss))
+      elif tf_utils.is_symbolic_tensor(loss):
+        symbolic_losses.append(_tag_unconditional(loss))
+      elif tensor_util.is_tensor(loss):
+        eager_losses.append(_tag_unconditional(loss))
+      elif loss is not None:  # `None` is valid but should be ignored.
+        raise ValueError('Found non-Tensor loss: ' + str(loss))
+
+    self._callable_losses += callable_losses
+
+    call_context = base_layer_utils.is_in_call_context()
+    if eager_losses and not call_context:
+      raise ValueError(
+          'Expected a symbolic Tensors or a callable for the loss value. '
+          'Please wrap your loss computation in a zero argument `lambda`.')
+
+    self._eager_losses += eager_losses
+
+    if call_context:
+      for symbolic_loss in symbolic_losses:
+        self._losses.append(symbolic_loss)
+    else:
+      for symbolic_loss in symbolic_losses:
+        if getattr(self, '_is_graph_network', False):
+          new_layers = base_layer_utils.create_keras_history(symbolic_loss)
+          # Losses must be keyed on inputs no matter what in order to
+          # be supported in DistributionStrategy.
+          add_loss_layer = AddLoss(unconditional=False)
+          add_loss_layer(symbolic_loss)
+          new_layers.append(add_loss_layer)
+          self._insert_layers(new_layers)
         else:
-          self._eager_losses.append(_tag_unconditional(loss))
+          # Possible a loss was added in a Layer's `build`.
+          self._losses.append(symbolic_loss)
 
   @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
@@ -2060,8 +2123,31 @@ class TensorFlowOpLayer(Layer):
     config = super(TensorFlowOpLayer, self).get_config()
     config.update({
         'node_def': self.node_def.SerializeToString(),
-        'constants': self.constants
+        'constants': {
+            i: backend.get_value(c) for i, c in self.constants.items()
+        }
     })
+    return config
+
+
+class AddLoss(Layer):
+  """Adds its inputs as a loss.
+
+  Attributes:
+    unconditional: Whether or not the loss should be conditioned on the inputs.
+  """
+
+  def __init__(self, unconditional, **kwargs):
+    super(AddLoss, self).__init__(**kwargs)
+    self.unconditional = unconditional
+
+  def call(self, inputs):
+    self.add_loss(inputs, inputs=(not self.unconditional))
+    return inputs
+
+  def get_config(self):
+    config = super(AddLoss, self).get_config()
+    config.update({'unconditional': self.unconditional})
     return config
 
 

@@ -137,7 +137,6 @@ py_library(
         "tpu_strategy_util.py",
         "tpu_system_metadata.py",
         "training_loop.py",
-        "xla.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -164,6 +163,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/compiler/xla",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu/profiler",
     ],

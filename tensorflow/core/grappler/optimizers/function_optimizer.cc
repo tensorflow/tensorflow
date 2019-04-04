@@ -1484,7 +1484,8 @@ Status PlaceInlinedFunctionBody(
 
   // TODO(ezhulenev): Should we run full PRE_PLACEMENT pass here? And
   // POST_PLACEMENT after placer?
-  LowerFunctionalOpsPass pass;
+  LowerFunctionalOpsPass pass(/*lower_function_calls=*/false,
+                              /*keep_lowered_nodes_fetchable=*/false);
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
 
   // ------------------------------------------------------------------------ //
@@ -1630,19 +1631,6 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   const string prefix = strings::StrCat(func_node.name(), "/");
 
   // ------------------------------------------------------------------------ //
-  // Mapping from the '_Retval' node name to the output tensor.
-  absl::flat_hash_map<absl::string_view, string> output_tensors;
-
-  for (const NodeDef& func_body_node : item.function_body().node()) {
-    if (!IsRetval(func_body_node)) continue;
-    if (func_body_node.input_size() != 1) {
-      return errors::Internal("_Retval node must have single input: ",
-                              SummarizeNodeDef(func_body_node));
-    }
-    output_tensors.emplace(func_body_node.name(), func_body_node.input(0));
-  }
-
-  // ------------------------------------------------------------------------ //
   // IMPORTANT: Actual inputs will be added to the following nodes at the very
   // last stage, because we don't want to have invalid edges in a function body
   // graph (control edges that depend on the nodes in the "outer" optimized
@@ -1715,6 +1703,21 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   GraphDef placed_graph_def;
   TF_RETURN_IF_ERROR(PlaceInlinedFunctionBody(func_node, item, input_args_idx,
                                               ctx, &placed_graph_def));
+
+  // ------------------------------------------------------------------------ //
+  // Mapping from the '_Retval' node name to the output tensor. We build this
+  // mapping after the placement, because we might have inlined some of the
+  // functional If/While nodes (see a call to LowerFunctionalOpsPass).
+  absl::flat_hash_map<string, string> output_tensors;
+
+  for (const NodeDef& func_body_node : placed_graph_def.node()) {
+    if (!IsRetval(func_body_node)) continue;
+    if (func_body_node.input_size() != 1) {
+      return errors::Internal("_Retval node must have single input: ",
+                              SummarizeNodeDef(func_body_node));
+    }
+    output_tensors.emplace(func_body_node.name(), func_body_node.input(0));
+  }
 
   // ------------------------------------------------------------------------ //
   // After all nodes placed we need to prepare them for inlining into the

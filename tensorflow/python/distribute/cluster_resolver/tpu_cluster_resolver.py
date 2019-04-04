@@ -52,6 +52,8 @@ _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
 _TPU_CONN_RETRIES = 120
 
+_GCE_METADATA_ENDPOINT = 'https://metadata.google.internal'
+
 DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
 
@@ -95,7 +97,7 @@ class TPUClusterResolver(ClusterResolver):
           credentials=credentials)
 
   def _requestComputeMetadata(self, path):
-    req = Request('http://metadata/computeMetadata/v1/%s' % path,
+    req = Request('%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
                   headers={'Metadata-Flavor': 'Google'})
     resp = urlopen(req)
     return compat.as_bytes(resp.read())
@@ -171,7 +173,7 @@ class TPUClusterResolver(ClusterResolver):
   def _isRunningInGCE():
     """Checks for GCE presence by attempting to query the metadata service."""
     try:
-      req = Request('http://metadata.google.internal/computeMetadata/v1',
+      req = Request('%s/computeMetadata/v1' % _GCE_METADATA_ENDPOINT,
                     headers={'Metadata-Flavor': 'Google'})
       resp = urllib.request.urlopen(req, timeout=1)
       info = resp.info()

@@ -93,6 +93,8 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
                                         num_rows1, " and ", num_rows2, "."));
   }
 
+  bool EnableInputForwarding() const final { return false; }
+
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
     return TensorShapes({input_matrix_shapes[1]});

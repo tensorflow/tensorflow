@@ -1497,7 +1497,7 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 //     `crops = [[0, 0], [0, 0]]`:
 //
 // ```
-// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+// [[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
@@ -1520,10 +1520,10 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
 // ```
-// x = [[[1],   [2],  [3],  [4]],
+// x = [[[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
-//      [[13], [14], [15],  [16]]]
+//      [[13], [14], [15],  [16]]]]
 // ```
 //
 // (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
@@ -7970,6 +7970,43 @@ func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged 
 // dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 // [..., sizeof(`type`)/sizeof(`T`)] to [...].
 //
+// tf.bitcast() and tf.cast() work differently when real dtype is casted as a complex dtype
+// (e.g. tf.complex64 or tf.complex128) as tf.cast() make imaginary part 0 while tf.bitcast()
+// gives module error.
+// For example,
+//
+// Example 1:
+// ```python
+// >>> a = [1., 2., 3.]
+// >>> equality_bitcast = tf.bitcast(a,tf.complex128)
+// tensorflow.python.framework.errors_impl.InvalidArgumentError: Cannot bitcast from float to complex128: shape [3] [Op:Bitcast]
+// >>> equality_cast = tf.cast(a,tf.complex128)
+// >>> print(equality_cast)
+// tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
+// ```
+// Example 2:
+// ```python
+// >>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
+// <tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
+// ```
+// Example 3:
+// ```python
+// >>> x = [1., 2., 3.]
+// >>> y = [0., 2., 3.]
+// >>> equality= tf.equal(x,y)
+// >>> equality_cast = tf.cast(equality,tf.float32)
+// >>> equality_bitcast = tf.bitcast(equality_cast,tf.uint8)
+// >>> print(equality)
+// tf.Tensor([False True True], shape=(3,), dtype=bool)
+// >>> print(equality_cast)
+// tf.Tensor([0. 1. 1.], shape=(3,), dtype=float32)
+// >>> print(equality_bitcast)
+// tf.Tensor(
+// [[ 0 0 0 0]
+//  [ 0 0 128 63]
+//  [ 0 0 128 63]], shape=(3, 4), dtype=uint8)
+// ```
+//
 // *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 // endian orderings will give different results.
 func Bitcast(scope *Scope, input tf.Output, type_ tf.DataType) (output tf.Output) {
@@ -8489,6 +8526,25 @@ func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataTyp
 		return
 	}
 	return components
+}
+
+// Makes a new iterator from the given `dataset` and stores it in `iterator`.
+//
+// This operation may be executed multiple times. Each execution will reset the
+// iterator in `iterator` to the first element of `dataset`.
+//
+// Returns the created operation.
+func MakeIterator(scope *Scope, dataset tf.Output, iterator tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MakeIterator",
+		Input: []tf.Input{
+			dataset, iterator,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Deserialize bucket boundaries and ready flag into current QuantileAccumulator.
@@ -16633,25 +16689,6 @@ func ResourceApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.Output,
 	return scope.AddOperation(opspec)
 }
 
-// Makes a new iterator from the given `dataset` and stores it in `iterator`.
-//
-// This operation may be executed multiple times. Each execution will reset the
-// iterator in `iterator` to the first element of `dataset`.
-//
-// Returns the created operation.
-func MakeIterator(scope *Scope, dataset tf.Output, iterator tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MakeIterator",
-		Input: []tf.Input{
-			dataset, iterator,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Read an element from the TensorArray into output `value`.
 //
 // Arguments:
@@ -21660,136 +21697,6 @@ func ExperimentalRebatchDataset(scope *Scope, input_dataset tf.Output, num_worke
 			input_dataset, num_workers,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// QuantizedConv2DPerChannelAttr is an optional argument to QuantizedConv2DPerChannel.
-type QuantizedConv2DPerChannelAttr func(optionalAttr)
-
-// QuantizedConv2DPerChannelOutType sets the optional out_type attribute to value.
-//
-// value: The quantized type of output tensor that needs to be converted.
-// If not specified, defaults to DT_QINT32
-func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChannelAttr {
-	return func(m optionalAttr) {
-		m["out_type"] = value
-	}
-}
-
-// QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
-//
-// value: list of dilation values.
-// If not specified, defaults to <i:1 i:1 i:1 i:1 >
-func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes QuantizedConv2D per channel.
-//
-// Arguments:
-//	input: The original input tensor.
-//	filter: The original filter tensor.
-//	min_input: The minimum value of the input tensor
-//	max_input: The maximum value of the input tensor.
-//	min_filter: The minimum value of the filter tensor.
-//	max_filter: The maximum value of the filter tensor.
-//	strides: list of stride values.
-//
-//
-// Returns The output tensor.The minimum value of the final output tensor.The maximum value of the final output tensor.
-func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedConv2DPerChannelAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizedConv2DPerChannel",
-		Input: []tf.Input{
-			input, filter, min_input, max_input, min_filter, max_filter,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug.
-type RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// Retrieve proximal Adagrad embedding parameters with debug support.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns Parameter parameters updated by the proximal Adagrad optimization algorithm.Parameter accumulators updated by the proximal Adagrad optimization algorithm.Parameter gradient_accumulators updated by the proximal Adagrad optimization algorithm.
-func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr) (parameters tf.Output, accumulators tf.Output, gradient_accumulators tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Solves tridiagonal systems of equations.
-//
-// `diagonals` is a tensor of shape `[..., 3, M]` whose inner-most 2 dimensions
-// represent matrices with three rows being the superdiagonal, diagonals, and
-// subdiagonals, in order. The last element of the superdiagonal and the first
-// element of the subdiagonal is ignored.
-// `rhs` is a tensor of shape `[..., M, K]`, representing K right-hand sides per
-// each left-hand side.
-// The output is a tensor of shape `[..., M, K]` containing the solutions.
-//
-// Arguments:
-//	diagonals: Shape is `[..., 3, M]`.
-//	rhs: Shape is `[..., M, K]`.
-//
-// Returns Shape is `[..., M, K]`.
-func TridiagonalSolve(scope *Scope, diagonals tf.Output, rhs tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TridiagonalSolve",
-		Input: []tf.Input{
-			diagonals, rhs,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -28726,6 +28633,136 @@ func Div(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug.
+type RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// Retrieve proximal Adagrad embedding parameters with debug support.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns Parameter parameters updated by the proximal Adagrad optimization algorithm.Parameter accumulators updated by the proximal Adagrad optimization algorithm.Parameter gradient_accumulators updated by the proximal Adagrad optimization algorithm.
+func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr) (parameters tf.Output, accumulators tf.Output, gradient_accumulators tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Solves tridiagonal systems of equations.
+//
+// `diagonals` is a tensor of shape `[..., 3, M]` whose inner-most 2 dimensions
+// represent matrices with three rows being the superdiagonal, diagonals, and
+// subdiagonals, in order. The last element of the superdiagonal and the first
+// element of the subdiagonal is ignored.
+// `rhs` is a tensor of shape `[..., M, K]`, representing K right-hand sides per
+// each left-hand side.
+// The output is a tensor of shape `[..., M, K]` containing the solutions.
+//
+// Arguments:
+//	diagonals: Shape is `[..., 3, M]`.
+//	rhs: Shape is `[..., M, K]`.
+//
+// Returns Shape is `[..., M, K]`.
+func TridiagonalSolve(scope *Scope, diagonals tf.Output, rhs tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TridiagonalSolve",
+		Input: []tf.Input{
+			diagonals, rhs,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QuantizedConv2DPerChannelAttr is an optional argument to QuantizedConv2DPerChannel.
+type QuantizedConv2DPerChannelAttr func(optionalAttr)
+
+// QuantizedConv2DPerChannelOutType sets the optional out_type attribute to value.
+//
+// value: The quantized type of output tensor that needs to be converted.
+// If not specified, defaults to DT_QINT32
+func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChannelAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
+//
+// value: list of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes QuantizedConv2D per channel.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	min_input: The minimum value of the input tensor
+//	max_input: The maximum value of the input tensor.
+//	min_filter: The minimum value of the filter tensor.
+//	max_filter: The maximum value of the filter tensor.
+//	strides: list of stride values.
+//
+//
+// Returns The output tensor.The minimum value of the final output tensor.The maximum value of the final output tensor.
+func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedConv2DPerChannelAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedConv2DPerChannel",
+		Input: []tf.Input{
+			input, filter, min_input, max_input, min_filter, max_filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // Outputs a tensor containing the reduction across all input tensors.

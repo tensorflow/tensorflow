@@ -1066,16 +1066,33 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+class MyAddLayer(keras.layers.Layer):
+
+  def __init__(self, increment, **kwargs):
+    super(MyAddLayer, self).__init__(**kwargs)
+    self._increment = increment
+
+  def call(self, inputs):
+    return inputs + self._increment
+
+  def get_config(self):
+    config = super(MyAddLayer, self).get_config()
+    config['increment'] = self._increment
+    return config
+
+
 @test_util.run_v1_only('b/120545219')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):
     keras.backend.clear_session()
 
-  def _getSequentialModel(self):
+  def _getSequentialModel(self, include_custom_layer=False):
     with session.Session().as_default():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
+      if include_custom_layer:
+        model.add(MyAddLayer(1.0))
       model.add(keras.layers.RepeatVector(3))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
       model.compile(
@@ -1093,6 +1110,10 @@ class FromKerasFile(test_util.TensorFlowTestCase):
         keras.models.save_model(model, keras_file)
       finally:
         os.close(fd)
+
+      if include_custom_layer:
+        custom_objects = {'MyAddLayer': MyAddLayer}
+        return keras_file, custom_objects
       return keras_file
 
   def testSequentialModel(self):
@@ -1128,6 +1149,37 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     tflite_result = interpreter.get_tensor(output_details[0]['index'])
 
     keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
+
+  def testCustomLayer(self):
+    """Test a Sequential tf.keras model with default inputs."""
+    keras_file, custom_objects = self._getSequentialModel(
+        include_custom_layer=True)
+
+    converter = lite.TFLiteConverter.from_keras_model_file(
+        keras_file, custom_objects=custom_objects)
+
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check tensor details of converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(
+        keras_file, custom_objects=custom_objects)
     keras_result = keras_model.predict(input_data)
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
@@ -1392,6 +1444,12 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     # Ensure the model is able to load.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
+
+
+class ImportOpsUtilTest(test_util.TensorFlowTestCase):
+
+  def testGetPotentiallySupportedOps(self):
+    self.assertIsNotNone(lite.get_potentially_supported_ops())
 
 
 if __name__ == '__main__':
