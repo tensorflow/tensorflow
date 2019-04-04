@@ -804,13 +804,33 @@ def addBenefit;
 // A rewrite rule contains two components: a source pattern and one or more
 // result patterns. Each pattern is specified as a (recursive) DAG node (tree)
 // in the form of `(node arg0, arg1, ...)`.
+//
 // The `node` are normally MLIR ops, but it can also be one of the directives
 // listed later in this section.
-// In the source pattern, `arg*` can be used to specify matchers (e.g., using
-// type/attribute types, etc.) and bound to a name for later use. In
-// the result pattern, `arg*` can be used to refer to a previously bound name,
-// with potential transformations (e.g., using tAttr, etc.). `arg*` can itself
-// be nested DAG node.
+//
+// In the source pattern, `argN` can be used to specify matchers (e.g., using
+// type/attribute type constraints, etc.) and bound to a name for later use.
+// We can also bound names to op instances to reference them later in
+// multi-entity constraints.
+//
+// In the result pattern, `argN` can be used to refer to a previously bound
+// name, with potential transformations (e.g., using tAttr, etc.). `argN` can
+// itself be nested DAG node. We can also bound names to op results to reference
+// them later in other result patterns.
+//
+// For example,
+//
+// ```
+// def : Pattern<(OneResultOp1:$res1 $arg0, $arg1),
+//               [(OneResultOp2:$res2 $arg0, $arg1),
+//                (OneResultOp3 $res2 (OneResultOp4))],
+//               [(IsStaticShapeTensorTypePred $res1)]>;
+// ```
+//
+// `$argN` is bound to the `OneResultOp1`'s N-th argument and used later to
+// build `OneResultOp2`. `$res1` is bound to `OneResultOp1`'s result and used to
+// check whether the result's shape is static. `$res2` is bound to the result of
+// `OneResultOp2` and used to build `OneResultOp3`.
 class Pattern<dag source, list<dag> results, list<dag> preds = [],
   dag benefitAdded = (addBenefit 0)> {
   dag sourcePattern = source;

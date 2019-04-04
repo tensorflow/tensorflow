@@ -41,6 +41,100 @@ using namespace llvm;
 using namespace mlir;
 using namespace mlir::tblgen;
 
+static const char *const tblgenNamePrefix = "tblgen_";
+
+// Returns the bound value for the given op result `symbol`.
+static Twine getBoundResult(const StringRef &symbol) {
+  return tblgenNamePrefix + symbol;
+}
+
+// Returns the bound value for the given op argument `symbol`.
+//
+// Arguments bound in the source pattern are grouped into a transient
+// `PatternState` struct. This struct can be accessed in both `match()` and
+// `rewrite()` via the local variable named as `s`.
+static Twine getBoundArgument(const StringRef &symbol) {
+  return Twine("s.") + symbol;
+}
+
+//===----------------------------------------------------------------------===//
+// PatternSymbolResolver
+//===----------------------------------------------------------------------===//
+
+namespace {
+// A class for resolving symbols bound in patterns.
+//
+// Symbols can be bound to op arguments/results in the source pattern and op
+// results in result patterns. For example, in
+//
+// ```
+// def : Pattern<(SrcOp:$op1 $arg0, %arg1),
+//               [(ResOp1:$op2), (ResOp2 $op2 (ResOp3))]>;
+// ```
+//
+// `$argN` is bound to the `SrcOp`'s N-th argument. `$op1` is bound to `SrcOp`.
+// `$op2` is bound to `ResOp1`.
+//
+// This class keeps track of such symbols and translates them into their bound
+// values.
+//
+// Note that we also generate local variables for unnamed DAG nodes, like
+// `(ResOp3)` in the above. Since we don't bind a symbol to the result, the
+// generated local variable will be implicitly named. Those implicit names are
+// not tracked in this class.
+class PatternSymbolResolver {
+public:
+  PatternSymbolResolver(const StringMap<Argument> &srcArgs,
+                        const StringSet<> &srcResults);
+
+  // Marks the given `symbol` as bound.  Returns false if the `symbol` is
+  // already bound.
+  bool add(StringRef symbol);
+
+  // Queries the substitution for the given `symbol`.
+  std::string query(StringRef symbol) const;
+
+private:
+  // Symbols bound to arguments in source pattern.
+  const StringMap<Argument> &sourceArguments;
+  // Symbols bound to ops (for their results) in source pattern.
+  const StringSet<> &sourceOps;
+  // Symbols bound to ops (for their results) in result patterns.
+  StringSet<> resultOps;
+};
+} // end anonymous namespace
+
+PatternSymbolResolver::PatternSymbolResolver(const StringMap<Argument> &srcArgs,
+                                             const StringSet<> &srcResults)
+    : sourceArguments(srcArgs), sourceOps(srcResults) {}
+
+bool PatternSymbolResolver::add(StringRef symbol) {
+  return resultOps.insert(symbol).second;
+}
+
+std::string PatternSymbolResolver::query(StringRef symbol) const {
+  {
+    auto it = resultOps.find(symbol);
+    if (it != resultOps.end())
+      return it->getKey();
+  }
+  {
+    auto it = sourceArguments.find(symbol);
+    if (it != sourceArguments.end())
+      return getBoundArgument(symbol).str();
+  }
+  {
+    auto it = sourceOps.find(symbol);
+    if (it != sourceOps.end())
+      return getBoundResult(symbol).str();
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// PatternEmitter
+//===----------------------------------------------------------------------===//
+
 namespace {
 class PatternEmitter {
 public:
@@ -109,6 +203,13 @@ private:
   // Returns the C++ expression to build an argument from the given DAG `tree`.
   std::string handleOpArgument(DagNode tree);
 
+  // Marks the symbol attached to DagNode `node` as bound. Aborts if the symbol
+  // is already bound.
+  void addSymbol(DagNode node);
+
+  // Gets the substitution for `symbol`. Aborts if `symbol` is not bound.
+  std::string resolveSymbol(StringRef symbol);
+
 private:
   // Pattern instantiation location followed by the location of multiclass
   // prototypes used. This is intended to be used as a whole to
@@ -118,16 +219,19 @@ private:
   RecordOperatorMap *opMap;
   // Handy wrapper for pattern being emitted
   Pattern pattern;
+  PatternSymbolResolver symbolResolver;
   // The next unused ID for newly created values
   unsigned nextValueId;
   raw_ostream &os;
 };
-} // end namespace
+} // end anonymous namespace
 
 PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
                                raw_ostream &os)
-    : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper), nextValueId(0),
-      os(os) {}
+    : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper),
+      symbolResolver(pattern.getSourcePatternBoundArgs(),
+                     pattern.getSourcePatternBoundResults()),
+      nextValueId(0), os(os) {}
 
 std::string PatternEmitter::handleConstantAttr(Attribute attr,
                                                StringRef value) {
@@ -138,20 +242,6 @@ std::string PatternEmitter::handleConstantAttr(Attribute attr,
   // TODO(jpienaar): Verify the constants here
   return formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
                  value);
-}
-
-static Twine resultName(const StringRef &name) { return Twine("res_") + name; }
-
-static Twine boundArgNameInMatch(const StringRef &name) {
-  // Bound value in the source pattern are grouped into a transient struct. That
-  // struct is hold in a local variable named as "state" in the match() method.
-  return Twine("state->") + name;
-}
-
-static Twine boundArgNameInRewrite(const StringRef &name) {
-  // Bound value in the source pattern are grouped into a transient struct. That
-  // struct is passed into the rewrite() method as a parameter with name `s`.
-  return Twine("s.") + name;
 }
 
 // Helper function to match patterns.
@@ -176,7 +266,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   // If the operand's name is set, set to that variable.
   auto name = tree.getOpName();
   if (!name.empty())
-    os.indent(indent) << formatv("{0} = op{1};\n", resultName(name), depth);
+    os.indent(indent) << formatv("{0} = op{1};\n", getBoundResult(name), depth);
 
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     auto opArg = op.getArg(i);
@@ -232,7 +322,7 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
   // Capture the value
   auto name = tree.getArgName(index);
   if (!name.empty()) {
-    os.indent(indent) << "state->" << name << " = op" << depth
+    os.indent(indent) << getBoundArgument(name) << " = op" << depth
                       << "->getOperand(" << index << ");\n";
   }
 }
@@ -262,7 +352,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
   // Capture the value
   auto name = tree.getArgName(index);
   if (!name.empty()) {
-    os.indent(indent) << "state->" << name << " = op" << depth
+    os.indent(indent) << getBoundArgument(name) << " = op" << depth
                       << "->getAttrOfType<" << namedAttr->attr.getStorageType()
                       << ">(\"" << namedAttr->getName() << "\");\n";
   }
@@ -273,8 +363,9 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
   os << R"(
   PatternMatchResult match(Operation *op0) const override {
     auto ctx = op0->getContext(); (void)ctx;
-    auto state = llvm::make_unique<MatchedState>();)"
-     << "\n";
+    auto state = llvm::make_unique<MatchedState>();
+    auto &s = *state;
+)";
 
   // The rewrite pattern may specify that certain outputs should be unused in
   // the source IR. Check it here.
@@ -287,19 +378,9 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
 
   for (auto &res : pattern.getSourcePatternBoundResults())
     os.indent(4) << formatv("mlir::Operation* {0}; (void){0};\n",
-                            resultName(res.first()));
+                            getBoundResult(res.first()));
 
   emitOpMatch(tree, 0);
-
-  auto deduceName = [&](const std::string &name) -> std::string {
-    if (pattern.isArgBoundInSourcePattern(name)) {
-      return boundArgNameInMatch(name).str();
-    }
-    if (pattern.isResultBoundInSourcePattern(name)) {
-      return resultName(name).str();
-    }
-    PrintFatalError(loc, formatv("referencing unbound variable '{0}'", name));
-  };
 
   for (auto &appliedConstraint : pattern.getConstraints()) {
     auto &constraint = appliedConstraint.constraint;
@@ -311,8 +392,9 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     if (isa<TypeConstraint>(constraint)) {
       // TODO(jpienaar): Verify op only has one result.
       os.indent(4) << formatv(
-          cmd, formatv(condition.c_str(), "(*" + deduceName(entities.front()) +
-                                              "->result_type_begin())"));
+          cmd,
+          formatv(condition.c_str(), "(*" + resolveSymbol(entities.front()) +
+                                         "->result_type_begin())"));
     } else if (isa<AttrConstraint>(constraint)) {
       PrintFatalError(
           loc, "cannot use AttrConstraint in Pattern multi-entity constraints");
@@ -325,7 +407,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
       SmallVector<std::string, 4> names;
       unsigned i = 0;
       for (unsigned e = entities.size(); i < e; ++i)
-        names.push_back(deduceName(entities[i]));
+        names.push_back(resolveSymbol(entities[i]));
       for (; i < 4; ++i)
         names.push_back("<unused>");
       os.indent(4) << formatv(cmd, formatv(condition.c_str(), names[0],
@@ -393,6 +475,8 @@ void PatternEmitter::emitRewriteMethod() {
   for (unsigned i = 0; i < numProvidedResults; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
     resultValues.push_back(handleRewritePattern(resultTree, i, 0));
+    // Keep track of bound symbols at the top-level DAG nodes
+    addSymbol(resultTree);
   }
 
   // Emit the final replaceOp() statement
@@ -420,6 +504,11 @@ std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
       PrintFatalError(loc, "verifyUnusedValue directive can only be used to "
                            "verify top-level result");
     }
+
+    if (!resultTree.getOpName().empty()) {
+      PrintFatalError(loc, "cannot bind symbol to verifyUnusedValue");
+    }
+
     // The C++ statements to check that this result value is unused are already
     // emitted in the match() method. So returning a nullptr here directly
     // should be safe because the C++ RewritePattern harness will use it to
@@ -441,10 +530,14 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
         loc, "replaceWithValue directive must take exactly one argument");
   }
 
+  if (!tree.getOpName().empty()) {
+    PrintFatalError(loc, "cannot bind symbol to verifyUnusedValue");
+  }
+
   auto name = tree.getArgName(0);
   pattern.ensureArgBoundInSourcePattern(name);
 
-  return boundArgNameInRewrite(name).str();
+  return getBoundArgument(name).str();
 }
 
 void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
@@ -466,7 +559,7 @@ std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
     return handleConstantAttr(enumCase, enumCase.getSymbol());
   }
   pattern.ensureArgBoundInSourcePattern(argName);
-  std::string result = boundArgNameInRewrite(argName).str();
+  std::string result = getBoundArgument(argName).str();
   if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
     return result;
   }
@@ -494,6 +587,22 @@ std::string PatternEmitter::handleOpArgument(DagNode tree) {
                  attrs[3], attrs[4], attrs[5], attrs[6], attrs[7]);
 }
 
+void PatternEmitter::addSymbol(DagNode node) {
+  StringRef symbol = node.getOpName();
+  // Skip empty-named symbols, which happen for unbound ops in result patterns.
+  if (symbol.empty())
+    return;
+  if (!symbolResolver.add(symbol))
+    PrintFatalError(loc, formatv("symbol '{0}' bound more than once", symbol));
+}
+
+std::string PatternEmitter::resolveSymbol(StringRef symbol) {
+  auto subst = symbolResolver.query(symbol);
+  if (subst.empty())
+    PrintFatalError(loc, formatv("referencing unbound symbol '{0}'", symbol));
+  return subst;
+}
+
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
                                          int depth) {
   Operator &resultOp = tree.getDialectOp(opMap);
@@ -513,7 +622,10 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   }
 
   // A map to collect all nested DAG child nodes' names, with operand index as
-  // the key.
+  // the key. This includes both bound and unbound child nodes. Bound child
+  // nodes will additionally be tracked in `symbolResolver` so they can be
+  // referenced by other patterns. Unbound child nodes will only be used once
+  // to build this op.
   llvm::DenseMap<unsigned, std::string> childNodeNames;
 
   // First go through all the child nodes who are nested DAG constructs to
@@ -522,6 +634,8 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   for (unsigned i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
     if (auto child = tree.getArgAsNestedDag(i)) {
       childNodeNames[i] = handleRewritePattern(child, i, depth + 1);
+      // Keep track of bound symbols at the middle-level DAG nodes
+      addSymbol(child);
     }
   }
 
@@ -531,27 +645,6 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     resultValue = getUniqueValueName(&resultOp);
 
   // Then we build the new op corresponding to this DAG node.
-
-  // Returns the name we should use for the `index`-th argument of this
-  // DAG node. This is needed because the we can reference an argument
-  // 1) generated from a nested DAG node and implicitly named,
-  // 2) bound in the source pattern and explicitly named,
-  // 3) bound in the result pattern and explicitly named.
-  auto deduceArgName = [&](unsigned index) -> std::string {
-    if (tree.isNestedDagArg(index)) {
-      // Implicitly named
-      return childNodeNames[index];
-    }
-
-    auto name = tree.getArgName(index);
-    if (this->pattern.isArgBoundInSourcePattern(name)) {
-      // Bound in source pattern, explicitly named
-      return boundArgNameInRewrite(name).str();
-    }
-
-    // Bound in result pattern, explicitly named
-    return name.str();
-  };
 
   // TODO: this is a hack to support various constant ops. We are assuming
   // all of them have no operands and one attribute here. Figure out a better
@@ -584,7 +677,11 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     if (!operand.name.empty())
       os << "/*" << operand.name << "=*/";
 
-    os << deduceArgName(i);
+    if (tree.isNestedDagArg(i)) {
+      os << childNodeNames[i];
+    } else {
+      os << resolveSymbol(tree.getArgName(i));
+    }
 
     // TODO(jpienaar): verify types
     ++i;
@@ -640,7 +737,7 @@ std::string PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
     }
     if (!first)
       os << ",";
-    os << boundArgNameInRewrite(name);
+    os << getBoundArgument(name);
     first = false;
   }
   if (!printingAttr)
