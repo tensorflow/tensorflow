@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "fftshift"
-    argspec: "args=[\'x\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "frame"
@@ -50,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "ifftshift"
-    argspec: "args=[\'x\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "inverse_stft"

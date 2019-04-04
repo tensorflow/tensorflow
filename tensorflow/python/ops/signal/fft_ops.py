@@ -326,7 +326,7 @@ def _irfft_grad_helper(rank, rfft_fn):
   return _grad
 
 @tf_export("signal.fftshift")
-def fftshift(x, axes=None):
+def fftshift(x, axes=None, name=None):
     """Shift the zero-frequency component to the center of the spectrum.
 
     This function swaps half-spaces for all axes listed (defaults to all).
@@ -348,24 +348,26 @@ def fftshift(x, axes=None):
       x: `Tensor`, input tensor.
       axes: `int` or shape `tuple`, optional
              Axes over which to shift.  Default is None, which shifts all axes.
+      name: An optional name for the operation.
 
     Returns:
       A `Tensor`, The shifted tensor.
     """
-    x = _ops.convert_to_tensor_v2(x)
-    if axes is None:
-        axes = tuple(range(x.ndim))
-        shift = [dim // 2 for dim in x.shape]
-    elif isinstance(axes, int):
-        shift = x.shape[axes] // 2
-    else:
-        shift = [x.shape[ax] // 2 for ax in axes]
+    with _ops.name_scope(name, "fftshift"):
+        x = _ops.convert_to_tensor(x)
+        if axes is None:
+            axes = tuple(range(x.shape.ndims))
+            shift = [dim // 2 for dim in x.shape]
+        elif isinstance(axes, int):
+            shift = x.shape[axes] // 2
+        else:
+            shift = [x.shape[ax] // 2 for ax in axes]
 
-    return manip_ops.roll(x, shift, axes)
+        return manip_ops.roll(x, shift, axes)
 
 
 @tf_export("signal.ifftshift")
-def ifftshift(x, axes=None):
+def ifftshift(x, axes=None, name=None):
     """The inverse of fftshift.
 
     Although identical for even-length x,
@@ -387,20 +389,22 @@ def ifftshift(x, axes=None):
       x: `Tensor`, input tensor.
       axes: `int` or shape `tuple` Axes over which to calculate.
             Defaults to None, which shifts all axes.
+      name: An optional name for the operation.
 
     Returns:
       A `Tensor`, The shifted tensor.
     """
-    x = _ops.convert_to_tensor_v2(x)
-    if axes is None:
-        axes = tuple(range(x.ndim))
-        shift = [-(dim // 2) for dim in x.shape]
-    elif isinstance(axes, int):
-        shift = -(x.shape[axes] // 2)
-    else:
-        shift = [-(x.shape[ax] // 2) for ax in axes]
+    with _ops.name_scope(name, "ifftshift"):
+        x = _ops.convert_to_tensor(x)
+        if axes is None:
+            axes = tuple(range(x.shape.ndims))
+            shift = [-(dim // 2) for dim in x.shape]
+        elif isinstance(axes, int):
+            shift = -(x.shape[axes] // 2)
+        else:
+            shift = [-(x.shape[ax] // 2) for ax in axes]
 
-    return manip_ops.roll(x, shift, axes)
+        return manip_ops.roll(x, shift, axes)
 
 
 _ops.RegisterGradient("RFFT")(_rfft_grad_helper(1, irfft))
