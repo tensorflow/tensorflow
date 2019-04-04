@@ -148,20 +148,30 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       // Construct the upper bound map; the operands are the original operands
       // with 'i' (tile-space loop) appended to it. The new upper bound map is
       // the original one with an additional expression i + tileSize appended.
-      SmallVector<Value *, 4> ubOperands(origLoops[i].getUpperBoundOperands());
+      auto ub = origLoops[i].getUpperBound();
+      SmallVector<Value *, 4> ubOperands;
+      ubOperands.reserve(ub.getNumOperands() + 1);
+      auto origUbMap = ub.getMap();
+      // Add dim operands from original upper bound.
+      for (unsigned j = 0, e = origUbMap.getNumDims(); j < e; ++j) {
+        ubOperands.push_back(ub.getOperand(j));
+      }
+      // Add dim operand for new loop upper bound.
       ubOperands.push_back(newLoops[i].getInductionVar());
-
-      auto origUbMap = origLoops[i].getUpperBoundMap();
+      // Add symbol operands from original upper bound.
+      for (unsigned j = 0, e = origUbMap.getNumSymbols(); j < e; ++j) {
+        ubOperands.push_back(ub.getOperand(origUbMap.getNumDims() + j));
+      }
       SmallVector<AffineExpr, 4> boundExprs;
       boundExprs.reserve(1 + origUbMap.getNumResults());
-      auto dim = b.getAffineDimExpr(origUbMap.getNumInputs());
+      auto dim = b.getAffineDimExpr(origUbMap.getNumDims());
       // The new upper bound map is the original one with an additional
       // expression i + tileSize appended.
       boundExprs.push_back(dim + tileSizes[i]);
       boundExprs.append(origUbMap.getResults().begin(),
                         origUbMap.getResults().end());
-      auto ubMap =
-          b.getAffineMap(origUbMap.getNumInputs() + 1, 0, boundExprs, {});
+      auto ubMap = b.getAffineMap(origUbMap.getNumDims() + 1,
+                                  origUbMap.getNumSymbols(), boundExprs, {});
       newLoops[width + i].setUpperBound(/*operands=*/ubOperands, ubMap);
     } else {
       // No need of the min expression.
