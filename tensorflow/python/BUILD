@@ -2932,6 +2932,7 @@ py_library(
         ":graph_util",
         ":math_ops",
         ":nn_ops_gen",
+        ":platform",
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
