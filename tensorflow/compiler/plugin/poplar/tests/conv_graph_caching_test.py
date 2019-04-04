@@ -98,6 +98,7 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = [
           '__seed*', 'Copy_*weightsRearranged', 'host-exchange-local-copy-',
+          'Copy_vs/conv2d_1/Conv2D/convolution.7/Conv_1x1/cast_',
           'vs/conv2d/Conv2D/convolution.*/Conv_1x1', 'vs/Cast/convert.*/Cast',
           'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1'
       ]

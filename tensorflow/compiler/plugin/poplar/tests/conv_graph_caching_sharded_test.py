@@ -56,10 +56,11 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
+      print(cs_list)
 
       # Note how there are two convolutions
       ok = [
-          '__seed*', 'progIdCopy/GlobalPre', '/OnTileCopy',
+          '__seed*', 'switchControlBroadcast*/GlobalPre', '/OnTileCopy',
           'vs/conv2d/Conv2D/convolution.*',
           'Copy_vs/conv2d/Conv2D/convolution.*',
           'vs/conv2d_1/Conv2D/convolution.*'
@@ -103,7 +104,7 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Would fail if there were two convolutions in the graph as they would be
       # called conv2d and conv2d_1
       ok = [
-          '__seed*', 'progIdCopy/GlobalPre', '/OnTileCopy',
+          '__seed*', 'switchControlBroadcast*/GlobalPre', '/OnTileCopy',
           'vs/conv2d/Conv2D/convolution.*/Conv_1x1'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
