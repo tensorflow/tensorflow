@@ -80,6 +80,17 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
   }
 }
 
+std::vector<ComputeTaskDescriptorPtr> SelectReshape(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const ReshapeAttributes& attr) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
+    return Reshapex4(id, input_id, output_id, attr);
+  } else {
+    return Reshape(id, input_id, output_id, attr);
+  }
+}
+
 }  // namespace
 
 Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
@@ -170,10 +181,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
                  absl::any_cast<ReLUAttributes>(node->operation.attributes));
         break;
       case OperationType::RESHAPE:
-        tasks = Reshape(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<ReshapeAttributes>(node->operation.attributes)
-                .new_shape);
+        tasks = SelectReshape(
+            graph, node_id, inputs[0], outputs[0],
+            absl::any_cast<ReshapeAttributes>(node->operation.attributes));
         break;
       case OperationType::SLICE:
         tasks =
