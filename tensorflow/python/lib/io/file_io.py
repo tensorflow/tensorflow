@@ -246,6 +246,7 @@ class FileIO(object):
         pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
+  @property
   def seekable(self):
     """Returns True as FileIO supports random access ops of seek()/tell()"""
     return True
