@@ -68,7 +68,7 @@ public:
 
     UniformQuantizedType uniformElementType = fakeQuantAttrsToType(
         fqOp.getLoc(), fqOp.num_bits().getSExtValue(),
-        fqOp.min().convertToDouble(), fqOp.max().convertToDouble(),
+        fqOp.min().convertToFloat(), fqOp.max().convertToFloat(),
         fqOp.narrow_range(), converter.expressedType);
 
     if (!uniformElementType) {

@@ -61,7 +61,7 @@ def OpF : Op<"op_for_int_min_val", []> {
 
 // CHECK-LABEL: OpF::verify()
 // CHECK:       (tblgen_attr.cast<IntegerAttr>().getInt() >= 10)
-// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: 32-bit integer whose minimal value is 10");
+// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: 32-bit integer attribute whose minimal value is 10");
 
 def OpG : Op<"op_for_arr_min_count", []> {
   let arguments = (ins Confined<ArrayAttr, [ArrayMinCount<8>]>:$attr);
@@ -69,4 +69,4 @@ def OpG : Op<"op_for_arr_min_count", []> {
 
 // CHECK-LABEL: OpG::verify()
 // CHECK:       (tblgen_attr.cast<ArrayAttr>().size() >= 8)
-// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array with at least 8 elements");
+// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array attribute with at least 8 elements");

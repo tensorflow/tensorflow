@@ -21,7 +21,7 @@ def NS_OpA : Op<"op_a_with_enum_attr", []> {
 
 // DEF-LABEL: OpA::verify()
 // DEF:         auto tblgen_attr = this->getAttr("attr");
-// DEF:         if (!(((tblgen_attr.cast<StringAttr>().getValue() == "A")) || ((tblgen_attr.cast<StringAttr>().getValue() == "B")) || ((tblgen_attr.cast<StringAttr>().getValue() == "C"))))
+// DEF:         if (!(((tblgen_attr.isa<StringAttr>())) && (((tblgen_attr.cast<StringAttr>().getValue() == "A")) || ((tblgen_attr.cast<StringAttr>().getValue() == "B")) || ((tblgen_attr.cast<StringAttr>().getValue() == "C"))))) 
 // DEF-SAME:      return emitOpError("attribute 'attr' failed to satisfy constraint: some enum");
 
 def NS_OpB : Op<"op_b_with_enum_attr", []> {
@@ -31,8 +31,12 @@ def NS_OpB : Op<"op_b_with_enum_attr", []> {
 def : Pat<(NS_OpA NS_SomeEnum_A:$attr), (NS_OpB NS_SomeEnum_B)>;
 
 // PAT-LABEL: struct GeneratedConvert0
+
 // PAT:       PatternMatchResult match
-// PAT:         if (!((op0->getAttrOfType<StringAttr>("attr").cast<StringAttr>().getValue() == "A"))) return matchFailure();
+// PAT:         auto attr = op0->getAttrOfType<StringAttr>("attr");
+// PAT-NEXT:    if (!attr) return matchFailure();
+// PAT-NEXT:    if (!((attr.cast<StringAttr>().getValue() == "A"))) return matchFailure();
+
 // PAT:       void rewrite
 // PAT:         auto vOpB0 = rewriter.create<NS::OpB>(loc,
 // PAT-NEXT:        rewriter.getStringAttr("B")

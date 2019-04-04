@@ -151,7 +151,7 @@ def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 
 // Other integer operations.
 def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
-                  Arguments<(ins I32Attr:$predicate, LLVM_Type:$lhs,
+                  Arguments<(ins I64Attr:$predicate, LLVM_Type:$lhs,
                              LLVM_Type:$rhs)> {
   let llvmBuilder = [{
     $res = builder.CreateICmp(getLLVMCmpPredicate(

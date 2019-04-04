@@ -421,56 +421,65 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   let isOptional = 0b1;
 }
 
-// A generic attribute that must be constructed around a specific type.
-// Backed by a C++ class "attrName".
-class TypeBasedAttr<BuildableType t, string attrName, string descr> :
-    Attr<CPred<"true">, descr> {
-  let constBuilderCall =
-      "{0}.get" # attrName # "({0}." # t.builderCall # ", {1})";
-  let storageType = attrName;
+// A generic attribute that must be constructed around a specific type
+// `attrValType`. Backed by MLIR attribute kind `attrKind`.
+class TypedAttrBase<BuildableType attrValType, string attrKind,
+                    Pred condition, string descr> :
+    Attr<condition, descr> {
+  let constBuilderCall = "{0}.get" # attrKind # "({0}." #
+                         attrValType.builderCall # ", {1})";
+  let storageType = attrKind;
 }
 
 // Any attribute.
-def AnyAttr : Attr<CPred<"true">, "any"> {
+def AnyAttr : Attr<CPred<"true">, "any attribute"> {
   let storageType = "Attribute";
   let returnType = "Attribute";
   let convertFromStorage = "{0}";
   let constBuilderCall = "{1}";
 }
 
-def BoolAttr : Attr<CPred<"true">, "bool"> {
+def BoolAttr : Attr<CPred<"{0}.isa<BoolAttr>()">, "bool attribute"> {
   let storageType = [{ BoolAttr }];
   let returnType = [{ bool }];
   let constBuilderCall = [{ {0}.getBoolAttr({1}) }];
 }
 
-// Base class for instantiating integer attributes of fixed width.
-class IntegerAttrBase<BuildableType t, string descr> :
-  TypeBasedAttr<t, "IntegerAttr", descr> {
+// Base class for integer attributes of fixed width.
+class IntegerAttrBase<I attrValType, string descr> :
+    TypedAttrBase<attrValType, "IntegerAttr",
+              AllOf<[CPred<"{0}.isa<IntegerAttr>()">,
+                     CPred<"{0}.cast<IntegerAttr>().getType()."
+                           "isInteger(" # attrValType.bitwidth # ")">]>,
+              descr> {
   let returnType = [{ APInt }];
 }
 
-def I32Attr : IntegerAttrBase<I32, "32-bit integer">;
-def I64Attr : IntegerAttrBase<I64, "64-bit integer">;
+def I32Attr : IntegerAttrBase<I32, "32-bit integer attribute">;
+def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
 
-// Base class for instantiating float attributes of fixed width.
-class FloatAttrBase<BuildableType t, string descr> :
-    TypeBasedAttr<t, "FloatAttr", descr> {
+// Base class for float attributes of fixed width.
+class FloatAttrBase<F attrValType, string descr> :
+    TypedAttrBase<attrValType, "FloatAttr",
+              AllOf<[CPred<"{0}.isa<FloatAttr>()">,
+                     CPred<"{0}.cast<FloatAttr>().getType().isF" #
+                           attrValType.bitwidth # "()">]>,
+              descr> {
   let returnType = [{ APFloat }];
 }
 
-def F32Attr : FloatAttrBase<F32, "32-bit float">;
-def F64Attr : FloatAttrBase<F64, "64-bit float">;
+def F32Attr : FloatAttrBase<F32, "32-bit float attribute">;
+def F64Attr : FloatAttrBase<F64, "64-bit float attribute">;
 
 // An attribute backed by a string type.
-class StringBasedAttr<Pred condition, string descr> :
-    Attr<condition, descr> {
+class StringBasedAttr<Pred condition, string descr> : Attr<condition, descr> {
   let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
   let storageType = [{ StringAttr }];
   let returnType = [{ StringRef }];
 }
 
-def StrAttr : StringBasedAttr<CPred<"true">, "string">;
+def StrAttr : StringBasedAttr<CPred<"{0}.isa<StringAttr>()">,
+                              "string attribute">;
 
 // An enum attribute case.
 class EnumAttrCase<string sym> : StringBasedAttr<
@@ -485,7 +494,9 @@ class EnumAttrCase<string sym> : StringBasedAttr<
 // on the string: only the symbols of the allowed cases are permitted as the
 // string value.
 class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
-    StringBasedAttr<AnyOf<!foreach(case, cases, case.predicate)>, description> {
+    StringBasedAttr<AllOf<[StrAttr.predicate,
+                           AnyOf<!foreach(case, cases, case.predicate)>]>,
+                    description> {
   // The C++ enum class name
   string className = name;
   // List of all accepted cases
@@ -499,16 +510,20 @@ class ElementsAttrBase<Pred condition, string description> :
   let convertFromStorage = "{0}";
 }
 
-def ElementsAttr: ElementsAttrBase<CPred<"true">, "constant vector/tensor">;
+def ElementsAttr: ElementsAttrBase<CPred<"{0}.isa<ElementsAttr>()">,
+                                   "constant vector/tensor attribute">;
 
-def ArrayAttr : Attr<CPred<"true">, "array"> {
+// TODO(antiagainst): Define common ArrayAttr subclasses and properly
+// set constraints.
+def ArrayAttr : Attr<CPred<"{0}.isa<ArrayAttr>()">, "array attribute"> {
   let storageType = [{ ArrayAttr }];
   let returnType = [{ ArrayAttr }];
   code convertFromStorage = "{0}";
 }
 
 // Attributes containing functions.
-def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">, "function"> {
+def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">,
+                        "function attribute"> {
   let storageType = [{ FunctionAttr }];
   let returnType = [{ Function * }];
   let convertFromStorage = [{ {0}.getValue() }];
@@ -531,7 +546,7 @@ class TypeAttrBase<string retType, string description> :
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
-class DerivedAttr<code ret, code b> : Attr<CPred<"true">, "derived"> {
+class DerivedAttr<code ret, code b> : Attr<CPred<"true">, "derived attribute"> {
   let returnType = ret;
   code body = b;
 }

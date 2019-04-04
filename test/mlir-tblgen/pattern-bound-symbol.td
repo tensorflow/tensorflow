@@ -45,7 +45,8 @@ def : Pattern<(OpA:$res_a $operand, $attr),
 // CHECK:   mlir::Operation* tblgen_res_a; (void)tblgen_res_a;
 // CHECK:   tblgen_res_a = op0;
 // CHECK:   s.operand = op0->getOperand(0);
-// CHECK:   s.attr = op0->getAttrOfType<IntegerAttr>("attr");
+// CHECK:   attr = op0->getAttrOfType<IntegerAttr>("attr");
+// CHECK:   s.attr = attr;
 // CHECK:   if (!(tblgen_res_a->hasOneUse())) return matchFailure();
 
 // Test bound results in result pattern

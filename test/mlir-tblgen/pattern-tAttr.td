@@ -4,7 +4,7 @@ include "mlir/IR/OpBase.td"
 
 // Create a Type and Attribute.
 def T : BuildableType<"buildT()">;
-def T_Attr : TypeBasedAttr<T, "Attribute", "attribute of T type">;
+def T_Attr : TypedAttrBase<T, "Attribute",CPred<"true">, "attribute of T type">;
 def T_Const_Attr : ConstantAttr<T_Attr, "attrValue">;
 def T_Compose_Attr : tAttr<"{0}.getArrayAttr({{{1}, {2}})">;
 

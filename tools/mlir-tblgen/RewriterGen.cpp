@@ -331,8 +331,29 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
                                         int indent) {
   Operator &op = tree.getDialectOp(opMap);
   auto *namedAttr = op.getArg(index).get<NamedAttribute *>();
-  auto matcher = tree.getArgAsLeaf(index);
+  const auto &attr = namedAttr->attr;
 
+  os.indent(indent) << "{\n";
+  indent += 2;
+  os.indent(indent) << formatv(
+      "auto attr = op{0}->getAttrOfType<{1}>(\"{2}\");\n", depth,
+      attr.getStorageType(), namedAttr->getName());
+
+  // TODO(antiagainst): This should use getter method to avoid duplication.
+  if (attr.hasDefaultValue()) {
+    os.indent(indent) << "if (!attr) attr = "
+                      << formatv(attr.getDefaultValueTemplate().c_str(),
+                                 "mlir::Builder(ctx)")
+                      << ";\n";
+  } else if (attr.isOptional()) {
+    // For a missing attribut that is optional according to definition, we
+    // should just capature a mlir::Attribute() to signal the missing state.
+    // That is precisely what getAttr() returns on missing attributes.
+  } else {
+    os.indent(indent) << "if (!attr) return matchFailure();\n";
+  }
+
+  auto matcher = tree.getArgAsLeaf(index);
   if (!matcher.isUnspecified()) {
     if (!matcher.isAttrMatcher()) {
       PrintFatalError(
@@ -342,20 +363,19 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
 
     // If a constraint is specified, we need to generate C++ statements to
     // check the constraint.
-    std::string condition = formatv(
-        matcher.getConditionTemplate().c_str(),
-        formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
-                namedAttr->attr.getStorageType(), namedAttr->getName()));
-    os.indent(indent) << "if (!(" << condition << ")) return matchFailure();\n";
+    os.indent(indent) << "if (!("
+                      << formatv(matcher.getConditionTemplate().c_str(), "attr")
+                      << ")) return matchFailure();\n";
   }
 
   // Capture the value
   auto name = tree.getArgName(index);
   if (!name.empty()) {
-    os.indent(indent) << getBoundArgument(name) << " = op" << depth
-                      << "->getAttrOfType<" << namedAttr->attr.getStorageType()
-                      << ">(\"" << namedAttr->getName() << "\");\n";
+    os.indent(indent) << getBoundArgument(name) << " = attr;\n";
   }
+
+  indent -= 2;
+  os.indent(indent) << "}\n";
 }
 
 void PatternEmitter::emitMatchMethod(DagNode tree) {

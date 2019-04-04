@@ -64,6 +64,37 @@ def AOp : Op<"a_op", []> {
 // CHECK-NEXT: if (tblgen_cAttr) {
 // CHECK-NEXT:   if (!((some-condition))) return emitOpError("attribute 'cAttr' failed to satisfy constraint: some attribute kind");
  
+def SomeTypeAttr : TypeAttrBase<"SomeType", "some type attribute">;
+
+// Test common attribute kinds' constraints
+// ---
+
+def BOp : Op<"b_op", []> {
+  let arguments = (ins
+    AnyAttr:$any_attr,
+    BoolAttr:$bool_attr,
+    I32Attr:$i32_attr,
+    I64Attr:$i64_attr,
+    F32Attr:$f32_attr,
+    F64Attr:$f64_attr,
+    StrAttr:$str_attr,
+    ElementsAttr:$elements_attr,
+    FunctionAttr:$function_attr,
+    SomeTypeAttr:$type_attr
+  );
+}
+
+// CHECK-LABEL: BOp::verify
+// CHECK: if (!((true)))
+// CHECK: if (!((tblgen_bool_attr.isa<BoolAttr>())))
+// CHECK: if (!(((tblgen_i32_attr.isa<IntegerAttr>())) && ((tblgen_i32_attr.cast<IntegerAttr>().getType().isInteger(32)))))
+// CHECK: if (!(((tblgen_i64_attr.isa<IntegerAttr>())) && ((tblgen_i64_attr.cast<IntegerAttr>().getType().isInteger(64)))))
+// CHECK: if (!(((tblgen_f32_attr.isa<FloatAttr>())) && ((tblgen_f32_attr.cast<FloatAttr>().getType().isF32()))))
+// CHECK: if (!(((tblgen_f64_attr.isa<FloatAttr>())) && ((tblgen_f64_attr.cast<FloatAttr>().getType().isF64()))))
+// CHECK: if (!((tblgen_str_attr.isa<StringAttr>())))
+// CHECK: if (!((tblgen_elements_attr.isa<ElementsAttr>())))
+// CHECK: if (!((tblgen_function_attr.isa<FunctionAttr>())))
+// CHECK: if (!(((tblgen_type_attr.isa<TypeAttr>())) && ((tblgen_type_attr.cast<TypeAttr>().getValue().isa<SomeType>()))))
 
 def MixOperandsAndAttrs : Op<"mix_operands_and_attrs", []> {
   let arguments = (ins F32Attr:$attr, F32:$operand, F32Attr:$otherAttr, F32:$otherArg);
