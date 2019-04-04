@@ -1,3 +1,5 @@
+add_subdirectory(FxpMathOps)
 add_subdirectory(LLVMIR)
+add_subdirectory(Quantization)
 add_subdirectory(StandardOps)
 add_subdirectory(EDSC)

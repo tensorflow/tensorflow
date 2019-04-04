@@ -261,7 +261,7 @@ LogicalResult UniformQuantizedType::verifyConstructionInvariants(
   }
 
   // Verify scale.
-  if (scale <= 0.0 || isinf(scale) || isnan(scale)) {
+  if (scale <= 0.0 || std::isinf(scale) || std::isnan(scale)) {
     if (loc) {
       context->emitError(*loc,
                          "illegal scale: " + Twine(std::to_string(scale)));
@@ -323,7 +323,7 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
 
   // Verify scale.
   for (double scale : scales) {
-    if (scale <= 0.0 || isinf(scale) || isnan(scale)) {
+    if (scale <= 0.0 || std::isinf(scale) || std::isnan(scale)) {
       if (loc) {
         context->emitError(*loc,
                            "illegal scale: " + Twine(std::to_string(scale)));

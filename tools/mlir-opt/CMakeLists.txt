@@ -2,9 +2,11 @@ set(LIBS
   MLIRAffineOps
   MLIRAnalysis
   MLIREDSC
+  MLIRFxpMathOps
   MLIRLLVMIR
   MLIRParser
   MLIRPass
+  MLIRQuantization
   MLIRStandardOps
   MLIRTransforms
   MLIRSupport
