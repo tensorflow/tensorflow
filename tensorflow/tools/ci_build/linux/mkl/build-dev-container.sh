@@ -43,6 +43,7 @@ function die()
 # Set up WORKSPACE.
 WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 
+ROOT_CONTAINER=${ROOT_CONTAINER:-tensorflow/tensorflow}
 TF_ROOT_CONTAINER_TAG=${ROOT_CONTAINER_TAG:-devel}
 TF_BUILD_VERSION=${TF_DOCKER_BUILD_DEVEL_BRANCH:-master}
 TF_REPO=${TF_REPO:-https://github.com/tensorflow/tensorflow}
@@ -222,6 +223,7 @@ do
   do
     # Clear the build args array
     TF_DOCKER_BUILD_ARGS=("--build-arg TARGET_PLATFORM=${PLATFORM}")
+    TF_DOCKER_BUILD_ARGS+=("--build-arg ROOT_CONTAINER=${ROOT_CONTAINER}")
     FINAL_TAG="${TF_DOCKER_BUILD_VERSION}"
     ROOT_CONTAINER_TAG="${TF_ROOT_CONTAINER_TAG}"
 
