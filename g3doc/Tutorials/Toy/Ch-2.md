@@ -39,7 +39,7 @@ and can have application-specific semantics.
 Here is the MLIR assembly for the Toy 'transpose' operations:
 
 ```MLIR(.mlir)
-%t_array = "toy.transpose"(%array) { inplace: true } : (!toy<"array<2, 3">) -> !toy<"array<3, 2">
+%t_array = "toy.transpose"(%array) { inplace: true } : (!toy<"array<2, 3>">) -> !toy<"array<3, 2>">
 ```
 
 Let's look at the anatomy of this MLIR operation:
@@ -212,5 +212,5 @@ func @main() {
 There are multiple problems here: first the `toy.print` is not a terminator,
 then it should take an operand, and not return any value.
 
-In the [next chapter](Ch-2.md) we will register our dialect and operations with
+In the [next chapter](Ch-3.md) we will register our dialect and operations with
 MLIR, plug in the verifier, and add nicer APIs to manipulate our operations.

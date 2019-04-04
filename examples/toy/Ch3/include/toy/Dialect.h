@@ -68,7 +68,7 @@ struct ToyArrayTypeStorage;
 /// LLVM-style RTTI: one entry per subclass to allow dyn_cast/isa.
 enum ToyTypeKind {
   // The enum starts at the range reserved for this dialect.
-  TOY_TYPE = mlir::OpaqueType::FIRST_TOY_TYPE,
+  TOY_TYPE = mlir::Type::FIRST_TOY_TYPE,
   TOY_ARRAY,
 };
 
