@@ -247,12 +247,12 @@ class BFCAllocator : public Allocator {
       std::swap(handles_, other->handles_);
     }
 
-    int IndexFor(const void* p) const {
+    size_t IndexFor(const void* p) const {
       std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
       std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
       DCHECK_GE(p_int, base_int);
       DCHECK_LT(p_int, base_int + memory_size_);
-      return static_cast<int>(((p_int - base_int) >> kMinAllocationBits));
+      return static_cast<size_t>(((p_int - base_int) >> kMinAllocationBits));
     }
 
     // Metadata about the allocation region.
