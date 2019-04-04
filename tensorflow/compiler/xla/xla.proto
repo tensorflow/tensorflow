@@ -184,6 +184,9 @@ message DebugOptions {
   // among different algorithms.
   bool xla_gpu_crash_on_verification_failures = 101;
 
+  // Disable GEMM and Convolution auto-tuning.
+  bool xla_gpu_disable_autotune = 123;
+
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
   // to 1.
@@ -265,7 +268,7 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 123
+  // Next id: 124
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
