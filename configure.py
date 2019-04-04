@@ -447,6 +447,9 @@ def convert_version_to_int(version):
   """
   version = version.split('-')[0]
   version_segments = version.split('.')
+  # Treat "0.24" as "0.24.0"
+  if len(version_segments) == 2:
+    version_segments.append('0')
   for seg in version_segments:
     if not seg.isdigit():
       return None
