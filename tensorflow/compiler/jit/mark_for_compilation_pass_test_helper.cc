@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
-    bool enable_global_jit) {
+    MarkForCompilationPassTestHelper::Options options) {
   // Assign all unassigned nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
   for (Node* n : (*graph)->nodes()) {
@@ -31,7 +31,7 @@ namespace tensorflow {
   }
 
   SessionOptions session_options;
-  if (enable_global_jit) {
+  if (options.enable_global_jit) {
     session_options.config.mutable_graph_options()
         ->mutable_optimizer_options()
         ->set_global_jit_level(OptimizerOptions::ON_2);
@@ -49,13 +49,16 @@ namespace tensorflow {
   opt_options.session_options = &session_options;
   opt_options.flib_def = flib_def;
   MarkForCompilationPass pass;
-  return pass.RunForTest(opt_options);
+  return pass.RunForTest(
+      opt_options,
+      /*disable_deadness_analysis=*/options.disable_deadness_analysis);
 }
 
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
-    std::unique_ptr<Graph>* graph, bool enable_global_jit) {
+    std::unique_ptr<Graph>* graph,
+    MarkForCompilationPassTestHelper::Options options) {
   FunctionDefLibrary flib;
   FunctionLibraryDefinition flib_def((*graph)->op_registry(), flib);
-  return MarkForCompilation(graph, &flib_def, enable_global_jit);
+  return MarkForCompilation(graph, &flib_def, options);
 }
 }  // namespace tensorflow

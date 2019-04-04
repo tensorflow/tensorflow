@@ -525,8 +525,8 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
     TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
-  TF_ASSERT_OK(
-      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, false));
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph, MarkForCompilationPassTestHelper::Options().WithNoGlobalJit()));
   auto clusters = GetClusters(*graph);
 
   // The computation is: C = A + relu(A)
@@ -564,8 +564,8 @@ TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
     TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
-  TF_ASSERT_OK(
-      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, false));
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph, MarkForCompilationPassTestHelper::Options().WithNoGlobalJit()));
   auto clusters = GetClusters(*graph);
 
   // The computation is: D = relu(A) + (A @ relu(A))
@@ -598,8 +598,8 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
     TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
-  TF_ASSERT_OK(
-      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, false));
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph, MarkForCompilationPassTestHelper::Options().WithNoGlobalJit()));
   auto clusters = GetClusters(*graph);
 
   // The computation is: C = A @ relu(A)
@@ -608,6 +608,77 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
   EXPECT_EQ(3, clusters.size());
   EXPECT_NE(clusters["A"], clusters["B"]);
   EXPECT_EQ(clusters["B"], clusters["C"]);
+}
+
+TEST(XlaCompilationTest, DontClusterNodesWithMismatchingDeadness) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output cond_a = ops::Placeholder(root.WithOpName("cond_a"), DT_BOOL);
+  Output cond_b = ops::Placeholder(root.WithOpName("cond_b"), DT_BOOL);
+
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+
+  ops::Switch switch_a(root.WithOpName("switch_a"), value, cond_a);
+  ops::Switch switch_b(root.WithOpName("switch_b"), value, cond_b);
+
+  Output tanh_a0 = ops::Tanh(root.WithOpName("tan_a0"), switch_a.output_true);
+  Output tanh_a1 = ops::Tanh(root.WithOpName("tan_a1"), tanh_a0);
+
+  Output tanh_b0 = ops::Tanh(root.WithOpName("tan_b0"), switch_b.output_true);
+  Output tanh_b1 = ops::Tanh(root.WithOpName("tan_b1"), tanh_b0);
+
+  Output add = ops::Add(root.WithOpName("add"), tanh_a1, tanh_b1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph,
+      MarkForCompilationPassTestHelper::Options().WithDeadnessAnalysis()));
+  auto clusters = GetClusters(*graph);
+
+  EXPECT_NE(clusters["tan_a0"], "");
+  EXPECT_NE(clusters["tan_a1"], "");
+  EXPECT_NE(clusters["tan_b0"], "");
+  EXPECT_NE(clusters["tan_b1"], "");
+
+  EXPECT_EQ(clusters["tan_a0"], clusters["tan_a1"]);
+  EXPECT_EQ(clusters["tan_b0"], clusters["tan_b1"]);
+
+  EXPECT_NE(clusters["tan_a0"], clusters["tan_b0"]);
+}
+
+TEST(XlaCompilationTest, ClusterNodesWithMismatchingInputDeadness) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output cond_a = ops::Placeholder(root.WithOpName("cond_a"), DT_BOOL);
+  Output cond_b = ops::Placeholder(root.WithOpName("cond_b"), DT_BOOL);
+
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+
+  ops::Switch switch_a(root.WithOpName("switch_a"), value, cond_a);
+  ops::Switch switch_b(root.WithOpName("switch_b"), value, cond_b);
+
+  Output add_a = ops::Add(root.WithOpName("add_a"), switch_a.output_true,
+                          switch_b.output_true);
+  Output add_b = ops::Add(root.WithOpName("add_b"), switch_a.output_true,
+                          switch_b.output_true);
+  Output add = ops::Add(root.WithOpName("add_c"), add_a, add_b);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph,
+      MarkForCompilationPassTestHelper::Options().WithDeadnessAnalysis()));
+  auto clusters = GetClusters(*graph);
+
+  EXPECT_NE(clusters["add_a"], "");
+  EXPECT_NE(clusters["add_b"], "");
+  EXPECT_NE(clusters["add_c"], "");
+
+  EXPECT_EQ(clusters["add_a"], clusters["add_b"]);
+  EXPECT_EQ(clusters["add_b"], clusters["add_c"]);
 }
 
 namespace {
