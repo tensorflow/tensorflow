@@ -641,7 +641,7 @@ static inline const char *const *getPredicateNames() {
       /*UGT*/ "ugt",
       /*UGE*/ "uge"};
   return predicateNames;
-};
+}
 
 // Returns a value of the predicate corresponding to the given mnemonic.
 // Returns NumPredicates (one-past-end) if there is no such mnemonic.

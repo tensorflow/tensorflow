@@ -1640,7 +1640,7 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
   assert(pos < getNumDimAndSymbolIds() && "invalid position");
   // Equality follows the logic of lower bound except that we add an equality
   // instead of an inequality.
-  assert(!eq || boundMap.getNumResults() == 1 && "single result expected");
+  assert((!eq || boundMap.getNumResults() == 1) && "single result expected");
   if (eq)
     lower = true;
 
@@ -2563,7 +2563,7 @@ void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
     return;
 
   // 'pos' can be at most getNumCols() - 2 if num > 0.
-  assert(getNumCols() < 2 || pos <= getNumCols() - 2 && "invalid position");
+  assert((getNumCols() < 2 || pos <= getNumCols() - 2) && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
 
   // Eliminate as many identifiers as possible using Gaussian elimination.
@@ -2672,7 +2672,7 @@ static BoundCmpResult compareBounds(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
 
   return a.back() < b.back() ? Less : Greater;
 }
-}; // namespace
+} // namespace
 
 // Computes the bounding box with respect to 'other' by finding the min of the
 // lower bounds and the max of the upper bounds along each of the dimensions.

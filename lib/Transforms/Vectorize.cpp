@@ -1002,7 +1002,7 @@ static Value *vectorizeOperand(Value *operand, Operation *op,
   LLVM_DEBUG(dbgs() << "-> non-vectorizable");
   LLVM_DEBUG(operand->print(dbgs()));
   return nullptr;
-};
+}
 
 /// Encodes Operation-specific behavior for vectorization. In general we assume
 /// that all operands of an op must be vectorized but this is not always true.
