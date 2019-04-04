@@ -33,7 +33,7 @@ using namespace linalg;
 using namespace linalg::intrinsics;
 
 void linalg::composeSliceOps(mlir::Function *f) {
-  f->walkPostOrder<SliceOp>([](SliceOp sliceOp) {
+  f->walk<SliceOp>([](SliceOp sliceOp) {
     auto *sliceResult = sliceOp.getResult();
     auto viewOp = createFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());
@@ -42,7 +42,7 @@ void linalg::composeSliceOps(mlir::Function *f) {
 }
 
 void linalg::lowerToFinerGrainedTensorContraction(mlir::Function *f) {
-  f->walkPostOrder([](Operation *op) {
+  f->walk([](Operation *op) {
     if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
       matmulOp.writeAsFinerGrainTensorContraction();
     } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
@@ -208,7 +208,7 @@ writeAsLoops(ContractionOp contraction) {
 }
 
 void linalg::lowerToLoops(mlir::Function *f) {
-  f->walkPostOrder([](Operation *op) {
+  f->walk([](Operation *op) {
     if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
       writeAsLoops(matmulOp);
     } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {

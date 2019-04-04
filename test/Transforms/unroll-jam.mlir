@@ -94,7 +94,7 @@ func @loop_nest_symbolic_and_min_upper_bound(%M : index, %N : index, %K : index)
 // CHECK-NEXT:  affine.for %i0 = 0 to min [[MAP_MULTI_RES]]()[%arg0, %arg1] step 2 {
 // CHECK-NEXT:    affine.for %i1 = 0 to %arg2 {
 // CHECK-NEXT:      "foo"(%i0, %i1) : (index, index) -> ()
-// CHECK-NEXT:      %0 = affine.apply #map2(%i0)
+// CHECK-NEXT:      %0 = affine.apply #map0(%i0)
 // CHECK-NEXT:      "foo"(%0, %i1) : (index, index) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }

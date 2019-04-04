@@ -286,21 +286,10 @@ Function *Operation::getFunction() {
 //===----------------------------------------------------------------------===//
 
 void Operation::walk(const std::function<void(Operation *)> &callback) {
-  // Visit the current operation.
-  callback(this);
-
   // Visit any internal operations.
   for (auto &region : getRegions())
     for (auto &block : region)
       block.walk(callback);
-}
-
-void Operation::walkPostOrder(
-    const std::function<void(Operation *)> &callback) {
-  // Visit any internal operations.
-  for (auto &region : llvm::reverse(getRegions()))
-    for (auto &block : llvm::reverse(region))
-      block.walkPostOrder(callback);
 
   // Visit the current operation.
   callback(this);

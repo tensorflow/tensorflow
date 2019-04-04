@@ -245,23 +245,14 @@ public:
   // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk the operations of this block in preorder, calling the callback for
+  /// Walk the operations in this block in postorder, calling the callback for
   /// each operation.
   void walk(const std::function<void(Operation *)> &callback);
 
-  /// Walk the operations in the specified [begin, end) range of
-  /// this block, calling the callback for each operation.
+  /// Walk the operations in the specified [begin, end) range of this block in
+  /// postorder, calling the callback for each operation.
   void walk(Block::iterator begin, Block::iterator end,
             const std::function<void(Operation *)> &callback);
-
-  /// Walk the operations in this block in postorder, calling the callback for
-  /// each operation.
-  void walkPostOrder(const std::function<void(Operation *)> &callback);
-
-  /// Walk the operations in the specified [begin, end) range of this block
-  /// in postorder, calling the callback for each operation.
-  void walkPostOrder(Block::iterator begin, Block::iterator end,
-                     const std::function<void(Operation *)> &callback);
 
   //===--------------------------------------------------------------------===//
   // Other

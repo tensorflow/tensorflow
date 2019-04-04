@@ -98,7 +98,7 @@ void NestedPattern::matchOne(Operation *op,
   for (auto nestedPattern : nestedPatterns) {
     SmallVector<NestedMatch, 8> nestedMatches;
     // Skip elem in the walk immediately following. Without this we would
-    // essentially need to reimplement walkPostOrder here.
+    // essentially need to reimplement walk here.
     nestedPattern.skip = op;
     nestedPattern.match(op, &nestedMatches);
     // If we could not match even one of the specified nestedPattern, early exit

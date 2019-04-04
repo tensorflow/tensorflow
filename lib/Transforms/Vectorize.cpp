@@ -1221,12 +1221,9 @@ void Vectorize::runOnFunction() {
   NestedPatternContext mlContext;
 
   llvm::DenseSet<Operation *> parallelLoops;
-  f.walkPostOrder([&parallelLoops](Operation *op) {
-    if (auto loop = op->dyn_cast<AffineForOp>()) {
-      if (isLoopParallel(loop)) {
-        parallelLoops.insert(op);
-      }
-    }
+  f.walk<AffineForOp>([&parallelLoops](AffineForOp loop) {
+    if (isLoopParallel(loop))
+      parallelLoops.insert(loop);
   });
 
   for (auto &pat :

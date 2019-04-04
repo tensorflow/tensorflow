@@ -232,24 +232,12 @@ void Block::walk(const std::function<void(Operation *)> &callback) {
   walk(begin(), end(), callback);
 }
 
+/// Walk the operations in the specified [begin, end) range of this block,
+/// calling the callback for each operation.
 void Block::walk(Block::iterator begin, Block::iterator end,
                  const std::function<void(Operation *)> &callback) {
-  // Walk the operations within this block.
   for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
     op.walk(callback);
-}
-
-void Block::walkPostOrder(const std::function<void(Operation *)> &callback) {
-  walkPostOrder(begin(), end(), callback);
-}
-
-/// Walk the operations in the specified [begin, end) range of this block
-/// in postorder, calling the callback for each operation.
-void Block::walkPostOrder(Block::iterator begin, Block::iterator end,
-                          const std::function<void(Operation *)> &callback) {
-  // Walk the operations within this block.
-  for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
-    op.walkPostOrder(callback);
 }
 
 //===----------------------------------------------------------------------===//

@@ -104,12 +104,12 @@ struct NestedPattern {
 
   /// Returns all the top-level matches in `func`.
   void match(Function *func, SmallVectorImpl<NestedMatch> *matches) {
-    func->walkPostOrder([&](Operation *op) { matchOne(op, matches); });
+    func->walk([&](Operation *op) { matchOne(op, matches); });
   }
 
   /// Returns all the top-level matches in `op`.
   void match(Operation *op, SmallVectorImpl<NestedMatch> *matches) {
-    op->walkPostOrder([&](Operation *child) { matchOne(child, matches); });
+    op->walk([&](Operation *child) { matchOne(child, matches); });
   }
 
   /// Returns the depth of the pattern.

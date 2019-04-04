@@ -404,26 +404,13 @@ public:
   // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk the operations held by this operation in preorder, calling the
-  /// callback for each operation.
+  /// Walk this operation in postorder, calling the callback for each operation
+  /// including this one.
   void walk(const std::function<void(Operation *)> &callback);
 
   /// Specialization of walk to only visit operations of 'OpTy'.
   template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
     walk([&](Operation *op) {
-      if (auto derivedOp = op->dyn_cast<OpTy>())
-        callback(derivedOp);
-    });
-  }
-
-  /// Walk the operations held by this function in postorder, calling the
-  /// callback for each operation.
-  void walkPostOrder(const std::function<void(Operation *)> &callback);
-
-  /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
-  template <typename OpTy>
-  void walkPostOrder(std::function<void(OpTy)> callback) {
-    walkPostOrder([&](Operation *op) {
       if (auto derivedOp = op->dyn_cast<OpTy>())
         callback(derivedOp);
     });

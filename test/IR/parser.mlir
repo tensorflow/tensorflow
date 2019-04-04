@@ -791,7 +791,7 @@ func @no_integer_set_constraints() {
 func @verbose_if(%N: index) {
   %c = constant 200 : index
 
-  // CHECK: affine.if #set0(%c200)[%arg0, %c200] {
+  // CHECK: affine.if #set{{.*}}(%c200)[%arg0, %c200] {
   "affine.if"(%c, %N, %c) { condition: #set0 } : (index, index, index) -> () {
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index

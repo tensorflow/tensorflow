@@ -148,6 +148,8 @@ func @tile_with_symbolic_loop_upper_bounds(%arg0: memref<?x?xf32>, %arg1: memref
 
 // -----
 
+// CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+// CHECK-DAG: [[MAP1:#map[0-9]+]] = ()[s0, s1] -> (s0 + s1)
 // CHECK-DAG: [[UBMAP:#map[0-9]+]] = (d0)[s0, s1] -> (d0 + 32, s0 + s1)
 
 func @tile_with_loop_upper_bounds_in_two_symbols(%arg0: memref<?xf32>, %limit: index) {
@@ -159,8 +161,8 @@ func @tile_with_loop_upper_bounds_in_two_symbols(%arg0: memref<?xf32>, %limit: i
 }
 
 // CHECK:       %0 = dim %arg0, 0 : memref<?xf32>
-// CHECK-NEXT:  affine.for %i0 = 0 to #map1()[%0, %arg1] step 32 {
-// CHECK-NEXT:    affine.for %i1 = #map2(%i0) to min [[UBMAP]](%i0)[%0, %arg1] {
+// CHECK-NEXT:  affine.for %i0 = 0 to [[MAP1]]()[%0, %arg1] step 32 {
+// CHECK-NEXT:    affine.for %i1 = [[MAP0]](%i0) to min [[UBMAP]](%i0)[%0, %arg1] {
 // CHECK-NEXT:      %1 = load %arg0[%i1] : memref<?xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }

@@ -101,12 +101,12 @@ TEST_FUNC(linalg_ops_folded_slices) {
   //  CHECK-NEXT: linalg.dot {{{.*}}, {{.*}}} -> {{{.*}}}
   // clang-format on
 
-  f->walkPostOrder<SliceOp>([](SliceOp slice) {
+  f->walk<SliceOp>([](SliceOp slice) {
     auto *sliceResult = slice.getResult();
     auto viewOp = createFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());
+    slice.erase();
   });
-  f->walkPostOrder<SliceOp>([](SliceOp slice) { slice.erase(); });
 
   cleanupAndPrintFunction(f);
 }
