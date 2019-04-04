@@ -12,13 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <map>
 #include <string>
 #include <vector>
-
 #include "tensorflow/core/platform/logging.h"
+
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
-#include "tensorflow/lite/toco/import_tensorflow.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
@@ -51,32 +49,21 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   bool error;
   std::string model_flags_proto_txt =
       ConvertArg(model_flags_proto_txt_raw, &error);
-  if (error) {
-    PyErr_SetString(PyExc_ValueError, "Model flags are invalid.");
-    return nullptr;
-  }
+  if (error) return nullptr;
   std::string toco_flags_proto_txt =
       ConvertArg(toco_flags_proto_txt_raw, &error);
-  if (error) {
-    PyErr_SetString(PyExc_ValueError, "Toco flags are invalid.");
-    return nullptr;
-  }
+  if (error) return nullptr;
   std::string input_contents_txt = ConvertArg(input_contents_txt_raw, &error);
-  if (error) {
-    PyErr_SetString(PyExc_ValueError, "Input GraphDef is invalid.");
-    return nullptr;
-  }
+  if (error) return nullptr;
 
   // Use TOCO to produce new outputs.
   toco::ModelFlags model_flags;
   if (!model_flags.ParseFromString(model_flags_proto_txt)) {
-    PyErr_SetString(PyExc_ValueError, "Model proto failed to parse.");
-    return nullptr;
+    LOG(FATAL) << "Model proto failed to parse." << std::endl;
   }
   toco::TocoFlags toco_flags;
   if (!toco_flags.ParseFromString(toco_flags_proto_txt)) {
-    PyErr_SetString(PyExc_ValueError, "Toco proto failed to parse.");
-    return nullptr;
+    LOG(FATAL) << "Toco proto failed to parse." << std::endl;
   }
 
   auto& dump_options = *GraphVizDumpOptions::singleton();
@@ -111,18 +98,6 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   // Convert arguments back to byte (py3) or str (py2)
   return ::tflite::python_utils::ConvertToPyString(
       output_file_contents_txt.data(), output_file_contents_txt.size());
-}
-
-PyObject* TocoGetPotentiallySupportedOps() {
-  std::vector<std::string> supported_ops = toco::GetPotentiallySupportedOps();
-  PyObject* list = PyList_New(supported_ops.size());
-  for (size_t i = 0; i < supported_ops.size(); ++i) {
-    const string& op = supported_ops[i];
-    PyObject* op_dict = PyDict_New();
-    PyDict_SetItemString(op_dict, "op", PyUnicode_FromString(op.c_str()));
-    PyList_SetItem(list, i, op_dict);
-  }
-  return list;
 }
 
 }  // namespace toco
