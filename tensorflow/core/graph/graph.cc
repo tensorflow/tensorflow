@@ -484,6 +484,9 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   } else {
     e = free_edges_.back();
     free_edges_.pop_back();
+#ifdef ADDRESS_SANITIZER
+    ASAN_UNPOISON_MEMORY_REGION(static_cast<void*>(e), sizeof(Edge));
+#endif
   }
   e->id_ = edges_.size();
   e->src_ = source;
@@ -511,13 +514,10 @@ void Graph::RemoveEdge(const Edge* e) {
 }
 
 void Graph::RecycleEdge(const Edge* e) {
-  Edge* del = const_cast<Edge*>(e);
-  del->src_ = nullptr;
-  del->dst_ = nullptr;
-  del->id_ = -1;
-  del->src_output_ = kControlSlot - 1;
-  del->dst_input_ = kControlSlot - 1;
-  free_edges_.push_back(del);
+  free_edges_.push_back(const_cast<Edge*>(e));
+#ifdef ADDRESS_SANITIZER
+  ASAN_POISON_MEMORY_REGION(static_cast<void*>(e), sizeof(Edge));
+#endif
 }
 
 const Edge* Graph::AddControlEdge(Node* source, Node* dest,

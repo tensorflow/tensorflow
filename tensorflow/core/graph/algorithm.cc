@@ -209,13 +209,9 @@ void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
 bool PruneForReverseReachability(Graph* g,
                                  std::unordered_set<const Node*> visited) {
   // Compute set of nodes that we need to traverse in order to reach
-  // the nodes in "nodes" by performing a breadth-first search from those
+  // the nodes in "visited" by performing a breadth-first search from those
   // nodes, and accumulating the visited nodes.
-  std::deque<const Node*> queue;
-  for (const Node* n : visited) {
-    VLOG(2) << "Reverse reach init: " << n->name();
-    queue.push_back(n);
-  }
+  std::deque<const Node*> queue(visited.begin(), visited.end());
   while (!queue.empty()) {
     const Node* n = queue.front();
     queue.pop_front();
@@ -227,21 +223,14 @@ bool PruneForReverseReachability(Graph* g,
     }
   }
 
-  // Make a pass over the graph to remove nodes not in "visited"
-  std::vector<Node*> all_nodes;
-  all_nodes.reserve(g->num_nodes());
-  for (Node* n : g->nodes()) {
-    all_nodes.push_back(n);
-  }
-
+  // Make a pass over the graph to remove nodes not in "visited".
   bool any_removed = false;
-  for (Node* n : all_nodes) {
-    if (visited.count(n) == 0 && !n->IsSource() && !n->IsSink()) {
+  for (Node* n : g->op_nodes()) {
+    if (visited.find(n) == visited.end()) {
       g->RemoveNode(n);
       any_removed = true;
     }
   }
-
   return any_removed;
 }
 
