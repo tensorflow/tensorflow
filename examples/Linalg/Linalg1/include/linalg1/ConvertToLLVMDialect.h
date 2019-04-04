@@ -15,15 +15,52 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG_CONVERTTOLLVMDIALECT_H_
-#define LINALG_CONVERTTOLLVMDIALECT_H_
+#ifndef LINALG1_CONVERTTOLLVMDIALECT_H_
+#define LINALG1_CONVERTTOLLVMDIALECT_H_
+
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Allocator.h"
+
+#include <memory>
 
 namespace mlir {
+class DialectConversion;
+class DialectOpConversion;
+class MLIRContext;
 class Module;
+class Type;
+namespace LLVM {
+class LLVMType;
+} // end namespace LLVM
 } // end namespace mlir
 
 namespace linalg {
+/// Convert the given Linalg dialect type `t` into an LLVM IR dialect type.
+/// Keep all other types unmodified.
+mlir::Type convertLinalgType(mlir::Type t);
+
+/// Allocate the conversion patterns for RangeOp, ViewOp and SliceOp from the
+/// Linalg dialect to the LLVM IR dialect.  The converters are allocated in the
+/// `allocator` using the provided `context`.  The latter must have the LLVM IR
+/// dialect registered.
+/// This function can be used to apply multiple conversion patterns in the same
+/// pass.  It does not have to be called explicitly before the conversion.
+llvm::DenseSet<mlir::DialectOpConversion *>
+allocateDescriptorConverters(llvm::BumpPtrAllocator *allocator,
+                             mlir::MLIRContext *context);
+
+/// Create a DialectConversion from the Linalg dialect to the LLVM IR dialect.
+/// The conversion is set up to convert types and function signatures using
+/// `convertLinalgType` and obtains operation converters by calling `initer`.
+std::unique_ptr<mlir::DialectConversion> makeLinalgToLLVMLowering(
+    std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
+        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+        initer);
+
+/// Convert the Linalg dialect types and RangeOp, ViewOp and SliceOp operations
+/// to the LLVM IR dialect types and operations in the given `module`.  This is
+/// the main entry point to the conversion.
 void convertToLLVM(mlir::Module &module);
 } // end namespace linalg
 
-#endif // LINALG_CONVERTTOLLVMDIALECT_H_
+#endif // LINALG1_CONVERTTOLLVMDIALECT_H_

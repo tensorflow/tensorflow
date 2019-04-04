@@ -40,12 +40,8 @@
 
 #include "linalg1/Common.h"
 #include "linalg1/ConvertToLLVMDialect.h"
-#include "linalg1/RangeOp.h"
-#include "linalg1/RangeType.h"
-#include "linalg1/SliceOp.h"
-#include "linalg1/Types.h"
-#include "linalg1/ViewOp.h"
-#include "linalg1/ViewType.h"
+#include "linalg1/LLVMIntrinsics.h"
+#include "linalg1/Ops.h"
 
 using namespace mlir;
 
@@ -55,9 +51,9 @@ using namespace mlir;
 //     bitwidth (analogous to intptr_t in C);
 //   - an Integer type is converted into an LLVM integer type of the same width;
 //   - an F32 type is converted into an LLVM float type
-//   - a Memref, Range, or View is converted into an LLVM structure type
-//     containing the respective dynamic values.
-LLVM::LLVMType convertType(Type t) {
+//   - a Range or View is converted into an LLVM structure type containing the
+//     respective dynamic values.
+Type linalg::convertLinalgType(Type t) {
   auto *context = t.getContext();
   auto *dialect =
       static_cast<LLVM::LLVMDialect *>(context->getRegisteredDialect("llvm"));
@@ -76,30 +72,6 @@ LLVM::LLVMType convertType(Type t) {
   if (t.isF32()) {
     auto *floatTy = llvm::Type::getFloatTy(dialect->getLLVMContext());
     return LLVM::LLVMType::get(context, floatTy);
-  }
-
-  // Memref descriptor contains the pointer to the data buffer, followed by
-  // as many 64-bit integers as the memref has dynamic sizes.  These integers
-  // store the actual value of the dynamic size.
-  //
-  // template <typename Elem, size_t NumDynamicRanks>
-  // struct {
-  //   Elem *ptr;
-  //   int64_t dynRank_0, dynRank_1, ... dynRank_#NumDynamicRanks
-  // };
-  if (auto memrefTy = t.dyn_cast<MemRefType>()) {
-    auto *elementTy =
-        convertType(memrefTy.getElementType()).getUnderlyingType();
-    if (memrefTy.hasStaticShape())
-      return LLVM::LLVMType::get(context, elementTy->getPointerTo());
-
-    int width = dialect->getLLVMModule().getDataLayout().getPointerSizeInBits();
-    auto *sizeTy = llvm::IntegerType::get(dialect->getLLVMContext(), width);
-    SmallVector<llvm::Type *, 4> types(1 + memrefTy.getNumDynamicDims(),
-                                       sizeTy);
-    types[0] = elementTy->getPointerTo();
-    return LLVM::LLVMType::get(
-        context, llvm::StructType::get(dialect->getLLVMContext(), types));
   }
 
   // Range descriptor contains the range bounds and the step as 64-bit integers.
@@ -139,7 +111,8 @@ LLVM::LLVMType convertType(Type t) {
   //   int64_t strides[Rank];
   // };
   if (auto viewTy = t.dyn_cast<linalg::ViewType>()) {
-    auto *elemTy = convertType(viewTy.getElementType())
+    auto *elemTy = linalg::convertLinalgType(viewTy.getElementType())
+                       .cast<LLVM::LLVMType>()
                        .getUnderlyingType()
                        ->getPointerTo();
     auto *int64Ty = llvm::Type::getInt64Ty(dialect->getLLVMContext());
@@ -148,7 +121,8 @@ LLVM::LLVMType convertType(Type t) {
     return LLVM::LLVMType::get(context, structTy);
   }
 
-  llvm_unreachable("unsupported type");
+  // All other types are kept as is.
+  return t;
 }
 
 // Create an array attribute containing integer attributes with values provided
@@ -161,17 +135,6 @@ static ArrayAttr makePositionAttr(FuncBuilder &builder,
     attrs.push_back(builder.getIntegerAttr(builder.getIntegerType(64), p));
   return builder.getArrayAttr(attrs);
 }
-
-// Expose some LLVM IR instructions to declarative builders.
-namespace intrinsics {
-using undef = edsc::intrinsics::ValueBuilder<LLVM::UndefOp>;
-using insertvalue = edsc::intrinsics::ValueBuilder<LLVM::InsertValueOp>;
-using extractvalue = edsc::intrinsics::ValueBuilder<LLVM::ExtractValueOp>;
-using constant = edsc::intrinsics::ValueBuilder<LLVM::ConstantOp>;
-using add = edsc::intrinsics::ValueBuilder<LLVM::AddOp>;
-using sub = edsc::intrinsics::ValueBuilder<LLVM::SubOp>;
-using mul = edsc::intrinsics::ValueBuilder<LLVM::MulOp>;
-} // end namespace intrinsics
 
 // RangeOp creates a new range descriptor.
 class RangeOpConversion : public DialectOpConversion {
@@ -188,7 +151,8 @@ public:
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto rangeOp = op->cast<linalg::RangeOp>();
-    auto rangeDescriptorType = convertType(rangeOp.getResult()->getType());
+    auto rangeDescriptorType =
+        linalg::convertLinalgType(rangeOp.getResult()->getType());
 
     using namespace intrinsics;
     auto context = edsc::ScopedContext(rewriter, op->getLoc());
@@ -219,10 +183,10 @@ public:
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto viewOp = op->cast<linalg::ViewOp>();
-    auto viewDescriptorType = convertType(viewOp.getViewType());
+    auto viewDescriptorType = linalg::convertLinalgType(viewOp.getViewType());
     auto memrefType =
         viewOp.getSupportingMemRef()->getType().cast<MemRefType>();
-    auto int64Ty = convertType(rewriter.getIntegerType(64));
+    auto int64Ty = linalg::convertLinalgType(rewriter.getIntegerType(64));
 
     // Helper function to create an integer array attribute out of a list of
     // values.
@@ -258,10 +222,11 @@ public:
       if (type.hasStaticShape())
         return memref;
 
-      auto elementTy = LLVM::LLVMType::get(type.getContext(),
-                                           convertType(type.getElementType())
-                                               .getUnderlyingType()
-                                               ->getPointerTo());
+      auto elementTy = LLVM::LLVMType::get(
+          type.getContext(), linalg::convertLinalgType(type.getElementType())
+                                 .cast<LLVM::LLVMType>()
+                                 .getUnderlyingType()
+                                 ->getPointerTo());
       return intrinsics::extractvalue(elementTy, memref, pos(0));
     };
 
@@ -350,12 +315,14 @@ public:
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto sliceOp = op->cast<linalg::SliceOp>();
-    auto newViewDescriptorType = convertType(sliceOp.getViewType());
-    auto elementType =
-        rewriter.getType<LLVM::LLVMType>(convertType(sliceOp.getElementType())
-                                             .getUnderlyingType()
-                                             ->getPointerTo());
-    auto int64Ty = convertType(rewriter.getIntegerType(64));
+    auto newViewDescriptorType =
+        linalg::convertLinalgType(sliceOp.getViewType());
+    auto elementType = rewriter.getType<LLVM::LLVMType>(
+        linalg::convertLinalgType(sliceOp.getElementType())
+            .cast<LLVM::LLVMType>()
+            .getUnderlyingType()
+            ->getPointerTo());
+    auto int64Ty = linalg::convertLinalgType(rewriter.getIntegerType(64));
 
     auto pos = [&rewriter](ArrayRef<int> values) {
       return makePositionAttr(rewriter, values);
@@ -450,24 +417,33 @@ public:
   }
 };
 
+llvm::DenseSet<mlir::DialectOpConversion *>
+linalg::allocateDescriptorConverters(llvm::BumpPtrAllocator *allocator,
+                                     mlir::MLIRContext *context) {
+  return ConversionListBuilder<DropConsumer, RangeOpConversion,
+                               SliceOpConversion,
+                               ViewOpConversion>::build(allocator, context);
+}
+
+namespace {
 // The conversion class from Linalg to LLVMIR.
 class Lowering : public DialectConversion {
 public:
-  Lowering() {}
+  explicit Lowering(std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
+                        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+                        conversions)
+      : setup(conversions) {}
 
 protected:
   // Initialize the list of converters.
   llvm::DenseSet<DialectOpConversion *>
   initConverters(MLIRContext *context) override {
-    converterSotrage.Reset();
-    return ConversionListBuilder<DropConsumer, RangeOpConversion,
-                                 SliceOpConversion,
-                                 ViewOpConversion>::build(&converterSotrage,
-                                                          context);
+    converterStorage.Reset();
+    return setup(&converterStorage, context);
   }
 
   // This gets called for block and region arguments, and attributes.
-  Type convertType(Type t) override { return ::convertType(t); }
+  Type convertType(Type t) override { return linalg::convertLinalgType(t); }
 
   // This gets called for function signatures.  Convert function arguments and
   // results to the LLVM types, but keep the outer function type as built-in
@@ -483,12 +459,12 @@ protected:
     SmallVector<Type, 4> argTypes;
     argTypes.reserve(t.getNumInputs());
     for (auto ty : t.getInputs())
-      argTypes.push_back(convertType(ty));
+      argTypes.push_back(linalg::convertLinalgType(ty));
 
     SmallVector<Type, 1> resultTypes;
     resultTypes.reserve(t.getNumResults());
     for (auto ty : t.getResults())
-      resultTypes.push_back(convertType(ty));
+      resultTypes.push_back(linalg::convertLinalgType(ty));
     assert(t.getNumResults() <= 1 && "NYI: multi-result functions");
 
     return FunctionType::get(argTypes, resultTypes, t.getContext());
@@ -496,8 +472,21 @@ protected:
 
 private:
   // Storage for individual converters.
-  llvm::BumpPtrAllocator converterSotrage;
+  llvm::BumpPtrAllocator converterStorage;
+
+  // Conversion setup.
+  std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
+      llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+      setup;
 };
+} // end anonymous namespace
+
+std::unique_ptr<mlir::DialectConversion> linalg::makeLinalgToLLVMLowering(
+    std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
+        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+        initer) {
+  return llvm::make_unique<Lowering>(initer);
+}
 
 void linalg::convertToLLVM(mlir::Module &module) {
   // Remove affine constructs if any by using an existing pass.
@@ -509,7 +498,7 @@ void linalg::convertToLLVM(mlir::Module &module) {
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
-  auto r = Lowering().convert(&module);
+  auto r = Lowering(allocateDescriptorConverters).convert(&module);
   (void)r;
   assert(succeeded(r) && "conversion failed");
 
