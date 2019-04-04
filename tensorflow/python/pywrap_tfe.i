@@ -83,6 +83,9 @@ limitations under the License.
 %rename("%s") TFE_Py_EncodeArg;
 %rename("%s") TFE_EnableCollectiveOps;
 %rename("%s") TF_PickUnusedPortOrDie;
+%rename("%s") TFE_MonitoringSetGauge;
+%rename("%s") TFE_MonitoringAddCounter;
+%rename("%s") TFE_MonitoringAddSampler;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -99,6 +102,10 @@ limitations under the License.
     SWIG_fail;
   }
   $1 = static_cast<void*>(c_string);
+}
+
+%typemap(in) int64_t {
+  $1 = PyLong_AsLongLong($input);
 }
 
 %typemap(out) TF_DataType {
@@ -154,6 +161,12 @@ limitations under the License.
 // See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
 // Hence the 'const_cast'.
 %typemap(in) const char* name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
@@ -295,6 +308,7 @@ limitations under the License.
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;
+%typemap(in) int64_t;
 %typemap(out) int64_t;
 %typemap(out) TF_AttrType;
 %typemap(in, numinputs=0) TF_Status *out_status;
