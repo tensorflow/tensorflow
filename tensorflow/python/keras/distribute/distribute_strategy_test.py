@@ -1385,8 +1385,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     self.assertAllClose(history.history, ds_history.history)
 
+  # TODO(omalleyt): Investigate flakiness and re-enable.
   @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
-  def test_distribution_strategy_with_callable_add_loss(self, distribution):
+  def DISABLED_test_distribution_strategy_with_callable_add_loss(
+      self, distribution):
 
     def _make_model():
       inputs = keras.Input((10,))
