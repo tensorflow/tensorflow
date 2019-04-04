@@ -1158,7 +1158,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalSamplingDataset"
-    argspec: "args=[\'input_dataset\', \'rate\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input_dataset\', \'rate\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "ExperimentalScanDataset"
