@@ -254,9 +254,10 @@ bool AreAllOutputsParameters(
       root->GetModule()->entry_computation_layout().result_shape());
 }
 
-StatusOr<std::string> SerializeComputationToGraphDef(const HloComputation& comp) {
-  return RenderGraph(
-      comp, comp.name(), {}, RenderedGraphFormat::kDot, nullptr, true);
+StatusOr<std::string> SerializeComputationToGraphDef(
+    const HloComputation& comp) {
+  return RenderGraph(comp, comp.name(), {}, RenderedGraphFormat::kDot, nullptr,
+                     true);
 }
 
 HloPrintOptions GetPrintOptions() {
@@ -303,8 +304,7 @@ void ConnectSeedCallback(poplar::Engine& engine, int replication_factor,
   auto callback = [gen, replication_factor](void* ptr) mutable {
     std::uniform_int_distribution<uint64_t> dis;
     uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
-
-    for (int i = 0; i < replication_factor; ++i) {
+    for (int i = 0; i < std::max(replication_factor, 1); ++i) {
       seedValue[i] = dis(gen);
     }
   };
@@ -511,8 +511,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     if (status.ok()) {
       dot_graph = status.ValueOrDie();
     }
-    poplarExecutor->AddCompileBeginEventRecord(
-        module->name(), dot_graph);
+    poplarExecutor->AddCompileBeginEventRecord(module->name(), dot_graph);
   }
 
   // Set layout if there isn't one
