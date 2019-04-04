@@ -8,6 +8,7 @@
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -38,6 +39,7 @@ class Shape;
 namespace poplarplugin {
 
 struct CompilerResources;
+class SubComputationVisitor;
 
 enum class NormType {
   BatchNorm,
@@ -56,6 +58,12 @@ typedef void (*popops_inplace_fn)(poplar::Graph& graph, poplar::Tensor A,
                                   poplar::Tensor B,
                                   poplar::program::Sequence& prog,
                                   const std::string& debugPrefix);
+
+StatusOr<std::shared_ptr<SubComputationVisitor>> GetOrCompileSubComputation(
+    CompilerResources& res, const ArgVectors& inputs,
+    const HloComputation* comp, bool inplace_inputs = false,
+    const std::vector<const SubComputationVisitor*>& dependent_subcomputations =
+        {});
 
 StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction*);
 
@@ -376,6 +384,10 @@ StatusOr<poplar::program::Program> CreateNormStatistics(
     const NormType& norm_type, poplar::Graph& graph, CompilerResources& res,
     const HloInstruction* inst, const float epsilon,
     const uint32 feature_dimension, absl::optional<uint32> optional_num_groups,
+    TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateScatter(
+    CompilerResources& res, const HloScatterInstruction* inst,
     TensorMap& tensor_map);
 
 /* Optimization tests */

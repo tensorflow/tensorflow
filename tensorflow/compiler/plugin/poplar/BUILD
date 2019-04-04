@@ -198,6 +198,7 @@ cc_library(
         "driver/poplar_platform.cc",
         "driver/poplar_platform_id.cc",
         "driver/poplar_transfer_manager.cc",
+        "driver/ops/scatter_ops.cc",
         "driver/tensor.cc",
         "driver/tools/conversions.cc",
         "driver/tools/poplar_util.cc",

@@ -62,3 +62,4 @@ SelfAdjointEigOpTest # seg fault
 SvdOpTest # Seg fault
 CondTest.testCondConstPropagation # Switch node in cluster
 StatelessRandomOpsTest.testTruncatedNormal # Times out
+SegmentReductionOpsTest.testUnsortedSegmentOps1DIndices1DDataNegativeIndices #Scatter negative indices

@@ -47,6 +47,11 @@ StatusOr<poplar::Tensor> AddDynamicSliceTensor(
     const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla,
     poplar::Tensor& physical_layout);
 
+StatusOr<poplar::Tensor> AddScatterTensor(poplar::Graph& graph,
+                                          const std::string& debug_name,
+                                          const xla::Shape& shape_xla,
+                                          const xla::Shape& slice_shape_xla);
+
 StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
                                         const std::string& debug_name,
                                         const xla::Shape& shape);

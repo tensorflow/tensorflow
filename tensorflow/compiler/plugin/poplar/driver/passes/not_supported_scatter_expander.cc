@@ -26,8 +26,17 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 namespace {
-// We currently don't support any scatters - TODO T5743.
-bool IsSupportedScatter(const HloInstruction* scatter_inst) { return false; }
+
+bool IsSupportedScatter(const HloInstruction* scatter_inst) {
+  // Let ZeroSizedHloElimination handle the empty cases...
+  for (int64_t i = 0; i < scatter_inst->operand_count(); ++i) {
+    if (ShapeUtil::IsZeroElementArray(scatter_inst->operand(i)->shape())) {
+      return false;
+    }
+  }
+
+  return true;
+}
 }  // namespace
 
 StatusOr<bool> NotSupportedScatterExpander::Run(HloModule* module) {

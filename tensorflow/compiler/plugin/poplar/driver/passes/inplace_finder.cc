@@ -179,6 +179,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
         case HloOpcode::kGetTupleElement:
         case HloOpcode::kMap:
         case HloOpcode::kReshape:
+        case HloOpcode::kScatter:
         case HloOpcode::kSlice:
         case HloOpcode::kSort:
         case HloOpcode::kTranspose:

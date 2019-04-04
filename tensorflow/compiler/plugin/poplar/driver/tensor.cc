@@ -437,6 +437,13 @@ StatusOr<poplar::Tensor> AddDynamicSliceTensor(
   return out;
 }
 
+StatusOr<poplar::Tensor> AddScatterTensor(poplar::Graph& graph,
+                                          const std::string& debug_name,
+                                          const xla::Shape& shape_xla,
+                                          const xla::Shape& slice_shape_xla) {
+  return AddDynamicSliceTensor(graph, debug_name, shape_xla, slice_shape_xla);
+}
+
 static StatusOr<poplar::Tensor> AddConvolutionInput(
     poplar::Graph& graph, const std::string& debug_name,
     const HloInstruction* target, CompilerResources& resources) {
@@ -881,6 +888,38 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
             TF_ASSIGN_OR_RETURN(
                 out, AddDynamicSliceTensor(graph, name, tshape,
                                            target->second.tgt->shape()));
+          } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
+          }
+          break;
+        }
+        case HloOpcode::kScatter: {
+          auto scatter = Cast<HloScatterInstruction>(tgt);
+          const auto updateWindowDims =
+              scatter->scatter_dimension_numbers().update_window_dims();
+          const auto insertedWindowDims =
+              scatter->scatter_dimension_numbers().inserted_window_dims();
+
+          if (target->second.input_index == 0) {
+            xla::Shape sliceShape = tgt->operand(0)->shape();
+            for (int i = 0; i < tshape.rank(); ++i) {
+              if (absl::c_binary_search(insertedWindowDims, i)) {
+                sliceShape.set_dimensions(i, 1);
+              }
+            }
+
+            TF_ASSIGN_OR_RETURN(
+                out, AddScatterTensor(graph, name, tshape, sliceShape));
+          } else if (target->second.input_index == 2) {
+            xla::Shape sliceShape = tgt->operand(2)->shape();
+            for (int i = 0; i < tshape.rank(); ++i) {
+              if (!absl::c_binary_search(updateWindowDims, i)) {
+                sliceShape.set_dimensions(i, 1);
+              }
+            }
+
+            TF_ASSIGN_OR_RETURN(
+                out, AddScatterTensor(graph, name, tshape, sliceShape));
           } else {
             TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
           }

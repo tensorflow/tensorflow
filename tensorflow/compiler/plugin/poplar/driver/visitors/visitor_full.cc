@@ -260,6 +260,17 @@ Status FullVisitor::HandleReduceWindow(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status FullVisitor::HandleScatter(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(
+      poplar::program::Program prog,
+      CreateScatter(resources_, Cast<HloScatterInstruction>(inst), tensor_map));
+
+  sequence.add(prog);
+  return Status::OK();
+}
+
 Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   if (IsSimpleSelection(inst->select()) &&
       IsReducableArtithmetic(inst->scatter())) {
