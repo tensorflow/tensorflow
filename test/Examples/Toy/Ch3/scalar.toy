@@ -1,3 +1,5 @@
+# RUN: toyc-ch3 %s -emit=mlir 2>&1 | FileCheck %s
+
 def main() {
   var a<2, 2> = 5.5;
   print(a);
