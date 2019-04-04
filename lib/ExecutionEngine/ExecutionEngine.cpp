@@ -179,7 +179,7 @@ static void getDefaultPasses(
     passEntry->addToPipeline(manager);
 
   // Append the extra passes for lowering to MLIR.
-  manager.addPass(mlir::createConstantFoldPass());
+  manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createCSEPass());
   manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createLowerAffinePass());

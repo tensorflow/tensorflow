@@ -20,10 +20,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/StandardOps/Ops.h"
+#include "mlir/Transforms/ConstantFoldUtils.h"
 #include "llvm/ADT/DenseMap.h"
+
 using namespace mlir;
 
 namespace {
@@ -133,18 +134,14 @@ private:
   /// the function, even if they aren't the root of a pattern.
   std::vector<Operation *> worklist;
   DenseMap<Operation *, unsigned> worklistMap;
-
-  /// As part of canonicalization, we move constants to the top of the entry
-  /// block of the current function and de-duplicate them.  This keeps track of
-  /// constants we have done this for.
-  DenseMap<std::pair<Attribute, Type>, Operation *> uniquedConstants;
 };
 }; // end anonymous namespace
 
 /// Perform the rewrites.
 void GreedyPatternRewriteDriver::simplifyFunction() {
-  // These are scratch vectors used in the constant folding loop below.
-  SmallVector<Attribute, 8> operandConstants, resultConstants;
+  ConstantFoldHelper helper(builder.getFunction());
+
+  // These are scratch vectors used in the folding loop below.
   SmallVector<Value *, 8> originalOperands, resultValues;
 
   while (!worklist.empty()) {
@@ -154,99 +151,34 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     if (op == nullptr)
       continue;
 
-    // If we have a constant op, unique it into the entry block.
-    if (auto constant = op->dyn_cast<ConstantOp>()) {
-      // If this constant is dead, remove it, being careful to keep
-      // uniquedConstants up to date.
-      if (constant.use_empty()) {
-        auto it =
-            uniquedConstants.find({constant.getValue(), constant.getType()});
-        if (it != uniquedConstants.end() && it->second == op)
-          uniquedConstants.erase(it);
-        constant.erase();
-        continue;
-      }
-
-      // Check to see if we already have a constant with this type and value:
-      auto &entry = uniquedConstants[std::make_pair(constant.getValue(),
-                                                    constant.getType())];
-      if (entry) {
-        // If this constant is already our uniqued one, then leave it alone.
-        if (entry == op)
-          continue;
-
-        // Otherwise replace this redundant constant with the uniqued one.  We
-        // know this is safe because we move constants to the top of the
-        // function when they are uniqued, so we know they dominate all uses.
-        constant.replaceAllUsesWith(entry->getResult(0));
-        constant.erase();
-        continue;
-      }
-
-      // If we have no entry, then we should unique this constant as the
-      // canonical version.  To ensure safe dominance, move the operation to the
-      // top of the function.
-      entry = op;
-      auto &entryBB = builder.getInsertionBlock()->getFunction()->front();
-      op->moveBefore(&entryBB, entryBB.begin());
-      continue;
-    }
-
     // If the operation has no side effects, and no users, then it is trivially
     // dead - remove it.
     if (op->hasNoSideEffect() && op->use_empty()) {
+      // Be careful to update bookkeeping in ConstantHelper to keep consistency
+      // if this is a constant op.
+      if (op->isa<ConstantOp>())
+        helper.notifyRemoval(op);
       op->erase();
       continue;
     }
 
-    // Check to see if any operands to the operation is constant and whether
-    // the operation knows how to constant fold itself.
-    operandConstants.assign(op->getNumOperands(), Attribute());
-    for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
-      matchPattern(op->getOperand(i), m_Constant(&operandConstants[i]));
-
-    // If this is a commutative binary operation with a constant on the left
-    // side move it to the right side.
-    if (operandConstants.size() == 2 && operandConstants[0] &&
-        !operandConstants[1] && op->isCommutative()) {
-      std::swap(op->getOpOperand(0), op->getOpOperand(1));
-      std::swap(operandConstants[0], operandConstants[1]);
-    }
-
-    // If constant folding was successful, create the result constants, RAUW the
-    // operation and remove it.
-    resultConstants.clear();
-    if (succeeded(op->constantFold(operandConstants, resultConstants))) {
-      builder.setInsertionPoint(op);
-
+    // Collects all the operands and result uses of the given `op` into work
+    // list.
+    auto collectOperandsAndUses = [this](Operation *op) {
       // Add the operands to the worklist for visitation.
       addToWorklist(op->getOperands());
-
+      // Add all the users of the result to the worklist so we make sure
+      // to revisit them.
+      //
+      // TODO: Add a result->getUsers() iterator.
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
-        auto *res = op->getResult(i);
-        if (res->use_empty()) // ignore dead uses.
-          continue;
-
-        // If we already have a canonicalized version of this constant, just
-        // reuse it.  Otherwise create a new one.
-        Value *cstValue;
-        auto it = uniquedConstants.find({resultConstants[i], res->getType()});
-        if (it != uniquedConstants.end())
-          cstValue = it->second->getResult(0);
-        else
-          cstValue = create<ConstantOp>(op->getLoc(), res->getType(),
-                                        resultConstants[i]);
-
-        // Add all the users of the result to the worklist so we make sure to
-        // revisit them.
-        //
-        // TODO: Add a result->getUsers() iterator.
         for (auto &operand : op->getResult(i)->getUses())
           addToWorklist(operand.getOwner());
-
-        res->replaceAllUsesWith(cstValue);
       }
+    };
 
+    // Try to constant fold this op.
+    if (helper.tryToConstantFold(op, collectOperandsAndUses)) {
       assert(op->hasNoSideEffect() && "Constant folded op with side effects?");
       op->erase();
       continue;
@@ -292,8 +224,6 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     // to do here.
     matcher.matchAndRewrite(op);
   }
-
-  uniquedConstants.clear();
 }
 
 /// Rewrite the specified function by repeatedly applying the highest benefit

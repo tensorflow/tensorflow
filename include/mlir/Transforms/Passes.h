@@ -33,8 +33,11 @@ class AffineForOp;
 class FunctionPassBase;
 class ModulePassBase;
 
-/// Creates a constant folding pass.
-FunctionPassBase *createConstantFoldPass();
+/// Creates a constant folding pass. Note that this pass solely provides simple
+/// top-down constant folding functionality; it is intended to be used for
+/// testing purpose. Use Canonicalizer pass, which exploits more simplification
+/// opportunties exposed by constant folding, for the general cases.
+FunctionPassBase *createTestConstantFoldPass();
 
 /// Creates an instance of the Canonicalizer pass.
 FunctionPassBase *createCanonicalizerPass();

@@ -60,8 +60,8 @@ struct attr_value_binder {
   }
 };
 
-/// The matcher that matches a constant foldable operation that has no operands
-/// and produces a single result.
+/// The matcher that matches a constant foldable operation that has no side
+/// effect, no operands and produces a single result.
 struct constant_op_binder {
   Attribute *bind_value;
 
@@ -72,6 +72,9 @@ struct constant_op_binder {
   bool match(Operation *op) {
     if (op->getNumOperands() > 0 || op->getNumResults() != 1)
       return false;
+    if (!op->hasNoSideEffect())
+      return false;
+
     SmallVector<Attribute, 1> foldedAttr;
     if (succeeded(op->constantFold(/*operands=*/llvm::None, foldedAttr))) {
       *bind_value = foldedAttr.front();
@@ -132,6 +135,12 @@ inline bool matchPattern(Value *value, const Pattern &pattern) {
   if (auto *op = value->getDefiningOp())
     return const_cast<Pattern &>(pattern).match(op);
   return false;
+}
+
+/// Entry point for matching a pattern over an Operation.
+template <typename Pattern>
+inline bool matchPattern(Operation *op, const Pattern &pattern) {
+  return const_cast<Pattern &>(pattern).match(op);
 }
 
 /// Matches a constant holding a scalar/vector/tensor integer (splat) and

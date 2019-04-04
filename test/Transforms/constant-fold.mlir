@@ -1,13 +1,13 @@
-// RUN: mlir-opt %s -constant-fold | FileCheck %s
+// RUN: mlir-opt %s -test-constant-fold | FileCheck %s
 
 // CHECK-LABEL: @test(%arg0: memref<f32>) {
 func @test(%p : memref<f32>) {
+  // CHECK: %cst = constant 6.000000e+00 : f32
   affine.for %i0 = 0 to 128 {
     affine.for %i1 = 0 to 8 { // CHECK: affine.for %i1 = 0 to 8 {
       %0 = constant 4.5 : f32
       %1 = constant 1.5 : f32
 
-      // CHECK-NEXT: %cst = constant 6.000000e+00 : f32
       %2 = addf %0, %1 : f32
 
       // CHECK-NEXT: store %cst, %arg0[]
@@ -201,12 +201,11 @@ func @simple_remis(%a : i32) -> (i32, i32, i32) {
 
   // CHECK-NEXT: %c1_i32 = constant 1 : i32
   %4 = remis %0, %1 : i32
-  // CHECK-NEXT: %c1_i32_0 = constant 1 : i32
   %5 = remis %0, %3 : i32
   // CHECK-NEXT: %c0_i32 = constant 0 : i32
   %6 = remis %a, %2 : i32
 
-  // CHECK-NEXT: return %c1_i32, %c1_i32_0, %c0_i32 : i32, i32, i32
+  // CHECK-NEXT: return %c1_i32, %c1_i32, %c0_i32 : i32, i32, i32
   return %4, %5, %6 : i32, i32, i32
 }
 
@@ -217,11 +216,11 @@ func @simple_remiu(%a : i32) -> (i32, i32, i32) {
   %2 = constant 1 : i32
   %3 = constant -2 : i32
 
-  // CHECK-NEXT: %c1_i32 = constant 1 : i32
+  // CHECK-DAG: %c1_i32 = constant 1 : i32
   %4 = remiu %0, %1 : i32
-  // CHECK-NEXT: %c5_i32 = constant 5 : i32
+  // CHECK-DAG: %c5_i32 = constant 5 : i32
   %5 = remiu %0, %3 : i32
-  // CHECK-NEXT: %c0_i32 = constant 0 : i32
+  // CHECK-DAG: %c0_i32 = constant 0 : i32
   %6 = remiu %a, %2 : i32
 
   // CHECK-NEXT: return %c1_i32, %c5_i32, %c0_i32 : i32, i32, i32
@@ -267,24 +266,26 @@ func @cmpi() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
   %c42 = constant 42 : i32
   %cm1 = constant -1 : i32
 // CHECK-NEXT: %false = constant 0 : i1
-  %0 = cmpi "eq", %c42, %cm1 : i32
 // CHECK-NEXT: %true = constant 1 : i1
+// CHECK-NEXT: return %false,
+  %0 = cmpi "eq", %c42, %cm1 : i32
+// CHECK-SAME: %true,
   %1 = cmpi "ne", %c42, %cm1 : i32
-// CHECK-NEXT: %false_0 = constant 0 : i1
+// CHECK-SAME: %false,
   %2 = cmpi "slt", %c42, %cm1 : i32
-// CHECK-NEXT: %false_1 = constant 0 : i1
+// CHECK-SAME: %false,
   %3 = cmpi "sle", %c42, %cm1 : i32
-// CHECK-NEXT: %true_2 = constant 1 : i1
+// CHECK-SAME: %true,
   %4 = cmpi "sgt", %c42, %cm1 : i32
-// CHECK-NEXT: %true_3 = constant 1 : i1
+// CHECK-SAME: %true,
   %5 = cmpi "sge", %c42, %cm1 : i32
-// CHECK-NEXT: %true_4 = constant 1 : i1
+// CHECK-SAME: %true,
   %6 = cmpi "ult", %c42, %cm1 : i32
-// CHECK-NEXT: %true_5 = constant 1 : i1
+// CHECK-SAME: %true,
   %7 = cmpi "ule", %c42, %cm1 : i32
-// CHECK-NEXT: %false_6 = constant 0 : i1
+// CHECK-SAME: %false,
   %8 = cmpi "ugt", %c42, %cm1 : i32
-// CHECK-NEXT: %false_7 = constant 0 : i1
+// CHECK-SAME: %false
   %9 = cmpi "uge", %c42, %cm1 : i32
   return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
 }
