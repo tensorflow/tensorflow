@@ -233,11 +233,10 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 
 llvm::Value* EmitFullWarpShuffleDown(
     llvm::Value* value, llvm::Value* offset,
-
     llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder, 
     llvm::Module* module
-
-) {
+) 
+{
   llvm::IRBuilder<>* builder = llvm_target_ir_builder.builder();
 
   int bit_width = value->getType()->getPrimitiveSizeInBits();
@@ -245,10 +244,14 @@ llvm::Value* EmitFullWarpShuffleDown(
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    return EmitCallToTargetIntrinsic(
-        TargetIntrinsicID::kShflDownF32,
-        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
-        builder);
+    llvm::Value* value_as_int = builder->CreateBitCast(value, builder->getIntNTy(bit_width));
+    llvm::Value*  result = EmitDeviceFunctionCall(
+        "__ockl_readuplane_i32",
+        {value_as_int, offset},
+        {S32, S32}, S32, {}, builder, module);
+
+    llvm::Value* result_as_float = builder->CreateBitCast(result, value->getType());
+    return result_as_float;
   }
 
 
@@ -263,11 +266,10 @@ llvm::Value* EmitFullWarpShuffleDown(
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        EmitCallToTargetIntrinsic(
-            TargetIntrinsicID::kShflDownI32,
-            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
-             builder->getInt32(kWarpSize - 1)},
-            {}, builder),
+        EmitDeviceFunctionCall("__ockl_readuplane_i32",
+                               {builder->CreateExtractElement(x, i),
+                                offset},
+                               {S32, S32}, S32, {}, builder, module),
         i);
   }
   return builder->CreateBitCast(
