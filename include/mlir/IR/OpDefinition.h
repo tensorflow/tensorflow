@@ -351,6 +351,34 @@ protected:
   }
 };
 
+namespace detail {
+/// Utility trait base that provides accessors for derived traits that have
+/// multiple operands.
+template <typename ConcreteType, template <typename> class TraitType>
+struct MultiOperandTraitBase : public TraitBase<ConcreteType, TraitType> {
+  using operand_iterator = Operation::operand_iterator;
+  using operand_range = Operation::operand_range;
+
+  /// Return the number of operands.
+  unsigned getNumOperands() { return this->getOperation()->getNumOperands(); }
+
+  /// Return the operand at index 'i'.
+  Value *getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
+
+  /// Set the operand at index 'i' to 'value'.
+  void setOperand(unsigned i, Value *value) {
+    this->getOperation()->setOperand(i, value);
+  }
+
+  /// Operand iterator access.
+  operand_iterator operand_begin() {
+    return this->getOperation()->operand_begin();
+  }
+  operand_iterator operand_end() { return this->getOperation()->operand_end(); }
+  operand_range getOperands() { return this->getOperation()->getOperands(); }
+};
+} // end namespace detail
+
 /// This class provides the API for ops that are known to have no
 /// SSA operand.
 template <typename ConcreteType>
@@ -388,20 +416,25 @@ public:
 template <unsigned N> class NOperands {
 public:
   template <typename ConcreteType>
-  class Impl : public TraitBase<ConcreteType, NOperands<N>::Impl> {
+  class Impl
+      : public detail::MultiOperandTraitBase<ConcreteType, NOperands<N>::Impl> {
   public:
-    Value *getOperand(unsigned i) {
-      return this->getOperation()->getOperand(i);
-    }
-
-    void setOperand(unsigned i, Value *value) {
-      this->getOperation()->setOperand(i, value);
-    }
-
     static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyNOperands(op, N);
     }
   };
+};
+
+/// Specialization of NOperands with N = 0.
+template <> class NOperands<0> {
+public:
+  template <typename ConcreteType> using Impl = ZeroOperands<ConcreteType>;
+};
+
+/// Specialization of NOperands with N = 1.
+template <> class NOperands<1> {
+public:
+  template <typename ConcreteType> using Impl = OneOperand<ConcreteType>;
 };
 
 /// This class provides the API for ops that are known to have a at least a
@@ -412,29 +445,9 @@ public:
 template <unsigned N> class AtLeastNOperands {
 public:
   template <typename ConcreteType>
-  class Impl : public TraitBase<ConcreteType, AtLeastNOperands<N>::Impl> {
+  class Impl : public detail::MultiOperandTraitBase<ConcreteType,
+                                                    AtLeastNOperands<N>::Impl> {
   public:
-    unsigned getNumOperands() { return this->getOperation()->getNumOperands(); }
-
-    Value *getOperand(unsigned i) {
-      return this->getOperation()->getOperand(i);
-    }
-
-    void setOperand(unsigned i, Value *value) {
-      this->getOperation()->setOperand(i, value);
-    }
-
-    using operand_iterator = Operation::operand_iterator;
-    operand_iterator operand_begin() {
-      return this->getOperation()->operand_begin();
-    }
-    operand_iterator operand_end() {
-      return this->getOperation()->operand_end();
-    }
-    llvm::iterator_range<operand_iterator> getOperands() {
-      return this->getOperation()->getOperands();
-    }
-
     static LogicalResult verifyTrait(Operation *op) {
       return impl::verifyAtLeastNOperands(op, N);
     }
@@ -444,25 +457,8 @@ public:
 /// This class provides the API for ops which have an unknown number of
 /// SSA operands.
 template <typename ConcreteType>
-class VariadicOperands : public TraitBase<ConcreteType, VariadicOperands> {
-public:
-  unsigned getNumOperands() { return this->getOperation()->getNumOperands(); }
-
-  Value *getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
-
-  void setOperand(unsigned i, Value *value) {
-    this->getOperation()->setOperand(i, value);
-  }
-
-  // Support operand iteration.
-  using operand_iterator = Operation::operand_iterator;
-  using operand_range = Operation::operand_range;
-  operand_iterator operand_begin() {
-    return this->getOperation()->operand_begin();
-  }
-  operand_iterator operand_end() { return this->getOperation()->operand_end(); }
-  operand_range getOperands() { return this->getOperation()->getOperands(); }
-};
+class VariadicOperands
+    : public detail::MultiOperandTraitBase<ConcreteType, VariadicOperands> {};
 
 /// This class provides return value APIs for ops that are known to have
 /// zero results.
