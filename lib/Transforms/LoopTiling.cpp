@@ -270,11 +270,7 @@ static void getTileableBands(Function &f,
   // (inclusive).
   auto getMaximalPerfectLoopNest = [&](AffineForOp root) {
     SmallVector<AffineForOp, 6> band;
-    AffineForOp currInst = root;
-    do {
-      band.push_back(currInst);
-    } while (currInst.getBody()->getOperations().size() == 2 &&
-             (currInst = currInst.getBody()->front().dyn_cast<AffineForOp>()));
+    getPerfectlyNestedLoops(band, root);
     bands->push_back(band);
   };
 

@@ -1062,18 +1062,9 @@ computeLoopInterchangePermutation(ArrayRef<Operation *> ops,
 // pushing loop carried dependence to a greater depth in the loop nest.
 static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
   assert(node->op->isa<AffineForOp>());
-  // Get perfectly nested sequence of loops starting at root of loop nest
-  // (the first op being another AffineFor, and the second op - a terminator).
-  // TODO(andydavis,bondhugula) Share this with similar code in loop tiling.
   SmallVector<AffineForOp, 4> loops;
   AffineForOp curr = node->op->cast<AffineForOp>();
-  loops.push_back(curr);
-  auto *currBody = curr.getBody();
-  while (currBody->begin() == std::prev(currBody->end(), 2) &&
-         (curr = curr.getBody()->front().dyn_cast<AffineForOp>())) {
-    loops.push_back(curr);
-    currBody = curr.getBody();
-  }
+  getPerfectlyNestedLoops(loops, curr);
   if (loops.size() < 2)
     return;
 

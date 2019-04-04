@@ -353,6 +353,22 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
   return success();
 }
 
+/// Get perfectly nested sequence of loops starting at root of loop nest
+/// (the first op being another AffineFor, and the second op - a terminator).
+/// A loop is perfectly nested iff: the first op in the loop's body is another
+/// AffineForOp, and the second op is a terminator).
+void mlir::getPerfectlyNestedLoops(SmallVectorImpl<AffineForOp> &nestedLoops,
+                                   AffineForOp root) {
+  AffineForOp curr = root;
+  nestedLoops.push_back(curr);
+  auto *currBody = curr.getBody();
+  while (currBody->begin() == std::prev(currBody->end(), 2) &&
+         (curr = curr.getBody()->front().dyn_cast<AffineForOp>())) {
+    nestedLoops.push_back(curr);
+    currBody = curr.getBody();
+  }
+}
+
 /// Unrolls this loop completely.
 LogicalResult mlir::loopUnrollFull(AffineForOp forOp) {
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);

@@ -37,13 +37,22 @@ class Value;
 /// Unrolls this for operation completely if the trip count is known to be
 /// constant. Returns failure otherwise.
 LogicalResult loopUnrollFull(AffineForOp forOp);
+
 /// Unrolls this for operation by the specified unroll factor. Returns failure
 /// if the loop cannot be unrolled either due to restrictions or due to invalid
 /// unroll factors.
 LogicalResult loopUnrollByFactor(AffineForOp forOp, uint64_t unrollFactor);
+
 /// Unrolls this loop by the specified unroll factor or its trip count,
 /// whichever is lower.
 LogicalResult loopUnrollUpToFactor(AffineForOp forOp, uint64_t unrollFactor);
+
+/// Get perfectly nested sequence of loops starting at root of loop nest
+/// (the first op being another AffineFor, and the second op - a terminator).
+/// A loop is perfectly nested iff: the first op in the loop's body is another
+/// AffineForOp, and the second op is a terminator).
+void getPerfectlyNestedLoops(SmallVectorImpl<AffineForOp> &nestedLoops,
+                             AffineForOp root);
 
 /// Unrolls and jams this loop by the specified factor. Returns success if the
 /// loop is successfully unroll-jammed.
