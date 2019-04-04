@@ -333,7 +333,9 @@ def converted_call(f, owner, options, args, kwargs):
       raise
 
     logging.warn(
-        'Entity %s could not be transformed and will be staged without change.'
+        'Entity %s could not be transformed and will be executed as-is.'
+        ' Some features (e.g. tensor-dependent conditionals and loops) may not'
+        ' work as expected.'
         ' Error details can be found in the logs when running with the env'
         ' variable AUTOGRAPH_VERBOSITY >= 1. Please report this to the'
         ' AutoGraph team. Cause: %s', target_entity, e)
