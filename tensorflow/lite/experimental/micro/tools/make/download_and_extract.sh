@@ -119,6 +119,10 @@ download_and_extract() {
     echo "Unknown action '${action}'"
     exit 1
   fi
+
+  # TODO(petewarden): Temporary output to help debug Kokoro issues.
+  echo `ls -lah ${dir}/*`
+  echo `ls -lah ${dir}/*/*`
 }
 
 download_and_extract "$1" "$2" "$3" "$4"
