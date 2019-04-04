@@ -123,7 +123,22 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
       use_aggressive_shape_inference_(use_aggressive_shape_inference) {
   scheduler_ = absl::make_unique<VirtualScheduler>(
       use_static_shapes_, use_aggressive_shape_inference_, cluster,
-      node_manager_.get());
+      node_manager_.get(),
+      absl::make_unique<VirtualPlacer>(cluster->GetDevices()));
+}
+
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager,
+    std::unique_ptr<VirtualPlacer> placer, bool use_static_shapes,
+    bool use_aggressive_shape_inference)
+    : node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)),
+      use_static_shapes_(use_static_shapes),
+      use_aggressive_shape_inference_(use_aggressive_shape_inference) {
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(), std::move(placer));
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {

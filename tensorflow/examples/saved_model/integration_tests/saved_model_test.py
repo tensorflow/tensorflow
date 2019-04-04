@@ -56,12 +56,34 @@ class SavedModelTest(tf.test.TestCase):
     self.assertCommandSucceeded(
         "use_model_in_sequential_keras", model_dir=export_dir)
 
+  def test_text_embedding_in_dataset(self):
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_simple_text_embedding", export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "use_text_embedding_in_dataset", model_dir=export_dir)
+
   def test_mnist_cnn(self):
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
     self.assertCommandSucceeded(
         "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
+
+  def test_mnist_cnn_with_mirrored_strategy(self):
+    self.skipTest(
+        "b/129134185 - saved model and distribution strategy integration")
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_mnist_cnn",
+        export_dir=export_dir,
+        fast_test_mode="true")
+    self.assertCommandSucceeded(
+        "use_mnist_cnn",
+        export_dir=export_dir,
+        fast_test_mode="true",
+        use_mirrored_strategy=True,
+    )
 
 if __name__ == "__main__":
   tf.test.main()

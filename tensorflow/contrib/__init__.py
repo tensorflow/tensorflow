@@ -30,7 +30,6 @@ from tensorflow.contrib import checkpoint
 if os.name != "nt" and platform.machine() != "s390x":
   from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
-from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import constrained_optimization
 from tensorflow.contrib import copy_graph

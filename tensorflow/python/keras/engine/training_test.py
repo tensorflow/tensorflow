@@ -1040,39 +1040,22 @@ class TrainingTest(keras_parameterized.TestCase):
         return inputs + self.bias
 
     inputs = keras.Input(shape=(1,))
-    outputs = Bias()(inputs)
-    model = keras.Model(inputs, outputs)
     targets = keras.Input(shape=(1,))
+    outputs = Bias()(inputs)
+    model = keras.Model([inputs, targets], outputs)
 
-    model.add_loss(
-        math_ops.reduce_mean(
-            keras.losses.mean_absolute_error(targets, outputs)))
+    model.add_loss(2 * math_ops.reduce_mean(
+        keras.losses.mean_absolute_error(targets, outputs)))
 
-    # If we want to use the loss class instance as shown below, we will need to
-    # add graph scope as the reduction logic involves some eager mode checks.
-    with keras.backend.get_graph().as_default():
-      model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs))
+    model.compile(
+        keras.optimizer_v2.gradient_descent.SGD(0.033333),
+        loss=keras.losses.MeanAbsoluteError(),
+        run_eagerly=testing_utils.should_run_eagerly())
 
-    if testing_utils.should_run_eagerly():
-      with self.assertRaisesRegex(
-          ValueError,
-          'We currently do not support enabling `run_eagerly` on compile if '
-          r'`model.add_loss\(tensor\)` or `model.add_metric\(tensor\)` '
-          'has been called.'):
-        model.compile('sgd', run_eagerly=True)
-      return
-    else:
-      model.compile(
-          keras.optimizer_v2.gradient_descent.SGD(0.033333),
-          loss=keras.losses.MeanAbsoluteError(),
-          target_tensors=[targets],
-          run_eagerly=False)
-
-      x = np.array([[0.], [1.], [2.]])
-      y = np.array([[0.5], [2.], [3.5]])
-      history = model.fit(x, y, batch_size=3, epochs=5)
-      self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8],
-                          1e-3)
+    x = np.array([[0.], [1.], [2.]])
+    y = np.array([[0.5], [2.], [3.5]])
+    history = model.fit([x, y], y, batch_size=3, epochs=5)
+    self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8], 1e-3)
 
   @keras_parameterized.run_all_keras_modes
   def test_clear_losses(self):
@@ -2575,8 +2558,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError,
           'We currently do not support enabling `run_eagerly` on compile if '
-          r'`model.add_loss\(tensor\)` or `model.add_metric\(tensor\)` '
-          'has been called.'):
+          r'`model.add_metric\(tensor\)` has been called.'):
         model.compile('sgd', run_eagerly=True)
       return
     else:
@@ -2710,8 +2692,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError,
           'We currently do not support enabling `run_eagerly` on compile if '
-          r'`model.add_loss\(tensor\)` or `model.add_metric\(tensor\)` '
-          'has been called.'):
+          r'`model.add_metric\(tensor\)` has been called.'):
         model.compile('sgd', run_eagerly=True)
       return
     else:
@@ -2904,8 +2885,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError,
           'We currently do not support enabling `run_eagerly` on compile if '
-          r'`model.add_loss\(tensor\)` or `model.add_metric\(tensor\)` '
-          'has been called.'):
+          r'`model.add_metric\(tensor\)` has been called.'):
         model.compile('sgd', run_eagerly=True)
       return
     else:

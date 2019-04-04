@@ -1,6 +1,18 @@
 path: "tensorflow.keras.mixed_precision.experimental"
 tf_module {
   member {
+    name: "DynamicLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FixedLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LossScaleOptimizer"
     mtype: "<type \'type\'>"
   }

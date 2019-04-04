@@ -679,7 +679,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop);
+  CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
+      << ": " << fusion->ToString();
 
   if (CheckAndEmitHloWithTile021(fusion)) {
     return Status::OK();

@@ -71,14 +71,19 @@ typedef Eigen::GpuDevice GPUDevice;
 
 // Supported Conv2D fusions. Not all of them supported on all type of devices.
 enum class FusedComputationType {
+  kUndefined,
   // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports
   // identity activation function, it in theory should allow to fuse convolution
   // with BiasAdd, but in practice it doesn't work, cuDNN ignores this parameter
   // and always does Relu activation.
-  kBiasAdd,                // CPU
-  kBiasAddWithRelu,        // CPU and GPU
-  kFusedBatchNorm,         // CPU only
-  kFusedBatchNormWithRelu  // CPU only
+  kBiasAdd,                  // CPU
+  kBiasAddWithRelu,          // CPU and GPU
+  kBiasAddWithRelu6,         // CPU
+  kBiasAddWithElu,           // CPU
+  kFusedBatchNorm,           // CPU
+  kFusedBatchNormWithRelu,   // CPU
+  kFusedBatchNormWithRelu6,  // CPU
+  kFusedBatchNormWithElu     // CPU
 };
 
 // We have to pass around additional arguments for all possible fusion types.
@@ -94,21 +99,6 @@ struct LaunchFusedConv2DOp {
                   const FusedComputationArgs& fusion_args,
                   const Conv2DParameters& params,
                   const Conv2DDimensions& dimensions, Tensor* output);
-};
-
-// Type aliases for the unaligned tensors (tensor maps) used in output kernels.
-template <typename T>
-struct Unaligned {
-  // There is no guarantee that the output block passed to the output kernel
-  // will be aligned.
-
-  using Tensor =
-      Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, Eigen::DenseIndex>,
-                       Eigen::Unaligned>;
-
-  using ConstTensor = Eigen::TensorMap<
-      Eigen::Tensor<const T, 1, Eigen::RowMajor, Eigen::DenseIndex>,
-      Eigen::Unaligned>;
 };
 
 // Type alias for the tensor contraction output mapper.
@@ -130,6 +120,32 @@ struct Relu {
   static auto apply(XprType expr)
       -> decltype(expr.cwiseMax(std::declval<typename XprType::Scalar>())) {
     return expr.cwiseMax(static_cast<typename XprType::Scalar>(0));
+  };
+};
+
+// Applies `Relu6` to the passed input expression.
+struct Relu6 {
+  template <typename XprType>
+  static auto apply(XprType expr)
+      -> decltype(expr.cwiseMax(std::declval<typename XprType::Scalar>())
+                      .cwiseMin(std::declval<typename XprType::Scalar>())) {
+    return expr.cwiseMax(static_cast<typename XprType::Scalar>(0))
+        .cwiseMin(static_cast<typename XprType::Scalar>(6));
+  };
+};
+
+// Applies `Elu` to the passed input expression.
+struct Elu {
+  template <typename XprType>
+  static auto apply(XprType expr) -> decltype(
+      (expr < std::declval<typename XprType::Scalar>())
+          .select(expr.exp() -
+                      expr.constant(std::declval<typename XprType::Scalar>()),
+                  expr)) {
+    return (expr < static_cast<typename XprType::Scalar>(0))
+        .select(expr.exp() -
+                    expr.constant(static_cast<typename XprType::Scalar>(1)),
+                expr);
   };
 };
 
@@ -166,11 +182,11 @@ struct BiasAddOutputKernel {
     DCHECK(params.swapped_arguments);
 
     const T* bias_base = bias_data + i;
-    typename Unaligned<T>::ConstTensor bias(bias_base, num_rows);
+    typename TTypes<T>::UnalignedConstTensor bias(bias_base, num_rows);
 
     for (int col = 0; col < num_cols; ++col) {
       T* output_base = &output_mapper(0, col);
-      typename Unaligned<T>::Tensor output(output_base, num_rows);
+      typename TTypes<T>::UnalignedTensor output(output_base, num_rows);
       const auto expr = output + bias;
       output = Activation::template apply<decltype(expr)>(expr);
     }
@@ -202,14 +218,14 @@ struct FusedBatchNormOutputKernel {
     const T* offset_base = offset_data + i;
     const T* mean_base = estimated_mean_data + i;
 
-    typename Unaligned<T>::ConstTensor scaling_factor(scaling_factor_base,
-                                                      num_rows);
-    typename Unaligned<T>::ConstTensor offset(offset_base, num_rows);
-    typename Unaligned<T>::ConstTensor mean(mean_base, num_rows);
+    typename TTypes<T>::UnalignedConstTensor scaling_factor(scaling_factor_base,
+                                                            num_rows);
+    typename TTypes<T>::UnalignedConstTensor offset(offset_base, num_rows);
+    typename TTypes<T>::UnalignedConstTensor mean(mean_base, num_rows);
 
     for (int col = 0; col < num_cols; ++col) {
       T* output_base = &output_mapper(0, col);
-      typename Unaligned<T>::Tensor output(output_base, num_rows);
+      typename TTypes<T>::UnalignedTensor output(output_base, num_rows);
 
       auto scaled = (output - mean) * scaling_factor;
       auto shifted = scaled + offset;
@@ -232,9 +248,17 @@ using WithBiasAdd = BiasAddOutputKernel<T>;
 template <typename T>
 using WithBiasAddAndRelu = BiasAddOutputKernel<T, Relu>;
 template <typename T>
+using WithBiasAddAndRelu6 = BiasAddOutputKernel<T, Relu6>;
+template <typename T>
+using WithBiasAddAndElu = BiasAddOutputKernel<T, Elu>;
+template <typename T>
 using WithFusedBatchNorm = FusedBatchNormOutputKernel<T>;
 template <typename T>
 using WithFusedBatchNormAndRelu = FusedBatchNormOutputKernel<T, Relu>;
+template <typename T>
+using WithFusedBatchNormAndRelu6 = FusedBatchNormOutputKernel<T, Relu6>;
+template <typename T>
+using WithFusedBatchNormAndElu = FusedBatchNormOutputKernel<T, Elu>;
 
 // This is CPU-only implementation that uses Eigen contraction output kernels.
 //
@@ -330,6 +354,9 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
         dimensions.dilation_rows, dimensions.dilation_cols, params.padding);
 
     switch (fusion) {
+      case FusedComputationType::kUndefined:
+        OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
+
       case FusedComputationType::kBiasAdd:
         OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
         conv2d(WithBiasAdd<T>(bias_add.bias_add_data), context, input, filter,
@@ -339,6 +366,18 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kBiasAddWithRelu:
         OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
         conv2d(WithBiasAddAndRelu<T>(bias_add.bias_add_data), context, input,
+               filter, output);
+        break;
+
+      case FusedComputationType::kBiasAddWithRelu6:
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
+        conv2d(WithBiasAddAndRelu6<T>(bias_add.bias_add_data), context, input,
+               filter, output);
+        break;
+
+      case FusedComputationType::kBiasAddWithElu:
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
+        conv2d(WithBiasAddAndElu<T>(bias_add.bias_add_data), context, input,
                filter, output);
         break;
 
@@ -358,6 +397,28 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                        InitFusedBatchNormArgs(context, fusion_args.epsilon,
                                               &fused_batch_norm));
         conv2d(WithFusedBatchNormAndRelu<T>(
+                   fusion_args.epsilon, fused_batch_norm.scaling_factor.data(),
+                   fused_batch_norm.offset_data,
+                   fused_batch_norm.estimated_mean_data),
+               context, input, filter, output);
+        break;
+
+      case FusedComputationType::kFusedBatchNormWithRelu6:
+        OP_REQUIRES_OK(context,
+                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                              &fused_batch_norm));
+        conv2d(WithFusedBatchNormAndRelu6<T>(
+                   fusion_args.epsilon, fused_batch_norm.scaling_factor.data(),
+                   fused_batch_norm.offset_data,
+                   fused_batch_norm.estimated_mean_data),
+               context, input, filter, output);
+        break;
+
+      case FusedComputationType::kFusedBatchNormWithElu:
+        OP_REQUIRES_OK(context,
+                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                              &fused_batch_norm));
+        conv2d(WithFusedBatchNormAndElu<T>(
                    fusion_args.epsilon, fused_batch_norm.scaling_factor.data(),
                    fused_batch_norm.offset_data,
                    fused_batch_norm.estimated_mean_data),
@@ -469,12 +530,12 @@ class FusedConvParameters : public ConvParameters {
 };
 
 inline bool operator==(const FusedConvParameters& lhs,
-                const FusedConvParameters& rhs) {
+                       const FusedConvParameters& rhs) {
   return lhs.get_data_as_tuple() == rhs.get_data_as_tuple();
 }
 
 inline bool operator!=(const FusedConvParameters& lhs,
-                const FusedConvParameters& rhs) {
+                       const FusedConvParameters& rhs) {
   return !(lhs == rhs);
 }
 
@@ -847,37 +908,45 @@ class FusedConv2DOp : public OpKernel {
     // TODO(ezhulenev): Add support for fusion element-wise op chains defined
     // at runtime, e.g. Relu+Sqrt+Tanh+etc.
 
-    // Match combination of fused ops to one of the supported fusions.
-    if (FusedOpsMatchAndSupportedOnDevice(fused_ops, {"BiasAdd"},
-                                          /*cpu_only=*/true)) {
-      fused_computation_ = FusedComputationType::kBiasAdd;
-    } else if (FusedOpsMatchAndSupportedOnDevice(fused_ops, {"BiasAdd", "Relu"},
-                                                 /*cpu_only=*/false)) {
-      fused_computation_ = FusedComputationType::kBiasAddWithRelu;
-    } else if (FusedOpsMatchAndSupportedOnDevice(fused_ops, {"FusedBatchNorm"},
-                                                 /*cpu_only=*/true)) {
-      fused_computation_ = FusedComputationType::kFusedBatchNorm;
-    } else if (FusedOpsMatchAndSupportedOnDevice(fused_ops,
-                                                 {"FusedBatchNorm", "Relu"},
-                                                 /*cpu_only=*/true)) {
-      fused_computation_ = FusedComputationType::kFusedBatchNormWithRelu;
-    } else {
+    using FCT = FusedComputationType;
+    std::vector<std::pair<FusedConv2DPattern, FusedComputationType>> mappings =
+        {{{{"BiasAdd"}, true}, FCT::kBiasAdd},
+         {{{"BiasAdd", "Relu"}, false}, FCT::kBiasAddWithRelu},
+         {{{"BiasAdd", "Relu6"}, true}, FCT::kBiasAddWithRelu6},
+         {{{"BiasAdd", "Elu"}, true}, FCT::kBiasAddWithElu},
+         {{{"FusedBatchNorm"}, true}, FCT::kFusedBatchNorm},
+         {{{"FusedBatchNorm", "Relu"}, true}, FCT::kFusedBatchNormWithRelu},
+         {{{"FusedBatchNorm", "Relu6"}, true}, FCT::kFusedBatchNormWithRelu6},
+         {{{"FusedBatchNorm", "Elu"}, true}, FCT::kFusedBatchNormWithElu}};
+
+    // Match op fusion to one of hte supported patterns.
+    for (const auto& mapping : mappings) {
+      const FusedConv2DPattern& pattern = mapping.first;
+      if (FusedOpsMatchAndSupportedOnDevice(fused_ops, pattern.fused_ops,
+                                            pattern.cpu_only)) {
+        fused_computation_ = mapping.second;
+      }
+    }
+    if (fused_computation_ == FusedComputationType::kUndefined) {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
                                         absl::StrJoin(fused_ops, ","), "]"));
     }
 
     // Depending on a picked fusion type validate fusion-specific arguments.
-
     if (fused_computation_ == FusedComputationType::kBiasAdd ||
-        fused_computation_ == FusedComputationType::kBiasAddWithRelu) {
+        fused_computation_ == FusedComputationType::kBiasAddWithRelu ||
+        fused_computation_ == FusedComputationType::kBiasAddWithRelu6 ||
+        fused_computation_ == FusedComputationType::kBiasAddWithElu) {
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
     }
 
     if (fused_computation_ == FusedComputationType::kFusedBatchNorm ||
-        fused_computation_ == FusedComputationType::kFusedBatchNormWithRelu) {
+        fused_computation_ == FusedComputationType::kFusedBatchNormWithRelu ||
+        fused_computation_ == FusedComputationType::kFusedBatchNormWithRelu6 ||
+        fused_computation_ == FusedComputationType::kFusedBatchNormWithElu) {
       OP_REQUIRES(
           context, num_args == 4,
           errors::InvalidArgument("Fused FusedBatchNorm must have four extra "
@@ -934,6 +1003,11 @@ class FusedConv2DOp : public OpKernel {
   }
 
  private:
+  struct FusedConv2DPattern {
+    std::vector<string> fused_ops;
+    bool cpu_only;
+  };
+
   bool FusedOpsMatchAndSupportedOnDevice(const std::vector<string>& fused_ops,
                                          const std::vector<string>& expected,
                                          bool cpu_only) const {
@@ -947,7 +1021,7 @@ class FusedConv2DOp : public OpKernel {
   bool use_cudnn_;
   bool cudnn_use_autotune_;
 
-  FusedComputationType fused_computation_;
+  FusedComputationType fused_computation_ = FusedComputationType::kUndefined;
 
   float epsilon_;  // Used only in FusedBatchNorm fusion
 

@@ -844,6 +844,21 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  def gather_nd(self, indices, name=None):
+    r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
+
+    See tf.gather_nd for details.
+
+    Args:
+      indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+        Index tensor.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `params`.
+    """
+    raise NotImplementedError
+
   @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
@@ -1540,7 +1555,7 @@ class RefVariable(VariableV1):
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          true_name = ops._name_from_scope_name(name)  # pylint: disable=protected-access
+          true_name = ops.name_from_scope_name(name)  # pylint: disable=protected-access
           attr = attr_value_pb2.AttrValue(
               list=attr_value_pb2.AttrValue.ListValue(
                   s=[compat.as_bytes("loc:@%s" % true_name)]))

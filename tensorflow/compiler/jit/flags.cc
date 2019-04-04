@@ -142,12 +142,12 @@ void AllocateAndParseFlags() {
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",
-            "The amount of jitter to introduce.  This amount is added to each "
-            "element in the tensors named in `tensor_names."),
+            "The Tensors to add the jitter to.  The tensors are named in the "
+            "TensorId format of <node name>:<output idx>."),
        Flag("tf_introduce_floating_point_jitter_amount",
             &jitter_flags->jitter_amount,
-            "The Tensors to add the jitter to.  The tensors are named in the "
-            "TensorId format of <node name>:<output idx>.")});
+            "The amount of jitter to introduce.  This amount is added to each "
+            "element in the tensors named in `tensor_names.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);

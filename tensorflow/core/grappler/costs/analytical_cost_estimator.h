@@ -47,6 +47,12 @@ class AnalyticalCostEstimator : public CostEstimator {
                           std::unique_ptr<ReadyNodeManager> node_manager,
                           bool use_static_shapes,
                           bool use_aggressive_shape_inference);
+  AnalyticalCostEstimator(Cluster* cluster,
+                          std::unique_ptr<OpLevelCostEstimator> node_estimator,
+                          std::unique_ptr<ReadyNodeManager> node_manager,
+                          std::unique_ptr<VirtualPlacer> placer,
+                          bool use_static_shapes,
+                          bool use_aggressive_shape_inference);
   ~AnalyticalCostEstimator() override {}
 
   // Initializes the estimator for the specified grappler item.

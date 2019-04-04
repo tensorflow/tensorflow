@@ -23,7 +23,10 @@ namespace logging_internal {
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
   fprintf(stderr, "%s: ", GetSeverityName(severity));
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
   vfprintf(stderr, format, args);
+#pragma clang diagnostic pop
   fputc('\n', stderr);
 }
 

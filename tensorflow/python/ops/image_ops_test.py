@@ -2308,7 +2308,9 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         newshape = self.evaluate(yshape)
         self.assertAllEqual(single_shape, newshape)
 
+  # half_pixel_centers unsupported in ResizeBilinear
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/127616992")
   def testTensorArguments(self):
     img_shape = [1, 6, 4, 1]
     single_shape = [6, 4, 1]
@@ -3344,6 +3346,8 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     self._assertReturns(x, x_shape, y, y_shape)
 
 
+# half_pixel_centers not supported by XLA
+@test_util.disable_all_xla("b/127616992")
 class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -3407,7 +3411,6 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
@@ -3415,7 +3418,6 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension

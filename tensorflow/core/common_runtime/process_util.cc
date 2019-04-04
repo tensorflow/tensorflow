@@ -35,6 +35,7 @@ namespace tensorflow {
 namespace {
 
 int32 DefaultNumInterOpThreads() {
+#ifndef __ANDROID__
   // Use environment setting if specified (init once)
   static int env_num_threads = NumInterOpThreadsFromEnvironment();
   if (env_num_threads > 0) {
@@ -43,6 +44,26 @@ int32 DefaultNumInterOpThreads() {
 
   // Default to using the number of cores available in the process.
   return port::NumSchedulableCPUs();
+#else
+  // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
+  // used (regardless of what was chosen here); instead, all work was done on
+  // the thread(s) calling Session::Run. That's no longer the case, but we'd
+  // like to avoid suddenly higher concurrency and peak resource usage (for the
+  // same device shape, graph, and options) versus prior versions - as best we
+  // can:
+  //
+  //   - Single Session::Run (none concurrent), and default options:
+  //     Behavior is mostly the same as before.
+  //
+  //   - Concurrent Session::Runs, and default options:
+  //     Reduced concurrency versus before.
+  //
+  //   - Thread-pool size set explicitly (>1):
+  //     Increased concurrency versus before.
+  //
+  // (We assume the first case is the most common)
+  return 1;
+#endif
 }
 
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {

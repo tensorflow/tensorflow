@@ -206,9 +206,10 @@ def setup_python(environ_cp):
   ask_python_bin_path = ('Please specify the location of python. [Default is '
                          '%s]: ') % default_python_bin_path
   while True:
-    python_bin_path = get_from_env_or_user_or_default(
-        environ_cp, 'PYTHON_BIN_PATH', ask_python_bin_path,
-        default_python_bin_path)
+    python_bin_path = get_from_env_or_user_or_default(environ_cp,
+                                                      'PYTHON_BIN_PATH',
+                                                      ask_python_bin_path,
+                                                      default_python_bin_path)
     # Check if the path is valid
     if os.path.isfile(python_bin_path) and os.access(python_bin_path, os.X_OK):
       break
@@ -392,14 +393,14 @@ def set_build_var(environ_cp,
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
-    write_to_bazelrc(
-        'build:%s --define %s=true' % (bazel_config_name, option_name))
+    write_to_bazelrc('build:%s --define %s=true' %
+                     (bazel_config_name, option_name))
     write_to_bazelrc('build --config=%s' % bazel_config_name)
   elif bazel_config_name is not None:
     # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
     # options and not to set build configs through environment variables.
-    write_to_bazelrc(
-        'build:%s --define %s=true' % (bazel_config_name, option_name))
+    write_to_bazelrc('build:%s --define %s=true' %
+                     (bazel_config_name, option_name))
 
 
 def set_action_env_var(environ_cp,
@@ -665,9 +666,9 @@ def prompt_loop_or_load_from_env(environ_cp,
       print(error_msg % val)
     environ_cp[var_name] = ''
   else:
-    raise UserInputError(
-        'Invalid %s setting was provided %d times in a row. '
-        'Assuming to be a scripting mistake.' % (var_name, n_ask_attempts))
+    raise UserInputError('Invalid %s setting was provided %d times in a row. '
+                         'Assuming to be a scripting mistake.' %
+                         (var_name, n_ask_attempts))
 
   environ_cp[var_name] = val
   return val
@@ -676,8 +677,8 @@ def prompt_loop_or_load_from_env(environ_cp,
 def create_android_ndk_rule(environ_cp):
   """Set ANDROID_NDK_HOME and write Android NDK WORKSPACE rule."""
   if is_windows() or is_cygwin():
-    default_ndk_path = cygpath(
-        '%s/Android/Sdk/ndk-bundle' % environ_cp['APPDATA'])
+    default_ndk_path = cygpath('%s/Android/Sdk/ndk-bundle' %
+                               environ_cp['APPDATA'])
   elif is_macos():
     default_ndk_path = '%s/library/Android/Sdk/ndk-bundle' % environ_cp['HOME']
   else:
@@ -839,8 +840,10 @@ def set_tf_cuda_version(environ_cp):
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     # Configure the Cuda SDK version to use.
-    tf_cuda_version = get_from_env_or_user_or_default(
-        environ_cp, 'TF_CUDA_VERSION', ask_cuda_version, _DEFAULT_CUDA_VERSION)
+    tf_cuda_version = get_from_env_or_user_or_default(environ_cp,
+                                                      'TF_CUDA_VERSION',
+                                                      ask_cuda_version,
+                                                      _DEFAULT_CUDA_VERSION)
     tf_cuda_version = reformat_version_sequence(str(tf_cuda_version), 2)
 
     # Find out where the CUDA toolkit is installed
@@ -856,8 +859,10 @@ def set_tf_cuda_version(environ_cp):
     ask_cuda_path = ('Please specify the location where CUDA %s toolkit is'
                      ' installed. Refer to README.md for more details. '
                      '[Default is %s]: ') % (tf_cuda_version, default_cuda_path)
-    cuda_toolkit_path = get_from_env_or_user_or_default(
-        environ_cp, 'CUDA_TOOLKIT_PATH', ask_cuda_path, default_cuda_path)
+    cuda_toolkit_path = get_from_env_or_user_or_default(environ_cp,
+                                                        'CUDA_TOOLKIT_PATH',
+                                                        ask_cuda_path,
+                                                        default_cuda_path)
     if is_windows() or is_cygwin():
       cuda_toolkit_path = cygpath(cuda_toolkit_path)
 
@@ -905,9 +910,10 @@ def set_tf_cudnn_version(environ_cp):
       '[Leave empty to default to cuDNN %s]: ') % _DEFAULT_CUDNN_VERSION
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-    tf_cudnn_version = get_from_env_or_user_or_default(
-        environ_cp, 'TF_CUDNN_VERSION', ask_cudnn_version,
-        _DEFAULT_CUDNN_VERSION)
+    tf_cudnn_version = get_from_env_or_user_or_default(environ_cp,
+                                                       'TF_CUDNN_VERSION',
+                                                       ask_cudnn_version,
+                                                       _DEFAULT_CUDNN_VERSION)
     tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version), 1)
 
     default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
@@ -949,8 +955,8 @@ def set_tf_cudnn_version(environ_cp):
                                            cudnn_path_from_ldconfig)
       if cudnn_path_from_ldconfig:
         cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
-        if os.path.exists(
-            '%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
+        if os.path.exists('%s.%s' %
+                          (cudnn_path_from_ldconfig, tf_cudnn_version)):
           cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
           break
 
@@ -1132,8 +1138,9 @@ def set_tf_nccl_install_path(environ_cp):
       '[Default is to use https://github.com/nvidia/nccl]: ')
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-    tf_nccl_version = get_from_env_or_user_or_default(
-        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, '')
+    tf_nccl_version = get_from_env_or_user_or_default(environ_cp,
+                                                      'TF_NCCL_VERSION',
+                                                      ask_nccl_version, '')
 
     if not tf_nccl_version:
       break  # No need to get install path, building the open source code.
@@ -1755,10 +1762,8 @@ def main():
 
   system_specific_test_config(os.environ)
 
-  if get_var(environ_cp, 'TF_CONFIGURE_IOS', 'Configure TensorFlow for iOS',
-             False, ('Would you like to configure TensorFlow for iOS builds?'),
-             'Configuring TensorFlow for iOS builds.',
-             'Not configuring TensorFlow for iOS builds.'):
+  set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
+  if environ_cp.get('TF_CONFIGURE_IOS') == '1':
     configure_ios()
   else:
     # TODO(pcloudy): Remove BAZEL_USE_CPP_ONLY_TOOLCHAIN after Bazel is upgraded

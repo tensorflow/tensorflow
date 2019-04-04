@@ -2949,6 +2949,10 @@ tf_module {
     argspec: "args=[\'resource\', \'indices\', \'dtype\', \'batch_dims\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
   }
   member_method {
+    name: "ResourceGatherNd"
+    argspec: "args=[\'resource\', \'indices\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ResourceScatterAdd"
     argspec: "args=[\'resource\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

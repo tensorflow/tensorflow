@@ -193,7 +193,10 @@ tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],
-    data = ["//tensorflow/lite:testdata/multi_add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add_quantized_int8.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",

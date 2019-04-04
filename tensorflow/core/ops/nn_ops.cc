@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
@@ -45,7 +46,7 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
     if (c->ValueKnown(d)) {
       // This must match the same logic in the kernel function in
       // core/kernels/fractional_max_pool_op.cc.
-      auto val = static_cast<int64>(floor(c->Value(d) / pooling_ratio[i]));
+      auto val = static_cast<int64>(std::floor(c->Value(d) / pooling_ratio[i]));
       if (val < 0) {
         return errors::InvalidArgument("Size computed for dim ", i,
                                        " is negative: ", val);

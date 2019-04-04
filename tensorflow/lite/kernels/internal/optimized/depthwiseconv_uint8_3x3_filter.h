@@ -4139,6 +4139,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
     for (int k_height = 0; k_height < block_height; ++k_height) {
       const uint8* input_data_0 = input_block_data;
+      int8x16_t input_data_a;
+      int8x16_t input_data_b;
+      int8x16_t input_data_c;
+      int8x16_t input_data_d;
 
       // Traverse the width one point at a time, but the depth in (micro) blocks
       // of size 8.
@@ -4147,10 +4151,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
       // larger than is strictly needed to calculate output. This is because the
       // conv calculation is performed across complete micro blocks.
       for (int j_width = 0; j_width < input_width_micro_repeats; ++j_width) {
-        int8x16_t input_data_a;
-        int8x16_t input_data_b;
-        int8x16_t input_data_c;
-        int8x16_t input_data_d;
         int8x16_t work_reg_a_sp;
         int8x16_t work_reg_b_sp;
 
@@ -4226,18 +4226,17 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         }
         for (; i_depth < depth_micro_repeats; ++i_depth) {
           input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
-          input_data_a =
-              vld1q_lane_s8x8(input_data_0 + 2 * input_depth, input_data_a, 1);
           input_data_b =
               vld1q_lane_s8x8(input_data_0 + 1 * input_depth, input_data_b, 0);
-          input_data_b =
-              vld1q_lane_s8x8(input_data_0 + 3 * input_depth, input_data_b, 1);
+          input_data_c =
+              vld1q_lane_s8x8(input_data_0 + 2 * input_depth, input_data_c, 0);
+          input_data_d =
+              vld1q_lane_s8x8(input_data_0 + 3 * input_depth, input_data_d, 0);
+          work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+          work_reg_b = vzip1q_s8(input_data_c, input_data_d);
 
-          work_reg_a = input_data_a;
-          work_reg_b = input_data_b;
           input_data_0 += 8;
 
-          vzipq_s8_in_place(&work_reg_a, &work_reg_b);
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
           work_reg_a = veorq_s8(work_reg_a, sign_bit);
           work_reg_b = veorq_s8(work_reg_b, sign_bit);
@@ -4256,21 +4255,22 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         TFLITE_DCHECK_GT(residual_width, 0);
         TFLITE_DCHECK_LT(residual_width, 4);
         for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-          work_reg_a = vdupq_n_u8(kSignBit);
-          work_reg_a = vld1q_lane_s8x8(input_data_0, work_reg_a, 0);
-          work_reg_b = vdupq_n_u8(kSignBit);
+          input_data_c = vdupq_n_u8(kSignBit);
+          input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
+          input_data_d = vdupq_n_u8(kSignBit);
           if (residual_width > 1) {
-            work_reg_b =
-                vld1q_lane_s8x8(input_data_0 + input_depth, work_reg_b, 0);
+            input_data_b =
+                vld1q_lane_s8x8(input_data_0 + input_depth, input_data_b, 0);
             if (residual_width == 3) {
-              work_reg_a = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
-                                           work_reg_a, 1);
+              input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                             input_data_c, 0);
             }
           }
+          work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+          work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
           work_reg_a = veorq_s8(work_reg_a, sign_bit);
           work_reg_b = veorq_s8(work_reg_b, sign_bit);
-
-          vzipq_s8_in_place(&work_reg_a, &work_reg_b);
           vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
           vst1q_s8(scratch_data_0, work_reg_a);
@@ -4376,9 +4376,10 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
     for (int k_height = 0; k_height < copy_block_height; ++k_height) {
       const uint8* input_data_0 = input_block_data;
-      const uint8* input_data_1 = input_block_data + input_depth;
-      const uint8* input_data_2 = input_block_data + 2 * input_depth;
-      const uint8* input_data_3 = input_block_data + 3 * input_depth;
+      int8x16_t input_data_a;
+      int8x16_t input_data_b;
+      int8x16_t input_data_c;
+      int8x16_t input_data_d;
 
       // Traverse the width one point at a time, but the depth in (micro) blocks
       // of size 8.
@@ -4401,53 +4402,126 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         }
         if (start_width == 0) {
           if (adjusted_residual_width == 4) {
-            // Load, then zero.
-            for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vld1q_lane_s8x8(input_data_2, work_reg_a, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_3, work_reg_b, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_1, work_reg_b, 0);
-              input_data_1 += 8;
-              work_reg_a = vld1q_lane_s8x8(input_data_0, work_reg_a, 0);
+            int8x16_t work_reg_a_sp;
+            int8x16_t work_reg_b_sp;
+
+            int i_depth = 0;
+
+            if (depth_micro_repeats >= 2) {
+              i_depth += 2;
+
+              //
+
+              input_data_a = vld1q_u8(input_data_0);
+              input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+              input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+              input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+              input_data_0 += 16;
+
+              //
+
+              for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
+                work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+                work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+
+                work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+                work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+
+                input_data_a = vld1q_u8(input_data_0);
+                input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+                scratch_data_0 += depth_advance;
+
+                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+                input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+                input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a_sp);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+                scratch_data_0 += depth_advance;
+
+                //
+
+                input_data_0 += 16;
+              }
+
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+              work_reg_a = veorq_s8(work_reg_a, sign_bit);
+              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              vst1q_s8(scratch_data_0, work_reg_a);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+              scratch_data_0 += depth_advance;
+              //
+
+              work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+              work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+              vst1q_s8(scratch_data_0, work_reg_a_sp);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+              scratch_data_0 += depth_advance;
+            }
+            for (; i_depth < depth_micro_repeats; ++i_depth) {
+              input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
+              input_data_b = vld1q_lane_s8x8(input_data_0 + 1 * input_depth,
+                                             input_data_b, 0);
+              input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                             input_data_c, 0);
+              input_data_d = vld1q_lane_s8x8(input_data_0 + 3 * input_depth,
+                                             input_data_d, 0);
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               input_data_0 += 8;
+
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
-              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-
               vst1q_s8(scratch_data_0, work_reg_a);
-              scratch_data_0 += 16;
-              vst1q_s8(scratch_data_0, work_reg_b);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
-              scratch_data_0 += depth_advance - 16;
-              input_data_2 += 8;
-              input_data_3 += 8;
+              scratch_data_0 += depth_advance;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           } else {
             TFLITE_DCHECK_LT(adjusted_residual_width, 4);
             for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vdupq_n_u8(-input_offset);
-              work_reg_b = vdupq_n_u8(-input_offset);
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vdupq_n_u8(-input_offset);
+              input_data_c = vdupq_n_u8(-input_offset);
+              input_data_d = vdupq_n_u8(-input_offset);
               if (adjusted_residual_width > 0) {
-                work_reg_a = vld1q_lane_s8x8(input_data_0, work_reg_a, 0);
+                input_data_a = vld1q_lane_s8x8(input_data_0, input_data_a, 0);
                 if (adjusted_residual_width > 1) {
-                  work_reg_b = vld1q_lane_s8x8(input_data_0 + input_depth,
-                                               work_reg_b, 0);
+                  input_data_b = vld1q_lane_s8x8(input_data_0 + input_depth,
+                                                 input_data_b, 0);
                   if (adjusted_residual_width == 3) {
-                    work_reg_a = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
-                                                 work_reg_a, 1);
+                    input_data_c = vld1q_lane_s8x8(
+                        input_data_0 + 2 * input_depth, input_data_c, 0);
                   }
                 }
               }
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
-
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
               vst1q_s8(scratch_data_0, work_reg_a);
@@ -4455,64 +4529,131 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
               scratch_data_0 += depth_advance;
               input_data_0 += 8;
-              input_data_1 += 8;
-              input_data_2 += 8;
-              input_data_3 += 8;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           }
         } else {
           if (adjusted_residual_width == 4) {
-            // Load, then zero.
-            for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vdupq_n_u8(-input_offset);
-              work_reg_a = vld1q_lane_s8x8(input_data_2, work_reg_a, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_3, work_reg_b, 1);
-              work_reg_b = vld1q_lane_s8x8(input_data_1, work_reg_b, 0);
-              input_data_1 += 8;
-              // Skip loading first column.
+            int8x16_t work_reg_a_sp;
+            int8x16_t work_reg_b_sp;
+
+            int i_depth = 0;
+
+            if (depth_micro_repeats >= 2) {
+              i_depth += 2;
+
+              //
+
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+              input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+              input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+              input_data_0 += 16;
+
+              //
+
+              for (; i_depth < depth_micro_repeats - 1; i_depth += 2) {
+                work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+                work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+                work_reg_a = veorq_s8(work_reg_a, sign_bit);
+                work_reg_b = veorq_s8(work_reg_b, sign_bit);
+
+                work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+                work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+                vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+
+                input_data_a = vdupq_n_u8(-input_offset);
+                input_data_b = vld1q_u8(input_data_0 + 1 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+                scratch_data_0 += depth_advance;
+
+                work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+                work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+                input_data_c = vld1q_u8(input_data_0 + 2 * input_depth);
+                input_data_d = vld1q_u8(input_data_0 + 3 * input_depth);
+                vst1q_s8(scratch_data_0, work_reg_a_sp);
+                vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+                scratch_data_0 += depth_advance;
+
+                //
+
+                input_data_0 += 16;
+              }
+
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
+              work_reg_a = veorq_s8(work_reg_a, sign_bit);
+              work_reg_b = veorq_s8(work_reg_b, sign_bit);
+              vst1q_s8(scratch_data_0, work_reg_a);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
+
+              scratch_data_0 += depth_advance;
+              //
+
+              work_reg_a_sp = vzip2q_s8(input_data_a, input_data_b);
+              work_reg_b_sp = vzip2q_s8(input_data_c, input_data_d);
+              vzipq_s8x2_in_place(&work_reg_a_sp, &work_reg_b_sp);
+              work_reg_a_sp = veorq_s8(work_reg_a_sp, sign_bit);
+              work_reg_b_sp = veorq_s8(work_reg_b_sp, sign_bit);
+
+              vst1q_s8(scratch_data_0, work_reg_a_sp);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b_sp);
+
+              scratch_data_0 += depth_advance;
+            }
+            for (; i_depth < depth_micro_repeats; ++i_depth) {
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vld1q_lane_s8x8(input_data_0 + 1 * input_depth,
+                                             input_data_b, 0);
+              input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                             input_data_c, 0);
+              input_data_d = vld1q_lane_s8x8(input_data_0 + 3 * input_depth,
+                                             input_data_d, 0);
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               input_data_0 += 8;
+
+              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
 
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
-              vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
-
               vst1q_s8(scratch_data_0, work_reg_a);
-              scratch_data_0 += 16;
-              vst1q_s8(scratch_data_0, work_reg_b);
+              vst1q_s8(scratch_data_0 + 16, work_reg_b);
 
-              scratch_data_0 += depth_advance - 16;
-              input_data_2 += 8;
-              input_data_3 += 8;
+              scratch_data_0 += depth_advance;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           } else {
             TFLITE_DCHECK_LT(adjusted_residual_width, 4);
+
             for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
-              work_reg_a = vdupq_n_u8(-input_offset);
+              input_data_a = vdupq_n_u8(-input_offset);
+              input_data_b = vdupq_n_u8(-input_offset);
+              input_data_c = vdupq_n_u8(-input_offset);
+              input_data_d = vdupq_n_u8(-input_offset);
               // Skip loading first column.
-              work_reg_b = vdupq_n_u8(-input_offset);
               if (adjusted_residual_width > 1) {
-                work_reg_b =
-                    vld1q_lane_s8x8(input_data_0 + input_depth, work_reg_b, 0);
+                input_data_b = vld1q_lane_s8x8(input_data_0 + input_depth,
+                                               input_data_b, 0);
                 if (adjusted_residual_width == 3) {
-                  work_reg_a = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
-                                               work_reg_a, 1);
+                  input_data_c = vld1q_lane_s8x8(input_data_0 + 2 * input_depth,
+                                                 input_data_c, 0);
                 }
               }
+              work_reg_a = vzip1q_s8(input_data_a, input_data_b);
+              work_reg_b = vzip1q_s8(input_data_c, input_data_d);
+
               work_reg_a = veorq_s8(work_reg_a, sign_bit);
               work_reg_b = veorq_s8(work_reg_b, sign_bit);
-
-              vzipq_s8_in_place(&work_reg_a, &work_reg_b);
               vzipq_s8x2_in_place(&work_reg_a, &work_reg_b);
 
               vst1q_s8(scratch_data_0, work_reg_a);
@@ -4520,15 +4661,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
               scratch_data_0 += depth_advance;
               input_data_0 += 8;
-              input_data_1 += 8;
-              input_data_2 += 8;
-              input_data_3 += 8;
             }
             scratch_data_0 += width_advance;
             input_data_0 += input_depth_skip;
-            input_data_1 += input_depth_skip;
-            input_data_2 += input_depth_skip;
-            input_data_3 += input_depth_skip;
           }
         }
       }
@@ -5310,32 +5445,19 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             int8x16_t right_bank_3_reg;
             int8x16_t right_bank_4_reg;
             int8x16_t right_bank_5_reg;
-            // Logic: (i_width == output_width_micro_repeats) &&
-            //        ((residual_width - 1) * stride_val < 2)
-            const bool no_right_block =
-                i_width == output_width_micro_repeats && residual_width < 3;
 
-            if (no_right_block) {
-              // Only needed for santizer checks.
-              right_bank_0_reg = vdupq_n_s8(0);
-              right_bank_1_reg = vdupq_n_s8(0);
-              right_bank_2_reg = vdupq_n_s8(0);
-              right_bank_3_reg = vdupq_n_s8(0);
-              right_bank_4_reg = vdupq_n_s8(0);
-              right_bank_5_reg = vdupq_n_s8(0);
-            } else {
-              right_bank_0_reg = vld1q_s8(next_input_data);
-              right_bank_1_reg =
-                  vld1q_s8(next_input_data + workspace_height_stride);
-              right_bank_2_reg =
-                  vld1q_s8(next_input_data + 2 * workspace_height_stride);
-              right_bank_3_reg =
-                  vld1q_s8(next_input_data + 3 * workspace_height_stride);
-              right_bank_4_reg =
-                  vld1q_s8(next_input_data + 4 * workspace_height_stride);
-              right_bank_5_reg =
-                  vld1q_s8(next_input_data + 5 * workspace_height_stride);
-            }
+            // Loading of next block always valid.
+            right_bank_0_reg = vld1q_s8(next_input_data);
+            right_bank_1_reg =
+                vld1q_s8(next_input_data + workspace_height_stride);
+            right_bank_2_reg =
+                vld1q_s8(next_input_data + 2 * workspace_height_stride);
+            right_bank_3_reg =
+                vld1q_s8(next_input_data + 3 * workspace_height_stride);
+            right_bank_4_reg =
+                vld1q_s8(next_input_data + 4 * workspace_height_stride);
+            right_bank_5_reg =
+                vld1q_s8(next_input_data + 5 * workspace_height_stride);
 
             {
               acc0 = adjusted_bias_data;
@@ -5851,31 +5973,114 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           int32x4_t acc0;
           int32x4_t acc1;
+          int16x8_t acc_s16_0_1;
+          uint8x8_t acc_u8;
 
-          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
-               ++i_width) {
-            const int output_width = i_width == output_width_micro_repeats
-                                         ? residual_width
-                                         : four_over_stride;
+          int i_width = 0;
+
+          // When output_width_micro_repeats <
+          // output_width_overall_micro_repeats, 0 < residual_width <= 2, and so
+          // residual_width == 1 is then true iff residual_width < 2.
+          const int adjusted_width_micro_repeats =
+              (output_width_micro_repeats <
+               output_width_overall_micro_repeats) &&
+                      (residual_width == 1)
+                  ? output_width_micro_repeats
+                  : output_width_overall_micro_repeats;
+
+          for (; i_width < adjusted_width_micro_repeats; ++i_width) {
+            const int output_width = four_over_stride;
             TFLITE_DCHECK_LE(output_width * stride_val, 4);
             const int8* input_data =
                 input_data_0 + width_micro_stride * i_width;
-            const bool no_right_block = i_width == output_width_micro_repeats &&
-                                        output_width_overall_micro_repeats ==
-                                            workspace_width_micro_repeats;
+            acc0 = adjusted_bias_data;
+            acc1 = adjusted_bias_data;
+            right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
+            right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
+                                        workspace_height_stride);
 
-            if (!no_right_block) {
-              // Load next sub-micro block of data.
-              right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
-              right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
-                                          workspace_height_stride);
-              right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
-                                          2 * workspace_height_stride);
-              right_bank_3_reg = vld1q_s8(input_data + width_micro_stride +
-                                          3 * workspace_height_stride);
-              right_bank_4_reg = vld1q_s8(input_data + width_micro_stride +
-                                          4 * workspace_height_stride);
-            }
+            acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
+            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
+
+            right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
+                                        2 * workspace_height_stride);
+            right_bank_3_reg = vld1q_s8(input_data + width_micro_stride +
+                                        3 * workspace_height_stride);
+            acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+            acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
+            right_bank_4_reg = vld1q_s8(input_data + width_micro_stride +
+                                        4 * workspace_height_stride);
+
+            // Fixed-point multiplication.
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0, -output_shift);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc1, -output_shift);
+            // Add the output offset.
+            acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+            acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+            // Apply the activation function.
+            acc_u8 = vqmovun_s16(acc_s16_0_1);
+            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+            left_bank_0_reg = vrev32q_u16(left_bank_0_reg);
+            left_bank_1_reg = vrev32q_u16(left_bank_1_reg);
+            left_bank_2_reg = vrev32q_u16(left_bank_2_reg);
+            left_bank_3_reg = vrev32q_u16(left_bank_3_reg);
+            left_bank_4_reg = vrev32q_u16(left_bank_4_reg);
+            acc0 = adjusted_bias_data;
+            acc1 = adjusted_bias_data;
+            vtrn1_s8x2_in_place(&left_bank_0_reg, &right_bank_0_reg);
+            vtrn1_s8x2_in_place(&left_bank_1_reg, &right_bank_1_reg);
+            vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
+            vst1_lane_8x4(output_data_base, acc_u8, 0);
+            vst1_lane_8x4(output_data_base + output_height_stride, acc_u8, 1);
+
+            vtrn1_s8x2_in_place(&left_bank_3_reg, &right_bank_3_reg);
+            vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
+
+            acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
+            acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
+            acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+            acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
+
+            // Fixed-point multiplication.
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+            acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc0, -output_shift);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+            acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                acc1, -output_shift);
+            // Add the output offset.
+            acc_s16_0_1 = vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+            acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+            // Apply the activation function.
+            acc_u8 = vqmovun_s16(acc_s16_0_1);
+            acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+            acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+            vst1_lane_8x4(output_data_base + depth, acc_u8, 0);
+            vst1_lane_8x4(output_data_base + depth + output_height_stride,
+                          acc_u8, 1);
+
+            left_bank_0_reg = right_bank_0_reg;
+            left_bank_1_reg = right_bank_1_reg;
+            left_bank_2_reg = right_bank_2_reg;
+            left_bank_3_reg = right_bank_3_reg;
+            left_bank_4_reg = right_bank_4_reg;
+          }
+          for (; i_width < output_width_overall_micro_repeats; ++i_width) {
+            TFLITE_DCHECK_NE(residual_width, four_over_stride);
+
+            // No need to load next ("right") block of data.
 
             uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
 
@@ -5920,44 +6125,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
               vtrn1_s8x2_in_place(&left_bank_3_reg, &right_bank_3_reg);
               vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
-            }
-
-            if (output_width > 1) {
-              acc0 = adjusted_bias_data;
-              acc1 = adjusted_bias_data;
-
-              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
-              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
-              acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
-              acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
-              acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
-
-              // Fixed-point multiplication.
-              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc0, -output_shift);
-              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
-                  acc1, -output_shift);
-              // Add the output offset.
-              int16x8_t acc_s16_0_1 =
-                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
-              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
-              // Apply the activation function.
-              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
-              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
-              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
-
-              vst1_lane_8x4(output_data_base + depth, acc_u8, 0);
-              vst1_lane_8x4(output_data_base + depth + output_height_stride,
-                            acc_u8, 1);
-
-              left_bank_0_reg = right_bank_0_reg;
-              left_bank_1_reg = right_bank_1_reg;
-              left_bank_2_reg = right_bank_2_reg;
-              left_bank_3_reg = right_bank_3_reg;
-              left_bank_4_reg = right_bank_4_reg;
             }
           }
           bias_data += bias_increment;

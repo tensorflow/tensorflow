@@ -95,7 +95,12 @@ class JitLaunchTest(test.TestCase):
   # If 'require_kernel_launch' is True, then we verify that an XlaCompile/XlaRun
   # node actually ran. However, it is sometimes possible for XlaCompile/XlaRun
   # ops to be constant-folded away, so the check is optional.
-  def _compare(self, fn, args, require_kernel_launch=True, noinline=None):
+  def _compare(self,
+               fn,
+               args,
+               require_kernel_launch=True,
+               name=None,
+               noinline=None):
     with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
       placeholders = []
       feeds = {}
@@ -105,7 +110,8 @@ class JitLaunchTest(test.TestCase):
         placeholders.append(placeholder)
         feeds[placeholder] = arg
 
-      compiled_op = CompiledKernel(fn, *placeholders, noinline=noinline)
+      compiled_op = CompiledKernel(
+          fn, *placeholders, name=name, noinline=noinline)
       direct_op = fn(*placeholders)
 
       run_metadata = config_pb2.RunMetadata()
@@ -155,17 +161,16 @@ class JitLaunchTest(test.TestCase):
     # to symbolically execute Bar correctly regardless of whether Bar is inlined
     # or not.
 
-    # TODO(b/36139787): Re-enable this test when noinline works again.
     # Tests compiled=True and noinline=True.
-    # self._compare(
-    #     AddOnceReturnTwice, [np.array(
-    #         [[[0.5, -1.0]]], dtype=np.float32)],
-    #     noinline=True)
+    self._compare(
+        AddOnceReturnTwice, [np.array([[[0.5, -1.0]]], dtype=np.float32)],
+        name="AddOnceReturnTwice_inline",
+        noinline=True)
 
     # Tests compiled=True and noinline=False.
     self._compare(
-        AddOnceReturnTwice, [np.array(
-            [[[0.5, -1.0]]], dtype=np.float32)],
+        AddOnceReturnTwice, [np.array([[[0.5, -1.0]]], dtype=np.float32)],
+        name="AddOnceReturnTwice_noinline",
         noinline=False)
 
   def testOneConstOutput(self):

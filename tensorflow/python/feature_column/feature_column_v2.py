@@ -573,7 +573,6 @@ class _LinearModelLayer(Layer):
       return predictions
 
 
-@keras_export('keras.layers.LinearModel', v1=[])
 class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 

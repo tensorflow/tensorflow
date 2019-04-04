@@ -1670,11 +1670,8 @@ Applies a reduction function to one or more arrays in parallel.
 | ------------- | --------------------- | ------------------------------------ |
 | `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
 | `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
-| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N,  |
-:               :                       : T_0, ..., T_N ->` `Collate(T_0, ..., :
-:               :                       : T_N)`                                :
-| `dimensions`  | `int64` array         | unordered array of dimensions to     |
-:               :                       : reduce                               :
+| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N, T_0, ..., T_N ->` `Collate(T_0, ..., T_N)`. |
+| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
 
 Where:
 

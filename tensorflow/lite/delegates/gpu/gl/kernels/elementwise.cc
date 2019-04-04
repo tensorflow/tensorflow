@@ -26,9 +26,9 @@ namespace gpu {
 namespace gl {
 namespace {
 
-class Elementwise : public NodeShader {
+class ElementwiseOneArgument : public NodeShader {
  public:
-  explicit Elementwise(OperationType operation_type)
+  explicit ElementwiseOneArgument(OperationType operation_type)
       : operation_type_(operation_type) {}
   Status GenerateCode(const GenerationContext& ctx,
                       GeneratedCode* generated_code) const final {
@@ -107,11 +107,100 @@ class Elementwise : public NodeShader {
   OperationType operation_type_;
 };
 
+class ElementwiseTwoArguments : public NodeShader {
+ public:
+  explicit ElementwiseTwoArguments(OperationType operation_type)
+      : operation_type_(operation_type) {}
+  static bool IsSupported(const GenerationContext& ctx) {
+    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+
+    // Implementation supports concatenation of 2 tensors only.
+    if (inputs.size() != 2) {
+      std::cerr << "ElementwiseTwoArguments3\n";
+      return false;
+    }
+
+    auto shape0 = inputs[0]->tensor.shape;
+    auto shape1 = inputs[1]->tensor.shape;
+
+    // Shapes must be the same
+    if (shape0 != shape1) {
+      return false;
+    }
+
+    return true;
+  }
+
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
+    if (!IsSupported(ctx)) {
+      return InvalidArgumentError(
+          "This case is not supported by subtract operation");
+    }
+    std::string source;
+    switch (operation_type_) {
+      case OperationType::SUB: {
+        source = "value_0 -= value_1;";
+        break;
+      }
+      case OperationType::DIV: {
+        source = "value_0 /= value_1;";
+        break;
+      }
+      case OperationType::POW: {
+        // From documentation :
+        // The result is undefined if x<0 or if x=0 and y≤0.
+        source = "value_0 = pow(value_0, value_1);";
+        break;
+      }
+      case OperationType::SQUARED_DIFF: {
+        source = "value_0 = (value_0 - value_1) * (value_0 - value_1);";
+        break;
+      }
+
+      default:
+        return InvalidArgumentError(
+            "Incorrect elementwise with two arguments operation type.");
+    }
+    *generated_code = {
+        /*parameters=*/{},
+        /*objects=*/{},
+        /*workload=*/uint3(),
+        /*workgroup=*/uint3(),
+        /*source_code=*/source,
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
+    return OkStatus();
+  }
+
+ private:
+  OperationType operation_type_;
+};
+
 }  // namespace
 
 std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     OperationType operation_type) {
-  return absl::make_unique<Elementwise>(operation_type);
+  switch (operation_type) {
+    case OperationType::ABS:
+    case OperationType::SIN:
+    case OperationType::COS:
+    case OperationType::LOG:
+    case OperationType::SQRT:
+    case OperationType::RSQRT:
+    case OperationType::SQUARE:
+    case OperationType::SIGMOID:
+    case OperationType::TANH:
+      return absl::make_unique<ElementwiseOneArgument>(operation_type);
+    case OperationType::SUB:
+    case OperationType::DIV:
+    case OperationType::POW:
+    case OperationType::SQUARED_DIFF:
+      return absl::make_unique<ElementwiseTwoArguments>(operation_type);
+    default:
+      return nullptr;
+  }
 }
 
 }  // namespace gl

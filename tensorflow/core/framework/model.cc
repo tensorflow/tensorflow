@@ -382,12 +382,11 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
     output_ = node;
   }
   if (output) {
-    VLOG(3) << "Adding " << node->name() << "(id:" << node->id()
-            << ") as input for " << output->name() << "(id:" << output->id()
-            << ")";
+    VLOG(3) << "Adding " << node->long_name() << " as input for "
+            << output->long_name();
     output->add_input(node);
   } else {
-    VLOG(3) << "Adding " << node->name() << "(id:" << node->id() << ")";
+    VLOG(3) << "Adding " << node->long_name();
   }
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
@@ -415,16 +414,17 @@ void Model::Optimize(int64 cpu_budget) {
     tf_shared_lock lock(mu_);
     snapshot = output_->Snapshot(nullptr);
   }
+  VLOG(2) << "Starting optimization of tunable parameters";
   const int64 processing_time = ProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  for (auto& parameter : parameters) {
-    parameter->value = 1;
+  for (auto& pair : parameters) {
+    pair.second->value = 1;
   }
   while (true) {
     const int64 output_time = OutputTime(snapshot);
     bool all_max = true;
-    for (auto& parameter : parameters) {
-      if (parameter->value < parameter->max) {
+    for (auto& pair : parameters) {
+      if (pair.second->value < pair.second->max) {
         all_max = false;
         break;
       }
@@ -434,17 +434,17 @@ void Model::Optimize(int64 cpu_budget) {
     }
     int64 best_delta = -1;
     Parameter* best_parameter = nullptr;
-    for (auto& parameter : parameters) {
-      if (parameter->value == parameter->max) {
+    for (auto& pair : parameters) {
+      if (pair.second->value == pair.second->max) {
         continue;
       }
-      parameter->value++;
+      pair.second->value++;
       int64 delta = output_time - OutputTime(snapshot);
       if (delta > best_delta) {
         best_delta = delta;
-        best_parameter = parameter.get();
+        best_parameter = pair.second.get();
       }
-      parameter->value--;
+      pair.second->value--;
     }
     if (!best_parameter) {
       // This should never happen because we are using a model snapshot and
@@ -457,8 +457,10 @@ void Model::Optimize(int64 cpu_budget) {
     best_parameter->value++;
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& parameter : parameters) {
-    VLOG(2) << "Setting tunable parameter: " << parameter->value;
+  for (auto& pair : parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
     mutex_lock l(*parameter->state->mu);
     parameter->state->value = parameter->value;
     parameter->state->cond_var->notify_all();
@@ -513,15 +515,15 @@ void Model::RemoveNode(const string& name) {
     if ((*node)->output()) {
       (*node)->output()->remove_input(*node);
     }
-    VLOG(3) << "Removing " << (*node)->name() << "(id:" << (*node)->id() << ")";
+    VLOG(3) << "Removing " << (*node)->long_name();
     remove_node_hook_(*node);
   }
   lookup_table_.erase(name);
 }
 
-std::vector<std::shared_ptr<Parameter>> Model::CollectTunableParameters(
+std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
     std::shared_ptr<Node> node) {
-  std::vector<std::shared_ptr<Parameter>> parameters;
+  std::map<string, std::shared_ptr<Parameter>> parameters;
   node->CollectTunableParameters(&parameters);
   return parameters;
 }

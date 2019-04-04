@@ -1497,7 +1497,7 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 //     `crops = [[0, 0], [0, 0]]`:
 //
 // ```
-// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+// [[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
@@ -1520,10 +1520,10 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
 // ```
-// x = [[[1],   [2],  [3],  [4]],
+// x = [[[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
-//      [[13], [14], [15],  [16]]]
+//      [[13], [14], [15],  [16]]]]
 // ```
 //
 // (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and

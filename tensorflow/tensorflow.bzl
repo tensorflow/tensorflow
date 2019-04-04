@@ -1,11 +1,5 @@
 # -*- Python -*-
 
-# version for the shared libraries, can
-# not contain rc or alpha, only numbers.
-# Also update tensorflow/core/public/version.h
-# and tensorflow/tools/pip_package/setup.py
-VERSION = "1.13.1"
-
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -55,6 +49,12 @@ load(
 
 def register_extension_info(**kwargs):
     pass
+
+# version for the shared libraries, can
+# not contain rc or alpha, only numbers.
+# Also update tensorflow/core/public/version.h
+# and tensorflow/tools/pip_package/setup.py
+VERSION = "1.13.1"
 
 def if_v2(a):
     return select({
@@ -413,11 +413,12 @@ def tf_shared_library_deps():
     suffix = "." + VERSION.split(".")[0]
 
     return select({
-        clean_dep("//tensorflow:macos"): [
+        clean_dep("//tensorflow:macos_with_framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow.dylib"),
             clean_dep("//tensorflow:libtensorflow%s.dylib" % suffix),
             clean_dep("//tensorflow:libtensorflow%s.dylib" % longsuffix),
         ],
+        clean_dep("//tensorflow:macos"): [],
         clean_dep("//tensorflow:windows"): [
             clean_dep("//tensorflow:tensorflow.dll"),
         ],
