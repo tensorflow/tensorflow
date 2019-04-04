@@ -14,11 +14,11 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to create a centos7 docker image.
+# Script to create a centos6 docker image.
 # Before running, copy tensorrt into /tmp after downlading it from:
 # https://developer.nvidia.com/nvidia-tensorrt-5x-download
 #
-# TODO(klimek): once there are downloadable images for tensorrt for centos7
+# TODO(klimek): once there are downloadable images for tensorrt for centos6
 # similar to debian, use those.
 #
 # Note that this creates a lot of large files in your filesystem:
@@ -36,7 +36,7 @@ BASE="$(pwd)"
 cp -R "${BASE}/"* "${WORKDIR}/"
 cp "/tmp/nv-tensorrt-repo-rhel7-cuda10.0-trt5.0.2.6-ga-20181010-1-1.x86_64.rpm" "${WORKDIR}/tensorrt.rpm"
 cd "${WORKDIR}"
-docker build -f Dockerfile.rbe.cuda10.0-cudnn7-centos7 \
-       --tag "gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-centos7" .
+docker build -f Dockerfile.rbe.cuda10.0-cudnn7-centos6 \
+       --tag "gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-centos6" .
 cd "${BASE}"
 rm -rf "${WORKDIR}"
