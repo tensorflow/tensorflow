@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
@@ -406,6 +407,8 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
+  string session_id_meta = strings::StrCat("RunGraph #id=", step_id, "#");
+  auto* activity = new tracing::ScopedActivity(session_id_meta);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -419,6 +422,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
+    delete activity;
     return;
   }
 
@@ -459,6 +463,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (!s.ok()) {
     done(s);
+    delete activity;
     delete ce_handle;
     item->Unref();
     rendezvous->Unref();
@@ -468,14 +473,15 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   StartParallelExecutors(
       handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
       cancellation_manager,
-      [item, rendezvous, ce_handle, done, start_time_usecs,
-       input_size](const Status& s) {
+      [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
+       activity](const Status& s) {
         done(s);
         metrics::RecordGraphInputTensors(input_size);
         metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
                                      start_time_usecs);
         rendezvous->Unref();
         item->Unref();
+        delete activity;
         delete ce_handle;
       });
 }
