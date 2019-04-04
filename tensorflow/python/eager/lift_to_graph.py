@@ -183,7 +183,7 @@ def _copy_non_source(op, graph, op_map):
       # a placeholder for now and return information about the required post-hoc
       # mutation.
       copied_input = array_ops.placeholder(
-          name="unusued_control_flow_input",
+          name="unused_control_flow_input",
           shape=original_input.shape,
           dtype=original_input.dtype)
       input_mutations.append(
