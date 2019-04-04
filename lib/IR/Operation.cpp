@@ -817,9 +817,8 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   return success();
 }
 
-static LogicalResult
-verifyBBArguments(llvm::iterator_range<Operation::operand_iterator> operands,
-                  Block *destBB, Operation *op) {
+static LogicalResult verifyBBArguments(Operation::operand_range operands,
+                                       Block *destBB, Operation *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
   if (operandCount != destBB->getNumArguments())
     return op->emitError("branch has " + Twine(operandCount) +

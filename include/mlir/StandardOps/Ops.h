@@ -138,7 +138,7 @@ public:
   }
 
   /// Get the argument operands to the called function.
-  llvm::iterator_range<operand_iterator> getArgOperands() {
+  operand_range getArgOperands() {
     return {arg_operand_begin(), arg_operand_end()};
   }
 
@@ -171,7 +171,7 @@ public:
   Value *getCallee() { return getOperand(0); }
 
   /// Get the argument operands to the called function.
-  llvm::iterator_range<operand_iterator> getArgOperands() {
+  operand_range getArgOperands() {
     return {arg_operand_begin(), arg_operand_end()};
   }
 
@@ -314,7 +314,7 @@ public:
   operand_iterator true_operand_end() {
     return true_operand_begin() + getNumTrueOperands();
   }
-  llvm::iterator_range<operand_iterator> getTrueOperands() {
+  operand_range getTrueOperands() {
     return {true_operand_begin(), true_operand_end()};
   }
 
@@ -337,7 +337,7 @@ public:
   operand_iterator false_operand_end() {
     return false_operand_begin() + getNumFalseOperands();
   }
-  llvm::iterator_range<operand_iterator> getFalseOperands() {
+  operand_range getFalseOperands() {
     return {false_operand_begin(), false_operand_end()};
   }
 
@@ -557,7 +557,7 @@ public:
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
   // Returns the source memerf indices for this DMA operation.
-  llvm::iterator_range<Operation::operand_iterator> getSrcIndices() {
+  operand_range getSrcIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
   }
@@ -576,7 +576,7 @@ public:
   }
 
   // Returns the destination memref indices for this DMA operation.
-  llvm::iterator_range<Operation::operand_iterator> getDstIndices() {
+  operand_range getDstIndices() {
     return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
                 getDstMemRefRank()};
@@ -597,7 +597,7 @@ public:
   }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Operation::operand_iterator> getTagIndices() {
+  operand_range getTagIndices() {
     unsigned tagIndexStartPos =
         1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
     return {getOperation()->operand_begin() + tagIndexStartPos,
@@ -677,7 +677,7 @@ public:
   Value *getTagMemRef() { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Operation::operand_iterator> getTagIndices() {
+  operand_range getTagIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getTagMemRefRank()};
   }
@@ -718,7 +718,7 @@ public:
 
   Value *getAggregate() { return getOperand(0); }
 
-  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+  operand_range getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
@@ -754,7 +754,7 @@ public:
     return getMemRef()->getType().cast<MemRefType>();
   }
 
-  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+  operand_range getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
@@ -878,7 +878,7 @@ public:
     return getMemRef()->getType().cast<MemRefType>();
   }
 
-  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+  operand_range getIndices() {
     return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
   }
 

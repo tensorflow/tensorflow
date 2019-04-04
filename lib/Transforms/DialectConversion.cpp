@@ -49,8 +49,7 @@ private:
 
   // Utility that looks up a list of value in the value remapping table. Returns
   // an empty vector if one of the values is not mapped yet.
-  SmallVector<Value *, 4> lookupValues(
-      const llvm::iterator_range<Operation::operand_iterator> &operands);
+  SmallVector<Value *, 4> lookupValues(Operation::operand_range operands);
 
   // Converts the given function to the dialect using hooks defined in
   // `dialectConversion`.  Returns the converted function or `nullptr` on error.
@@ -106,8 +105,8 @@ private:
 } // end namespace impl
 } // end namespace mlir
 
-SmallVector<Value *, 4> impl::FunctionConversion::lookupValues(
-    const llvm::iterator_range<Operation::operand_iterator> &operands) {
+SmallVector<Value *, 4>
+impl::FunctionConversion::lookupValues(Operation::operand_range operands) {
   SmallVector<Value *, 4> remapped;
   remapped.reserve(llvm::size(operands));
   for (Value *operand : operands) {
