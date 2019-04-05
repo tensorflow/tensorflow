@@ -387,6 +387,9 @@ public:
   static DenseElementsAttr get(VectorOrTensorType type,
                                ArrayRef<Attribute> values);
 
+  /// Returns the number of elements held by this attribute.
+  size_t size() const;
+
   /// Return the value at the given index. If index does not refer to a valid
   /// element, then a null attribute is returned.
   Attribute getValue(ArrayRef<uint64_t> index) const;
@@ -409,20 +412,69 @@ public:
   }
 
 protected:
+  /// A utility iterator that allows walking over the internal raw APInt values.
+  class RawElementIterator
+      : public llvm::iterator_facade_base<RawElementIterator,
+                                          std::bidirectional_iterator_tag,
+                                          APInt, std::ptrdiff_t, APInt, APInt> {
+  public:
+    /// Iterator movement.
+    RawElementIterator &operator++() {
+      ++index;
+      return *this;
+    }
+    RawElementIterator &operator--() {
+      --index;
+      return *this;
+    }
+
+    /// Accesses the raw APInt value at this iterator position.
+    APInt operator*() const;
+
+    /// Iterator equality.
+    bool operator==(const RawElementIterator &rhs) const {
+      return rawData == rhs.rawData && index == rhs.index;
+    }
+    bool operator!=(const RawElementIterator &rhs) const {
+      return !(*this == rhs);
+    }
+
+  private:
+    friend DenseElementsAttr;
+
+    /// Constructs a new iterator.
+    RawElementIterator(DenseElementsAttr attr, size_t index);
+
+    /// The base address of the raw data buffer.
+    const char *rawData;
+
+    /// The current element index.
+    size_t index;
+
+    /// The bitwidth of the element type.
+    size_t bitWidth;
+  };
+
+  /// Raw element iterators for this attribute.
+  RawElementIterator raw_begin() const { return RawElementIterator(*this, 0); }
+  RawElementIterator raw_end() const {
+    return RawElementIterator(*this, size());
+  }
+
   // Constructs a dense elements attribute from an array of raw APInt values.
   // Each APInt value is expected to have the same bitwidth as the element type
   // of 'type'.
   static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<APInt> values);
-
-  /// Parses the raw integer internal value for each dense element into
-  /// 'values'.
-  void getRawValues(SmallVectorImpl<APInt> &values) const;
 };
 
 /// An attribute that represents a reference to a dense integer vector or tensor
 /// object.
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
+  /// DenseIntElementsAttr iterates on APInt, so we can use the raw element
+  /// iterator directly.
+  using iterator = DenseElementsAttr::RawElementIterator;
+
   using DenseElementsAttr::DenseElementsAttr;
   using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
@@ -443,6 +495,10 @@ public:
   /// Gets the integer value of each of the dense elements.
   void getValues(SmallVectorImpl<APInt> &values) const;
 
+  /// Iterator access to the integer element values.
+  iterator begin() const { return raw_begin(); }
+  iterator end() const { return raw_end(); }
+
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::DenseIntElements; }
 };
@@ -451,6 +507,18 @@ public:
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
+  /// DenseFPElementsAttr iterates on APFloat, so we need to wrap the raw
+  /// element iterator.
+  class ElementIterator final
+      : public llvm::mapped_iterator<RawElementIterator,
+                                     std::function<APFloat(const APInt &)>> {
+    friend DenseFPElementsAttr;
+
+    /// Initializes the float element iterator to the specified iterator.
+    ElementIterator(const llvm::fltSemantics &smt, RawElementIterator it);
+  };
+  using iterator = ElementIterator;
+
   using DenseElementsAttr::DenseElementsAttr;
   using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
@@ -464,6 +532,10 @@ public:
 
   /// Gets the float value of each of the dense elements.
   void getValues(SmallVectorImpl<APFloat> &values) const;
+
+  /// Iterator access to the float element values.
+  iterator begin() const;
+  iterator end() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::DenseFPElements; }

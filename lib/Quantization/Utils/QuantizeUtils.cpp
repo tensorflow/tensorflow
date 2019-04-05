@@ -47,15 +47,11 @@ static DenseElementsAttr
 convertDenseFPElementsAttr(DenseFPElementsAttr realFPElementsAttr,
                            QuantizedType quantizedElementType,
                            const UniformQuantizedValueConverter &converter) {
-  // Read real expressed values.
-  SmallVector<APFloat, 8> realValues;
-  realValues.reserve(realFPElementsAttr.getType().getNumElements());
-  realFPElementsAttr.getValues(realValues);
-
   // Convert to corresponding quantized value attributes.
-  SmallVector<APInt, 8> quantValues(realValues.size());
-  for (size_t i = 0, e = realValues.size(); i < e; ++i) {
-    quantValues[i] = converter.quantizeFloatToInt(realValues[i]);
+  SmallVector<APInt, 8> quantValues;
+  quantValues.reserve(realFPElementsAttr.size());
+  for (APFloat realVal : realFPElementsAttr) {
+    quantValues.push_back(converter.quantizeFloatToInt(realVal));
   }
 
   // Cast from an expressed-type-based type to storage-type-based type,

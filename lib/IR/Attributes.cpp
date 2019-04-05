@@ -65,7 +65,9 @@ Attribute Attribute::remapFunctionAttrs(
   return ArrayAttr::get(remappedElts, context);
 }
 
-/// NumericAttr
+//===----------------------------------------------------------------------===//
+// NumericAttr
+//===----------------------------------------------------------------------===//
 
 Type NumericAttr::getType() const {
   if (auto boolAttr = dyn_cast<BoolAttr>())
@@ -85,13 +87,17 @@ bool NumericAttr::kindof(Kind kind) {
          FloatAttr::kindof(kind) || ElementsAttr::kindof(kind);
 }
 
-/// BoolAttr
+//===----------------------------------------------------------------------===//
+// BoolAttr
+//===----------------------------------------------------------------------===//
 
 bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
 Type BoolAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 
-/// IntegerAttr
+//===----------------------------------------------------------------------===//
+// IntegerAttr
+//===----------------------------------------------------------------------===//
 
 APInt IntegerAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
@@ -103,7 +109,9 @@ Type IntegerAttr::getType() const {
   return static_cast<ImplType *>(attr)->type;
 }
 
-/// FloatAttr
+//===----------------------------------------------------------------------===//
+// FloatAttr
+//===----------------------------------------------------------------------===//
 
 APFloat FloatAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
@@ -122,35 +130,47 @@ double FloatAttr::getValueAsDouble() const {
   return value.convertToDouble();
 }
 
-/// StringAttr
+//===----------------------------------------------------------------------===//
+// StringAttr
+//===----------------------------------------------------------------------===//
 
 StringRef StringAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-/// ArrayAttr
+//===----------------------------------------------------------------------===//
+// ArrayAttr
+//===----------------------------------------------------------------------===//
 
 ArrayRef<Attribute> ArrayAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-/// AffineMapAttr
+//===----------------------------------------------------------------------===//
+// AffineMapAttr
+//===----------------------------------------------------------------------===//
 
 AffineMap AffineMapAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-/// IntegerSetAttr
+//===----------------------------------------------------------------------===//
+// IntegerSetAttr
+//===----------------------------------------------------------------------===//
 
 IntegerSet IntegerSetAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-/// TypeAttr
+//===----------------------------------------------------------------------===//
+// TypeAttr
+//===----------------------------------------------------------------------===//
 
 Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
-/// FunctionAttr
+//===----------------------------------------------------------------------===//
+// FunctionAttr
+//===----------------------------------------------------------------------===//
 
 Function *FunctionAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
@@ -158,7 +178,9 @@ Function *FunctionAttr::getValue() const {
 
 FunctionType FunctionAttr::getType() const { return getValue()->getType(); }
 
-/// ElementsAttr
+//===----------------------------------------------------------------------===//
+// ElementsAttr
+//===----------------------------------------------------------------------===//
 
 VectorOrTensorType ElementsAttr::getType() const {
   return static_cast<ImplType *>(attr)->type;
@@ -182,13 +204,41 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   }
 }
 
-/// SplatElementsAttr
+//===----------------------------------------------------------------------===//
+// SplatElementsAttr
+//===----------------------------------------------------------------------===//
 
 Attribute SplatElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->elt;
 }
 
-/// DenseElementsAttr
+//===----------------------------------------------------------------------===//
+// RawElementIterator
+//===----------------------------------------------------------------------===//
+
+static size_t getDenseElementBitwidth(Type eltType) {
+  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+  // with double semantics.
+  return eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
+}
+
+/// Constructs a new iterator.
+DenseElementsAttr::RawElementIterator::RawElementIterator(
+    DenseElementsAttr attr, size_t index)
+    : rawData(attr.getRawData().data()), index(index),
+      bitWidth(getDenseElementBitwidth(attr.getType().getElementType())) {}
+
+/// Accesses the raw APInt value at this iterator position.
+APInt DenseElementsAttr::RawElementIterator::operator*() const {
+  return readBits(rawData, index * bitWidth, bitWidth);
+}
+
+//===----------------------------------------------------------------------===//
+// DenseElementsAttr
+//===----------------------------------------------------------------------===//
+
+/// Returns the number of elements held by this attribute.
+size_t DenseElementsAttr::size() const { return getType().getNumElements(); }
 
 /// Return the value at the given index. If index does not refer to a valid
 /// element, then a null attribute is returned.
@@ -215,12 +265,8 @@ Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   }
 
   // Return the element stored at the 1D index.
-
-  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
-  // with double semantics.
   auto elementType = getType().getElementType();
-  size_t bitWidth =
-      elementType.isBF16() ? 64 : elementType.getIntOrFloatBitWidth();
+  size_t bitWidth = getDenseElementBitwidth(elementType);
   APInt rawValueData =
       readBits(getRawData().data(), valueIndex * bitWidth, bitWidth);
 
@@ -277,10 +323,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   assert(values.size() == type.getNumElements() &&
          "expected 'values' to contain the same number of elements as 'type'");
 
-  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
-  // with double semantics.
-  auto eltType = type.getElementType();
-  size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
+  size_t bitWidth = getDenseElementBitwidth(type.getElementType());
   std::vector<char> elementData(APInt::getNumWords(bitWidth * values.size()) *
                                 APInt::APINT_WORD_SIZE);
   for (unsigned i = 0, e = values.size(); i != e; ++i) {
@@ -288,22 +331,6 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
     writeBits(elementData.data(), i * bitWidth, values[i]);
   }
   return get(type, elementData);
-}
-
-/// Parses the raw integer internal value for each dense element into
-/// 'values'.
-void DenseElementsAttr::getRawValues(SmallVectorImpl<APInt> &values) const {
-  auto elementType = getType().getElementType();
-  auto elementNum = getType().getNumElements();
-  values.reserve(elementNum);
-
-  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
-  // with double semantics.
-  size_t bitWidth =
-      elementType.isBF16() ? 64 : elementType.getIntOrFloatBitWidth();
-  const auto *rawData = getRawData().data();
-  for (size_t i = 0, e = elementNum; i != e; ++i)
-    values.push_back(readBits(rawData, i * bitWidth, bitWidth));
 }
 
 /// Writes value to the bit position `bitPos` in array `rawData`. 'rawData' is
@@ -354,7 +381,9 @@ APInt DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
   return result;
 }
 
-/// DenseIntElementsAttr
+//===----------------------------------------------------------------------===//
+// DenseIntElementsAttr
+//===----------------------------------------------------------------------===//
 
 /// Constructs a dense integer elements attribute from an array of APInt
 /// values. Each APInt value is expected to have the same bitwidth as the
@@ -381,11 +410,19 @@ DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
 }
 
 void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {
-  // Simply return the raw integer values.
-  getRawValues(values);
+  values.reserve(size());
+  values.assign(raw_begin(), raw_end());
 }
 
-/// DenseFPElementsAttr
+//===----------------------------------------------------------------------===//
+// DenseFPElementsAttr
+//===----------------------------------------------------------------------===//
+
+DenseFPElementsAttr::ElementIterator::ElementIterator(
+    const llvm::fltSemantics &smt, RawElementIterator it)
+    : llvm::mapped_iterator<RawElementIterator,
+                            std::function<APFloat(const APInt &)>>(
+          it, [&](const APInt &val) { return APFloat(smt, val); }) {}
 
 // Constructs a dense float elements attribute from an array of APFloat
 // values. Each APFloat value is expected to have the same bitwidth as the
@@ -400,18 +437,25 @@ DenseFPElementsAttr DenseFPElementsAttr::get(VectorOrTensorType type,
 }
 
 void DenseFPElementsAttr::getValues(SmallVectorImpl<APFloat> &values) const {
-  // Get the raw APInt element values.
-  SmallVector<APInt, 8> intValues;
-  getRawValues(intValues);
-
-  // Convert each of the APInt values to an APFloat.
-  auto elementType = getType().getElementType().dyn_cast<FloatType>();
-  const auto &elementSemantics = elementType.getFloatSemantics();
-  for (auto &intValue : intValues)
-    values.push_back(APFloat(elementSemantics, intValue));
+  values.reserve(size());
+  values.assign(begin(), end());
 }
 
-/// OpaqueElementsAttr
+/// Iterator access to the float element values.
+DenseFPElementsAttr::iterator DenseFPElementsAttr::begin() const {
+  auto elementType = getType().getElementType().cast<FloatType>();
+  const auto &elementSemantics = elementType.getFloatSemantics();
+  return {elementSemantics, raw_begin()};
+}
+DenseFPElementsAttr::iterator DenseFPElementsAttr::end() const {
+  auto elementType = getType().getElementType().cast<FloatType>();
+  const auto &elementSemantics = elementType.getFloatSemantics();
+  return {elementSemantics, raw_end()};
+}
+
+//===----------------------------------------------------------------------===//
+// OpaqueElementsAttr
+//===----------------------------------------------------------------------===//
 
 StringRef OpaqueElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->bytes;
@@ -435,7 +479,9 @@ bool OpaqueElementsAttr::decode(ElementsAttr &result) {
   return true;
 }
 
-/// SparseElementsAttr
+//===----------------------------------------------------------------------===//
+// SparseElementsAttr
+//===----------------------------------------------------------------------===//
 
 DenseIntElementsAttr SparseElementsAttr::getIndices() const {
   return static_cast<ImplType *>(attr)->indices;
@@ -482,7 +528,9 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   return getValues().getValue(it->second);
 }
 
-/// NamedAttributeList
+//===----------------------------------------------------------------------===//
+// NamedAttributeList
+//===----------------------------------------------------------------------===//
 
 NamedAttributeList::NamedAttributeList(MLIRContext *context,
                                        ArrayRef<NamedAttribute> attributes) {
