@@ -103,12 +103,11 @@ ArgVectors GetCallInputs(CompilerResources& res, const HloInstruction* inst,
 
 }  // namespace
 
-static StatusOr<std::shared_ptr<SubComputationVisitor>>
-GetOrCompileSubComputation(CompilerResources& res, const ArgVectors& inputs,
-                           const HloComputation* comp,
-                           bool inplace_inputs = false,
-                           const std::vector<const SubComputationVisitor*>&
-                               dependent_subcomputations = {}) {
+StatusOr<std::shared_ptr<SubComputationVisitor>> GetOrCompileSubComputation(
+    CompilerResources& res, const ArgVectors& inputs,
+    const HloComputation* comp, bool inplace_inputs,
+    const std::vector<const SubComputationVisitor*>&
+        dependent_subcomputations) {
   // We can reuse sub computation if it's not inplace.
   if (!inplace_inputs) {
     auto itr = res.computation_map.find(comp);

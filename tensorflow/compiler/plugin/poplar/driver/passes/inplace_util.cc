@@ -147,6 +147,7 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReshape:
+    case HloOpcode::kScatter:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose: {
       // All of the above ops are inplace on operand 0.
@@ -259,7 +260,6 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRng:
-    case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kTupleSelect: {

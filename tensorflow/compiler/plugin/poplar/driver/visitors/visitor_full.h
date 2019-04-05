@@ -62,6 +62,8 @@ class FullVisitor : public BaseVisitor {
 
   Status HandleReduceWindow(HloInstruction* inst) override;
 
+  Status HandleScatter(HloInstruction* inst) override;
+
   Status HandleSelectAndScatter(HloInstruction* inst) override;
 
   Status HandleWhile(HloInstruction* inst) override;
