@@ -645,6 +645,22 @@ class ArrayMinCount<int n> : AttrConstraint<
     CPred<"{0}.cast<ArrayAttr>().size() >= " # n>,
     "with at least " # n # " elements">;
 
+class IntArrayNthElemEq<int index, int value> : AttrConstraint<
+    AllOf<[
+      CPred<"{0}.cast<ArrayAttr>().size() > " # index>,
+      CPred<"{0}.cast<ArrayAttr>().getValue()[" # index # "]"
+        ".cast<IntegerAttr>().getInt() == " # value>
+       ]>,
+    "whose " # index # "-th element must be " # value>;
+
+class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
+    AllOf<[
+      CPred<"{0}.cast<ArrayAttr>().size() > " # index>,
+      CPred<"{0}.cast<ArrayAttr>().getValue()[" # index # "]"
+        ".cast<IntegerAttr>().getInt() >= " # min>
+        ]>,
+    "whose " # index # "-th element must be at least " # min>;
+
 //===----------------------------------------------------------------------===//
 // OpTrait definitions
 //===----------------------------------------------------------------------===//

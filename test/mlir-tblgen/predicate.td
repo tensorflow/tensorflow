@@ -70,3 +70,19 @@ def OpG : Op<"op_for_arr_min_count", []> {
 // CHECK-LABEL: OpG::verify()
 // CHECK:       (tblgen_attr.cast<ArrayAttr>().size() >= 8)
 // CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array attribute with at least 8 elements");
+
+def OpH : Op<"op_for_arr_value_at_index", []> {
+  let arguments = (ins Confined<ArrayAttr, [IntArrayNthElemEq<0, 8>]>:$attr);
+}
+
+// CHECK-LABEL: OpH::verify()
+// CHECK: (((tblgen_attr.cast<ArrayAttr>().size() > 0)) && ((tblgen_attr.cast<ArrayAttr>().getValue()[0].cast<IntegerAttr>().getInt() == 8)))))
+// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array attribute whose 0-th element must be 8");
+
+def OpI: Op<"op_for_arr_min_value_at_index", []> {
+  let arguments = (ins Confined<ArrayAttr, [IntArrayNthElemMinValue<0, 8>]>:$attr);
+}
+
+// CHECK-LABEL: OpI::verify()
+// CHECK: (((tblgen_attr.cast<ArrayAttr>().size() > 0)) && ((tblgen_attr.cast<ArrayAttr>().getValue()[0].cast<IntegerAttr>().getInt() >= 8)))))
+// CHECK-SAME:    return emitOpError("attribute 'attr' failed to satisfy constraint: array attribute whose 0-th element must be at least 8");
