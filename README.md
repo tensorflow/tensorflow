@@ -84,7 +84,11 @@ and by making references explicit with `function_ref`.
 
 # Getting started with MLIR
 
-MLIR has been tested on Linux and macOS, with recent versions of clang and with gcc 7.
+The following instructions assume that you have `git`,
+[`ninja`](https://ninja-build.org/), and a working C++ toolchain. In the future,
+we aim to align on the same level of platform support as
+[LLVM](https://llvm.org/docs/GettingStarted.html#requirements). For now, MLIR
+has been tested on Linux and macOS, with recent versions of clang and with gcc 7.
 
 ```
 git clone https://github.com/llvm/llvm-project.git
