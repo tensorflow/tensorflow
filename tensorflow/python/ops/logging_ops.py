@@ -72,10 +72,14 @@ except NameError:
                           "only a concern in graph mode. Below is an example "
                           "of how to ensure tf.print executes in graph mode:\n"
                           """```python
-    tensor = tf.range(10)
-    print_op = tf.print(tensor)
-    with tf.control_dependencies([print_op]):
-      out = tf.add(tensor, tensor)
+    # tf.Session is deprecated in TF 2
+    sess = tf.Session()
+    with sess.as_default():
+        tensor = tf.range(10)
+        print_op = tf.print(tensor)
+        with tf.control_dependencies([print_op]):
+          out = tf.add(tensor, tensor)
+        sess.run(out)
     ```
 Additionally, to use tf.print in python 2.7, users must make sure to import
 the following:
@@ -124,6 +128,109 @@ def _is_filepath(output_stream):
   """Returns True if output_stream is a file path."""
   return isinstance(output_stream, str) and output_stream.startswith("file://")
 
+# todo: remove this when release tfv2
+# Temporarily disable pylint g-doc-args error to allow giving more context
+# about what the kwargs are.
+# Because we are using arbitrary-length positional arguments, python 2
+# does not support explicitly specifying the keyword arguments in the
+# function definition.
+# pylint: disable=g-doc-args
+@tf_export(v1=["print"])
+def print_v1(*inputs, **kwargs):
+  """Print the specified inputs.
+
+  Returns an operator that prints the specified inputs to a desired
+  output stream or logging level. The inputs may be dense or sparse Tensors,
+  primitive python objects, data structures that contain Tensors, and printable
+  python objects. Printed tensors will recursively show the first and last
+  `summarize` elements of each dimension.
+
+  With eager execution enabled and/or inside a `tf.contrib.eager.defun` this
+  operator will automatically execute, and users only need to call `tf.print`
+  without using the return value. When constructing graphs outside of a
+  `tf.contrib.eager.defun`, one must either include the returned op
+  in the input to `session.run`, or use the operator as a control dependency for
+  executed ops by specifying `with tf.control_dependencies([print_op])`.
+
+  @compatibility(python2)
+  In python 2.7, make sure to import the following:
+  `from __future__ import print_function`
+  @end_compatibility
+
+  Example:
+    Single-input usage:
+    ```python
+    tf.enable_eager_execution()
+    tensor = tf.range(10)
+    tf.print(tensor, output_stream=sys.stderr)
+    ```
+    (This prints "[0 1 2 ... 7 8 9]" to sys.stderr)
+
+    Multi-input usage:
+    ```python
+    tf.enable_eager_execution()
+    tensor = tf.range(10)
+    tf.print("tensors:", tensor, {2: tensor * 2}, output_stream=sys.stdout)
+    ```
+    (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
+    sys.stdout)
+
+    Usage in a defun:
+    ```python
+    tf.enable_eager_execution()
+
+    @tf.contrib.eager.defun
+    def f():
+        tensor = tf.range(10)
+        tf.print(tensor, output_stream=sys.stderr)
+        return tensor
+
+    range_tensor = f()
+    ```
+    (This prints "[0 1 2 ... 7 8 9]" to sys.stderr)
+
+    Usage when constructing graphs:
+    ```python
+    sess = tf.Session()
+    with sess.as_default():
+      tensor = tf.range(10)
+      print_op = tf.print("tensors:", tensor, {2: tensor * 2},
+                          output_stream=sys.stdout)
+      with tf.control_dependencies([print_op]):
+        tripled_tensor = tensor * 3
+      sess.run(tripled_tensor)
+    ```
+    (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
+    sys.stdout)
+
+  Note: In Jupyter notebooks and colabs, this operator prints to the notebook
+    cell outputs. It will not write to the notebook kernel's console logs.
+
+  Args:
+    *inputs: Positional arguments that are the inputs to print. Inputs in the
+      printed output will be separated by spaces. Inputs may be python
+      primitives, tensors, data structures such as dicts and lists that
+      may contain tensors (with the data structures possibly nested in
+      arbitrary ways), and printable python objects.
+    output_stream: The output stream, logging level, or file to print to.
+      Defaults to sys.stderr, but sys.stdout, tf.logging.info,
+      tf.logging.warning, and tf.logging.error are also supported. To print to
+      a file, pass a string started with "file://" followed by the file path,
+      e.g., "file:///tmp/foo.out".
+    summarize: The first and last `summarize` elements within each dimension are
+      recursively printed per Tensor. If None, then the first 3 and last 3
+      elements of each dimension are printed for each tensor. If set to -1, it
+      will print all elements of every tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    A print operator that prints the specified inputs in the specified output
+    stream or logging level.
+
+  Raises:
+    ValueError: If an unsupported output stream is specified.
+  """
+  print_v2(inputs, kwargs)
 
 # Temporarily disable pylint g-doc-args error to allow giving more context
 # about what the kwargs are.
@@ -131,7 +238,7 @@ def _is_filepath(output_stream):
 # does not support explicitly specifying the keyword arguments in the
 # function definition.
 # pylint: disable=g-doc-args
-@tf_export("print")
+@tf_export("print", v1=[])
 def print_v2(*inputs, **kwargs):
   """Print the specified inputs.
 
