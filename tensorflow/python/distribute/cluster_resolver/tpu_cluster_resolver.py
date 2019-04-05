@@ -52,7 +52,7 @@ _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
 _TPU_CONN_RETRIES = 120
 
-_GCE_METADATA_ENDPOINT = 'https://metadata.google.internal'
+_GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
 
 DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
