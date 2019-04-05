@@ -38,7 +38,7 @@ _PRINT_DEPRECATION_WARNINGS = True
 _PRINTED_WARNING = {}
 
 
-class DeprecatedNamesAlreadySet(Exception):
+class DeprecatedNamesAlreadySetError(Exception):
   """Raised when setting deprecated names multiple times for the same symbol."""
   pass
 
@@ -95,6 +95,11 @@ def _validate_deprecation_args(date, instructions):
     raise ValueError('Date must be YYYY-MM-DD.')
   if not instructions:
     raise ValueError('Don\'t deprecate things without conversion instructions!')
+
+
+def istuplesubclass(f):
+  """Returns True if the argument inherits from tuple."""
+  return tuple in tf_inspect.getmro(f)
 
 
 def _call_location(outer=False):
@@ -186,39 +191,75 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
     use and has a modified docstring.
   """
   if tf_inspect.isclass(func_or_class):
+    # In most cases, we want to override __init__ to print deprecation warning.
+    # However, if a class inherits from immutable type, then we need to
+    # override __new__ instead. Unfortunately, there doesn't seem to be an
+    # easy way to check if a type is immutable.
+    if istuplesubclass(func_or_class):
 
-    # Make a new class with __init__ wrapped in a warning.
-    class _NewClass(func_or_class):  # pylint: disable=missing-docstring
-      __doc__ = decorator_utils.add_notice_to_docstring(
-          func_or_class.__doc__, 'Please use %s instead.' % name,
-          'DEPRECATED CLASS',
-          '(deprecated)', ['THIS CLASS IS DEPRECATED. '
-                           'It will be removed in a future version. '])
-      __name__ = func_or_class.__name__
-      __module__ = _call_location(outer=True)
+      # Make a new class with __new__ wrapped in a warning.
+      class _NewClass(func_or_class):  # pylint: disable=missing-docstring
+        __doc__ = decorator_utils.add_notice_to_docstring(
+            func_or_class.__doc__, 'Please use %s instead.' % name,
+            'DEPRECATED CLASS',
+            '(deprecated)', ['THIS CLASS IS DEPRECATED. '
+                             'It will be removed in a future version. '])
+        __name__ = func_or_class.__name__
+        __module__ = _call_location(outer=True)
 
-      @_wrap_decorator(func_or_class.__init__)
-      def __init__(self, *args, **kwargs):
-        if hasattr(_NewClass.__init__, '__func__'):
-          # Python 2
-          _NewClass.__init__.__func__.__doc__ = func_or_class.__init__.__doc__
-        else:
-          # Python 3
-          _NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
+        @_wrap_decorator(func_or_class.__new__)
+        def __new__(cls, *args, **kwargs):
+          _NewClass.__new__.__doc__ = func_or_class.__new__.__doc__
 
-        if _PRINT_DEPRECATION_WARNINGS:
-          # We're making the alias as we speak. The original may have other
-          # aliases, so we cannot use it to check for whether it's already been
-          # warned about.
-          if _NewClass.__init__ not in _PRINTED_WARNING:
-            if warn_once:
-              _PRINTED_WARNING[_NewClass.__init__] = True
-            logging.warning(
-                'From %s: The name %s is deprecated. Please use %s instead.\n',
-                _call_location(), deprecated_name, name)
-        super(_NewClass, self).__init__(*args, **kwargs)
+          if _PRINT_DEPRECATION_WARNINGS:
+            # We're making the alias as we speak. The original may have other
+            # aliases, so we cannot use it to check for whether it's already
+            # been warned about.
+            if _NewClass.__new__ not in _PRINTED_WARNING:
+              if warn_once:
+                _PRINTED_WARNING[_NewClass.__new__] = True
+              logging.warning(
+                  'From %s: The name %s is deprecated. '
+                  'Please use %s instead.\n',
+                  _call_location(), deprecated_name, name)
+          return super(_NewClass, cls).__new__(cls, *args, **kwargs)
 
-    return _NewClass
+      return _NewClass
+    else:
+
+      # Make a new class with __init__ wrapped in a warning.
+      class _NewClass(func_or_class):  # pylint: disable=missing-docstring
+        __doc__ = decorator_utils.add_notice_to_docstring(
+            func_or_class.__doc__, 'Please use %s instead.' % name,
+            'DEPRECATED CLASS',
+            '(deprecated)', ['THIS CLASS IS DEPRECATED. '
+                             'It will be removed in a future version. '])
+        __name__ = func_or_class.__name__
+        __module__ = _call_location(outer=True)
+
+        @_wrap_decorator(func_or_class.__init__)
+        def __init__(self, *args, **kwargs):
+          if hasattr(_NewClass.__init__, '__func__'):
+            # Python 2
+            _NewClass.__init__.__func__.__doc__ = func_or_class.__init__.__doc__
+          else:
+            # Python 3
+            _NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
+
+          if _PRINT_DEPRECATION_WARNINGS:
+            # We're making the alias as we speak. The original may have other
+            # aliases, so we cannot use it to check for whether it's already
+            # been warned about.
+            if _NewClass.__init__ not in _PRINTED_WARNING:
+              if warn_once:
+                _PRINTED_WARNING[_NewClass.__init__] = True
+              logging.warning(
+                  'From %s: The name %s is deprecated. '
+                  'Please use %s instead.\n',
+                  _call_location(), deprecated_name, name)
+          super(_NewClass, self).__init__(*args, **kwargs)  # pylint: disable=bad-super-call
+
+      return _NewClass
   else:
     decorator_utils.validate_callable(func_or_class, 'deprecated')
 
@@ -261,7 +302,7 @@ def deprecated_endpoints(*args):
   def deprecated_wrapper(func):
     # pylint: disable=protected-access
     if '_tf_deprecated_api_names' in func.__dict__:
-      raise DeprecatedNamesAlreadySet(
+      raise DeprecatedNamesAlreadySetError(
           'Cannot set deprecated names for %s to %s. '
           'Deprecated names are already set to %s.' % (
               func.__name__, str(args), str(func._tf_deprecated_api_names)))
