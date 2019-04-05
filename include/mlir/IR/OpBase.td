@@ -550,11 +550,22 @@ class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
 }
 
 def I32ArrayAttr : TypedArrayAttrBase<I32Attr,
-                                      "32-bit integer array attribute">;
+                                      "32-bit integer array attribute"> {
+  let constBuilderCall = "{0}.getI32ArrayAttr({1})";
+}
 def I64ArrayAttr : TypedArrayAttrBase<I64Attr,
-                                      "64-bit integer array attribute">;
-def F32ArrayAttr : TypedArrayAttrBase<F32Attr, "32-bit float array attribute">;
-def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute">;
+                                      "64-bit integer array attribute"> {
+  let constBuilderCall = "{0}.getI64ArrayAttr({1})";
+}
+def F32ArrayAttr : TypedArrayAttrBase<F32Attr, "32-bit float array attribute"> {
+  let constBuilderCall = "{0}.getF32ArrayAttr({1})";
+}
+def F64ArrayAttr : TypedArrayAttrBase<F64Attr, "64-bit float array attribute"> {
+  let constBuilderCall = "{0}.getF64ArrayAttr({1})";
+}
+def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute"> {
+  let constBuilderCall = "{0}.getStrArrayAttr({1})";
+}
 
 // Attributes containing functions.
 def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">,

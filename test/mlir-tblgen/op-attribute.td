@@ -9,6 +9,9 @@ def SomeAttr : Attr<CPred<"some-condition">, "some attribute kind"> {
   let constBuilderCall = "some-const-builder-call({0}, {1})";
 }
 
+// Test required, optional, default-valued attributes
+// ---
+
 def AOp : Op<"a_op", []> {
   let arguments = (ins
       SomeAttr:$aAttr,
@@ -100,6 +103,28 @@ def BOp : Op<"b_op", []> {
 // CHECK: if (!((tblgen_array_attr.isa<ArrayAttr>())))
 // CHECK: if (!(((tblgen_some_attr_array.isa<ArrayAttr>())) && (llvm::all_of(tblgen_some_attr_array.cast<ArrayAttr>(), [](Attribute attr) { return (some-condition); }))))
 
+// Test building constant values for array attribute kinds
+// ---
+
+def COp : Op<"c_op", []> {
+  let arguments = (ins
+    DefaultValuedAttr<I32ArrayAttr, "{1, 2}">:$i32_array_attr,
+    DefaultValuedAttr<I64ArrayAttr, "{3, 4}">:$i64_array_attr,
+    DefaultValuedAttr<F32ArrayAttr, "{5.f, 6.f}">:$f32_array_attr,
+    DefaultValuedAttr<F64ArrayAttr, "{7., 8.}">:$f64_array_attr,
+    DefaultValuedAttr<StrArrayAttr, "{\"a\", \"b\"}">:$str_array_attr
+  );
+}
+
+// CHECK-LABEL: COp definitions
+// CHECK: mlir::Builder(this->getContext()).getI32ArrayAttr({1, 2})
+// CHECK: mlir::Builder(this->getContext()).getI64ArrayAttr({3, 4})
+// CHECK: mlir::Builder(this->getContext()).getF32ArrayAttr({5.f, 6.f})
+// CHECK: mlir::Builder(this->getContext()).getF64ArrayAttr({7., 8.})
+// CHECK: mlir::Builder(this->getContext()).getStrArrayAttr({"a", "b"})
+
+// Test mixing operands and attributes in arbitrary order
+// ---
 
 def MixOperandsAndAttrs : Op<"mix_operands_and_attrs", []> {
   let arguments = (ins F32Attr:$attr, F32:$operand, F32Attr:$otherAttr, F32:$otherArg);

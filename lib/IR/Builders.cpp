@@ -23,6 +23,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Support/Functional.h"
 using namespace mlir;
 
 Builder::Builder(Module *module) : context(module->getContext()) {}
@@ -200,6 +201,36 @@ ElementsAttr Builder::getOpaqueElementsAttr(Dialect *dialect,
                                             VectorOrTensorType type,
                                             StringRef bytes) {
   return OpaqueElementsAttr::get(dialect, type, bytes);
+}
+
+ArrayAttr Builder::getI32ArrayAttr(ArrayRef<int32_t> values) {
+  auto attrs = functional::map(
+      [this](int32_t v) -> Attribute { return getI32IntegerAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
+ArrayAttr Builder::getI64ArrayAttr(ArrayRef<int64_t> values) {
+  auto attrs = functional::map(
+      [this](int64_t v) -> Attribute { return getI64IntegerAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
+ArrayAttr Builder::getF32ArrayAttr(ArrayRef<float> values) {
+  auto attrs = functional::map(
+      [this](float v) -> Attribute { return getF32FloatAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
+ArrayAttr Builder::getF64ArrayAttr(ArrayRef<double> values) {
+  auto attrs = functional::map(
+      [this](double v) -> Attribute { return getF64FloatAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
+ArrayAttr Builder::getStrArrayAttr(ArrayRef<StringRef> values) {
+  auto attrs = functional::map(
+      [this](StringRef v) -> Attribute { return getStringAttr(v); }, values);
+  return getArrayAttr(attrs);
 }
 
 Attribute Builder::getZeroAttr(Type type) {

@@ -103,9 +103,15 @@ bool tblgen::Attribute::isOptional() const {
 
 std::string tblgen::Attribute::getDefaultValueTemplate() const {
   assert(isConstBuildable() && "requiers constBuilderCall");
-  const auto *init = def->getValueInit("defaultValue");
+  StringRef defaultValue = getValueAsString(def->getValueInit("defaultValue"));
+  // TODO(antiagainst): This is a temporary hack to support array initializers
+  // because '{' is the special marker for placeholders for formatv. Remove this
+  // after switching to our own formatting utility and $-placeholders.
+  bool needsEscape =
+      defaultValue.startswith("{") && !defaultValue.startswith("{{");
+
   return llvm::formatv(getConstBuilderTemplate().str().c_str(), "{0}",
-                       getValueAsString(init));
+                       needsEscape ? "{" + defaultValue : defaultValue);
 }
 
 StringRef tblgen::Attribute::getTableGenDefName() const {

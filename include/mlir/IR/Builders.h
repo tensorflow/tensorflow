@@ -132,6 +132,12 @@ public:
   IntegerAttr getI32IntegerAttr(int32_t value);
   IntegerAttr getI64IntegerAttr(int64_t value);
 
+  ArrayAttr getI32ArrayAttr(ArrayRef<int32_t> values);
+  ArrayAttr getI64ArrayAttr(ArrayRef<int64_t> values);
+  ArrayAttr getF32ArrayAttr(ArrayRef<float> values);
+  ArrayAttr getF64ArrayAttr(ArrayRef<double> values);
+  ArrayAttr getStrArrayAttr(ArrayRef<StringRef> values);
+
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);
   AffineExpr getAffineSymbolExpr(unsigned position);
