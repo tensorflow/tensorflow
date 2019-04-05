@@ -104,6 +104,8 @@ struct uniforms {
   int4 src_size;
   int4 dst_size;
   int2 plane_xz;
+  int2 dummy0;  // dummy, for alignment
+  int4 dummy1;  // dummy, for alignment
 };
 
 $0
@@ -211,20 +213,22 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
        [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_dim = buffers.find(input_id)->second;
          const auto& dst_dim = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{
+         std::vector<int32_t> uniform_params{
              // int4 src_size
-             src_dim.w,
-             src_dim.h,
-             IntegralDivideRoundUp(src_dim.c, 4),
+             src_dim.w, src_dim.h, IntegralDivideRoundUp(src_dim.c, 4),
              src_dim.w * src_dim.h,
              // int4 dst_size
-             dst_dim.w,
-             dst_dim.h,
-             IntegralDivideRoundUp(dst_dim.c, 4),
+             dst_dim.w, dst_dim.h, IntegralDivideRoundUp(dst_dim.c, 4),
              dst_dim.w * dst_dim.h,
              // int2 plane_xz
              src_dim.w * IntegralDivideRoundUp(src_dim.c, 4),
              dst_dim.w * IntegralDivideRoundUp(dst_dim.c, 4),
+             0,  // dummy, for alignment
+             0,  // dummy, for alignment
+             0,  // dummy, for alignment
+             0,  // dummy, for alignment
+             0,  // dummy, for alignment
+             0   // dummy, for alignment
          };
          return VectorToUint8Vector(uniform_params);
        }},
