@@ -101,6 +101,7 @@ enum class PredCombinerKind {
   Or,
   Not,
   SubstLeaves,
+  Concat,
   // Special kinds that are used in simplification.
   False,
   True
@@ -112,6 +113,10 @@ struct PredNode {
   const tblgen::Pred *predicate;
   SmallVector<PredNode *, 4> children;
   std::string expr;
+
+  // Prefix and suffix are used by ConcatPred.
+  std::string prefix;
+  std::string suffix;
 };
 } // end anonymous namespace
 
@@ -127,7 +132,8 @@ static PredCombinerKind getPredCombinerKind(const tblgen::Pred &pred) {
       .Case("PredCombinerAnd", PredCombinerKind::And)
       .Case("PredCombinerOr", PredCombinerKind::Or)
       .Case("PredCombinerNot", PredCombinerKind::Not)
-      .Case("PredCombinerSubstLeaves", PredCombinerKind::SubstLeaves);
+      .Case("PredCombinerSubstLeaves", PredCombinerKind::SubstLeaves)
+      .Case("PredCombinerConcat", PredCombinerKind::Concat);
 }
 
 namespace {
@@ -170,6 +176,12 @@ static PredNode *buildPredicateTree(const tblgen::Pred &root,
     const auto &substPred = static_cast<const tblgen::SubstLeavesPred &>(root);
     allSubstitutions.push_back(
         {substPred.getPattern(), substPred.getReplacement()});
+  }
+  // If the current predicate is a ConcatPred, record the prefix and suffix.
+  else if (rootNode->kind == PredCombinerKind::Concat) {
+    const auto &concatPred = static_cast<const tblgen::ConcatPred &>(root);
+    rootNode->prefix = concatPred.getPrefix();
+    rootNode->suffix = concatPred.getSuffix();
   }
 
   // Build child subtrees.
@@ -318,6 +330,11 @@ static std::string getCombinedCondition(const PredNode &root) {
     return combineBinary(childExpressions, "||", "false");
   if (root.kind == PredCombinerKind::Not)
     return combineNot(childExpressions);
+  if (root.kind == PredCombinerKind::Concat) {
+    assert(childExpressions.size() == 1 &&
+           "ConcatPred should only have one child");
+    return root.prefix + childExpressions.front() + root.suffix;
+  }
 
   // Substitutions were applied before so just ignore them.
   if (root.kind == PredCombinerKind::SubstLeaves) {
@@ -346,4 +363,12 @@ StringRef tblgen::SubstLeavesPred::getPattern() const {
 
 StringRef tblgen::SubstLeavesPred::getReplacement() const {
   return def->getValueAsString("replacement");
+}
+
+StringRef tblgen::ConcatPred::getPrefix() const {
+  return def->getValueAsString("prefix");
+}
+
+StringRef tblgen::ConcatPred::getSuffix() const {
+  return def->getValueAsString("suffix");
 }

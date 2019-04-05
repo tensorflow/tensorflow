@@ -80,7 +80,9 @@ def BOp : Op<"b_op", []> {
     StrAttr:$str_attr,
     ElementsAttr:$elements_attr,
     FunctionAttr:$function_attr,
-    SomeTypeAttr:$type_attr
+    SomeTypeAttr:$type_attr,
+    ArrayAttr:$array_attr,
+    TypedArrayAttrBase<SomeAttr, "SomeAttr array">:$some_attr_array
   );
 }
 
@@ -95,6 +97,9 @@ def BOp : Op<"b_op", []> {
 // CHECK: if (!((tblgen_elements_attr.isa<ElementsAttr>())))
 // CHECK: if (!((tblgen_function_attr.isa<FunctionAttr>())))
 // CHECK: if (!(((tblgen_type_attr.isa<TypeAttr>())) && ((tblgen_type_attr.cast<TypeAttr>().getValue().isa<SomeType>()))))
+// CHECK: if (!((tblgen_array_attr.isa<ArrayAttr>())))
+// CHECK: if (!(((tblgen_some_attr_array.isa<ArrayAttr>())) && (llvm::all_of(tblgen_some_attr_array.cast<ArrayAttr>(), [](Attribute attr) { return (some-condition); }))))
+
 
 def MixOperandsAndAttrs : Op<"mix_operands_and_attrs", []> {
   let arguments = (ins F32Attr:$attr, F32:$operand, F32Attr:$otherAttr, F32:$otherArg);

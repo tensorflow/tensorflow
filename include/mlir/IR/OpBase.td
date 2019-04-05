@@ -55,6 +55,7 @@ def PredCombinerAnd : PredCombinerKind;
 def PredCombinerOr : PredCombinerKind;
 def PredCombinerNot : PredCombinerKind;
 def PredCombinerSubstLeaves : PredCombinerKind;
+def PredCombinerConcat : PredCombinerKind;
 
 // A predicate that combines other predicates as defined by PredCombinerKind.
 // Instantiated below.
@@ -86,6 +87,15 @@ class SubstLeaves<string pat, string repl, Pred child>
     : CombinedPred<PredCombinerSubstLeaves, [child]> {
   string pattern = pat;
   string replacement = repl;
+}
+
+// A predicate that prepends `pre` and appends `suf` to the final predicate
+// string composed from `child`. This is plain string concatenation and there
+// will be no substitution happening for `pre` and `suf`.
+class Concat<string pre, Pred child, string suf> :
+    CombinedPred<PredCombinerConcat, [child]> {
+  string prefix = pre;
+  string suffix = suf;
 }
 
 //===----------------------------------------------------------------------===//
@@ -513,13 +523,38 @@ class ElementsAttrBase<Pred condition, string description> :
 def ElementsAttr: ElementsAttrBase<CPred<"{0}.isa<ElementsAttr>()">,
                                    "constant vector/tensor attribute">;
 
-// TODO(antiagainst): Define common ArrayAttr subclasses and properly
-// set constraints.
-def ArrayAttr : Attr<CPred<"{0}.isa<ArrayAttr>()">, "array attribute"> {
+// Base class for array attributes.
+class ArrayAttrBase<Pred condition, string description> :
+    Attr<condition, description> {
   let storageType = [{ ArrayAttr }];
   let returnType = [{ ArrayAttr }];
-  code convertFromStorage = "{0}";
+  let convertFromStorage = "{0}";
 }
+
+def ArrayAttr : ArrayAttrBase<CPred<"{0}.isa<ArrayAttr>()">,
+                              "array attribute">;
+
+// Base class for array attributes whose elements are of the same kind.
+// `element` specifies the element attribute kind stored in this array.
+class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
+    AllOf<[
+      // Guranatee this is an ArrayAttr first
+      CPred<"{0}.isa<ArrayAttr>()">,
+      // Guarantee all elements satisfy the constraints from `element`
+      Concat<"llvm::all_of({0}.cast<ArrayAttr>(), "
+                          "[](Attribute attr) {{ return ",
+                             SubstLeaves<"{0}", "attr", element.predicate>,
+                          "; })">]>,
+    description> {
+  let constBuilderCall = [{ {0}.getArrayAttr({1}) }];
+}
+
+def I32ArrayAttr : TypedArrayAttrBase<I32Attr,
+                                      "32-bit integer array attribute">;
+def I64ArrayAttr : TypedArrayAttrBase<I64Attr,
+                                      "64-bit integer array attribute">;
+def F32ArrayAttr : TypedArrayAttrBase<F32Attr, "32-bit float array attribute">;
+def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute">;
 
 // Attributes containing functions.
 def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">,

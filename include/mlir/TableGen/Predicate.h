@@ -113,6 +113,14 @@ public:
   StringRef getReplacement() const;
 };
 
+// A combined predicate that prepends a prefix and appends a suffix to the
+// predicate string composed from a child predicate.
+class ConcatPred : public CombinedPred {
+public:
+  StringRef getPrefix() const;
+  StringRef getSuffix() const;
+};
+
 } // end namespace tblgen
 } // end namespace mlir
 
