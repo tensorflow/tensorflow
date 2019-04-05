@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/debug/debug_graph_utils.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -633,6 +634,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
     c->req->set_store_errors_in_response_body(true);
+    c->req->set_request_id(GetUniqueRequestId());
     // If any feeds are provided, send the feed values together
     // in the RunGraph request.
     // In the partial case, we only want to include feeds provided in the req.
@@ -1190,9 +1192,8 @@ MasterSession::MasterSession(
 
   VLOG(1) << "Session " << handle_ << " #local " << env->local_devices.size()
           << " #remote " << remote_devs_->size();
-
-  LOG(INFO) << "Start master session " << handle_
-            << " with config: " << session_opts_.config.ShortDebugString();
+  VLOG(1) << "Start master session " << handle_
+          << " with config: " << session_opts_.config.ShortDebugString();
 }
 
 MasterSession::~MasterSession() {
@@ -1292,6 +1293,15 @@ Status MasterSession::CreateWorkerSessions(
       // because the worker will use its local configuration.
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
+    }
+    if (session_opts_.config.experimental()
+            .share_session_state_in_clusterspec_propagation()) {
+      // In a dynamic cluster, the ClusterSpec info is usually propagated by
+      // master sessions. However, in data parallel training with multiple
+      // masters
+      // ("between-graph replication"), we need to disable isolation for
+      // different worker sessions to update the same variables in PS tasks.
+      workers[i].request.set_isolate_session_state(false);
     }
   }
 

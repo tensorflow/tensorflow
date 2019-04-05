@@ -8,6 +8,19 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+filegroup(
+    name = "srcs",
+    srcs = [
+        "framework/gradients.h",
+        "framework/ops.h",
+        "framework/scope.h",
+        "framework/scope_internal.h",
+        "ops/array_ops.h",
+        "ops/while_loop.h",
+        "//tensorflow/cc/saved_model:loader.h",
+    ],
+)
+
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
@@ -606,15 +619,12 @@ tf_gen_op_wrappers_cc(
     visibility = ["//tensorflow:internal"],
 )
 
-cc_library_with_android_deps(
+cc_library(
     name = "cc_op_gen_main",
     srcs = [
         "framework/cc_op_gen.cc",
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_main.cc",
-    ],
-    android_deps = [
-        "//tensorflow/core:android_tensorflow_lib",
     ],
     copts = tf_copts(),
     data = [
@@ -686,7 +696,7 @@ tf_cc_binary(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-lm",
             "-lpthread",
         ],

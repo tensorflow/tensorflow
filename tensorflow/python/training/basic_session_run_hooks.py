@@ -653,7 +653,6 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._summary_writer = summary_writer
     self._output_dir = output_dir
     self._last_global_step = None
-    self._global_step_check_count = 0
     self._steps_per_run = 1
 
   def _set_steps_per_run(self, steps_per_run):
@@ -698,22 +697,18 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     # step value such that the comparison could be unreliable. For simplicity,
     # we just compare the stale_global_step with previously recorded version.
     if stale_global_step == self._last_global_step:
-      # Here, we use a counter to count how many times we have observed that the
-      # global step has not been increased. For some Optimizers, the global step
-      # is not increased each time by design. For example, SyncReplicaOptimizer
-      # doesn't increase the global step in worker's main train step.
-      self._global_step_check_count += 1
-      if self._global_step_check_count % 20 == 0:
-        self._global_step_check_count = 0
-        logging.warning(
-            "It seems that global step (tf.train.get_global_step) has not "
-            "been increased. Current value (could be stable): %s vs previous "
-            "value: %s. You could increase the global step by passing "
-            "tf.train.get_global_step() to Optimizer.apply_gradients or "
-            "Optimizer.minimize.", stale_global_step, self._last_global_step)
-    else:
-      # Whenever we observe the increment, reset the counter.
-      self._global_step_check_count = 0
+      # Here, we give a warning in the first 5 times if we have observed that
+      # the global step has not been increased. For some Optimizers, the global
+      # step is not increased each time by design. For example,
+      # SyncReplicaOptimizer doesn't increase the global step in worker's main
+      # train step.
+      logging.log_first_n(
+          logging.WARN,
+          "It seems that global step (tf.train.get_global_step) has not "
+          "been increased. Current value (could be stable): %s vs previous "
+          "value: %s. You could increase the global step by passing "
+          "tf.train.get_global_step() to Optimizer.apply_gradients or "
+          "Optimizer.minimize.", 5, stale_global_step, self._last_global_step)
 
     self._last_global_step = stale_global_step
 

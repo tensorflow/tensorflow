@@ -94,7 +94,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal)};
 }
 
-Platform::Id ROCmPlatform::id() const { return kROCmPlatformId; }
+Platform::Id ROCmPlatform::id() const { return rocm::kROCmPlatformId; }
 
 int ROCmPlatform::VisibleDeviceCount() const {
   // Throw away the result - it logs internally, and this [containing] function

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -179,12 +180,12 @@ bool PackedValuesNotEqual(T a, T b) {
 
 template <>
 bool PackedValuesNotEqual(float a, float b) {
-  return reinterpret_cast<int32&>(a) != reinterpret_cast<int32&>(b);
+  return reinterpret_cast<int32_t&>(a) != reinterpret_cast<int32_t&>(b);
 }
 
 template <>
 bool PackedValuesNotEqual(double a, double b) {
-  return reinterpret_cast<int64&>(a) != reinterpret_cast<int64&>(b);
+  return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
 }
 
 float QuantizedTypeMinAsFloat(DataType data_type) {
@@ -791,16 +792,26 @@ Status ConstantFolding::MaterializeConstantValuedNode(
       }
     }
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
-    const TensorProto& input_tensor = input_node->attr().at("value").tensor();
-    // TODO(rmlarsen): Handle the case where the value is stored in
-    // tensor_content.
-    if (!input_tensor.tensor_content().empty()) {
-      return Status::OK();
-    }
+
+    // Copy the input tensor to the fill node, set the output shape and data
+    // type, and change the node type to Const.
     TensorProto* tensor = (*node->mutable_attr())["value"].mutable_tensor();
-    // Copy the input tensor to the fill node, set the output shape, and
-    // change the nodd type to Const.
-    *tensor = input_tensor;
+    const TensorProto& input_tensor = input_node->attr().at("value").tensor();
+    if (!input_tensor.tensor_content().empty()) {
+      // Convert the value to repeated field format, so we can use the
+      // decompression mechanism to store only a single value in the constant
+      // node, even if the shape specified in the original Fill is large.
+      Tensor t;
+      if (!t.FromProto(input_tensor)) {
+        return errors::InvalidArgument(
+            "Could not construct Tensor form TensorProto in node: ",
+            input_node->name());
+      }
+      tensor->clear_tensor_content();
+      t.AsProtoField(tensor);
+    } else {
+      *tensor = input_tensor;
+    }
     *(tensor->mutable_tensor_shape()) = output_shape;
     (*node->mutable_attr())["dtype"].set_type(output_dtype);
     node->mutable_attr()->erase("T");
@@ -2627,7 +2638,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     const GraphProperties& properties, bool use_shape_info,
     GraphDef* optimized_graph, NodeDef* node, bool* success) {
   *success = false;
-  const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
+  const bool is_mul = IsAnyMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
   const bool is_quantized_matmul = IsQuantizedMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
@@ -2759,7 +2770,8 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
   // Strength reduce floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)). This in turn
   // will be constant folded to Mul(x, 1.0/const).
-  if (node->input_size() >= 2 && (IsRealDiv(*node) || IsDiv(*node))) {
+  if (node->input_size() >= 2 &&
+      (IsDiv(*node) || IsRealDiv(*node) || IsXdivy(*node))) {
     const string& const_input = node->input(1);
     const NodeDef* denom = node_map_->GetNode(const_input);
     CHECK(denom != nullptr);
@@ -2770,6 +2782,7 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
       return false;
     }
     DataType type = node->attr().at("T").type();
+    // Skip integer division.
     if (IsDiv(*node) &&
         !(DataTypeIsFloating(type) || DataTypeIsComplex(type))) {
       return false;
@@ -2779,13 +2792,21 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
     reciprocal_node->set_name(OptimizedNodeName(*node, "_recip"));
     reciprocal_node->set_op("Reciprocal");
     reciprocal_node->set_device(node->device());
-    node->set_op("Mul");
-    // Re-wire inputs and outputs.
     reciprocal_node->add_input(const_input);
     (*reciprocal_node->mutable_attr())["T"].set_type(type);
-    node->set_input(1, reciprocal_node->name());
+
+    // Re-wire inputs and outputs.
+    if (IsXdivy(*node)) {
+      node->set_op("MulNoNan");
+      node->set_input(1, node->input(0));
+      node->set_input(0, reciprocal_node->name());
+    } else {
+      node->set_op("Mul");
+      node->set_input(1, reciprocal_node->name());
+    }
     node_map_->AddNode(reciprocal_node->name(), reciprocal_node);
     node_map_->UpdateOutput(node->name(), const_input, reciprocal_node->name());
+
     return true;
   }
 
@@ -2891,7 +2912,7 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
   //                 X  C1                       C1  C2
   //
   // where C1 and C2 are constants and X is non-constant.
-  if (!IsMul(*node) || NumNonControlInputs(*node) != 2) return false;
+  if (!IsAnyMul(*node) || NumNonControlInputs(*node) != 2) return false;
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
@@ -3394,6 +3415,20 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   return Status::OK();
 }
 
+namespace {
+Status CompressConstants(GraphDef* graph) {
+  for (int i = 0; i < graph->node_size(); ++i) {
+    NodeDef* node = graph->mutable_node(i);
+    if ((IsConstant(*node) || IsHostConstant(*node)) &&
+        HasNodeAttr(*node, "value")) {
+      AttrValue& attr_val = (*node->mutable_attr())["value"];
+      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
@@ -3412,7 +3447,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   graph_contains_assign_or_inplace_op_ = false;
   for (const NodeDef& node : item.graph.node()) {
-    if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
+    if (ModifiesInputsInPlace(node) || HasRefInput(node)) {
       graph_contains_assign_or_inplace_op_ = true;
       break;
     }
@@ -3432,6 +3467,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(
         RunOptimizationPass(cluster, item_to_optimize, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
+  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();
 

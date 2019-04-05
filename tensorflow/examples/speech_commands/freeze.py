@@ -49,6 +49,14 @@ import input_data
 import models
 from tensorflow.python.framework import graph_util
 
+# If it's available, load the specialized feature generator. If this doesn't
+# work, try building with bazel instead of running the Python script directly.
+# bazel run tensorflow/examples/speech_commands:freeze_graph
+try:
+  from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op as frontend_op  # pylint:disable=g-import-not-at-top
+except ImportError:
+  frontend_op = None
+
 FLAGS = None
 
 
@@ -70,7 +78,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
     feature_bin_count: Number of frequency bands to analyze.
     model_architecture: Name of the kind of model to generate.
     preprocess: How the spectrogram is processed to produce features, for
-      example 'mfcc' or 'average'.
+      example 'mfcc', 'average', or 'micro'.
 
   Raises:
     Exception: If the preprocessing mode isn't recognized.
@@ -106,9 +114,33 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
         spectrogram,
         sample_rate,
         dct_coefficient_count=model_settings['fingerprint_width'])
+  elif preprocess == 'micro':
+    if not frontend_op:
+      raise Exception(
+          'Micro frontend op is currently not available when running TensorFlow'
+          ' directly from Python, you need to build and run through Bazel, for'
+          ' example'
+          ' `bazel run tensorflow/examples/speech_commands:freeze_graph`'
+      )
+    sample_rate = model_settings['sample_rate']
+    window_size_ms = (model_settings['window_size_samples'] *
+                      1000) / sample_rate
+    window_step_ms = (model_settings['window_stride_samples'] *
+                      1000) / sample_rate
+    int16_input = tf.cast(
+        tf.multiply(decoded_sample_data.audio, 32767), tf.int16)
+    micro_frontend = frontend_op.audio_microfrontend(
+        int16_input,
+        sample_rate=sample_rate,
+        window_size=window_size_ms,
+        window_step=window_step_ms,
+        num_channels=model_settings['fingerprint_width'],
+        out_scale=1,
+        out_type=tf.float32)
+    fingerprint_input = tf.multiply(micro_frontend, (10.0 / 256.0))
   else:
-    raise Exception('Unknown preprocess mode "%s" (should be "mfcc" or'
-                    ' "average")' % (preprocess))
+    raise Exception('Unknown preprocess mode "%s" (should be "mfcc",'
+                    ' "average", or "micro")' % (preprocess))
 
   fingerprint_size = model_settings['fingerprint_size']
   reshaped_input = tf.reshape(fingerprint_input, [-1, fingerprint_size])

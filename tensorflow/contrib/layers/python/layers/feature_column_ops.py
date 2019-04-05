@@ -488,7 +488,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       default_name='weighted_sum_from_feature_columns',
       values=columns_to_tensors.values()):
     output_tensors = []
-    column_to_variable = dict()
+    column_to_variable = {}
     transformer = _Transformer(columns_to_tensors)
     # pylint: disable=protected-access
     for column in sorted(set(feature_columns), key=lambda x: x.key):

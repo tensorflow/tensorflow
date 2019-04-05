@@ -259,7 +259,7 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
 
 // Uses a set of reduction conditions that trigger the specialized 4D version
 // of Mean.
-TEST(ConstFloatMeanOpTest, KeepDims_4DMean) {
+TEST(ConstFloatMeanOpTest, KeepDims4DMean) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
                              17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
@@ -272,7 +272,7 @@ TEST(ConstFloatMeanOpTest, KeepDims_4DMean) {
               ElementsAreArray(ArrayFloatNear({6, 7, 18, 19})));
 }
 
-TEST(ConstFloatMeanOpTest, KeepDims_4DMean_UInt8) {
+TEST(ConstFloatMeanOpTest, KeepDims4DMeanUInt8) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.1, 0.2,
                              0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
@@ -286,7 +286,24 @@ TEST(ConstFloatMeanOpTest, KeepDims_4DMean_UInt8) {
                                               kQuantizedTolerance)));
 }
 
-TEST(ConstFloatMeanOpTest, KeepDims_4DMean_Quantized) {
+TEST(ConstFloatMeanOpTest, KeepDims4DMeanLargeDepthUInt8) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
+                             0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
+                             0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
+                             0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_UINT8, {1, 2, 2, 9}, -1.0, 1.0},
+                     {TensorType_UINT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
+                  kQuantizedTolerance)));
+}
+
+TEST(ConstFloatMeanOpTest, KeepDims4DMeanQuantized) {
   float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.1, 0.2,
                              0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
@@ -378,6 +395,40 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8MeanOpTest, QuantizedSameScale) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
+                             0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
+                             0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
+                             0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_INT8, {1, 2, 2, 9}, -1.0, 1.0},
+                     {TensorType_INT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
+                  kQuantizedTolerance)));
+}
+
+TEST(ConstInt8MeanOpTest, QuantizedDifferentScale) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
+                             0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
+                             0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
+                             0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_INT8, {1, 2, 2, 9}, -1.0, 1.0},
+                     {TensorType_INT8, {2}, -4.0, 4.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
+                  kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MeanOpTest, NotKeepDims) {

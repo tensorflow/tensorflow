@@ -22,10 +22,10 @@ import weakref
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -166,31 +166,36 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(3, three_x)
 
   def testOperatorOverrides(self):
-    # TODO(henrytan): test with negative number.
-    a = constant_op.constant([1])
-    b = constant_op.constant([2])
 
-    self.assertAllEqual((-a), [-1])
-    self.assertAllEqual(abs(b), [2])
+    def ops_test(v1, v2):
+      a = constant_op.constant(v1)
+      b = constant_op.constant(v2)
 
-    self.assertAllEqual((a + b), [3])
-    self.assertAllEqual((a - b), [-1])
-    self.assertAllEqual((a * b), [2])
-    self.assertAllEqual((a * a), [1])
+      self.assertAllEqual((-a), np.negative(v1))
+      self.assertAllEqual(abs(b), np.absolute(v2))
 
-    self.assertAllEqual((a**b), [1])
-    self.assertAllEqual((a / b), [1 / 2])
-    self.assertAllEqual((a / a), [1])
-    self.assertAllEqual((a % b), [1])
+      self.assertAllEqual((a + b), np.add(v1, v2))
+      self.assertAllEqual((a - b), np.subtract(v1, v2))
+      self.assertAllEqual((a * b), np.multiply(v1, v2))
+      self.assertAllEqual((a * a), np.multiply(v1, v1))
 
-    self.assertAllEqual((a < b), [True])
-    self.assertAllEqual((a <= b), [True])
-    self.assertAllEqual((a > b), [False])
-    self.assertAllEqual((a >= b), [False])
-    self.assertAllEqual((a == b), False)
-    self.assertAllEqual((a != b), True)
+      if all(x >= 0 for x in v2):
+        self.assertAllEqual((a**b), np.power(v1, v2))
+      self.assertAllEqual((a / b), np.true_divide(v1, v2))
 
-    self.assertAllEqual(1, a[constant_op.constant(0)])
+      self.assertAllEqual((a / a), np.true_divide(v1, v1))
+      self.assertAllEqual((a % b), np.mod(v1, v2))
+
+      self.assertAllEqual((a < b), np.less(v1, v2))
+      self.assertAllEqual((a <= b), np.less_equal(v1, v2))
+      self.assertAllEqual((a > b), np.greater(v1, v2))
+      self.assertAllEqual((a >= b), np.greater_equal(v1, v2))
+      self.assertAllEqual((a == b), np.equal(v1, v2)[0])
+      self.assertAllEqual((a != b), np.not_equal(v1, v2)[0])
+      self.assertAllEqual(v1[0], a[constant_op.constant(0)])
+
+    ops_test([1, 4, 8], [2, 3, 5])
+    ops_test([1, -4, -5], [-2, 3, -6])
 
   def test_basic_slice(self):
     npt = np.arange(1, 19, dtype=np.float32).reshape(3, 2, 3)
@@ -274,9 +279,9 @@ class OpsTest(test_util.TensorFlowTestCase):
     # Temporarily replace the context
     # pylint: disable=protected-access
     del context._context
+    context._context = context.Context()
     try:
-      context._context = context.Context(
-          device_policy=context.DEVICE_PLACEMENT_SILENT)
+      config.set_device_policy('silent')
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
@@ -291,10 +296,10 @@ class OpsTest(test_util.TensorFlowTestCase):
     # Temporarily replace the context
     # pylint: disable=protected-access
     del context._context
+    context._context = context.Context()
     try:
-      context._context = context.Context(
-          device_policy=context.DEVICE_PLACEMENT_SILENT,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+      config.set_device_policy('silent')
+      config.set_soft_device_placement(True)
       cpu_tensor = constant_op.constant(1.0)
       result = cpu_tensor + cpu_tensor
       self.assertEqual(result.device,

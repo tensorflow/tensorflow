@@ -18,9 +18,11 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
+// Also update tensorflow/tensorflow.bzl and
+// tensorflow/tools/pip_package/setup.py
 #define TF_MAJOR_VERSION 1
-#define TF_MINOR_VERSION 12
-#define TF_PATCH_VERSION 0
+#define TF_MINOR_VERSION 13
+#define TF_PATCH_VERSION 1
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
@@ -98,10 +100,12 @@ limitations under the License.
 //     deprecated in favor of V2 ops. (2018/01/23)
 // 28. Deprecate MatrixExponential op in favor of Python implementation.
 //     (2018/08/21).
+// 29. Deprecate StatefulStandardNormal op in favor of StatefulStandardNormalV2.
+//     (2019/03/25).
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 27
+#define TF_GRAPH_DEF_VERSION 29
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

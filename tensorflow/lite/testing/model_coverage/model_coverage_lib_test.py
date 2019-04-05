@@ -72,8 +72,10 @@ class EvaluateFrozenGraph(test.TestCase):
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
 
+  @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only('b/120545219')
   def testFunctions(self):
+    """Tests functions."""
 
     @def_function.function
     def plus_placeholder(x, placeholder):

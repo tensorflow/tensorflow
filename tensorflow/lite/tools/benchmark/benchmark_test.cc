@@ -44,7 +44,10 @@ BenchmarkParams CreateParams() {
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
+  params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
   return params;
 }
 
@@ -54,7 +57,10 @@ class TestBenchmark : public BenchmarkTfLiteModel {
       : BenchmarkTfLiteModel(std::move(params)) {}
   const tflite::Interpreter* GetInterpreter() { return interpreter.get(); }
 
-  void Prepare() { PrepareInputsAndOutputs(); }
+  void Prepare() {
+    PrepareInputData();
+    ResetInputsAndOutputs();
+  }
 };
 
 TEST(BenchmarkTest, DoesntCrash) {

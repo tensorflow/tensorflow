@@ -64,5 +64,5 @@ class Calibrator(object):
     """
     self._calibrator.Prepare()
     for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor([calibration_sample])
+      self._calibrator.FeedTensor(calibration_sample)
     return self._calibrator.QuantizeModel()

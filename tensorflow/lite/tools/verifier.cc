@@ -110,9 +110,8 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                                ErrorReporter* error_reporter) {
   uint64_t bytes_required = 1;
   if (!tensor.shape()) {
-    ReportError(error_reporter, "Tensor %s shape is empty",
-                tensor.name()->c_str());
-    return false;
+    // Empty tensor. Avoid further checks.
+    return true;
   }
   for (int dim : *tensor.shape()) {
     bytes_required *= dim;
@@ -197,72 +196,82 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
                                ErrorReporter* error_reporter) {
   absl::flat_hash_set<int> subgraph_input_tensors, constant_tensors,
       variable_tensors, output_tensors;
-  for (int i = 0; i < subgraph.tensors()->Length(); ++i) {
-    const auto* tensor = subgraph.tensors()->Get(i);
-    bool is_constant_tensor = false;
-    if (model.buffers() && tensor->buffer() > 0 &&
-        tensor->buffer() < model.buffers()->size()) {
-      auto* buffer = model.buffers()->Get(tensor->buffer());
-      if (buffer && buffer->data()) {
-        is_constant_tensor = true;
+  if (subgraph.tensors()) {
+    for (int i = 0; i < subgraph.tensors()->Length(); ++i) {
+      const auto* tensor = subgraph.tensors()->Get(i);
+      if (IsConstantTensor(*tensor, model)) {
+        constant_tensors.insert(i);
+      } else if (tensor->is_variable()) {
+        variable_tensors.insert(i);
       }
     }
-    if (IsConstantTensor(*tensor, model)) {
-      constant_tensors.insert(i);
-    } else if (tensor->is_variable()) {
-      variable_tensors.insert(i);
-    }
   }
-  for (const int tensor_idx : *subgraph.inputs()) {
-    subgraph_input_tensors.insert(tensor_idx);
+  if (subgraph.inputs()) {
+    for (const int tensor_idx : *subgraph.inputs()) {
+      subgraph_input_tensors.insert(tensor_idx);
+    }
   }
 
-  for (int op_idx = 0; op_idx < subgraph.operators()->Length(); ++op_idx) {
-    const auto* op = subgraph.operators()->Get(op_idx);
-    const auto& opcode = model.operator_codes()->Get(op->opcode_index());
-    // Check for invalid inputs by ensuring all exist in produced_tensors.
-    for (const int input_idx : *op->inputs()) {
-      if (constant_tensors.find(input_idx) == constant_tensors.end() &&
-          variable_tensors.find(input_idx) == variable_tensors.end() &&
-          subgraph_input_tensors.find(input_idx) ==
-              subgraph_input_tensors.end() &&
-          output_tensors.find(input_idx) == output_tensors.end()) {
+  if (subgraph.operators()) {
+    for (int op_idx = 0; op_idx < subgraph.operators()->Length(); ++op_idx) {
+      const auto* op = subgraph.operators()->Get(op_idx);
+      if (!model.operator_codes() ||
+          (op->opcode_index() >= model.operator_codes()->size())) {
         ReportError(error_reporter,
-                    "Input tensor %d to op %d (%s) is not produced", input_idx,
-                    op_idx, EnumNameBuiltinOperator(opcode->builtin_code()));
+                    "Operator %d does not exist in model op codes",
+                    op->opcode_index());
         return false;
       }
-    }
-    // Check for cycles/invalid outputs by ensuring that none exist in
-    // produced_tensors.
-    for (const int output_idx : *op->outputs()) {
-      if (constant_tensors.find(output_idx) != constant_tensors.end()) {
-        ReportError(error_reporter,
-                    "Output tensor %d to op %d (%s) is a constant", output_idx,
-                    op_idx, EnumNameBuiltinOperator(opcode->builtin_code()));
-        return false;
-      } else if (variable_tensors.find(output_idx) != variable_tensors.end()) {
-        ReportError(error_reporter,
-                    "Output tensor %d to op %d (%s) is a variable", output_idx,
-                    op_idx, EnumNameBuiltinOperator(opcode->builtin_code()));
-        return false;
-      } else if (subgraph_input_tensors.find(output_idx) !=
-                 subgraph_input_tensors.end()) {
-        ReportError(error_reporter,
-                    "Output tensor %d to op %d (%s) is a subgraph input",
-                    output_idx, op_idx,
-                    EnumNameBuiltinOperator(opcode->builtin_code()));
-        return false;
-      } else if (output_tensors.find(output_idx) != output_tensors.end()) {
-        ReportError(error_reporter,
-                    "Output tensor %d to op %d (%s) is an output from "
-                    "another op. There is a cycle in the graph",
-                    output_idx, op_idx,
-                    EnumNameBuiltinOperator(opcode->builtin_code()));
-        return false;
+      const auto& opcode = model.operator_codes()->Get(op->opcode_index());
+      // Check for invalid inputs by ensuring all exist in produced_tensors.
+      for (const int input_idx : *op->inputs()) {
+        if (input_idx == kOptionalTensor) continue;
+        if (constant_tensors.find(input_idx) == constant_tensors.end() &&
+            variable_tensors.find(input_idx) == variable_tensors.end() &&
+            subgraph_input_tensors.find(input_idx) ==
+                subgraph_input_tensors.end() &&
+            output_tensors.find(input_idx) == output_tensors.end()) {
+          ReportError(error_reporter,
+                      "Input tensor %d to op %d (%s) is not produced",
+                      input_idx, op_idx,
+                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          return false;
+        }
       }
-      // This can be an input to a subsequent op.
-      output_tensors.insert(output_idx);
+      // Check for cycles/invalid outputs by ensuring that none exist in
+      // produced_tensors.
+      for (const int output_idx : *op->outputs()) {
+        if (constant_tensors.find(output_idx) != constant_tensors.end()) {
+          ReportError(error_reporter,
+                      "Output tensor %d to op %d (%s) is a constant",
+                      output_idx, op_idx,
+                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          return false;
+        } else if (variable_tensors.find(output_idx) !=
+                   variable_tensors.end()) {
+          ReportError(error_reporter,
+                      "Output tensor %d to op %d (%s) is a variable",
+                      output_idx, op_idx,
+                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          return false;
+        } else if (subgraph_input_tensors.find(output_idx) !=
+                   subgraph_input_tensors.end()) {
+          ReportError(error_reporter,
+                      "Output tensor %d to op %d (%s) is a subgraph input",
+                      output_idx, op_idx,
+                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          return false;
+        } else if (output_tensors.find(output_idx) != output_tensors.end()) {
+          ReportError(error_reporter,
+                      "Output tensor %d to op %d (%s) is an output from "
+                      "another op. There is a cycle in the graph",
+                      output_idx, op_idx,
+                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          return false;
+        }
+        // This can be an input to a subsequent op.
+        output_tensors.insert(output_idx);
+      }
     }
   }
   return true;

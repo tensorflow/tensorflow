@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -65,6 +66,7 @@ def get_test_data(train_samples,
           (x[train_samples:], y[train_samples:]))
 
 
+@test_util.use_deterministic_cudnn
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
                expected_output_dtype=None):
@@ -160,7 +162,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
@@ -209,7 +211,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
 
   # for further checks in the caller function
   return actual_output

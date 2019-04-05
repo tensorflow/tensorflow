@@ -49,7 +49,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
 
@@ -2804,7 +2804,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
       wrapper(array_ops.ones([1, 1]),
               state=wrapper.zero_state(batch_size=1, dtype=dtypes.float32))
       self.evaluate([v.initializer for v in cell.variables])
-      checkpoint = checkpointable_utils.Checkpoint(wrapper=wrapper)
+      checkpoint = trackable_utils.Checkpoint(wrapper=wrapper)
       prefix = os.path.join(self.get_temp_dir(), "ckpt")
       self.evaluate(cell._bias.assign([40.]))
       save_path = checkpoint.save(prefix)
@@ -2861,21 +2861,20 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
     # States are left untouched
     self.assertAllClose(res_m_new, res_m_new_res)
 
-  @test_util.run_v1_only("b/124229375")
-  def testDeviceWrapper(self):
-    with variable_scope.variable_scope(
-        "root", initializer=init_ops.constant_initializer(0.5)):
-      x = array_ops.zeros([1, 3])
-      m = array_ops.zeros([1, 3])
-      wrapped = rnn_cell_impl.GRUCell(3)
-      cell = rnn_cell_impl.DeviceWrapper(wrapped, "/cpu:14159")
-      (name, dep), = cell._checkpoint_dependencies
-      cell.get_config()  # Should not throw an error
-      self.assertIs(dep, wrapped)
-      self.assertEqual("cell", name)
+  @parameterized.parameters(
+      [rnn_cell_impl.DeviceWrapper, rnn_cell_impl.DeviceWrapperV2])
+  def testDeviceWrapper(self, wrapper_type):
+    x = array_ops.zeros([1, 3])
+    m = array_ops.zeros([1, 3])
+    cell = rnn_cell_impl.GRUCell(3)
+    wrapped_cell = wrapper_type(cell, "/cpu:0")
+    (name, dep), = wrapped_cell._checkpoint_dependencies
+    wrapped_cell.get_config()  # Should not throw an error
+    self.assertIs(dep, cell)
+    self.assertEqual("cell", name)
 
-      outputs, _ = cell(x, m)
-      self.assertTrue("cpu:14159" in outputs.device.lower())
+    outputs, _ = wrapped_cell(x, m)
+    self.assertIn("cpu:0", outputs.device.lower())
 
   def _retrieve_cpu_gpu_stats(self, run_metadata):
     cpu_stats = None
@@ -2975,7 +2974,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
   def testWrapperKerasStyle(self, wrapper, wrapper_v2):
     """Tests if wrapper cell is instantiated in keras style scope."""
     wrapped_cell_v2 = wrapper_v2(rnn_cell_impl.BasicRNNCell(1))
-    self.assertTrue(wrapped_cell_v2._keras_style)
+    self.assertIsNone(getattr(wrapped_cell_v2, "_keras_style", None))
 
     wrapped_cell = wrapper(rnn_cell_impl.BasicRNNCell(1))
     self.assertFalse(wrapped_cell._keras_style)
@@ -3014,22 +3013,21 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testWrapperWeights(self, wrapper):
     """Tests that wrapper weights contain wrapped cells weights."""
-
-    with base_layer.keras_style_scope():
-      base_cell = rnn_cell_impl.BasicRNNCell(1, name="basic_rnn_cell")
+    base_cell = keras_layers.SimpleRNNCell(1, name="basic_rnn_cell")
     rnn_cell = wrapper(base_cell)
     rnn_layer = keras_layers.RNN(rnn_cell)
     inputs = ops.convert_to_tensor([[[1]]], dtype=dtypes.float32)
     rnn_layer(inputs)
 
-    expected_weights = ["rnn/" + var for var in ("kernel:0", "bias:0")]
-    self.assertEqual(len(rnn_cell.weights), 2)
+    expected_weights = ["rnn/" + var for var in
+                        ("kernel:0", "recurrent_kernel:0", "bias:0")]
+    self.assertEqual(len(rnn_cell.weights), 3)
     self.assertCountEqual([v.name for v in rnn_cell.weights], expected_weights)
     self.assertCountEqual([v.name for v in rnn_cell.trainable_variables],
                           expected_weights)
     self.assertCountEqual([v.name for v in rnn_cell.non_trainable_variables],
                           [])
-    self.assertCountEqual([v.name for v in rnn_cell._cell.weights],
+    self.assertCountEqual([v.name for v in rnn_cell.cell.weights],
                           expected_weights)
 
   @parameterized.parameters(
@@ -3351,4 +3349,10 @@ class DropoutWrapperTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  # TODO(b/129895139): We can remove this once we have have a process-global
+  # auto-tuning cache for GEMMs.  Without b/129895139 it is possible for the
+  # forward and backward passes to pick different GEMM algorithms when run under
+  # XLA.
+  os.environ["XLA_FLAGS"] = ("--xla_gpu_disable_autotune=true" +
+                             os.environ.get("XLA_FLAGS", ""))
   test.main()

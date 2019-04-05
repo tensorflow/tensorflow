@@ -185,19 +185,22 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   if (actual_device == nullptr) {
     if (!IsCPUDevice(expected_device)) {
       return errors::Internal(
-          "expected the py_func to return a Tensor backed by memory in ",
+          "Expected the py_func to return a Tensor backed by memory in ",
           expected_device_name,
           ", but is actually backed by local host memory. This is a bug.");
     }
     return Status::OK();
   }
-  const string& actual_device_name = actual_device->attributes().name();
-  if (actual_device_name != expected_device_name) {
-    return errors::Internal(
-        "expected the py_func to return a Tensor backed by memory in ",
-        expected_device_name, ", but is actually in ", actual_device_name,
-        ". This is a bug.");
-  }
+  // NOTE(ebrevdo): Here we could try comparing "actual_device_name"
+  // (actual_device->attributes()->name()) to expected_device_name and ensure
+  // they're the same.  However, this comparison fails if we create a ClusterDef
+  // on localhost, mainly because the Device created by Eager code doesn't match
+  // the device created by a session.  In this case, expected_device_name may
+  // contain "worker" but the Eager device name contains "localhost".  Since we
+  // can't easily access the true underlying device of "worker" here, we are not
+  // able to perform a proper comparison.  Furthermore, we can't check
+  // IsCPUDevice(actual_device) because the kernel's device may indeed be a
+  // GPU device (the python interpreter doesn't use it, however).
   return Status::OK();
 }
 
@@ -485,6 +488,8 @@ class PyFuncOp : public OpKernel {
     eager_ = type_string() == "EagerPyFunc";
   }
 
+  bool IsExpensive() override { return true; }
+
   void Compute(OpKernelContext* ctx) override {
     PyCall call;
     call.token = token_;
@@ -494,8 +499,8 @@ class PyFuncOp : public OpKernel {
       // `DeviceBase`; attempt to downcast.
       call.device = dynamic_cast<Device*>(ctx->device());
       if (call.device == nullptr) {
-        ctx->CtxFailureWithWarning(
-            errors::Internal("Unrecognized device class"));
+        ctx->CtxFailureWithWarning(errors::Internal(
+            "Unrecognized device class: ", ctx->device()->name()));
         return;
       }
     }

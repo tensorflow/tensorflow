@@ -70,6 +70,13 @@ Status GetElementShapeFromInput(OpKernelContext* c,
                                 const TensorList& tensor_list, int index,
                                 PartialTensorShape* element_shape);
 
+Status GetInputList(OpKernelContext* c, int index, const TensorList** list);
+
+Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
+                                   int32 output_index,
+                                   const TensorList& input_list,
+                                   TensorList** output_list);
+
 template <typename Device, typename T>
 class TensorListStack : public OpKernel {
  public:
@@ -81,12 +88,8 @@ class TensorListStack : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    const TensorList* tensor_list =
-        c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, tensor_list != nullptr,
-                errors::InvalidArgument(
-                    "Input handle is not a list. Saw: '",
-                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    const TensorList* tensor_list = nullptr;
+    OP_REQUIRES_OK(c, GetInputList(c, 0, &tensor_list));
     OP_REQUIRES(
         c, element_dtype_ == tensor_list->element_dtype,
         errors::InvalidArgument(
@@ -184,14 +187,8 @@ class TensorListGetItem : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    OP_REQUIRES(
-        c, c->input(0).shape().num_elements() == 1,
-        errors::InvalidArgument("List tensors are supposed to be scalars."));
-    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, l != nullptr,
-                errors::InvalidArgument(
-                    "Input handle is not a list. Saw: '",
-                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    const TensorList* l = nullptr;
+    OP_REQUIRES_OK(c, GetInputList(c, 0, &l));
     OP_REQUIRES(c, element_dtype_ == l->element_dtype,
                 errors::InvalidArgument("Invalid data types; op elements ",
                                         DataTypeString(element_dtype_),
@@ -255,11 +252,8 @@ class TensorListPopBack : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, l != nullptr,
-                errors::InvalidArgument(
-                    "Input handle is not a list. Saw: '",
-                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    const TensorList* l = nullptr;
+    OP_REQUIRES_OK(c, GetInputList(c, 0, &l));
     OP_REQUIRES(c, element_dtype_ == l->element_dtype,
                 errors::InvalidArgument("Invalid data types; op elements ",
                                         DataTypeString(element_dtype_),
@@ -291,20 +285,10 @@ class TensorListPopBack : public OpKernel {
       functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
                                            result->flat<T>());
     }
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    std::unique_ptr<Tensor> maybe_result = c->forward_input(
-        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
-    if (maybe_result != nullptr) {
-      maybe_result->scalar<Variant>()().get<TensorList>()->tensors.pop_back();
-    } else {
-      TensorList output;
-      output = *l;
-      output.tensors.pop_back();
-      Tensor* result;
-      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
-      result->scalar<Variant>()() = std::move(output);
-    }
+
+    TensorList* output_list = nullptr;
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
+    output_list->tensors.pop_back();
   }
 
  private:
@@ -334,12 +318,8 @@ class TensorListConcat : public OpKernel {
   void Compute(OpKernelContext* c) override {
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
-    const TensorList* tensor_list =
-        c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, tensor_list != nullptr,
-                errors::InvalidArgument(
-                    "Input handle is not a list. Saw: '",
-                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    const TensorList* tensor_list = nullptr;
+    OP_REQUIRES_OK(c, GetInputList(c, 0, &tensor_list));
     OP_REQUIRES(
         c, element_dtype_ == tensor_list->element_dtype,
         errors::InvalidArgument(
@@ -597,12 +577,8 @@ class TensorListGather : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    const TensorList* tensor_list =
-        c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, tensor_list != nullptr,
-                errors::InvalidArgument(
-                    "Input handle is not a list. Saw: '",
-                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    const TensorList* tensor_list = nullptr;
+    OP_REQUIRES_OK(c, GetInputList(c, 0, &tensor_list));
     OP_REQUIRES(
         c, element_dtype_ == tensor_list->element_dtype,
         errors::InvalidArgument(
@@ -736,6 +712,81 @@ class TensorListFromTensor : public OpKernel {
   }
 };
 
+// Scatters values in `value` into `list`. Assumes that `indices` are valid.
+template <typename Device, typename T>
+Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
+               TensorList* list) {
+  for (int index = 0; index < indices.NumElements(); ++index) {
+    const int i = indices.flat<int32>()(index);
+    Tensor tmp = value.Slice(index, index + 1);
+    TensorShape tmp_shape = tmp.shape();
+    tmp_shape.RemoveDim(0);
+    if (!tmp.CopyFrom(tmp, tmp_shape)) {
+      return errors::Unknown("Unexpected shape error.");
+    }
+    // TODO(apassos) maybe not always align; but weird compiler bugs seem to
+    // prevent this.
+    Tensor aligned;
+    TF_RETURN_IF_ERROR(c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
+    // TODO(apassos) do all slices in a single kernel invocation instead of
+    // many small ones.
+    aligned.flat<T>().device(c->eigen_device<Device>()) =
+        tmp.unaligned_flat<T>();
+    std::swap(list->tensors[i], aligned);
+  }
+  return Status::OK();
+}
+
+template <typename Device, typename T>
+class TensorListScatterIntoExistingList : public OpKernel {
+ public:
+  TensorListScatterIntoExistingList(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    const TensorList* l = nullptr;
+    OP_REQUIRES_OK(c, GetInputList(c, 0, &l));
+    const Tensor& input_tensor = c->input(1);
+    const Tensor& indices = c->input(2);
+
+    // Check that inputs are valid.
+    OP_REQUIRES(c, input_tensor.dtype() == l->element_dtype,
+                errors::InvalidArgument(
+                    "Invalid data types; input tensor type: ",
+                    DataTypeString(input_tensor.dtype()),
+                    " list element_type: ", DataTypeString(l->element_dtype)));
+    OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(input_tensor.shape()),
+                errors::InvalidArgument(
+                    "Tensor must be at least a vector, but saw shape: ",
+                    input_tensor.shape().DebugString()));
+    OP_REQUIRES(c, TensorShapeUtils::IsVector(indices.shape()),
+                errors::InvalidArgument(
+                    "Expected indices to be a vector, but received shape: ",
+                    indices.shape().DebugString()));
+    OP_REQUIRES(
+        c, indices.NumElements() == input_tensor.shape().dim_size(0),
+        errors::InvalidArgument(
+            "Expected len(indices) == tensor.shape[0], but saw: ",
+            indices.NumElements(), " vs. ", input_tensor.shape().dim_size(0)));
+
+    // Resize the list if needed to accommodate all indices.
+    TensorList* output_list = nullptr;
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
+    const auto indices_vec = indices.vec<int32>();
+    int32 max_index =
+        (indices.NumElements() == 0)
+            ? -1
+            : *std::max_element(indices_vec.data(),
+                                indices_vec.data() + indices.NumElements());
+    if (max_index + 1 > output_list->tensors.size()) {
+      output_list->tensors.resize(max_index + 1);
+    }
+
+    // Scatter the values.
+    OP_REQUIRES_OK(c,
+                   Scatter<Device, T>(c, input_tensor, indices, output_list));
+  }
+};
+
 template <typename Device, typename T>
 class TensorListScatter : public OpKernel {
  public:
@@ -798,23 +849,8 @@ class TensorListScatter : public OpKernel {
                                  Tensor(DT_INVALID));
     }
 
-    for (int index = 0; index < indices.NumElements(); ++index) {
-      const int i = indices.flat<int32>()(index);
-      Tensor tmp = input_tensor.Slice(index, index + 1);
-      TensorShape tmp_shape = tmp.shape();
-      tmp_shape.RemoveDim(0);
-      OP_REQUIRES(c, tmp.CopyFrom(tmp, tmp_shape),
-                  errors::Unknown("Unexpected shape error."));
-      // TODO(apassos) maybe not always align; but weird compiler bugs seem to
-      // prevent this.
-      Tensor aligned;
-      OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      // TODO(apassos) do all slices in a single kernel invocation instead of
-      // many small ondes.
-      aligned.flat<T>().device(c->eigen_device<Device>()) =
-          tmp.unaligned_flat<T>();
-      std::swap(output_list.tensors[i], aligned);
-    }
+    OP_REQUIRES_OK(c,
+                   Scatter<Device, T>(c, input_tensor, indices, &output_list));
     output_tensor->scalar<Variant>()() = std::move(output_list);
   }
 };

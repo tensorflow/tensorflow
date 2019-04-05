@@ -64,7 +64,7 @@ class ResizeNearestNeighborOpModel : public SingleOpModel {
 };
 
 TEST(ResizeNearestNeighborOpTest, HorizontalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}}, {});
   m.SetInput<float>({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
@@ -80,7 +80,7 @@ TEST(ResizeNearestNeighborOpTest, HorizontalResize) {
 }
 
 TEST(ResizeNearestNeighborOpTest, HorizontalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 1, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 1, 2, 1}}, {});
   m.SetInput<uint8>({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
@@ -96,7 +96,7 @@ TEST(ResizeNearestNeighborOpTest, HorizontalResizeUInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, HorizontalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 1, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 1, 2, 1}}, {});
   m.SetInput<int8_t>({-3, 6});
   m.SetSize({1, 3});
   m.Invoke();
@@ -111,7 +111,7 @@ TEST(ResizeNearestNeighborOpTest, HorizontalResizeInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, VerticalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}}, {});
   m.SetInput<float>({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
@@ -127,7 +127,7 @@ TEST(ResizeNearestNeighborOpTest, VerticalResize) {
 }
 
 TEST(ResizeNearestNeighborOpTest, VerticalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 1, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 1, 1}}, {});
   m.SetInput<uint8>({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
@@ -143,7 +143,7 @@ TEST(ResizeNearestNeighborOpTest, VerticalResizeUInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, VerticalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 1, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 1, 1}}, {});
   m.SetInput<int8_t>({3, -9});
   m.SetSize({3, 1});
   m.Invoke();
@@ -158,7 +158,7 @@ TEST(ResizeNearestNeighborOpTest, VerticalResizeInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, TwoDimensionalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {});
   m.SetInput<float>({
       3, 6,  //
       9, 12  //
@@ -186,7 +186,7 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResize) {
 }
 
 TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 1}}, {});
   m.SetInput<uint8>({
       3, 6,  //
       9, 12  //
@@ -214,7 +214,7 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeUInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 1}}, {});
   m.SetInput<int8_t>({
       3, -6,  //
       9, 12   //
@@ -241,7 +241,7 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {});
   m.SetInput<float>({
       3, 6,   //
       9, 12,  //
@@ -279,7 +279,7 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
 }
 
 TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}});
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, {});
   m.SetInput<float>({
       3, 4, 6, 10,    //
       9, 10, 12, 16,  //
@@ -307,7 +307,7 @@ TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResize) {
 }
 
 TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {2, 2, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {2, 2, 2, 1}}, {});
   m.SetInput<uint8>({
       3, 6,   //
       9, 12,  //
@@ -345,7 +345,7 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {2, 2, 2, 1}});
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {2, 2, 2, 1}}, {});
   m.SetInput<int8_t>({
       3, 6,    //
       9, -12,  //
@@ -382,7 +382,7 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}});
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {});
   m.SetInput<uint8>({
       3, 4, 6, 10,     //
       10, 12, 14, 16,  //
@@ -410,7 +410,7 @@ TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8) {
 }
 
 TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 2}});
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 2}}, {});
   m.SetInput<int8_t>({
       3, 4, -6, 10,     //
       10, 12, -14, 16,  //

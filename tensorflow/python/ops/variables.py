@@ -35,7 +35,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
@@ -103,6 +103,17 @@ class VariableAggregationV2(enum.Enum):
   MEAN = 2
   ONLY_FIRST_REPLICA = 3
 
+  def __hash__(self):
+    return hash(self.value)
+
+  def __eq__(self, other):
+    if self is other:
+      return True
+    elif isinstance(other, VariableAggregation):
+      return int(self.value) == int(other.value)
+    else:
+      return False
+
 
 @tf_export(v1=["VariableAggregation"])
 class VariableAggregation(enum.Enum):
@@ -111,6 +122,9 @@ class VariableAggregation(enum.Enum):
   MEAN = 2
   ONLY_FIRST_REPLICA = 3
   ONLY_FIRST_TOWER = 3  # DEPRECATED
+
+  def __hash__(self):
+    return hash(self.value)
 
 
 VariableAggregation.__doc__ = (
@@ -204,7 +218,7 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass,
-                                  checkpointable.Checkpointable)):
+                                  trackable.Trackable)):
   """See the [Variables Guide](https://tensorflow.org/guide/variables).
 
   A variable maintains state in the graph across calls to `run()`. You add a
@@ -830,6 +844,21 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  def gather_nd(self, indices, name=None):
+    r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
+
+    See tf.gather_nd for details.
+
+    Args:
+      indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+        Index tensor.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `params`.
+    """
+    raise NotImplementedError
+
   @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
@@ -1018,8 +1047,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
     return self.shape
 
   def _gather_saveables_for_checkpoint(self):
-    """For implementing `Checkpointable`. This object is saveable on its own."""
-    return {checkpointable.VARIABLE_VALUE_KEY: self}
+    """For implementing `Trackable`. This object is saveable on its own."""
+    return {trackable.VARIABLE_VALUE_KEY: self}
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
@@ -1506,8 +1535,8 @@ class RefVariable(VariableV1):
     # Store the graph key so optimizers know how to only retrieve variables from
     # this graph.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
@@ -1526,7 +1555,7 @@ class RefVariable(VariableV1):
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          true_name = ops._name_from_scope_name(name)  # pylint: disable=protected-access
+          true_name = ops.name_from_scope_name(name)  # pylint: disable=protected-access
           attr = attr_value_pb2.AttrValue(
               list=attr_value_pb2.AttrValue.ListValue(
                   s=[compat.as_bytes("loc:@%s" % true_name)]))

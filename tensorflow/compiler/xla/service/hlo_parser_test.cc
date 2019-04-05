@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -222,7 +223,7 @@ R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
-  %greater-than = pred[4]{0} greater-than(f32[4]{0} %v1, f32[4]{0} %v2), sharding={replicated}
+  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, sharding={replicated}
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={}
 }
 
@@ -292,7 +293,7 @@ R"(HloModule WhileWithScalarS32Result_module
 %condition.v3 (prev.2: s32[]) -> pred[] {
   %constant.1 = s32[] constant(5)
   %prev.2 = s32[] parameter(0)
-  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %prev.2)
+  ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
 }
 
 ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
@@ -474,7 +475,7 @@ R"(HloModule R4F32OverlapSmall_module
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -500,7 +501,7 @@ R"(HloModule select_and_scatter_scalar
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -573,6 +574,19 @@ R"(HloModule TransposeC128_module
 ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
   %input = c128[1,2,3]{2,1,0} parameter(0)
   ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
+}
+
+)"
+},
+// Triangular solve
+{
+"TriangularSolve",
+R"(HloModule TriangularSolve_module
+
+ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] {
+  %a.1 = f32[4,4]{1,0} parameter(0)
+  %b.2 = f32[3,4]{1,0} parameter(1)
+  ROOT %triangular-solve.3 = f32[3,4]{1,0} triangular-solve(f32[4,4]{1,0} %a.1, f32[3,4]{1,0} %b.2), lower=true, transpose_a=NO_TRANSPOSE
 }
 
 )"
@@ -941,6 +955,36 @@ ENTRY %ParseC128Literal () -> c128[2] {
 
 )"
 },
+// Indexed Conditional
+{
+"IndexedConditional",
+R"(HloModule indexed_conditional
+
+%Negate (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  ROOT %negate = f32[] negate(f32[] %x)
+}
+
+%Identity (y: f32[]) -> f32[] {
+  %y = f32[] parameter(0)
+  ROOT %copy = f32[] copy(f32[] %y)
+}
+
+%Floor (z: f32[]) -> f32[] {
+  %z = f32[] parameter(0)
+  ROOT %floor = f32[] floor(f32[] %z)
+}
+
+ENTRY %Parameters1.v4 () -> f32[] {
+  %constant = s32[] constant(1)
+  %constant.1 = f32[] constant(56)
+  %constant.2 = f32[] constant(12)
+  %constant.3 = f32[] constant(13)
+  ROOT %conditional = f32[] conditional(s32[] %constant, f32[] %constant.1, f32[] %constant.2, f32[] %constant.3), branch_computations={%Negate, %Identity, %Floor}
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -994,7 +1038,7 @@ R"(HloModule TupleReduce
 max_argmax {
   value = f32[] parameter(2)
   prev_max = f32[] parameter(0)
-  is_next_larger = pred[] greater-than-or-equal-to(value, prev_max)
+  is_next_larger = pred[] compare(value, prev_max), direction=GE
   max = f32[] select(is_next_larger, value, prev_max)
   index = s32[] parameter(3)
   prev_argmax = s32[] parameter(1)
@@ -1063,7 +1107,7 @@ R"(HloModule sort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1083,7 +1127,7 @@ compare {
   p.1.rhs = s32[] parameter(3)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1102,7 +1146,7 @@ R"(HloModule sort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1122,7 +1166,7 @@ compare {
   p.1.rhs = s32[] parameter(3)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1147,7 +1191,7 @@ compare {
   p.3.rhs = f32[] parameter(7)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1168,7 +1212,7 @@ R"(HloModule sort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1178,10 +1222,40 @@ ENTRY Sort {
 
 )"
 },
-// Conditional
+// Indexed Conditional
 {
-"Conditional",
-R"(HloModule conditional
+"IndexedConditional",
+R"(HloModule indexed_conditional
+
+Negate {
+  x = f32[] parameter(0)
+  ROOT negate = f32[] negate(x)
+}
+
+Identity {
+  y = f32[] parameter(0)
+  ROOT copy = f32[] copy(y)
+}
+
+Floor {
+  z = f32[] parameter(0)
+  ROOT floor = f32[] floor(z)
+}
+
+ENTRY Parameters1.v4 {
+  constant = s32[] constant(1)
+  constant.1 = f32[] constant(56)
+  constant.2 = f32[] constant(12)
+  constant.3 = f32[] constant(13)
+  ROOT conditional = f32[] conditional(constant, constant.1, constant.2, constant.3), branch_computations={Negate, Identity, Floor}
+}
+
+)"
+},
+// Predicated Conditional
+{
+"PredicatedConditional",
+R"(HloModule pred_conditional
 
 Negate {
   x = f32[] parameter(0)
@@ -1396,7 +1470,7 @@ compare {
   p.1.rhs = s32[] parameter(3)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lhs = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lhs = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1583,7 +1657,7 @@ TEST_F(HloParserTest, WrongOperandsSize) {
 
 ENTRY %blabla (x: f32[]) -> pred[] {
   %x = f32[]{} parameter(0)
-  %eq = pred[]{} equal-to(f32[]{} %x)
+  %eq = pred[]{} compare(f32[]{} %x), direction=EQ
 }
 
 )";
@@ -1595,7 +1669,7 @@ TEST_F(HloParserTest, OperandNotFound) {
   const string original = R"(HloModule operand_not_found:
 ENTRY %blabla (x: f32[]) -> pred[] {
   %x = f32[]{} parameter(0)
-  %eq = pred[]{} equal-to(f32[]{} %x, f32[]{} %y)
+  %eq = pred[]{} compare(f32[]{} %x, f32[]{} %y), direction=EQ
 }
 )";
   auto result = ParseHloString(original);
@@ -2190,6 +2264,13 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
+TEST_F(HloParserTest, ParseReplicaGroups) {
+  const string original = "{{0,1},{2,3}}";
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                          ParseReplicaGroupsOnly(original));
+  EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
+}
+
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
   const string original = "0_1x2_3";
   TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
@@ -2294,6 +2375,31 @@ TEST(HloParserSingleOpTest, CanonicalOpWithNested) {
     tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  EXPECT_EQ(
+      computation->root_instruction()->ToString(HloPrintOptions::Canonical()),
+      text);
+}
+
+TEST(HloParserSingleOpTest, CanonicalOpIndexedConditionalInlinedBranches) {
+  const string text =
+      R"(f32[5,10]{1,0} conditional(s32[], f32[5,10]{1,0}, f32[5,10]{1,0}, f32[5,10]{1,0}), branch_computations={
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} ceil(f32[5,10]{1,0} tmp_0)
+},
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} floor(f32[5,10]{1,0} tmp_0)
+},
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} copy(f32[5,10]{1,0} tmp_0)
+}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));

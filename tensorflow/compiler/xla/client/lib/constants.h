@@ -135,6 +135,9 @@ XlaOp MinValue(XlaBuilder* builder, PrimitiveType type);
 // point type, this is equal to -MaxFiniteValue().
 XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type);
 
+// Returns the minimum positive normal value for floating-point type `type`.
+XlaOp MinPositiveNormalValue(XlaBuilder* builder, PrimitiveType type);
+
 // Returns the maximum representable finite or infinite value for 'type'.
 // Returns 'inf' for floating-point types.
 XlaOp MaxValue(XlaBuilder* builder, PrimitiveType type);

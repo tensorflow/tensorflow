@@ -22,6 +22,7 @@ py_library(
         "errors.py",
         "function_wrapping.py",
         "naming.py",
+        "unsupported_features_checker.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -30,6 +31,7 @@ py_library(
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
+        "@gast_archive//:gast",
     ],
 )
 

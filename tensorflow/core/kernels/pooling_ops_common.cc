@@ -215,7 +215,7 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
       // NCHW_VECT_C is not supported by cudnnPoolingForward(), but can be
       // emulated via NHWC.
       data_layout = se::dnn::DataLayout::kBatchYXDepth;
-      batch_size *= depth;
+      batch_size *= depth / 4;
       depth = 4;
       break;
     default:

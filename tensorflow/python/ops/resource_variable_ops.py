@@ -43,7 +43,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -287,6 +287,14 @@ def _maybe_set_handle_data(dtype, handle, tensor):
               shape_and_type=handle_data.shape_and_type[1:]))
 
 
+def variable_accessed(variable):
+  """Records that `variable` was accessed for the tape and FuncGraph."""
+  if hasattr(ops.get_default_graph(), "watch_variable"):
+    ops.get_default_graph().watch_variable(variable)
+  if variable.trainable:
+    tape.variable_accessed(variable)
+
+
 class ResourceVariable(variables.VariableV1):
   """Variable based on resource handles.
 
@@ -505,8 +513,8 @@ class ResourceVariable(variables.VariableV1):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
@@ -522,7 +530,7 @@ class ResourceVariable(variables.VariableV1):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
           unique_id = shared_name
@@ -852,8 +860,7 @@ class ResourceVariable(variables.VariableV1):
                                               T=self.dtype)
 
   def _read_variable_op(self):
-    if self.trainable:
-      tape.variable_accessed(self)
+    variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     _maybe_set_handle_data(self._dtype, self._handle, result)
@@ -885,8 +892,7 @@ class ResourceVariable(variables.VariableV1):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
-      if self.trainable:
-        tape.variable_accessed(self)
+      variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
 
@@ -899,6 +905,16 @@ class ResourceVariable(variables.VariableV1):
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
                   is_set=True,
                   shape_and_type=handle_data.shape_and_type[1:]))
+
+    return array_ops.identity(value)
+
+  def gather_nd(self, indices, name=None):
+    """Reads the value of this variable sparsely, using `gather_nd`."""
+    with ops.name_scope("GatherNd" if name is None else name) as name:
+      if self.trainable:
+        variable_accessed(self)
+      value = gen_resource_variable_ops.resource_gather_nd(
+          self._handle, indices, dtype=self._dtype, name=name)
 
     return array_ops.identity(value)
 
@@ -1023,8 +1039,7 @@ class ResourceVariable(variables.VariableV1):
     return assign_add_op
 
   def _lazy_read(self, op):
-    if self.trainable:
-      tape.variable_accessed(self)
+    variable_accessed(self)
     return _UnreadVariable(
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,
@@ -1453,7 +1468,11 @@ class _UnreadVariable(ResourceVariable):
     self._is_initialized_op = None
     self._initializer_op = None
     self._parent_op = parent_op
-    if context.executing_eagerly():
+    # Only create a graph_element if we're in session.run-land as only
+    # session.run requires a preexisting tensor to evaluate. Otherwise we can
+    # avoid accidentally reading the variable.
+    if (context.executing_eagerly()
+        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
       self._graph_element = None
     else:
       self._graph_element = self.read_value()
@@ -1479,7 +1498,6 @@ class _UnreadVariable(ResourceVariable):
       _maybe_set_handle_data(self._dtype, self._handle, result)
       return result
 
-
   @property
   def op(self):
     """The op for this variable."""
@@ -1487,108 +1505,6 @@ class _UnreadVariable(ResourceVariable):
 
 
 ops.register_dense_tensor_like_type(_UnreadVariable)
-
-
-class _MixedPrecisionVariable(ResourceVariable):
-  """Represents a variable that can return in desired dtype when read.
-
-  In mixed precision training, it is usually desirable to use different dtypes
-  for variables and computation. This class will be used to wrap created
-  ResourceVariable when mixed precision training is enabled. It allows layers to
-  perform computation in a different dtype than their variable dtypes, in order
-  to achieve higher performance without causing quality loss.
-  """
-
-  def __init__(self, var, read_dtype):
-    """Creates a MixedPrecisionVariable.
-
-    Args:
-      var: A ResourceVariable instance.
-      read_dtype: A tf.DType, the returned dtype when read, default to None.
-        Casting is performed if read_dtype is not None and differs from
-        var.dtype.
-    Returns:
-      An MixedPrecisionVariable instance.
-    Raises:
-      ValueError: if var is not a ResourceVariable instance, or read_dtype is
-        not a tf.DType instance.
-    """
-    # pylint: disable=super-init-not-called
-    # We do not call super init on purpose.
-    if not isinstance(var, ResourceVariable):
-      raise ValueError("InvalidArgument: var must be a ResourceVariable type.")
-    if not isinstance(read_dtype, dtypes.DType):
-      raise ValueError("InvalidArgument: read_dtype must be a tf.DType type.")
-
-    self._var = var
-    self._trainable = var.trainable
-    self._save_slice_info = None
-    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-    self._in_graph_mode = var._in_graph_mode  # pylint: disable=protected-access
-    self._handle = var.handle
-    self._shape = var.shape
-    self._initial_value = None
-    if isinstance(self.handle, ops.EagerTensor):
-      self._handle_name = ""
-    else:
-      self._handle_name = self.handle.name
-    self._unique_id = var._unique_id  # pylint: disable=protected-access
-    self._dtype = var.dtype
-    self._constraint = None
-    self._cached_value = None
-    self._is_initialized_op = var._is_initialized_op  # pylint: disable=protected-access
-    self._initializer_op = var._initializer_op  # pylint: disable=protected-access
-    # This needs to be set before read_value() is called.
-    self._read_dtype = read_dtype
-    if context.executing_eagerly():
-      self._graph_element = None
-    else:
-      self._graph_element = self.read_value()
-    self._handle_deleter = (
-        var._handle_deleter if not self._in_graph_mode  # pylint: disable=protected-access
-        else None)
-    # pylint: enable=super-init-not-called
-
-  @property
-  def name(self):
-    return self._var.name
-
-  def value(self):
-    return self._read_variable_op()
-
-  def read_value(self):
-    return self._read_variable_op()
-
-  def _read_variable_op(self):
-    with ops.colocate_with(self._handle):
-      res = gen_resource_variable_ops.read_variable_op(self._handle,
-                                                       self._dtype)
-      _maybe_set_handle_data(self._dtype, self._handle, res)
-      if self._read_dtype != self._dtype:
-        return math_ops.cast(res, self._read_dtype)
-      else:
-        return res
-
-  @property
-  def op(self):
-    """The op for this variable."""
-    return self._var.op
-
-  @property
-  def read_dtype(self):
-    """The dtype of the returned tensor when reading the var."""
-    return self._read_dtype
-
-  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    del name
-    if (dtype is not None and
-        not dtype.is_compatible_with(self.read_dtype) or as_ref):
-      return NotImplemented
-    return self.value()
-
-  def _should_act_as_resource_variable(self):
-    """To pass resource_variable_ops.is_resource_variable check."""
-    pass
 
 
 @ops.RegisterGradient("ReadVariableOp")
@@ -1684,7 +1600,7 @@ def copy_to_graph_uninitialized(var):
       constraint=var._constraint,
       dtype=var.dtype,
       name=var._shared_name)
-  new_variable._maybe_initialize_checkpointable()
+  new_variable._maybe_initialize_trackable()
   # pylint: enable=protected-access
   return new_variable
 

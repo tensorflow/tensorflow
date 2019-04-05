@@ -63,8 +63,7 @@ enum ContextDevicePlacementPolicy {
   // Silently copy the tensor, which has a performance cost since the operation
   // will be blocked till the copy completes. This is the default policy.
   DEVICE_PLACEMENT_SILENT = 2,
-  // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.
+  // Placement policy which silently copies int32 tensors but not other dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
 
@@ -85,12 +84,13 @@ class EagerContext {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_policy, bool async,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous);
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator);
 
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
-  FunctionLibraryRuntime* func_lib(Device* d) const {
+  FunctionLibraryRuntime* func_lib(const Device* d) const {
     return pflr_->GetFLR(d->name());
   }
 
@@ -118,7 +118,7 @@ class EagerContext {
   }
 
   // Clears the kernel caches.
-  void ClearCaches();
+  Status ClearCaches();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
@@ -216,7 +216,7 @@ class EagerContext {
   // - remote_device_mgr: A DeviceMgr* which contains all remote devices
   // (should contain no local devices).
   // - remote_contexts: A map containing task name to remote context ID.
-  void InitializeRemote(
+  Status InitializeRemote(
       std::unique_ptr<ServerInterface> server,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,

@@ -110,14 +110,12 @@ class ComputationsWithConstantsTest(ComputationTest):
 
   def testConstantScalarSumS8(self):
     c = self._NewComputation()
-    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
-    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
     self._ExecuteAndCompareExact(c, expected=np.int8(3))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
-    root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
-    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
     self._ExecuteAndCompareClose(c, expected=4.25)
 
   def testConstantScalarSumF64(self):
@@ -229,16 +227,6 @@ class ComputationsWithConstantsTest(ComputationTest):
     c.ShiftRightLogical(c.Constant(NumpyArrayS32([-1])),
                         c.Constant(NumpyArrayS32([1])))
     self._ExecuteAndCompareClose(c, expected=[2**31 - 1])
-
-  def testGetProto(self):
-    c = self._NewComputation()
-    c.Add(
-        c.Constant(NumpyArrayF32([[1, 2, 3], [4, 5, 6]])),
-        c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
-    built = c.Build()
-    proto = built.GetProto()  # HloModuleProto
-    self.assertTrue(len(proto.computations) == 1)
-    self.assertTrue(len(proto.computations[0].instructions) == 3)
 
   def testSum2DF64(self):
     c = self._NewComputation()
@@ -528,11 +516,11 @@ class SingleOpTest(ComputationTest):
 
   def testConvertElementType(self):
     xla_types = {
-        np.bool: xla_client.xla_data_pb2.PRED,
-        np.int32: xla_client.xla_data_pb2.S32,
-        np.int64: xla_client.xla_data_pb2.S64,
-        np.float32: xla_client.xla_data_pb2.F32,
-        np.float64: xla_client.xla_data_pb2.F64,
+        np.bool: xla_client.PrimitiveType.PRED,
+        np.int32: xla_client.PrimitiveType.S32,
+        np.int64: xla_client.PrimitiveType.S64,
+        np.float32: xla_client.PrimitiveType.F32,
+        np.float64: xla_client.PrimitiveType.F64,
     }
 
     def _ConvertAndTest(template, src_dtype, dst_dtype):
@@ -553,13 +541,13 @@ class SingleOpTest(ComputationTest):
 
   def testBitcastConvertType(self):
     xla_x32_types = {
-        np.int32: xla_client.xla_data_pb2.S32,
-        np.float32: xla_client.xla_data_pb2.F32,
+        np.int32: xla_client.PrimitiveType.S32,
+        np.float32: xla_client.PrimitiveType.F32,
     }
 
     xla_x64_types = {
-        np.int64: xla_client.xla_data_pb2.S64,
-        np.float64: xla_client.xla_data_pb2.F64,
+        np.int64: xla_client.PrimitiveType.S64,
+        np.float64: xla_client.PrimitiveType.F64,
     }
 
     def _ConvertAndTest(template, src_dtype, dst_dtype, dst_etype):
@@ -579,7 +567,7 @@ class SingleOpTest(ComputationTest):
       for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
         _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
 
-  # TODO(b/123523486): re-enable when shape check is resolved
+  # TODO(b/123523486) implement AllToAll on CPU
   def DISABLED_testAllToAllOneReplica(self):
     samples = [
         NumpyArrayF32([97.0]),
@@ -602,6 +590,11 @@ class SingleOpTest(ComputationTest):
       c = self._NewComputation()
       c.CrossReplicaSum(c.Constant(lhs))
       self._ExecuteAndCompareExact(c, expected=lhs)
+
+  def testReplicaId(self):
+    c = self._NewComputation()
+    _ = c.ReplicaId()
+    self._ExecuteAndCompareExact(c, expected=0)
 
   def testCrossReplicaSumOneReplicaWithSingletonGroup(self):
     samples = [
@@ -658,7 +651,7 @@ class SingleOpTest(ComputationTest):
     lhs = NumpyArrayF32(rng.randn(10, 3, 4))
     rhs = NumpyArrayF32(rng.randn(10, 4, 5))
 
-    dimension_numbers = xla_client.xla_data_pb2.DotDimensionNumbers()
+    dimension_numbers = xla_client.DotDimensionNumbers()
     dimension_numbers.lhs_contracting_dimensions.append(2)
     dimension_numbers.rhs_contracting_dimensions.append(1)
     dimension_numbers.lhs_batch_dimensions.append(0)
@@ -776,6 +769,12 @@ class SingleOpTest(ComputationTest):
     arr = NumpyArrayBool([True, False, True])
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
+
+  def testCountLeadingZeros(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([0x7FFF, 0x12345678])
+    c.Clz(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=[17, 3])
 
   def testExp(self):
     c = self._NewComputation()
@@ -964,12 +963,13 @@ class SingleOpTest(ComputationTest):
 
   def testPadWithPaddingConfig(self):
     c = self._NewComputation()
-    padding_config = xla_client.xla_data_pb2.PaddingConfig()
+    padding_config = xla_client.PaddingConfig()
     for lo, hi, interior in [(1, 2, 1), (0, 1, 0)]:
-      dimension = padding_config.dimensions.add()
+      dimension = xla_client.PaddingConfigDimension()
       dimension.edge_padding_low = lo
       dimension.edge_padding_high = hi
       dimension.interior_padding = interior
+      padding_config.dimensions.append(dimension)
     c.Pad(
         c.Constant(NumpyArrayF32([[1.0, 2.0], [3.0, 4.0]])),
         c.Constant(NumpyArrayF32(0.0)),
@@ -1012,14 +1012,13 @@ class SingleOpTest(ComputationTest):
         c.Constant(NumpyArrayF32(2)))
     self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
 
-  # TODO(b/72689392): re-enable when bug S32 resolved
-  def DISABLED_testClampS32(self):
+  def testClampS32(self):
     c = self._NewComputation()
     c.Clamp(
         c.Constant(NumpyArrayS32(-1)),
         c.Constant(NumpyArrayS32([-2, -1, 0, 1, 2, 3])),
         c.Constant(NumpyArrayS32(2)))
-    self._ExecuteAndCompareExact(c, expected=[-1, 0, 1, 2, 2])
+    self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
 
   def testSelect(self):
     c = self._NewComputation()
@@ -1152,6 +1151,27 @@ class SingleOpTest(ComputationTest):
     q, r = self._Execute(c, ())
     np.testing.assert_allclose(np.dot(q, r), a, rtol=1e-4)
 
+  def testEigh(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    a = (a + a.T) / 2
+
+    c = self._NewComputation()
+    c.Eigh(c.Constant(a), full_matrices=True)
+    # TODO(b/129396575): Turn this test back on when it passes without fastmath.
+    # v, w = self._Execute(c, ())
+    # self.assertLess(np.linalg.norm(np.dot(a, v) - w * v), 1e-3)
+
+  def testSVD(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    c = self._NewComputation()
+    c.SVD(c.Constant(a))
+    u, d, v = self._Execute(c, ())
+    self.assertLess(np.linalg.norm(a - np.matmul(u * d, v.T)), 1e-3)
+
   def testTriangularSolve(self):
     a_vals = np.array(
         [[2, 0, 0, 0], [3, 6, 0, 0], [4, 7, 9, 0], [5, 8, 10, 11]],
@@ -1182,7 +1202,7 @@ class SingleOpTest(ComputationTest):
   def testGather(self):
     a = np.arange(9).astype(np.int32).reshape((3, 3))
     indices = np.array([[[0, 2], [2, 1]], [[1, 2], [2, 0]]], dtype=np.int32)
-    dnums = xla_client.xla_data_pb2.GatherDimensionNumbers()
+    dnums = xla_client.GatherDimensionNumbers()
     dnums.offset_dims.append(1)
     dnums.offset_dims.append(2)
     dnums.start_index_map.append(0)
@@ -1646,7 +1666,7 @@ class EmbeddedComputationsTest(ComputationTest):
     scatter_indices = np.array([0, 2], dtype=np.int32)
     updates = np.array([[10, 20, 30], [70, 80, 90]], dtype=np.int32)
 
-    dnums = xla_client.xla_data_pb2.ScatterDimensionNumbers()
+    dnums = xla_client.ScatterDimensionNumbers()
     dnums.update_window_dims.append(1)
     dnums.inserted_window_dims.append(0)
     dnums.scatter_dims_to_operand_dims.append(0)

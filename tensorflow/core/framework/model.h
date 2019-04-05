@@ -160,6 +160,9 @@ class Node {
     return inputs_;
   }
 
+  // Returns a longer node name that is guaranteed to be unique.
+  string long_name() const { return strings::StrCat(name_, "(id:", id_, ")"); }
+
   // Returns the node name.
   const string& name() const { return name_; }
 
@@ -212,12 +215,12 @@ class Node {
 
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
-      std::vector<std::shared_ptr<Parameter>>* parameters) const
+      std::map<string, std::shared_ptr<Parameter>>* parameters) const
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     for (auto& pair : parameters_) {
       if (pair.second->state->tunable) {
-        parameters->push_back(pair.second);
+        parameters->insert(std::make_pair(long_name(), pair.second));
       }
     }
     for (auto& input : inputs_) {
@@ -247,10 +250,13 @@ class Node {
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     std::shared_ptr<Node> result = Clone(output);
-    result->buffered_bytes_ = buffered_bytes_;
-    result->processing_time_ = processing_time_;
-    result->num_elements_ = num_elements_;
-    result->parameters_ = parameters_;
+    {
+      mutex_lock l2(result->mu_);
+      result->buffered_bytes_ = buffered_bytes_;
+      result->processing_time_ = processing_time_;
+      result->num_elements_ = num_elements_;
+      result->parameters_ = parameters_;
+    }
     for (auto& input : inputs_) {
       result->add_input(input->Snapshot(result));
     }
@@ -389,6 +395,9 @@ class Model {
   // Records that a node has produced an element.
   void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
 
+  // Returns the number of elements that the input pipeline has produced.
+  int64 NumElements(const string& name) LOCKS_EXCLUDED(mu_);
+
   // Records that the given node has started work. If `stop_output` is set, it
   // also records that the output of the given node has stopped work.
   void RecordStart(const string& name, bool stop_output) LOCKS_EXCLUDED(mu_);
@@ -401,8 +410,9 @@ class Model {
   void RemoveNode(const string& name) LOCKS_EXCLUDED(mu_);
 
  private:
-  // Collects tunable parameters in the tree rooted in the given node.
-  std::vector<std::shared_ptr<Parameter>> CollectTunableParameters(
+  // Collects tunable parameters in the tree rooted in the given node, returning
+  // a mapping from a (unique) node name to a tunable parameter.
+  std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
       std::shared_ptr<Node> node);
 
   // Collects the output time for the given node.

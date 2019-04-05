@@ -322,6 +322,37 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Cholesky
+
+See also
+[`XlaBuilder::Cholesky`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Computes the
+[Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
+of a batch of symmetric (Hermitian) positive definite matrices.
+
+<b> `Cholesky(a, lower)` </b>
+
+Arguments | Type    | Semantics
+--------- | ------- | -----------------------------------------------------
+`a`       | `XlaOp` | a rank > 2 array of a complex or floating-point type.
+`lower`   | `bool`  | whether to use the upper or lower triangle of `a`.
+
+If `lower` is `true`, computes lower-triangular matrices `l` such that $$ a = l
+. l^T $$. If `lower` is `false`, computes upper-triangular matrices `u` such
+that $$ a = u^T . u $$.
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` is greater than 2, `a` is treated as a batch of matrices,
+where all except the minor 2 dimensions are batch dimensions.
+
+If `a` is not symmetric (Hermitian) positive definite, the result is
+implementation-defined.
+
 ## Clamp
 
 See also
@@ -510,24 +541,48 @@ See also
 false_computation)` </b>
 
 Arguments           | Type             | Semantics
-------------------- | ---------------- | ---------------------------------
+------------------- | ---------------- | --------------------------------------
 `pred`              | `XlaOp`          | Scalar of type `PRED`
-`true_operand`      | `XlaOp`          | Argument of type `T_0`
-`true_computation`  | `XlaComputation` | XlaComputation of type `T_0 -> S`
-`false_operand`     | `XlaOp`          | Argument of type `T_1`
-`false_computation` | `XlaComputation` | XlaComputation of type `T_1 -> S`
+`true_operand`      | `XlaOp`          | Argument of type $$ T_0 $$
+`true_computation`  | `XlaComputation` | XlaComputation of type $$ T_0 \to S$$
+`false_operand`     | `XlaOp`          | Argument of type $$ T_1 $$
+`false_computation` | `XlaComputation` | XlaComputation of type $$ T_1 \to S $$
 
 Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
 is `false`, and returns the result.
 
-The `true_computation` must take in a single argument of type `T_0` and will be
-invoked with `true_operand` which must be of the same type. The
-`false_computation` must take in a single argument of type `T_1` and will be
+The `true_computation` must take in a single argument of type $$ T_0 $$ and will
+be invoked with `true_operand` which must be of the same type. The
+`false_computation` must take in a single argument of type $$ T_1 $$ and will be
 invoked with `false_operand` which must be of the same type. The type of the
 returned value of `true_computation` and `false_computation` must be the same.
 
 Note that only one of `true_computation` and `false_computation` will be
 executed depending on the value of `pred`.
+
+<b> `Conditional(branch_index, branch_computations, branch_operands)` </b>
+
+| Arguments             | Type                  | Semantics                    |
+| --------------------- | --------------------- | ---------------------------- |
+| `branch_index`        | `XlaOp`               | Scalar of type `PRED` or     |
+:                       :                       : `S32`                        :
+| `branch_computations` | sequence of N         | XlaComputations of type $$   |
+:                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
+:                       :                       : T_{N-1} \to S $$             :
+| `branch_operands`     | sequence of N `XlaOp` | Arguments of type $$ T_0 ,   |
+:                       :                       : T_1 , ..., T_{N-1} $$        :
+
+Executes `branch_computations[branch_index]`, and returns the result. If
+`branch_index` is a `PRED`, then the `true` branch is in position 0 and the
+`false` branch is in position 1. If `branch_index` is an `S32` which is < 0
+or >= N, then `branch_computations[N-1]` is executed as the default branch.
+
+Each `branch_computations[b]` must take in a single argument of type `T_b` and
+will be invoked with `branch_operands[b]` which must be of the same type. The
+type of the returned value of each `branch_computations[b]` must be the same.
+
+Note that only one of the `branch_computations` will be executed depending on
+the value of `branch_index`.
 
 ## Conv (convolution)
 
@@ -1182,6 +1237,9 @@ if and only if the corresponding input element is finite.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
+<b>`PopulationCount(operand)`</b> Computes the number of bits set in each
+element of `operand`.
+
 <b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
@@ -1608,15 +1666,15 @@ Applies a reduction function to one or more arrays in parallel.
 
 <b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type                  | Semantics
-------------- | --------------------- | ---------------------------------------
-`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
-`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
-`computation` | `XlaComputation`      | computation of type
-              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
-`dimensions`  | `int64` array         | unordered array of dimensions to reduce
+| Arguments     | Type                  | Semantics                            |
+| ------------- | --------------------- | ------------------------------------ |
+| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
+| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
+| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N, T_0, ..., T_N ->` `Collate(T_0, ..., T_N)`. |
+| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
 
 Where:
+
 * N is required to be greater or equal to 1.
 * All input arrays must have the same dimensions.
 * If `N = 1`, `Collate(T)` is `T`.
@@ -1626,10 +1684,10 @@ The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 `T_i`, the dimensions of which are described below.
 
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may be inserted
+The rank of each returned array is `rank(operand) - len(dimensions)`. The
+initial value used for every reduction is `init_value`, and it may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
-identity of the reduction function (for example, 0 for addition). The applied
+identity of the reduction function (for example, `0` for addition). The applied
 `computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1640,10 +1698,10 @@ Some reduction functions like addition are not strictly associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA reductions.
+incorrect or unpredictable results in XLA.
 
 As an example, when reducing across one dimension in a single 1D array with
-values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
 then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
@@ -1722,16 +1780,27 @@ preserved in the output, but some dimensions may get assigned new numbers (since
 the rank changes).
 
 We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
-the 1D array `| 20 28 36 |`.
+the 1D array `[20, 28, 36]`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
-When `N > 1`, reduce function application is slightly more complex, as it is
-applied simultaneously to all inputs. For example, consider the following
-reduction function, which can be used to compute the max and the argmax of a a
-1-D array in parallel:
+### Variadic Reduce
 
-```
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. The operands are supplied to the
+computation in the following order:
+
+*   Running reduced value for the first operand
+*   ...
+*   Running reduced value for the N'th operand
+*   Input value for the first operand
+*   ...
+*   Input value for the N'th operand
+
+For example, consider the following reduction function, which can be used to
+compute the max and the argmax of a 1-D array in parallel:
+
+```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
   if value >= argmax:
@@ -1743,6 +1812,7 @@ f(max, argmax, value, index):
 For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
 `I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
 input dimension is equivalent to the following recursive application:
+
 ```
 f_0 = f(I_V, I_K, V_0, K_0)
 f_1 = f(f_0.first, f_0.second, V_1, K_1)
@@ -2438,6 +2508,46 @@ Permutes the operand dimensions with the given permutation, so
 
 This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
+
+## TriangularSolve
+
+See also
+[`XlaBuilder::TriangularSolve`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Solves systems of linear equations with lower or upper triangular coefficient
+matrices by forward- or back-substitution. Broadcasting along leading
+dimensions, this routine solves one of the matrix systems `op(a) * x =
+b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
+either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
+
+<b> `TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)` </b>
+
+| Arguments       | Type        | Semantics                                    |
+| --------------- | ----------- | -------------------------------------------- |
+| `a`             | `XlaOp`     | a rank > 2 array of a complex or             |
+:                 :             : floating-point type with shape `[..., M,     :
+:                 :             : M]`.                                         :
+| `b`             | `XlaOp`     | a rank > 2 array of the same type with shape |
+:                 :             : `[..., M, K]` if `left_side` is true, `[..., :
+:                 :             : K, M]` otherwise.                            :
+| `left_side`     | `bool`      | indicates whether to solve a system of the   |
+:                 :             : form `op(a) * x = b` (`true`) or `x *        :
+:                 :             : op(a) = b` (`false`).                        :
+| `lower`         | `bool`      | whether to use the upper or lower triangle   |
+:                 :             : of `a`.                                      :
+| `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are  |
+:                 :             : assumed to be `1` and not accessed.          :
+| `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or    |
+:                 :             : take its conjugate transpose.                :
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` and `b` are greater than 2, they are treated as batches of
+matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
+`b` must have equal batch dimensions.
 
 ## Tuple
 

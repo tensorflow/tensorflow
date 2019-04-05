@@ -1,5 +1,6 @@
 op {
   graph_op_name: "InfeedDequeueTuple"
+  visibility: HIDDEN
   out_arg {
     name: "outputs"
     description: <<END

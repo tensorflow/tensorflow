@@ -52,6 +52,8 @@ _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
 _TPU_CONN_RETRIES = 120
 
+_GCE_METADATA_ENDPOINT = 'https://metadata.google.internal'
+
 DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
 
@@ -95,22 +97,26 @@ class TPUClusterResolver(ClusterResolver):
           credentials=credentials)
 
   def _requestComputeMetadata(self, path):
-    req = Request('http://metadata/computeMetadata/v1/%s' % path,
+    req = Request('%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
                   headers={'Metadata-Flavor': 'Google'})
     resp = urlopen(req)
     return compat.as_bytes(resp.read())
 
+  def _isGoogleEnvironment(self):
+    return (
+        self._tpu == compat.as_bytes('') or
+        self._tpu == compat.as_bytes('local') or
+        self._tpu.startswith(compat.as_bytes('localhost:')) or
+        self._tpu.startswith(compat.as_bytes('/bns')) or
+        self._tpu.startswith(compat.as_bytes('uptc://')))
+
   def _shouldResolve(self):
     if isinstance(self._should_resolve_override, bool):
       return self._should_resolve_override
-    if (self._tpu == compat.as_bytes('') or
-        self._tpu == compat.as_bytes('local') or
-        self._tpu.startswith(compat.as_bytes('/bns')) or
-        self._tpu.startswith(compat.as_bytes('localhost:')) or
-        self._tpu.startswith(compat.as_bytes('grpc://')) or
-        self._tpu.startswith(compat.as_bytes('uptc://'))):
-      return False
-    return True
+    else:
+      return not (
+          self._tpu.startswith(compat.as_bytes('grpc://')) or
+          self._isGoogleEnvironment())
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -167,7 +173,7 @@ class TPUClusterResolver(ClusterResolver):
   def _isRunningInGCE():
     """Checks for GCE presence by attempting to query the metadata service."""
     try:
-      req = Request('http://metadata.google.internal/computeMetadata/v1',
+      req = Request('%s/computeMetadata/v1' % _GCE_METADATA_ENDPOINT,
                     headers={'Metadata-Flavor': 'Google'})
       resp = urllib.request.urlopen(req, timeout=1)
       info = resp.info()
@@ -260,22 +266,11 @@ class TPUClusterResolver(ClusterResolver):
     self.task_type = job_name
     self.task_id = 0
 
-    if tpu.startswith('grpc://'):
-      # Cloud environment, where we are using GRPC to communicate to TPUs.
-      self._environment = ''
-    elif tpu == 'local' or not tpu:
-      # Google environment, where the TPU is attached to the host.
+    if self._isGoogleEnvironment():
       self._environment = 'google'
-    elif tpu.startswith('/bns') or tpu.startswith('uptc://'):
-      # Google environment, where we reach the TPU through BNS.
-      self._environment = 'google'
-
-    # If TPU is in the Google environment or exists locally, we don't use any
-    # RPC layer.
-    if tpu.startswith('/bns') or tpu.startswith(
-        'uptc://') or tpu == 'local' or not tpu:
       self.rpc_layer = None
     else:
+      self._environment = ''
       self.rpc_layer = 'grpc'
 
     # Setting this overrides the return value of self._shouldResolve()
@@ -419,10 +414,6 @@ class TPUClusterResolver(ClusterResolver):
         raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
                            (compat.as_text(self._tpu), response['state']))
 
-      if 'health' in response and response['health'] != 'HEALTHY':
-        raise RuntimeError('TPU "%s" is unhealthy: "%s"' %
-                           (compat.as_text(self._tpu), response['health']))
-
       if 'networkEndpoints' in response:
         worker_list = [
             '%s:%s' % (endpoint['ipAddress'], endpoint['port'])
@@ -460,7 +451,6 @@ class TPUClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='TPU',
                        config_proto=None):
     """Returns the number of TPU cores per worker.
 
@@ -471,7 +461,6 @@ class TPUClusterResolver(ClusterResolver):
     Args:
       task_type: Unused.
       task_id: Unused.
-      accelerator_type: Unused.
       config_proto: Used to create a connection to a TPU master in order to
         retrieve the system metadata.
 
@@ -498,9 +487,9 @@ class TPUClusterResolver(ClusterResolver):
           raise RuntimeError(error_message)
 
     if device_details.total_cores:
-      return TPUClusterResolver._verify_and_return_same_core_count(
-          device_details.device_map)
-    return 0
+      return {'TPU': TPUClusterResolver._verify_and_return_same_core_count(
+          device_details.device_map)}
+    return {'TPU': 0}
 
   @property
   def environment(self):

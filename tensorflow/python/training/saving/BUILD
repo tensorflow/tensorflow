@@ -34,6 +34,7 @@ cuda_py_test(
         ":functional_saver",
         "//tensorflow/python/eager:test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -49,7 +50,7 @@ py_library(
     deps = [
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
     ],
 )

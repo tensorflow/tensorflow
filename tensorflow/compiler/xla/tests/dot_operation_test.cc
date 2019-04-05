@@ -395,6 +395,8 @@ class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
   ParametricDotTestWithoutLayoutAssignment() {
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "layout-assignment");
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "tiling-assignment");
     // Disable algebraic simplification because the pass may replace a dot
     // instruction with a layout-changing multiplication instruction.
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
@@ -1202,8 +1204,47 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
   return test_cases;
 }
 
-INSTANTIATE_TEST_CASE_P(Einsum, EinsumTest,
-                        ::testing::ValuesIn(GetEinsumTestCases()));
+INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
+                         ::testing::ValuesIn(GetEinsumTestCases()));
+
+using BatchDotParamType =
+    std::tuple<std::vector<int64>, std::vector<int64>, std::vector<int64>>;
+class BatchDotTest : public DotOperationTest,
+                     public ::testing::WithParamInterface<BatchDotParamType> {};
+XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
+  XlaBuilder builder(TestName());
+  auto x = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  auto y = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  auto batch_dot = BatchDot(x, y);
+  auto output_shape = builder.GetShape(batch_dot).ValueOrDie();
+  EXPECT_EQ(output_shape.dimensions(), std::get<2>(GetParam()));
+  ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
+}
+
+std::vector<BatchDotParamType> GetBatchDotTestCases() {
+  using v = std::vector<int64>;
+  using p = BatchDotParamType;
+  std::vector<p> test_cases = {
+      p{v{5, 6}, v{6, 7}, v{5, 7}},
+      p{v{5, 6, 11}, v{5, 11, 7}, v{5, 6, 7}},
+      p{v{5, 6, 11}, v{11, 7}, v{5, 6, 7}},
+      p{v{5, 6, 11}, v{1, 11, 7}, v{5, 6, 7}},
+      p{v{6, 11}, v{5, 11, 7}, v{5, 6, 7}},
+      p{v{1, 6, 11}, v{5, 11, 7}, v{5, 6, 7}},
+      p{v{8, 1, 2, 3}, v{8, 3, 4}, v{8, 8, 2, 4}},
+      p{v{8, 8, 2, 3}, v{8, 1, 3, 2}, v{8, 8, 2, 2}},
+  };
+  return test_cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
+                         ::testing::ValuesIn(GetBatchDotTestCases()));
 
 class DotOperationTextTest : public HloTestBase {};
 
@@ -1322,6 +1363,39 @@ ENTRY SmallIntegerDot {
   arg0 = s32[1,2,2] parameter(0)
   arg1 = s32[1,2,1] parameter(1)
   ROOT dot = s32[1,2,1] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuTransposeOutput)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule TransposeOutput
+
+ENTRY TransposeOutput {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,64] parameter(1)
+  dot = f32[32,64] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT tr = f32[64,32] transpose(dot), dimensions={1,0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MatrixVectorComplex
+
+ENTRY MatrixVectorComplex {
+  p0 = c64[5,5] parameter(0)
+  p1 = c64[5,1] parameter(1)
+  p2 = c64[5,1] parameter(2)
+  dot = c64[5,1] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT add = c64[5,1] add(dot, p2)
 }
 )";
 

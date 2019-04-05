@@ -80,7 +80,7 @@ def sparse_multiclass_hinge_loss(
           ' {}'.format(logits_rank))
     logits_shape = array_ops.shape(logits)
     batch_size, num_classes = logits_shape[0], logits_shape[1]
-    logits = math_ops.to_float(logits)
+    logits = math_ops.cast(logits, dtypes.float32)
 
     # Check labels have valid type.
     if labels.dtype != dtypes.int32 and labels.dtype != dtypes.int64:

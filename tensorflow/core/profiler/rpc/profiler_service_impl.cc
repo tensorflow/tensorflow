@@ -15,16 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "grpcpp/support/status.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/platform/grpc_services.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-// TODO(fishx): Rename TPUProfiler to something more generic.
-class ProfilerServiceImpl : public TPUProfiler::Service {
+class ProfilerServiceImpl : public grpc::ProfilerService::Service {
  public:
   explicit ProfilerServiceImpl(const ProfilerContext& profiler_context)
       : profiler_context_(profiler_context) {}
@@ -68,7 +67,7 @@ class ProfilerServiceImpl : public TPUProfiler::Service {
 };
 }  // namespace
 
-std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService(
     const ProfilerContext& profiler_context) {
   return MakeUnique<ProfilerServiceImpl>(profiler_context);
 }

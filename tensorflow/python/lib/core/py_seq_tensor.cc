@@ -352,8 +352,25 @@ DEFINE_HELPER(ConvertInt32, int32, DT_INT32, ConvertOneInt32);
 
 template <class T>
 const char* ConvertOneFloat(PyObject* v, T* out) {
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
   if (TF_PREDICT_TRUE(PyFloat_Check(v))) {
-    *out = PyFloat_AS_DOUBLE(v);
+    double as_double = PyFloat_AsDouble(v);
+    // Handle infinity.
+    if (as_double == std::numeric_limits<double>::infinity()) {
+      *out = std::numeric_limits<T>::infinity();
+      return nullptr;
+    } else if (as_double == -1 * std::numeric_limits<double>::infinity()) {
+      *out = -1 * std::numeric_limits<T>::infinity();
+      return nullptr;
+    }
+    // Check for overflow.
+    if (as_double > std::numeric_limits<T>::max() ||
+        as_double < std::numeric_limits<T>::lowest()) {
+      return ErrorOutOfRangeDouble;
+    }
+    *out = static_cast<T>(as_double);
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
@@ -369,6 +386,9 @@ const char* ConvertOneFloat(PyObject* v, T* out) {
   }
   if (PyIsInstance(v, &PyFloatingArrType_Type)) {  // NumPy float types
     Safe_PyObjectPtr as_float = make_safe(PyNumber_Float(v));
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     return ConvertOneFloat<T>(as_float.get(), out);
   }
   if (PyIsInstance(v, &PyIntegerArrType_Type)) {  // NumPy integers
@@ -377,6 +397,9 @@ const char* ConvertOneFloat(PyObject* v, T* out) {
 #else
     Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
 #endif
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     return ConvertOneFloat<T>(as_int.get(), out);
   }
   return ErrorMixedTypes;

@@ -475,6 +475,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -499,6 +500,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -523,6 +525,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPUStrings(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -751,7 +754,7 @@ class FunctionalOpsTest(test.TestCase):
 
           def TestCondCapture(n, *args):
             del args
-            return math_ops.to_float(n) + v < 10
+            return math_ops.cast(n, dtypes.float32) + v < 10
 
           with self.assertRaises(ValueError):
             _ = functional_ops.While(
@@ -767,7 +770,7 @@ class FunctionalOpsTest(test.TestCase):
 
         @function.Defun(dtypes.int32, dtypes.float32)
         def Body(n, x):
-          return x + math_ops.to_float(n)
+          return x + math_ops.cast(n, dtypes.float32)
 
         xs = [
             # 1 + 2  + ... + 20
@@ -796,7 +799,7 @@ class FunctionalOpsTest(test.TestCase):
 
       @function.Defun(dtypes.int32, dtypes.float32, func_name="TestBody")
       def TestBody(n, x):
-        return x + math_ops.to_float(n)
+        return x + math_ops.cast(n, dtypes.float32)
 
       _ = functional_ops.For(
           1, 21, 1, [0.], TestBody, rewrite_with_while=True)[0]
@@ -814,15 +817,15 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32)
     def TestNullary(n):
-      v + math_ops.to_float(n)  # pylint: disable=expression-not-assigned
+      v + math_ops.cast(n, dtypes.float32)  # pylint: disable=expression-not-assigned
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def TestUnary(n, x):
-      return x + math_ops.to_float(n) + v
+      return x + math_ops.cast(n, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32, dtypes.float32)
     def TestBinary(n, x, x2):
-      return x + math_ops.to_float(n) + v, x2 + v
+      return x + math_ops.cast(n, dtypes.float32) + v, x2 + v
 
     for rewrite_with_while in (True, False):
       use_gpu = not rewrite_with_while
@@ -896,7 +899,7 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(i, v):
-      return math_ops.to_float(i) + v
+      return math_ops.cast(i, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def ReturnsTooManyArgs(unused_i, v):
@@ -981,6 +984,7 @@ class PartitionedCallTest(test.TestCase):
                 constant_op.constant(2.)], f=Body)
       self.assertEqual(output.eval(), 12.)
 
+  @test_util.run_deprecated_v1
   def testBasicMultiDeviceGPU(self):
     if not test_util.is_gpu_available():
       return
@@ -1061,6 +1065,7 @@ class PartitionedCallTest(test.TestCase):
     value = self.evaluate(v.read_value())
     self.assertEqual(value, 2.0)
 
+  @test_util.run_deprecated_v1
   def testFunctionWithResourcesOnDifferentDevices(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs available.")

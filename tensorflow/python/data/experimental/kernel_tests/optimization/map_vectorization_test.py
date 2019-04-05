@@ -321,6 +321,13 @@ def _generate_optimization_test_cases():
 @test_util.run_all_in_graph_and_eager_modes
 class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  def _enable_map_vectorization(self, dataset, use_choose=True):
+    options = dataset_ops.Options()
+    opt_options = options.experimental_optimization
+    opt_options.map_vectorization.enabled = True
+    opt_options.map_vectorization.use_choose_fastest = use_choose
+    return dataset.with_options(options)
+
   def _get_test_datasets(self,
                          base_dataset,
                          map_fn,
@@ -359,12 +366,9 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     unoptimized = _make_dataset([map_node_name, "Batch"])
     # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
     # to verify the optimization result.
-    optimized = _make_dataset(
-        [] if expect_optimized else [map_node_name, "Batch"])
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.map_vectorization = True
-    optimized = optimized.with_options(options)
+    optimized = _make_dataset(["ChooseFastestBranch"]
+                              if expect_optimized else [map_node_name, "Batch"])
+    optimized = self._enable_map_vectorization(optimized)
     return unoptimized, optimized
 
   @parameterized.named_parameters(_generate_optimization_test_cases())
@@ -404,16 +408,12 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testOptimizationWithMapAndBatchFusion(self):
     # Tests that vectorization works on fused map and batch.
-    y = constant_op.constant(1, shape=(2,))
-    z = constant_op.constant(2, shape=(2,))
-
     def map_fn(x):
-      return x, y, z
+      return x**2
 
+    base_dataset = dataset_ops.Dataset.range(1000)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
-    base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
-                                                           [3, 4]]).repeat(5)
     base_dataset = base_dataset.with_options(options)
 
     def _make_dataset(node_names):
@@ -422,10 +422,8 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     unoptimized = _make_dataset(["MapAndBatch"])
-    optimized = _make_dataset([])
-    options = dataset_ops.Options()
-    options.experimental_optimization.map_vectorization = True
-    optimized = optimized.with_options(options)
+    optimized = _make_dataset(["ChooseFastestBranch"])
+    optimized = self._enable_map_vectorization(optimized)
     self.assertDatasetsEqual(optimized, unoptimized)
 
   @parameterized.named_parameters(
@@ -473,11 +471,8 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     unoptimized = make_dataset(unoptimized_seq)
-    optimized = make_dataset([])
-    options = dataset_ops.Options()
-    options.experimental_optimization.map_vectorization = True
-    optimized = optimized.with_options(options)
-
+    optimized = make_dataset(["ChooseFastestBranch", "ChooseFastestBranch"])
+    optimized = self._enable_map_vectorization(optimized)
     self.assertDatasetsEqual(optimized, unoptimized)
 
   def testOptimizationIgnoreStateful(self):
@@ -536,9 +531,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = False
     unoptimized = unoptimized.with_options(options)
 
-    options = dataset_ops.Options()
-    options.experimental_optimization.map_vectorization = True
-    optimized = unoptimized.with_options(options)
+    optimized = self._enable_map_vectorization(unoptimized)
     self.assertDatasetsEqual(unoptimized, optimized)
 
   def testOptimizationWithSparseTensor(self):
@@ -554,11 +547,23 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     unoptimized = unoptimized.with_options(options)
-
-    options = dataset_ops.Options()
-    options.experimental_optimization.map_vectorization = True
-    optimized = unoptimized.with_options(options)
+    optimized = self._enable_map_vectorization(unoptimized)
     self.assertDatasetsEqual(unoptimized, optimized)
+
+  def testOptimizationWithPrefetch(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(lambda x: x)
+    dataset = dataset.prefetch(1)
+    dataset = dataset.batch(10)
+    dataset = self._enable_map_vectorization(dataset)
+    self.assertDatasetProduces(dataset, [list(range(10))])
+
+  def testOptimizationWithoutChooseFastest(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(lambda x: x**2)
+    dataset = dataset.batch(10)
+    dataset = self._enable_map_vectorization(dataset, use_choose=False)
+    self.assertDatasetProduces(dataset, [[x**2 for x in range(10)]])
 
 
 if __name__ == "__main__":

@@ -51,8 +51,9 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   def __init__(self, container_strategy, device):
     super(OneDeviceExtended, self).__init__(container_strategy)
-    self._device = device
-    self._input_device = device_util.canonicalize("/device:CPU:0")
+    self._device = device_util.canonicalize(device)
+    suffix_loc = self._device.rfind("/")
+    self._input_device = self._device[:suffix_loc] + "/device:CPU:0"
     worker_device_pairs = [(self._input_device, [self._device])]
     device_map = values.SingleDeviceMap(device)
     self._input_workers = input_lib.InputWorkers(
@@ -159,13 +160,13 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
     return array_ops.identity(replica_local_var)
 
-  def _unwrap(self, value):
+  def _local_results(self, value):
     return (value,)
 
   def value_container(self, value):

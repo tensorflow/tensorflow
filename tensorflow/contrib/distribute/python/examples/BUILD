@@ -56,3 +56,14 @@ py_binary(
         "//third_party/py/numpy",
     ],
 )
+
+py_binary(
+    name = "mnist_tf1_tpu",
+    srcs = [
+        "mnist_tf1_tpu.py",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)

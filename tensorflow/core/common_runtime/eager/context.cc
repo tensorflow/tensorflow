@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
@@ -48,19 +49,21 @@ EagerContext::EagerContext(const SessionOptions& opts,
                            std::unique_ptr<const DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
     : EagerContext(opts, default_policy, async, device_mgr.release(),
-                   /*device_mgr_owned*/ true, rendezvous) {}
+                   /*device_mgr_owned*/ true, rendezvous, nullptr) {}
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
                            bool async, const DeviceMgr* device_mgr,
-                           bool device_mgr_owned, Rendezvous* rendezvous)
+                           bool device_mgr_owned, Rendezvous* rendezvous,
+                           const CustomKernelCreator* custom_kernel_creator)
     : policy_(default_policy),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
           device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-          opts.config.graph_options().optimizer_options(), thread_pool_.get())),
+          opts.config.graph_options().optimizer_options(), thread_pool_.get(),
+          nullptr, custom_kernel_creator)),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
@@ -137,9 +140,15 @@ Status EagerContext::SetAsyncForThread(bool async) {
   return Status::OK();
 }
 
-void EagerContext::ClearCaches() {
+Status EagerContext::ClearCaches() {
+  // The executor stores pointers to kernels, so we need to make sure that no
+  // async eager ops are still executing. We lock the cache during this time as
+  // well.
   mutex_lock ml(cache_mu_);
+  TF_RETURN_IF_ERROR(executor_.WaitForAllPendingNodes());
   gtl::STLDeleteValues(&kernel_cache_);
+
+  return Status::OK();
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -208,7 +217,7 @@ EagerContext::~EagerContext() {
 #endif
 
   executor_.WaitForAllPendingNodes().IgnoreError();
-  ClearCaches();
+  ClearCaches().IgnoreError();
   rendezvous_->Unref();
 
   for (auto& thread : child_threads_) {
@@ -432,7 +441,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   devices_map_.clear();
 
   InitDeviceMapAndAsync();
-  ClearCaches();
+  TF_RETURN_IF_ERROR(ClearCaches());
 
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
@@ -449,7 +458,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   return Status::OK();
 }
 
-void EagerContext::InitializeRemote(
+Status EagerContext::InitializeRemote(
     std::unique_ptr<ServerInterface> server,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
@@ -497,7 +506,7 @@ void EagerContext::InitializeRemote(
 
   InitDeviceMapAndAsync();
 
-  ClearCaches();
+  TF_RETURN_IF_ERROR(ClearCaches());
 
   keep_alive_secs_ = keep_alive_secs;
 
@@ -546,6 +555,7 @@ void EagerContext::InitializeRemote(
           }
         }));
   }
+  return Status::OK();
 }
 #endif
 

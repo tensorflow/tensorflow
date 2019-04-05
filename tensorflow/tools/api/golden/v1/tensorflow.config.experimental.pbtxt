@@ -1,0 +1,19 @@
+path: "tensorflow.config.experimental"
+tf_module {
+  member_method {
+    name: "get_device_policy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_synchronous_execution"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_device_policy"
+    argspec: "args=[\'device_policy\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_synchronous_execution"
+    argspec: "args=[\'enable\'], varargs=None, keywords=None, defaults=None"
+  }
+}

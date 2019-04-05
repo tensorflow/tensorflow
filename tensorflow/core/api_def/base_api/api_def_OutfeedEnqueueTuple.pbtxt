@@ -1,5 +1,6 @@
 op {
   graph_op_name: "OutfeedEnqueueTuple"
+  visibility: HIDDEN
   in_arg {
     name: "inputs"
     description: <<END

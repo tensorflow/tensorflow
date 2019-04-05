@@ -23,11 +23,11 @@ import tempfile
 from absl import app
 from absl import flags
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 # TODO(vbardiovsky): remove these when symbols are public.
 from tensorflow.python.ops import lookup_ops
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 FLAGS = flags.FLAGS
 
@@ -72,7 +72,7 @@ class TextEmbeddingModel(tf.train.Checkpoint):
     normalized_sentences = tf.strings.regex_replace(
         input=sentences, pattern=r"\pP", rewrite="")
     normalized_sentences = tf.reshape(normalized_sentences, [-1])
-    sparse_tokens = tf.string_split(normalized_sentences, " ")
+    sparse_tokens = tf.strings.split(normalized_sentences, " ")
 
     # Deal with a corner case: there is one empty sentence.
     sparse_tokens, _ = tf.sparse.fill_empty_rows(sparse_tokens, tf.constant(""))

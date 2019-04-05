@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+
 option cc_enable_arenas = true;
 
 // Primitive types are the individual values that can be held in rectangular
@@ -55,7 +56,7 @@ enum PrimitiveType {
   F64 = 12;
 
   // Complex values of fixed width.
-  C64 = 15;  // Paired F32 (real, imag), as in std::complex<float>.
+  C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
   C128 = 18;  // Paired F64 (real, imag), as in std::complex<double>.
 
   // A tuple is a polymorphic sequence; e.g. a shape that holds different
@@ -199,7 +200,7 @@ message ShapeProto {
   // in this field represents an upper bound on the size of the dimension.
   repeated int64 dimensions = 3;
 
-  // For tuples only, the shapes of constitutent shapes in the tuple sequence.
+  // For tuples only, the shapes of constituent shapes in the tuple sequence.
   repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
@@ -367,7 +368,7 @@ message LiteralProto {
   repeated uint64 u64s = 7;
   repeated float f32s = 8;
   repeated double f64s = 9;
-  repeated float c64s = 12;  // Stored as interleaved real, imag floats.
+  repeated float c64s = 12;    // Stored as interleaved real, imag floats.
   repeated double c128s = 18;  // Stored as interleaved real, imag doubles.
   repeated LiteralProto tuple_literals = 10;
   // The F16s, BF16s, U16s and S16s are encoded in little endian byte order
@@ -510,7 +511,7 @@ message ConvolutionDimensionNumbers {
   repeated int64 output_spatial_dimensions = 12;
 
   // Next = 13
-};
+}
 
 enum FftType {
   FFT = 0;    // Forward FFT; complex in, complex out.
@@ -529,7 +530,7 @@ message DotDimensionNumbers {
   repeated int64 lhs_batch_dimensions = 3;
   // The dimension numbers that represent the 'rhs' batch dimensions.
   repeated int64 rhs_batch_dimensions = 4;
-};
+}
 
 enum RandomDistribution {
   RNG_INVALID = 0;
@@ -563,6 +564,12 @@ message TriangularSolveOptions {
     ADJOINT = 3;       // Complex conjugate and transpose 'a'.
   };
   Transpose transpose_a = 4;
+}
+
+message CholeskyOptions {
+  // If true, uses the lower triangle of `a`. If false, uses the upper triangle
+  // of `a`.
+  bool lower = 1;
 }
 
 message OpSharding {
@@ -635,4 +642,21 @@ message ParameterReplication {
   // number of elements in this field must match the number of leaf buffers in
   // the HLO instruction's shape.
   repeated bool replicated_at_leaf_buffers = 1;
+}
+
+// A backend-config for kWhile loops that stores the loop's trip count, if it is
+// known.
+//
+// This is useful for backends that can implement a `for i in 0..N` loop more
+// efficiently than a `while` loop.  For example, on GPUs, we can implement a
+// `for i in 0..N` loop by enqueueing the kernels for the loop body N times,
+// whereas implementing a `while` loop requires a host-device sync on each
+// iteration.
+message WhileLoopBackendConfig {
+  message KnownTripCount {
+    int64 n = 1;
+  }
+  // This indirection lets us distinguish between known-trip-count == 0 and
+  // unknown-trip-count.
+  KnownTripCount known_trip_count = 1;
 }

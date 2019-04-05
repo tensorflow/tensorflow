@@ -67,8 +67,7 @@ class HloModuleGroupMetadata {
     kInvalid,
     kWhileCondition,
     kWhileBody,
-    kConditionalTrue,
-    kConditionalFalse,
+    kConditionalBranch,
     kCallFunction,
   };
 
@@ -80,12 +79,13 @@ class HloModuleGroupMetadata {
   class TrackedInstruction {
    public:
     TrackedInstruction() = default;
-    TrackedInstruction(HloInstruction* instruction, ComputationKind kind)
-        : instruction_(instruction), kind_(kind) {}
+    TrackedInstruction(HloInstruction* instruction, ComputationKind kind,
+                       int index = -1)
+        : instruction_(instruction), kind_(kind), index_(index) {}
 
     bool operator==(const TrackedInstruction& rhs) const {
       return instruction_->opcode() == rhs.instruction_->opcode() &&
-             kind_ == rhs.kind_;
+             kind_ == rhs.kind_ && index_ == rhs.index_;
     }
     bool operator!=(const TrackedInstruction& rhs) const {
       return !operator==(rhs);
@@ -98,6 +98,7 @@ class HloModuleGroupMetadata {
    private:
     HloInstruction* instruction_ = nullptr;
     ComputationKind kind_ = ComputationKind::kInvalid;
+    int index_ = -1;
   };
 
   // Represents a channel and the instructions that form the channel.

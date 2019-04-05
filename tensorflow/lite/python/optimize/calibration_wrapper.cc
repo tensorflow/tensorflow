@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
-#include "tensorflow/lite/tools/optimize/calibration_reader.h"
-#include "tensorflow/lite/tools/optimize/calibrator.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 
 #define TFLITE_PY_CHECK(x)               \
@@ -180,6 +180,7 @@ PyObject* CalibrationWrapper::QuantizeModel() {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  ::tflite::python::ImportNumpy();
 
   if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;

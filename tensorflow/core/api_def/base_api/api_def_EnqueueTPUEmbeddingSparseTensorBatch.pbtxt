@@ -1,5 +1,6 @@
 op {
   graph_op_name: "EnqueueTPUEmbeddingSparseTensorBatch"
+  visibility: HIDDEN
   in_arg {
     name: "sample_indices"
     description: <<END

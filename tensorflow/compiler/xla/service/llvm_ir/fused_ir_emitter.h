@@ -91,6 +91,14 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
     tiled_parameter_info_ = info;
   }
 
+  // Evaluates whether fusing 'producer' into 'consumer' might cause exponential
+  // behavior in FusedIrEmitter. We currently can have exponential time/memory
+  // requirements for emitting certain fusion kernels, in which case we don't
+  // want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  static bool IsFusedIrEmitterInefficient(const HloInstruction* consumer,
+                                          const HloInstruction* producer);
+
  protected:
   // Returns the IrArrays for the fusion instruction operands.
   llvm_ir::IrArray& GetIrArrayForFusedParameter(int64 parameter_number) {

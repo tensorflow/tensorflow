@@ -123,11 +123,8 @@ class StridedSliceOp : public OpKernel {
                       "Input must have rank at least 1, got: ", input.dims()));
       // Otherwise, is_identity should be true.
       VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
-      OP_REQUIRES(
-          context, begin[0] <= end[0],
-          errors::InvalidArgument("begin[0] (", begin[0],
-                                  ") must less or equal to end[0] (", end[0]));
-      Tensor slice = input.Slice(begin[0], end[0]);
+      // To tolerate begin[0] > end[0] (a 0-output slice), we min(begin, end).
+      Tensor slice = input.Slice(std::min(begin[0], end[0]), end[0]);
       Tensor tmp;
       OP_REQUIRES(context, tmp.CopyFrom(slice, final_shape),
                   errors::Internal("Copy failed"));

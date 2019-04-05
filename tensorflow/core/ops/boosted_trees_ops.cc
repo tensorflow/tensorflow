@@ -400,7 +400,6 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
           c->WithRank(c->input(num_features), 1, &example_weights_shape));
       for (int i = 0; i < num_features; ++i) {
         ShapeHandle feature_shape;
-        DimensionHandle unused_dim;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &feature_shape));
         // the columns are value, weight, min_rank, max_rank.
         c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));

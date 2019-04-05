@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -32,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.keras.saving import saved_model as keras_saved_model
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.keras.utils import tf_utils
@@ -66,10 +68,10 @@ class TestModelSavingandLoading(test.TestCase):
 
       ref_y = model.predict(x)
 
-      temp_saved_model = self._save_model_dir()
-      output_path = keras_saved_model.export(model, temp_saved_model)
+      saved_model_dir = self._save_model_dir()
+      keras_saved_model.export_saved_model(model, saved_model_dir)
 
-      loaded_model = keras_saved_model.load_from_saved_model(output_path)
+      loaded_model = keras_saved_model.load_from_saved_model(saved_model_dir)
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
 
@@ -84,9 +86,9 @@ class TestModelSavingandLoading(test.TestCase):
       x = np.random.random((1, 3))
       ref_y = model.predict(x)
 
-      temp_saved_model = self._save_model_dir()
-      output_path = keras_saved_model.export(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_from_saved_model(output_path)
+      saved_model_dir = self._save_model_dir()
+      keras_saved_model.export_saved_model(model, saved_model_dir)
+      loaded_model = keras_saved_model.load_from_saved_model(saved_model_dir)
 
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
@@ -108,9 +110,9 @@ class TestModelSavingandLoading(test.TestCase):
 
       ref_y = model.predict(x)
 
-      temp_saved_model = self._save_model_dir()
-      output_path = keras_saved_model.export(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_from_saved_model(output_path)
+      saved_model_dir = self._save_model_dir()
+      keras_saved_model.export_saved_model(model, saved_model_dir)
+      loaded_model = keras_saved_model.load_from_saved_model(saved_model_dir)
 
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
@@ -129,58 +131,56 @@ class TestModelSavingandLoading(test.TestCase):
 
       ref_y = model.predict(x)
 
-      temp_saved_model = self._save_model_dir()
-      output_path = keras_saved_model.export(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_from_saved_model(output_path)
+      saved_model_dir = self._save_model_dir()
+      keras_saved_model.export_saved_model(model, saved_model_dir)
+      loaded_model = keras_saved_model.load_from_saved_model(saved_model_dir)
 
       y = loaded_model.predict(x)
       self.assertAllClose(ref_y, y, atol=1e-05)
 
   @test_util.run_in_graph_and_eager_modes
   def test_saving_with_tf_optimizer(self):
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      model.add(keras.layers.Dense(3))
-      model.compile(
-          loss='mse',
-          optimizer=training_module.RMSPropOptimizer(0.1),
-          metrics=['acc'])
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_shape=(3,)))
+    model.add(keras.layers.Dense(3))
+    model.compile(
+        loss='mse',
+        optimizer=training_module.RMSPropOptimizer(0.1),
+        metrics=['acc'])
 
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3))
-      model.train_on_batch(x, y)
-      ref_y = model.predict(x)
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3))
+    model.train_on_batch(x, y)
+    ref_y = model.predict(x)
 
-      temp_saved_model = self._save_model_dir()
-      output_path = keras_saved_model.export(model, temp_saved_model)
-      loaded_model = keras_saved_model.load_from_saved_model(output_path)
-      loaded_model.compile(
-          loss='mse',
-          optimizer=training_module.RMSPropOptimizer(0.1),
-          metrics=['acc'])
-      y = loaded_model.predict(x)
-      self.assertAllClose(ref_y, y, atol=1e-05)
+    saved_model_dir = self._save_model_dir()
+    keras_saved_model.export_saved_model(model, saved_model_dir)
+    loaded_model = keras_saved_model.load_from_saved_model(saved_model_dir)
+    loaded_model.compile(
+        loss='mse',
+        optimizer=training_module.RMSPropOptimizer(0.1),
+        metrics=['acc'])
+    y = loaded_model.predict(x)
+    self.assertAllClose(ref_y, y, atol=1e-05)
 
-      # test that new updates are the same with both models
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3))
+    # test that new updates are the same with both models
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3))
 
-      ref_loss = model.train_on_batch(x, y)
-      loss = loaded_model.train_on_batch(x, y)
-      self.assertAllClose(ref_loss, loss, atol=1e-05)
+    ref_loss = model.train_on_batch(x, y)
+    loss = loaded_model.train_on_batch(x, y)
+    self.assertAllClose(ref_loss, loss, atol=1e-05)
 
-      ref_y = model.predict(x)
-      y = loaded_model.predict(x)
-      self.assertAllClose(ref_y, y, atol=1e-05)
+    ref_y = model.predict(x)
+    y = loaded_model.predict(x)
+    self.assertAllClose(ref_y, y, atol=1e-05)
 
-      # test saving/loading again
-      temp_saved_model2 = self._save_model_dir('saved_model_2')
-      output_path2 = keras_saved_model.export(
-          loaded_model, temp_saved_model2)
-      loaded_model = keras_saved_model.load_from_saved_model(output_path2)
-      y = loaded_model.predict(x)
-      self.assertAllClose(ref_y, y, atol=1e-05)
+    # test saving/loading again
+    saved_model_dir2 = self._save_model_dir('saved_model_2')
+    keras_saved_model.export_saved_model(loaded_model, saved_model_dir2)
+    loaded_model = keras_saved_model.load_from_saved_model(saved_model_dir2)
+    y = loaded_model.predict(x)
+    self.assertAllClose(ref_y, y, atol=1e-05)
 
   def test_saving_subclassed_model_raise_error(self):
     # For now, saving subclassed model should raise an error. It should be
@@ -198,9 +198,9 @@ class TestModelSavingandLoading(test.TestCase):
 
     model = SubclassedModel()
 
-    temp_saved_model = self._save_model_dir()
+    saved_model_dir = self._save_model_dir()
     with self.assertRaises(NotImplementedError):
-      keras_saved_model.export(model, temp_saved_model)
+      keras_saved_model.export_saved_model(model, saved_model_dir)
 
 
 class LayerWithLearningPhase(keras.engine.base_layer.Layer):
@@ -287,61 +287,64 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       {
           'model_builder': functional_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': adadelta.Adadelta,
           'train_before_export': True},
       {
           'model_builder': functional_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': training_module.AdadeltaOptimizer,
           'train_before_export': False},
       {
           'model_builder': functional_model,
           'uses_learning_phase': False,
-          'optimizer': None,
+          'optimizer_cls': None,
           'train_before_export': False},
       {
           'model_builder': sequential_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': training_module.AdadeltaOptimizer,
           'train_before_export': True},
       {
           'model_builder': sequential_model,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': adadelta.Adadelta,
           'train_before_export': False},
       {
           'model_builder': sequential_model,
           'uses_learning_phase': False,
-          'optimizer': None,
+          'optimizer_cls': None,
           'train_before_export': False},
       {
           'model_builder': sequential_model_without_input_shape,
           'uses_learning_phase': True,
-          'optimizer': training_module.AdadeltaOptimizer(),
+          'optimizer_cls': training_module.AdadeltaOptimizer,
           'train_before_export': False})
   def testSaveAndLoadSavedModelExport(
-      self, model_builder, uses_learning_phase, optimizer, train_before_export):
-    saved_model_path = self._save_model_dir()
-    with self.session(graph=ops.Graph()):
-      np.random.seed(130)
-      input_arr = np.random.random((1, 3))
-      target_arr = np.random.random((1, 3))
+      self, model_builder, uses_learning_phase, optimizer_cls,
+      train_before_export):
+    optimizer = None if optimizer_cls is None else optimizer_cls()
 
-      model = model_builder(uses_learning_phase)
-      if optimizer is not None:
-        model.compile(
-            loss='mse',
-            optimizer=optimizer,
-            metrics=['mae'])
-        if train_before_export:
-          model.train_on_batch(input_arr, target_arr)
+    saved_model_dir = self._save_model_dir()
 
-        ref_loss, ref_mae = model.evaluate(input_arr, target_arr)
+    np.random.seed(130)
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
 
-      ref_predict = model.predict(input_arr)
+    model = model_builder(uses_learning_phase)
+    if optimizer is not None:
+      model.compile(
+          loss='mse',
+          optimizer=optimizer,
+          metrics=['mae'])
+      if train_before_export:
+        model.train_on_batch(input_arr, target_arr)
 
-      # Export SavedModel
-      output_path = keras_saved_model.export(model, saved_model_path)
+      ref_loss, ref_mae = model.evaluate(input_arr, target_arr)
+
+    ref_predict = model.predict(input_arr)
+
+    # Export SavedModel
+    keras_saved_model.export_saved_model(model, saved_model_dir)
 
     input_name = model.input_names[0]
     output_name = model.output_names[0]
@@ -349,7 +352,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
     # Load predict graph, and test predictions
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs, _ = load_model(sess, output_path,
+      inputs, outputs, _ = load_model(sess, saved_model_dir,
                                       mode_keys.ModeKeys.PREDICT)
 
       predictions = sess.run(outputs[output_name],
@@ -359,21 +362,25 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
     if optimizer:
       # Load eval graph, and test predictions, loss and metric values
       with session.Session(graph=ops.Graph()) as sess:
-        inputs, outputs, _ = load_model(sess, output_path,
+        inputs, outputs, _ = load_model(sess, saved_model_dir,
                                         mode_keys.ModeKeys.TEST)
 
         # First obtain the loss and predictions, and run the metric update op by
         # feeding in the inputs and targets.
+        metrics_name = 'mae' if tf2.enabled() else 'mean_absolute_error'
+        metrics_update_op_key = 'metrics/' + metrics_name + '/update_op'
+        metrics_value_op_key = 'metrics/' + metrics_name + '/value'
+
         loss, predictions, _ = sess.run(
             (outputs['loss'], outputs['predictions/' + output_name],
-             outputs['metrics/mean_absolute_error/update_op']), {
+             outputs[metrics_update_op_key]), {
                  inputs[input_name]: input_arr,
                  inputs[target_name]: target_arr
              })
 
         # The metric value should be run after the update op, to ensure that it
         # reflects the correct value.
-        metric_value = sess.run(outputs['metrics/mean_absolute_error/value'])
+        metric_value = sess.run(outputs[metrics_value_op_key])
 
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
@@ -384,12 +391,12 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       # Load train graph, and check for the train op, and prediction values
       with session.Session(graph=ops.Graph()) as sess:
         inputs, outputs, meta_graph_def = load_model(
-            sess, output_path, mode_keys.ModeKeys.TRAIN)
+            sess, saved_model_dir, mode_keys.ModeKeys.TRAIN)
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
         self.assertIn('loss', outputs)
-        self.assertIn('metrics/mean_absolute_error/update_op', outputs)
-        self.assertIn('metrics/mean_absolute_error/value', outputs)
+        self.assertIn(metrics_update_op_key, outputs)
+        self.assertIn(metrics_value_op_key, outputs)
         self.assertIn('predictions/' + output_name, outputs)
 
         # Train for a step
@@ -410,17 +417,17 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
               atol=1e-05)
 
   def testSaveAndLoadSavedModelWithCustomObject(self):
-    saved_model_path = self._save_model_dir()
+    saved_model_dir = self._save_model_dir()
     with session.Session(graph=ops.Graph()) as sess:
       def relu6(x):
         return keras.backend.relu(x, max_value=6)
       inputs = keras.layers.Input(shape=(1,))
       outputs = keras.layers.Activation(relu6)(inputs)
       model = keras.models.Model(inputs, outputs)
-      output_path = keras_saved_model.export(
-          model, saved_model_path, custom_objects={'relu6': relu6})
+      keras_saved_model.export_saved_model(
+          model, saved_model_dir, custom_objects={'relu6': relu6})
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs, _ = load_model(sess, output_path,
+      inputs, outputs, _ = load_model(sess, saved_model_dir,
                                       mode_keys.ModeKeys.PREDICT)
       input_name = model.input_names[0]
       output_name = model.output_names[0]
@@ -486,17 +493,18 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
     model = sequential_model_without_input_shape(True)
     # A Sequential model that hasn't been built should raise an error.
     with self.assertRaisesRegexp(ValueError, 'Please build the model'):
-      keras_saved_model.export(model, '')
+      keras_saved_model.export_saved_model(model, '')
 
-    saved_model_path = self._save_model_dir()
-    output_path = keras_saved_model.export(
-        model, saved_model_path,
-        input_signature=tensor_spec.TensorSpec(shape=(10, 11, 12, 13, 14),
-                                               dtype=dtypes.float32,
-                                               name='spec_input'))
+    saved_model_dir = self._save_model_dir()
+    keras_saved_model.export_saved_model(
+        model,
+        saved_model_dir,
+        input_signature=tensor_spec.TensorSpec(
+            shape=(10, 11, 12, 13, 14), dtype=dtypes.float32,
+            name='spec_input'))
 
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs, _ = load_model(sess, output_path,
+      inputs, outputs, _ = load_model(sess, saved_model_dir,
                                       mode_keys.ModeKeys.PREDICT)
       self.assertEqual(5, inputs[next(iter(inputs.keys()))].shape.ndims)
       self.assertEqual(5, outputs[next(iter(outputs.keys()))].shape.ndims)
@@ -513,18 +521,20 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
                                                      dtype=dtypes.float32)]})
   def testServingOnly(self, model_builder, input_signature):
     if context.executing_eagerly():
-      saved_model_path = self._save_model_dir()
+      saved_model_dir = self._save_model_dir()
       input_arr = np.random.random((5, 3)).astype(np.float32)
       model = model_builder()
       ref_predict = model.predict(input_arr)
 
-      output_path = keras_saved_model.export(
-          model, saved_model_path, serving_only=True,
+      keras_saved_model.export_saved_model(
+          model,
+          saved_model_dir,
+          serving_only=True,
           input_signature=input_signature)
 
       # Load predict graph, and test predictions
       with session.Session(graph=ops.Graph()) as sess:
-        inputs, outputs, _ = load_model(sess, output_path,
+        inputs, outputs, _ = load_model(sess, saved_model_dir,
                                         mode_keys.ModeKeys.PREDICT)
         predictions = sess.run(outputs[next(iter(outputs.keys()))],
                                {inputs[next(iter(inputs.keys()))]: input_arr})

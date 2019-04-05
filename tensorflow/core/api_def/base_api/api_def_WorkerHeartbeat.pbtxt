@@ -1,5 +1,6 @@
 op {
   graph_op_name: "WorkerHeartbeat"
+  visibility: HIDDEN
   in_arg {
     name: "request"
     description: <<END

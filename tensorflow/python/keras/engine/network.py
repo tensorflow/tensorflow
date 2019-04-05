@@ -19,11 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import json
 import os
 
-import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
@@ -37,6 +37,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -44,11 +45,12 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 
 
@@ -152,7 +154,7 @@ class Network(base_layer.Layer):
   # empty lists shouldn't cause issues; adding or removing them will not break
   # checkpoints, but may cause "all Python objects matched" assertions to fail
   # (in which case less strict assertions may be substituted if necessary).
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _base_init(self, name=None):
     # The following are implemented as property functions:
     # self.trainable_weights
@@ -179,11 +181,12 @@ class Network(base_layer.Layer):
       self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    self._maybe_create_attribute('_trainable_weights', [])
+    self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
+    self._callable_losses = []
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
@@ -200,16 +203,22 @@ class Network(base_layer.Layer):
 
     # All layers in order of horizontal graph traversal.
     # Entries are unique. Includes input and output layers.
-    self._layers = []
+    self._maybe_create_attribute('_layers', [])
 
     # Used in symbolic mode only, only in conjunction with graph-networks
     self._outbound_nodes = []
     self._inbound_nodes = []
 
-    self._checkpointable_saver = (
-        checkpointable_utils.saver_with_op_caching(self))
+    self._trackable_saver = (
+        trackable_utils.saver_with_op_caching(self))
 
-  @checkpointable.no_automatic_dependency_tracking
+    # Networks do not need to do any casting of inputs or variables, because
+    # each of its layers will handle casting through the layer's own
+    # implementation. Therefore networks use the 'infer' policy, which does no
+    # casting.
+    self._mixed_precision_policy = policy.Policy('infer')
+
+  @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
@@ -309,7 +318,7 @@ class Network(base_layer.Layer):
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None, dynamic=False):
     self._base_init(name=name)
     self._is_graph_network = False
@@ -370,20 +379,20 @@ class Network(base_layer.Layer):
       return base_layer_utils.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
-    """Add Checkpointable dependencies on a list of Layers."""
+    """Add Trackable dependencies on a list of Layers."""
     weight_layer_index = 0
     for layer_index, layer in enumerate(layers):
       if layer.weights:
         # Keep a separate index for layers which have weights. This allows users
         # to insert Layers without weights anywhere in the network without
         # breaking checkpoints.
-        self._track_checkpointable(
+        self._track_trackable(
             layer, name='layer_with_weights-%d' % weight_layer_index,
             overwrite=True)
         weight_layer_index += 1
       # Even if it doesn't have weights, we should still track everything in
-      # case it has/will have Checkpointable dependencies.
-      self._track_checkpointable(
+      # case it has/will have Trackable dependencies.
+      self._track_trackable(
           layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
@@ -393,18 +402,15 @@ class Network(base_layer.Layer):
 
     if all(
         isinstance(v, (base_layer.Layer,
-                       data_structures.CheckpointableDataStructure)) or
-        checkpointable_layer_utils.has_weights(v) for v in nest.flatten(value)):
+                       data_structures.TrackableDataStructure)) or
+        trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._is_graph_network
       except AttributeError:
         raise RuntimeError('It looks like you are subclassing `Model` and you '
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
-    # Keep track of checkpointable objects,
-    # for the needs of `self.save/save_weights`.
-    value = data_structures.sticky_attribute_assignment(
-        checkpointable=self, value=value, name=name)
+
     super(Network, self).__setattr__(name, value)
 
     # Keep track of metric instance created in subclassed model/layer.
@@ -451,6 +457,7 @@ class Network(base_layer.Layer):
     weights = []
     for layer in self.layers:
       weights += layer.weights
+    weights += (self._trainable_weights + self._non_trainable_weights)
     return backend.batch_get_value(weights)
 
   def set_weights(self, weights):
@@ -467,6 +474,9 @@ class Network(base_layer.Layer):
       for sw, w in zip(layer.weights, layer_weights):
         tuples.append((sw, w))
       weights = weights[num_param:]
+    for sw, w in zip(self._trainable_weights + self._non_trainable_weights,
+                     weights):
+      tuples.append((sw, w))
     backend.batch_set_value(tuples)
 
   def compute_mask(self, inputs, mask):
@@ -481,7 +491,7 @@ class Network(base_layer.Layer):
 
   @property
   def layers(self):
-    return checkpointable_layer_utils.filter_empty_layer_containers(
+    return trackable_layer_utils.filter_empty_layer_containers(
         self._layers)
 
   def get_layer(self, name=None, index=None):
@@ -517,24 +527,31 @@ class Network(base_layer.Layer):
         return layer
     raise ValueError('No such layer: ' + name)
 
-  @property
-  def _unfiltered_updates(self):
+  def _get_unfiltered_updates(self, check_trainable=True):
+    if check_trainable and not self.trainable and not self.stateful:
+      return []
     updates = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        updates += layer._unfiltered_updates
-      else:
-        updates += layer.updates
-    updates += self._updates
+      updates += layer._get_unfiltered_updates(check_trainable=check_trainable)
+    updates += list(self._updates)
     return updates
 
   @property
   def _unfiltered_losses(self):
     losses = []
-    if context.executing_eagerly():
+
+    # If any eager losses are present, we assume the model to be part of an
+    # eager training loop (either a custom one or the one used when
+    # `run_eagerly=True`), and so we always return just the eager losses in that
+    # case.
+    if self._eager_losses:
       losses.extend(self._eager_losses)
     else:
       losses.extend(self._losses)
+    for regularizer in self._callable_losses:
+      loss_tensor = regularizer()
+      if loss_tensor is not None:
+        losses.append(loss_tensor)
     for layer in self.layers:
       if isinstance(layer, Network):
         losses += layer._unfiltered_losses
@@ -542,15 +559,12 @@ class Network(base_layer.Layer):
         losses += layer.losses
     return losses
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        layer._clear_losses()
-      else:
-        layer._eager_losses = []
+      layer._clear_losses()
 
   @property
   def updates(self):
@@ -602,10 +616,8 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if not self.trainable and not self.stateful:
-      return []
 
-    updates = self._unfiltered_updates
+    updates = self._get_unfiltered_updates(check_trainable=True)
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
@@ -658,10 +670,11 @@ class Network(base_layer.Layer):
     # built symbolically, and captures the wrong tensors from a different
     # func graph (causing a crash later on when trying to execute the
     # graph function)
-    with ops.init_scope():
-      if context.executing_eagerly():
-        return [loss for loss in losses
-                if loss.graph == ops.get_default_graph()]
+    if ops.executing_eagerly_outside_functions():
+      return [
+          loss for loss in losses
+          if getattr(loss, 'graph', None) == ops.get_default_graph()
+      ]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -682,28 +695,17 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    return checkpointable_layer_utils.gather_trainable_weights(
+    return trackable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._trainable_weights)
 
   @property
   def non_trainable_weights(self):
-    return checkpointable_layer_utils.gather_non_trainable_weights(
+    return trackable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
-
-  @property
-  def metrics(self):
-    """Returns the network's symbolic metrics.
-
-    Model overrides this function to include the metrics from `compile` API.
-    """
-    metrics = []
-    for layer in self.layers:
-      metrics += layer._metrics  # pylint: disable=protected-access
-    return metrics + self._metrics
 
   @property
   def _all_metrics_tensors(self):
@@ -1082,6 +1084,8 @@ class Network(base_layer.Layer):
                   tf_utils.ListWrapper(
                       [inbound_layer.name, new_node_index, tensor_id, kwargs]))
             node_data = nest.pack_sequence_as(node.input_tensors, node_data)
+            if not nest.is_sequence(node_data):
+              node_data = [node_data]
             # Convert ListWrapper to list for backwards compatible configs.
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)
@@ -1104,6 +1108,9 @@ class Network(base_layer.Layer):
       model_inputs.append(
           tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
     model_inputs = nest.pack_sequence_as(self._nested_inputs, model_inputs)
+    # Preserve external Keras compat for Models with single input.
+    if not nest.is_sequence(model_inputs):
+      model_inputs = [model_inputs]
     model_inputs = tf_utils.convert_inner_node_data(model_inputs)
     config['input_layers'] = model_inputs
 
@@ -1117,6 +1124,9 @@ class Network(base_layer.Layer):
       model_outputs.append(
           tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
     model_outputs = nest.pack_sequence_as(self._nested_outputs, model_outputs)
+    # Preserve external Keras compat for Models with single output.
+    if not nest.is_sequence(model_outputs):
+      model_outputs = [model_outputs]
     model_outputs = tf_utils.convert_inner_node_data(model_outputs)
     config['output_layers'] = model_outputs
     return copy.deepcopy(config)
@@ -1261,7 +1271,15 @@ class Network(base_layer.Layer):
 
     input_tensors = nest.pack_sequence_as(input_layers, input_tensors)
     output_tensors = nest.pack_sequence_as(output_layers, output_tensors)
-    return cls(inputs=input_tensors, outputs=output_tensors, name=name)
+    model = cls(inputs=input_tensors, outputs=output_tensors, name=name)
+
+    # Layers not connected to outputs, such as those added in `add_loss`.
+    ancillary_layers = [
+        layer for layer in created_layers.values() if layer not in model.layers
+    ]
+    if ancillary_layers:
+      model._insert_layers(ancillary_layers)
+    return model
 
   def save(self, filepath, overwrite=True, include_optimizer=True):
     """Saves the model to a single HDF5 file.
@@ -1397,7 +1415,7 @@ class Network(base_layer.Layer):
         session = backend.get_session()
       optimizer = getattr(self, 'optimizer', None)
       if (optimizer
-          and not isinstance(optimizer, checkpointable.Checkpointable)):
+          and not isinstance(optimizer, trackable.Trackable)):
         logging.warning(
             ('This model was compiled with a Keras optimizer (%s) but is being '
              'saved in TensorFlow format with `save_weights`. The model\'s '
@@ -1405,7 +1423,7 @@ class Network(base_layer.Layer):
              'the TensorFlow format the optimizer\'s state will not be '
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
-      self._checkpointable_saver.save(filepath, session=session)
+      self._trackable_saver.save(filepath, session=session)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
           save_dir=os.path.dirname(filepath),
@@ -1464,7 +1482,7 @@ class Network(base_layer.Layer):
         # The checkpoint is not readable in TensorFlow format. Try HDF5.
         save_format = 'h5'
     if save_format == 'tf':
-      status = self._checkpointable_saver.restore(filepath)
+      status = self._trackable_saver.restore(filepath)
       if by_name:
         raise NotImplementedError(
             'Weights may only be loaded based on topology into Models when '
@@ -1474,7 +1492,7 @@ class Network(base_layer.Layer):
         session = backend.get_session()
         # Restore existing variables (if any) immediately, and set up a
         # streaming restore for any variables created in the future.
-        checkpointable_utils.streaming_restore(status=status, session=session)
+        trackable_utils.streaming_restore(status=status, session=session)
       status.assert_nontrivial_match()
       return status
     if h5py is None:
@@ -1523,22 +1541,9 @@ class Network(base_layer.Layer):
     Returns:
         A JSON string.
     """
-    def get_json_type(obj):
-      # If obj is any numpy type
-      if type(obj).__module__ == np.__name__:
-        if isinstance(obj, np.ndarray):
-          return obj.tolist()
-        else:
-          return obj.item()
-
-      # If obj is a python 'type'
-      if type(obj).__name__ == type.__name__:
-        return obj.__name__
-
-      raise TypeError('Not JSON Serializable:', obj)
-
     model_config = self._updated_config()
-    return json.dumps(model_config, default=get_json_type, **kwargs)
+    return json.dumps(
+        model_config, default=serialization.get_json_type, **kwargs)
 
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.
@@ -1649,6 +1654,84 @@ class Network(base_layer.Layer):
         raise ValueError('Output tensors to a ' + cls_name + ' must be '
                          'the output of a TensorFlow `Layer` '
                          '(thus holding past layer metadata). Found: ' + str(x))
+
+  def _insert_layers(self, layers, relevant_nodes=None):
+    """Inserts Layers into the Network after Network creation.
+
+    This is only valid for Keras Graph Networks.  Layers added via this function
+    will be included in the `call` computation and `get_config` of this Network.
+    They will not be added to the Network's outputs.
+
+
+    Arguments:
+      layers: Arbitrary nested structure of Layers. Layers must be reachable
+        from one or more of the `keras.Input` Tensors that correspond to this
+        Network's inputs.
+      relevant_nodes: Nodes from the Layers that should be considered part of
+        this Network. If `None`, all Nodes will be considered part of this
+        Network.
+
+    Raises:
+      ValueError: If the layers depend on `Input`s not found in this Model.
+    """
+    layers = nest.flatten(layers)
+    node_to_depth = {}
+    for depth, nodes in self._nodes_by_depth.items():
+      node_to_depth.update({node: depth for node in nodes})
+    # The nodes of these Layers that are relevant to this Network. If not
+    # provided, assume all Nodes are relevant
+    if not relevant_nodes:
+      relevant_nodes = nest.flatten([layer._inbound_nodes for layer in layers])
+    network_nodes = set(relevant_nodes + list(node_to_depth.keys()))
+
+    def _get_min_depth(node):
+      """Gets the minimum depth at which node can be computed."""
+      min_depth = 0
+      for layer, node_id, _, _ in node.iterate_inbound():
+        inbound_node = layer._inbound_nodes[node_id]
+        if inbound_node in node_to_depth:
+          min_depth = min(min_depth, node_to_depth[inbound_node])
+        elif inbound_node not in network_nodes:
+          continue
+        else:
+          # Previous relevant nodes haven't been processed yet.
+          return None
+      # New node is one shallower than its shallowest input.
+      return min_depth - 1
+
+    # Insert nodes into `_nodes_by_depth` and other node attrs.
+    unprocessed_nodes = copy.copy(relevant_nodes)
+    i = 0
+    while unprocessed_nodes:
+      i += 1
+      # Do a sanity check. This can occur if `Input`s from outside this Model
+      # are being relied on.
+      if i > 10000:
+        raise ValueError('Layers could not be added due to missing '
+                         'dependencies.')
+
+      node = unprocessed_nodes.pop(0)
+      depth = _get_min_depth(node)
+      if depth is None:
+        unprocessed_nodes.append(node)
+      else:
+        node_key = _make_node_key(
+            node.outbound_layer.name,
+            node.outbound_layer._inbound_nodes.index(node))
+        node_to_depth[node] = depth
+        self._network_nodes.add(node_key)
+        self._nodes_by_depth[depth].append(node)
+
+    # Insert layers into `_layer_by_depth` and other layer attrs.
+    for layer in layers:
+      depth = min([
+          node_to_depth[node]
+          for node in layer.inbound_nodes
+          if node in network_nodes
+      ])
+      self._layers_by_depth[depth].append(layer)
+      self._layers.append(layer)
+      self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
 
 def _is_hdf5_filepath(filepath):
@@ -1771,18 +1854,22 @@ def _map_graph_network(inputs, outputs):
       previous_depth = nodes_depths.get(inbound_node, 0)
       nodes_depths[inbound_node] = max(depth + 1, previous_depth)
 
+  # Handle inputs that are not connected to outputs.
+  for input_t in inputs:
+    input_layer = input_t._keras_history[0]
+    if input_layer not in layers_depths:
+      layers_depths[input_layer] = 0
+      layer_indices[input_layer] = -1
+      nodes_depths[input_layer._inbound_nodes[0]] = 0
+
   # Build a dict {depth: list of nodes with this depth}
-  nodes_by_depth = {}
+  nodes_by_depth = collections.defaultdict(list)
   for node, depth in nodes_depths.items():
-    if depth not in nodes_by_depth:
-      nodes_by_depth[depth] = []
     nodes_by_depth[depth].append(node)
 
   # Build a dict {depth: list of layers with this depth}
-  layers_by_depth = {}
+  layers_by_depth = collections.defaultdict(list)
   for layer, depth in layers_depths.items():
-    if depth not in layers_by_depth:
-      layers_by_depth[depth] = []
     layers_by_depth[depth].append(layer)
 
   # Get sorted list of layer depths.

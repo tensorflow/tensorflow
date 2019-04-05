@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -90,6 +92,12 @@ Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
+  FunctionDefLibrary fdef_lib;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+  opt_options.flib_def = &flib_def;
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  opt_options.session_options = &session_options;
   PartiallyDeclusterPass pass;
   return pass.Run(opt_options);
 }

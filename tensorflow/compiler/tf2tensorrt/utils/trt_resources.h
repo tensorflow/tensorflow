@@ -37,7 +37,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-class SerializableResourceBase : public tensorflow::ResourceBase {
+class SerializableResourceBase : public ResourceBase {
  public:
   virtual Status SerializeToString(string* serialized) = 0;
 };
@@ -60,7 +60,7 @@ class TRTCalibrationResource : public SerializableResourceBase {
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   std::unique_ptr<TRTBaseAllocator> allocator_;
-  tensorflow::tensorrt::Logger logger_;
+  Logger logger_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;
 };

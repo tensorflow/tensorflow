@@ -43,7 +43,6 @@ class DynamicDimensionInferenceTest : public HloTestBase {
   }
 
   Status RunInference() {
-    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
     TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
                         DynamicDimensionInference::Run(module_.get()));
 
@@ -68,14 +67,14 @@ class DynamicDimensionInferenceTest : public HloTestBase {
         0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
         1, ShapeUtil::MakeShape(F32, {}), "rhs"));
-    embedded_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGe, lhs, rhs));
+    embedded_builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), lhs, rhs, ComparisonDirection::kGe));
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<DynamicDimensionInference> inference_;
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeShape(U32, {});
 };
 
 TEST_F(DynamicDimensionInferenceTest, ParamTest) {
@@ -88,6 +87,8 @@ TEST_F(DynamicDimensionInferenceTest, ParamTest) {
       HloInstruction::CreateParameter(1, scalar_shape_, "param"));
 
   module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
   // Set up dynamic parameter binding.
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{1, {}},
@@ -112,6 +113,7 @@ TEST_F(DynamicDimensionInferenceTest, ParamTestTuple) {
       DynamicParameterBinding::DynamicParameter{0, {1}},
       DynamicParameterBinding::DynamicDimension{0, {0}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_THAT(inference_->GetDynamicSize(param, {0}, 1),
               op::GetTupleElement(param, 1));
@@ -137,6 +139,7 @@ TEST_F(DynamicDimensionInferenceTest, GetTupleElement) {
       DynamicParameterBinding::DynamicParameter{0, {1}},
       DynamicParameterBinding::DynamicDimension{0, {0}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_THAT(inference_->GetDynamicSize(param, {0}, 1),
               op::GetTupleElement(param, 1));
@@ -167,6 +170,7 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(negate, {}, 1), size_param);
 }
@@ -197,6 +201,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), size_param);
 }
@@ -228,6 +233,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestII) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), nullptr);
@@ -271,6 +277,7 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
@@ -319,6 +326,7 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(conv, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(conv, {}, 0), nullptr);
@@ -356,6 +364,7 @@ TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
       DynamicParameterBinding::DynamicParameter{3, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 0), size_param_3);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 1), size_param_2);
@@ -386,6 +395,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 3}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 1), size_param);
@@ -393,6 +403,63 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 3), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 4), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 5), nullptr);
+}
+
+TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
+  // Test the ability to trace dimension combining.
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {32, 10, 4});
+  auto output_shape = ShapeUtil::MakeShape(F32, {320, 4});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, scalar_shape_, "size_param"));
+
+  auto* reshape = builder.AddInstruction(
+      HloInstruction::CreateReshape(output_shape, a_param));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  SCOPED_TRACE(module_->ToString());
+  Status status = RunInference();
+  EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
+  const Literal& multiplier =
+      inference_->GetDynamicSize(reshape, {}, 0)->operand(1)->literal();
+  LiteralTestUtil::ExpectR0Equal<uint32>(10, multiplier);
+}
+
+TEST_F(DynamicDimensionInferenceTest, GatherTest) {
+  const string hlo_text = R"(
+HloModule TensorFlowGatherV2
+
+ENTRY main {
+  operand = s32[20,10]{1,0} parameter(0)
+  indices = s32[32,20] parameter(1)
+  dynamic_size = s32[] parameter(2)
+  ROOT gather = f32[32,10,10]{2,1,0} gather(%operand, %indices),
+                 offset_dims={2},
+                 collapsed_slice_dims={0},
+                 start_index_map={0},
+                 index_vector_dim=2,
+                 slice_sizes={1,10}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(
+                module_->entry_computation()->root_instruction(), {}, 0),
+            module_->entry_computation()->parameter_instruction(2));
 }
 
 TEST_F(DynamicDimensionInferenceTest, ReshapeTestUnimplemented) {
@@ -415,6 +482,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestUnimplemented) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   Status status = RunInference();
   EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
 }
@@ -439,6 +507,7 @@ TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 1), size_param);
@@ -580,6 +649,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce_window, {}, 0), size_param);
 }
@@ -633,8 +703,89 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{2, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(sns, {}, 0), size_param);
+}
+
+TEST_F(DynamicDimensionInferenceTest, SliceTest) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  auto* slice = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {5, 7}), data_param, /*start_indices=*/{0, 0},
+      /*limit_indices=*/{5, 7}, /*strides=*/{1, 1}));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 1), size_param);
+}
+
+TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  std::vector<HloInstruction*> params;
+  for (int i = 0; i < 2; ++i) {
+    params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
+        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+  }
+
+  auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(F32, {5, 1}), data_param, params,
+      /*slice_sizes=*/{5, 1}));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), size_param);
+}
+
+TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
+  // Slicing out a single element from a dynamic dimension terminates the
+  // dynamic dimension.
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  std::vector<HloInstruction*> params;
+  for (int i = 0; i < 2; ++i) {
+    params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
+        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+  }
+
+  auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(F32, {1, 1}), data_param, params,
+      /*slice_sizes=*/{1, 1}));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), nullptr);
 }
 
 }  // namespace

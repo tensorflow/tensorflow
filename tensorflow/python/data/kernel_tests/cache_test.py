@@ -59,7 +59,7 @@ class FileCacheTest(test_base.DatasetTestBase):
 
     self.assertEqual(
         tuple([c.shape[1:] for c in components]),
-        dataset_fn().output_shapes)
+        dataset_ops.get_legacy_output_shapes(dataset_fn()))
 
     get_next = self.getNext(dataset_fn())
 

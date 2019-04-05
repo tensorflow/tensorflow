@@ -558,6 +558,22 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(tf_result, np_result)
 
 
+class MultiplyNoNanTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_deprecated_v1
+  def testBasic(self):
+    for dtype in [np.float32, np.float64]:
+      values = [0, 1, np.nan, np.inf, np.NINF]
+      x = constant_op.constant(values, dtype=dtype)
+      zeros = constant_op.constant(np.zeros((5,)), dtype=dtype)
+      ones = constant_op.constant(np.ones((5,)), dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        tf_result_zeros = math_ops.multiply_no_nan(x, zeros).eval()
+        self.assertAllEqual(tf_result_zeros, zeros)
+        tf_result_ones = math_ops.multiply_no_nan(x, ones).eval()
+        self.assertAllEqual(tf_result_ones, x)
+
+
 class XlogyTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -672,8 +688,8 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     if context.executing_eagerly():
       error = errors_impl.InvalidArgumentError
       error_message = (
-          r"cannot compute Add as input #0\(zero-based\) was expected to be a "
-          r"float tensor but is a int32 tensor \[Op:Add\] name: add/")
+          r"cannot compute Add as input #1\(zero-based\) was expected to be a "
+          r"int32 tensor but is a float tensor \[Op:Add\] name: add/")
     else:
       error = TypeError
       error_message = ("Input 'y' of 'Add' Op has type float32 that does not "

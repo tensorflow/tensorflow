@@ -1,4 +1,4 @@
-# TensorFlow Lite GPU Delegate Tutorial
+# TensorFlow Lite GPU delegate
 
 [TensorFlow Lite](https://www.tensorflow.org/lite) supports several hardware
 accelerators. This document describes how to preview the experimental GPU backend using the
@@ -85,16 +85,8 @@ target 'YourProjectName'
 
 #### Step 3. Enable the GPU Delegate
 
-You will need to change two `#define` flags in `CameraExampleViewController.h`
-to enable the GPU delegate. First, change `TFLITE_USE_CONTRIB_LITE` from 1 to 0
-since TensorFlow Lite has moved from TensorFlow contrib into core.
-
-```c
-#define TFLITE_USE_CONTRIB_LITE 0
-```
-
-Next, change `TFLITE_USE_GPU_DELEGATE` from 0 to 1, to enable the code that will
-use the GPU delegate.
+To enable the code that will use the GPU delegate, you will need to change
+`TFLITE_USE_GPU_DELEGATE` from 0 to 1 in `CameraExampleViewController.h`.
 
 ```c
 #define TFLITE_USE_GPU_DELEGATE 1
