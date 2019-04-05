@@ -735,7 +735,7 @@ def get_memory_size_from_events(events):
         return sum(js["memory"]["byTile"]["total"])
       except UnicodeDecodeError:
         pass
-      except json.decoder.JSONDecodeError:
+      except ValueError:
         pass
   return None
 
