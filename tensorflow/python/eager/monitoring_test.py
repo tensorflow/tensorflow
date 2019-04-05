@@ -12,28 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for backend."""
+"""Tests for monitoring."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.lite.experimental.tensorboard import ops_util
-from tensorflow.python.platform import test
+from tensorflow.python.eager import monitoring
+from tensorflow.python.eager import test
+from tensorflow.python.framework import test_util
 
 
-class OpsUtilTest(test.TestCase):
+class MonitoringTest(test_util.TensorFlowTestCase):
 
-  def testGetPotentiallySupportedOps(self):
-    ops = ops_util.get_potentially_supported_ops()
-    # See GetTensorFlowNodeConverterMap() in
-    # tensorflow/lite/toco/import_tensorflow.cc
-    self.assertIsInstance(ops, list)
-    # Test partial ops that surely exist in the list.
-    self.assertIn(ops_util.SupportedOp("Add"), ops)
-    self.assertIn(ops_util.SupportedOp("Log"), ops)
-    self.assertIn(ops_util.SupportedOp("Sigmoid"), ops)
-    self.assertIn(ops_util.SupportedOp("Softmax"), ops)
+  def test_monitoring(self):
+    # These methods should not throw any exception.
+    monitoring.gauge('test/gauge', 'label', 1)
+    monitoring.counter('test/counter', 'label', 1)
+    monitoring.sampler('test/sampler', 'label', 1.0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

@@ -766,6 +766,38 @@ xla_test(
     ],
 )
 
+# Run dot tests with auto-tuning disabled.  This just does a basic sanity check
+# that enabling xla_gpu_disable_autotune does not break simple graphs.
+xla_test(
+    name = "dot_operation_test_autotune_disabled",
+    srcs = ["dot_operation_test.cc"],
+    args = ["--xla_gpu_disable_autotune"],
+    backends = ["gpu"],
+    shard_count = 20,
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
@@ -898,6 +930,23 @@ xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
+    shard_count = 40,
+    tags = ["optonly"],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Run convolution tests with auto-tuning disabled.  This just does a basic
+# sanity check that enabling xla_gpu_disable_autotune does not break simple
+# graphs.
+xla_test(
+    name = "convolution_test_autotune_disabled",
+    timeout = "long",
+    srcs = ["convolution_test.cc"],
+    args = ["--xla_gpu_disable_autotune"],
+    backends = ["gpu"],
     shard_count = 40,
     tags = ["optonly"],
     deps = CONVOLUTION_TEST_DEPS + [

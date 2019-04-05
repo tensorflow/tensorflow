@@ -40,6 +40,25 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "model_utils_test",
+    srcs = ["model_utils_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":model_utils",
+        ":test_util",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
     args = [
@@ -189,6 +208,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
+        "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
     ],
     tags = [

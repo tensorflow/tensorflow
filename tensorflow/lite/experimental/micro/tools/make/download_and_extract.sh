@@ -52,6 +52,9 @@ patch_am_sdk() {
   # Workaround for bug in 2.0.0 SDK, remove once that's fixed.
   sed -i -e $'s/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\\\nextern "C" {\\\n#endif\\\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
 
+  # Add a delay after establishing serial connection
+  sed -ir -E $'s/    with serial\.Serial\(args\.port, args\.baud, timeout=12\) as ser:/    with serial.Serial(args.port, args.baud, timeout=12) as ser:\\\n        # Patched.\\\n        import time\\\n        time.sleep(0.25)\\\n        # End patch./g' "${am_dir}/tools/apollo3_scripts/uart_wired_update.py"
+
   echo "Finished preparing Apollo3 files"
 }
 
@@ -119,6 +122,10 @@ download_and_extract() {
     echo "Unknown action '${action}'"
     exit 1
   fi
+
+  # TODO(petewarden): Temporary output to help debug Kokoro issues.
+  echo `ls -lah ${dir}/*`
+  echo `ls -lah ${dir}/*/*`
 }
 
 download_and_extract "$1" "$2" "$3" "$4"

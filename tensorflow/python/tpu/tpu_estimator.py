@@ -2892,24 +2892,31 @@ class TPUEstimator(estimator_lib.Estimator):
 
           shutdown_hooks = []
           shutdown_mode = os.environ.get('TF_TPU_GRACEFUL_SHUTDOWN_MODE',
-                                         'shutdown_worker')
+                                         'reset_computation')
           if shutdown_mode:
             if shutdown_mode == 'shutdown_worker':
               finalizer_hooks = [
-                  session_support.ShutdownLameWorkers(timeout_ms=60 * 1000),
+                  session_support.ShutdownLameWorkers(),
               ]
-            elif shutdown_mode == 'shutdown_computation':
+            elif shutdown_mode == 'shutdown_all_workers':
               finalizer_hooks = [
-                  session_support.RestartComputation(timeout_ms=60 * 1000),
+                  session_support.ShutdownAllWorkers(),
               ]
+            elif shutdown_mode == 'reset_computation':
+              finalizer_hooks = [
+                  session_support.ResetComputation(),
+              ]
+            elif not shutdown_mode:
+              finalizer_hooks = []
             else:
               raise ValueError(
                   'Unknown TF_TPU_GRACEFUL_SHUTDOWN_MODE "%s"' % shutdown_mode)
 
-            shutdown_hooks.append(
-                session_support.GracefulShutdownHook(
-                    checkpoint_prefix=self.model_dir + '/model.ckpt',
-                    on_shutdown_hooks=finalizer_hooks))
+            if finalizer_hooks:
+              shutdown_hooks.append(
+                  session_support.GracefulShutdownHook(
+                      checkpoint_prefix=self.model_dir + '/model.ckpt',
+                      on_shutdown_hooks=finalizer_hooks))
 
           with ops.control_dependencies([loss]):
             global_step = array_ops.identity(training.get_global_step())

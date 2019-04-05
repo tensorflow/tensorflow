@@ -1500,9 +1500,16 @@ Status PlaceInlinedFunctionBody(
       const GraphView::OutputPort output_port =
           ctx->graph_view().GetRegularFanin({&func_node, input_idx});
 
-      VLOG(3) << "Pin inlined function input node '" << func_body_node->name()
-              << "' to the '" << output_port.node->device() << "' device.";
-      func_body_node->set_requested_device(output_port.node->device());
+      const string& input_device = output_port.node->device();
+
+      if (!input_device.empty()) {
+        VLOG(3) << "Pin inlined function input node '" << func_body_node->name()
+                << "' to the '" << output_port.node->device() << "' device.";
+        func_body_node->set_requested_device(output_port.node->device());
+      } else {
+        VLOG(3) << "Inlined function input node '" << func_body_node->name()
+                << "' device is undefined.";
+      }
     }
   }
 
@@ -1513,15 +1520,14 @@ Status PlaceInlinedFunctionBody(
   const DeviceSet* devices = ctx->devices();
 
   if (devices->devices().empty()) {
-    // If there are no devices available for placer, we just put all nodes to
-    // the same device as a function caller node. This can happen if Grappler is
-    // running "offline", without active runtime session, for example as a part
-    // of a batch job for graph analysis/optimization.
-    VLOG(3) << "Assign function call node device to all function body nodes. "
-            << "Device: " << func_node.device();
-    for (Node* func_body_node : func_body_graph->nodes()) {
-      func_body_node->set_requested_device(func_node.device());
-    }
+    // If there are no devices available for placer, we do not place function
+    // body nodes. This happens when Grappler optimizing function library, or
+    // when graph optimized "offline", without active runtime session, for
+    // example as a part of batch job for graph analysis/optimization.
+    // GrapplerItem instantiated from a function library doesn't have to be
+    // fully placed after all optimization, it will be placed by the function
+    // library runtime before execution.
+    VLOG(3) << "Do not place instantiated function body.";
   } else {
     // If we are running in an active runtime session, Grappler will get the
     // graph after initial placing is done, and we should have devices for the

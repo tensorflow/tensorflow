@@ -430,6 +430,13 @@ class MarkForCompilationPassImpl {
     // cluster must be placed on the same device.
     string resource_op_device;
 
+    // If set then it is a predicate that is true iff the cluster is alive
+    // (clusters are alive or dead as a single unit).  If unset we've decided to
+    // (unsafely) ignore deadness analysis because the user asked us to.  If
+    // this is unset on a single Cluster instance then it is unset on all
+    // Cluster instances.
+    absl::optional<DeadnessAnalysis::DeadnessPredicate> deadness_predicate;
+
     // True if any node in the cluster has an _XlaCompile attribute set to true.
     bool has_xla_compile_attr;
   };
@@ -443,9 +450,10 @@ class MarkForCompilationPassImpl {
   bool CompilationDisallowedByXlaCompileAttr(Node* node,
                                              const DeviceType& jit_device_type);
 
-  void BuildInitialClusterSet(const OrderedNodeSet& compilation_candidates,
-                              std::vector<UnionFind<Cluster>>* clusters,
-                              std::deque<UnionFind<Cluster>*>* worklist);
+  Status BuildInitialClusterSet(const OrderedNodeSet& compilation_candidates,
+                                const DeadnessAnalysis* deadness_analysis,
+                                std::vector<UnionFind<Cluster>>* clusters,
+                                std::deque<UnionFind<Cluster>*>* worklist);
 
   StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
 
@@ -529,14 +537,22 @@ bool MarkForCompilationPassImpl::HasMismatchingXlaScope(Node* node_from,
          from_scope != to_scope;
 }
 
-void MarkForCompilationPassImpl::BuildInitialClusterSet(
+Status MarkForCompilationPassImpl::BuildInitialClusterSet(
     const OrderedNodeSet& compilation_candidates,
+    const DeadnessAnalysis* deadness_analysis,
     std::vector<UnionFind<Cluster>>* clusters,
     std::deque<UnionFind<Cluster>*>* worklist) {
   clusters->resize(graph_->num_node_ids());
   for (Node* node : compilation_candidates) {
     Cluster* cluster = &(*clusters)[node->id()].Get();
     cluster->representative = node->id();
+
+    if (deadness_analysis) {
+      TF_ASSIGN_OR_RETURN(
+          cluster->deadness_predicate,
+          deadness_analysis->GetPredicateFor(node, Graph::kControlSlot));
+    }
+
     const string& device = !node->assigned_device_name().empty()
                                ? node->assigned_device_name()
                                : node->requested_device();
@@ -558,6 +574,8 @@ void MarkForCompilationPassImpl::BuildInitialClusterSet(
     cluster->devices.insert(device);
     worklist->push_back(&(*clusters)[node->id()]);
   }
+
+  return Status::OK();
 }
 
 StatusOr<std::pair<OrderedNodeSet, absl::flat_hash_set<Node*>>>
@@ -594,12 +612,6 @@ MarkForCompilationPassImpl::FindCompilationCandidates() {
     VLOG(2) << "Starting fuel: " << *debug_options_.fuel;
   }
 
-  std::unique_ptr<DeadnessAnalysis> deadness_analysis;
-  if (!debug_options_.ignore_deadness_checks) {
-    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
-    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis));
-  }
-
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
   for (Node* node : sorted_nodes) {
@@ -614,14 +626,6 @@ MarkForCompilationPassImpl::FindCompilationCandidates() {
         device_info_cache_.GetDeviceTypeFor(node->assigned_device_name()));
     VLOG(4) << "Device type for " << node->name() << ": "
             << device_type.type_string();
-
-    if (deadness_analysis) {
-      if (node->IsMerge() ||
-          deadness_analysis->HasInputsWithMismatchingDeadness(*node)) {
-        VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
-        continue;
-      }
-    }
 
     if (CompilationDisallowedByXlaCompileAttr(node, device_type)) {
       VLOG(2) << "Not clustering " << node->name()
@@ -821,12 +825,19 @@ Status MarkForCompilationPassImpl::Run() {
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
       graph_, flib_def_, ignore_resource_ops, &cycles));
 
+  std::unique_ptr<DeadnessAnalysis> deadness_analysis;
+  if (!debug_options_.ignore_deadness_checks) {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
+    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis));
+  }
+
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative names the node in the 'cycles' graph that represents the
   // cluster.
   std::vector<UnionFind<Cluster>> clusters;
   std::deque<UnionFind<Cluster>*> worklist;
-  BuildInitialClusterSet(compilation_candidates, &clusters, &worklist);
+  TF_RETURN_IF_ERROR(BuildInitialClusterSet(
+      compilation_candidates, deadness_analysis.get(), &clusters, &worklist));
 
   int64 iteration_count = 0;
 
@@ -865,6 +876,12 @@ Status MarkForCompilationPassImpl::Run() {
       Node* node_to = graph_->FindNodeId(to);
       if (compilation_candidates.find(node_to) ==
           compilation_candidates.cend()) {
+        continue;
+      }
+
+      DCHECK(cluster_from->deadness_predicate.has_value() ==
+             cluster_to.deadness_predicate.has_value());
+      if (cluster_from->deadness_predicate != cluster_to.deadness_predicate) {
         continue;
       }
 
@@ -1380,11 +1397,12 @@ Status MarkForCompilationPass::Run(
 }
 
 Status MarkForCompilationPass::RunForTest(
-    const GraphOptimizationPassOptions& options) {
+    const GraphOptimizationPassOptions& options,
+    bool disable_deadness_analysis) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
   MarkForCompilationPassImpl::DebugOptions debug_options;
-  debug_options.ignore_deadness_checks = true;
+  debug_options.ignore_deadness_checks = disable_deadness_analysis;
   debug_options.ignore_xla_compile_attr = true;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;

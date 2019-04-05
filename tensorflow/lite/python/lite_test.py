@@ -1446,11 +1446,5 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
-class ImportOpsUtilTest(test_util.TensorFlowTestCase):
-
-  def testGetPotentiallySupportedOps(self):
-    self.assertIsNotNone(lite.get_potentially_supported_ops())
-
-
 if __name__ == '__main__':
   test.main()

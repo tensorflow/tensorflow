@@ -41,7 +41,8 @@ class MarkForCompilationPass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
-  Status RunForTest(const GraphOptimizationPassOptions& options);
+  Status RunForTest(const GraphOptimizationPassOptions& options,
+                    bool disable_deadness_analysis);
 
   friend class MarkForCompilationPassTestHelper;
 };

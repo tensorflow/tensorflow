@@ -96,6 +96,12 @@ void MakeTensorWithQuantParam(const string& name,
   (*tensor)->quantization->zero_point.push_back(zero_point);
 }
 
+bool QuantizationParametersExist(const TensorT* tensor) {
+  return tensor->quantization != nullptr &&
+         !tensor->quantization->scale.empty() &&
+         !tensor->quantization->zero_point.empty();
+}
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

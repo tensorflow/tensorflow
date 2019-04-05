@@ -182,6 +182,7 @@ def einsum(equation, *inputs, **kwargs):
 
   To enable and control broadcasting, use an ellipsis.  For example, to do
   batch matrix multiplication, you could use:
+
   ```python
   >>> einsum('...ij,...jk->...ik', u, v)
   ```

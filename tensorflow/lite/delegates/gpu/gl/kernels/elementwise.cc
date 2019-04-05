@@ -116,7 +116,6 @@ class ElementwiseTwoArguments : public NodeShader {
 
     // Implementation supports concatenation of 2 tensors only.
     if (inputs.size() != 2) {
-      std::cerr << "ElementwiseTwoArguments3\n";
       return false;
     }
 

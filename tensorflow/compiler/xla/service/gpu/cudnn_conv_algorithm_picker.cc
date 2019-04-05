@@ -296,11 +296,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
   std::vector<AutotuneResult> profile_results;
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
   const bool crash_on_checking_failure =
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_crash_on_verification_failures();
+      debug_options.xla_gpu_crash_on_verification_failures();
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -531,6 +531,13 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnComputation(
 
 StatusOr<bool> CudnnConvAlgorithmPicker::Run(HloModule* module) {
   XLA_SCOPED_LOGGING_TIMER("CudnnConvAlgorithmPicker");
+
+  if (module->config().debug_options().xla_gpu_disable_autotune()) {
+    VLOG(2) << "Convolution auto-tuning disabled, CudnnConvAlgorithmPicker "
+               "returning early.";
+    return false;
+  }
+
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -1237,6 +1238,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   VLOG(1) << "Added send/recv: controls=" << num_control
           << ", data=" << num_data;
+  if (VLOG_IS_ON(2)) {
+    for (auto& it : *partitions) {
+      GraphDef* gdef = &it.second;
+      DumpGraphDefToFile(strings::StrCat("partition_", it.first, "_",
+                                         reinterpret_cast<uintptr_t>(gdef)),
+                         *gdef);
+    }
+  }
   return Status::OK();
 }
 

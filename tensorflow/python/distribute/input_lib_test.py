@@ -211,8 +211,13 @@ class InputIteratorMultiWorkerTest(
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda _: dataset_ops.Dataset.range(4)
+      if input_type == "dataset":
+        # Autosharded
+        expected_values = [[0, 1], [2, 3]]
+      else:
+        expected_values = [[0, 0], [1, 1], [2, 2], [3, 3]]
       self._test_iterator(input_type, dataset_fn, worker_devices,
-                          [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
+                          expected_values, sess)
 
   @combinations.generate(combinations.combine(
       mode=["graph"],
@@ -222,8 +227,13 @@ class InputIteratorMultiWorkerTest(
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda _: dataset_ops.Dataset.range(4)
+      if input_type == "dataset":
+        # Autosharded
+        expected_values = [[0, 2, 1, 3]]
+      else:
+        expected_values = [[0, 1, 0, 1], [2, 3, 2, 3]]
       self._test_iterator(input_type, dataset_fn, worker_devices,
-                          [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
+                          expected_values, sess)
 
   @combinations.generate(combinations.combine(
       mode=["graph"],
@@ -238,7 +248,11 @@ class InputIteratorMultiWorkerTest(
         dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
         return dataset_ops.Dataset.zip((dataset1, dataset2))
 
-      expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
+      if input_type == "dataset":
+        # Autosharded
+        expected_values = [[(0, 0), (1, 1)], [(2, 4), (3, 9)]]
+      else:
+        expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
       self._test_iterator(input_type, dataset_fn, worker_devices,
                           expected_values, sess)
 
@@ -249,8 +263,12 @@ class InputIteratorMultiWorkerTest(
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(2)
-      expected_values = [[[0, 1], [2, 3], [0, 1], [2, 3]],
-                         [[4, 5], [6, 7], [4, 5], [6, 7]], [[8], [], [8], []]]
+      if input_type == "dataset":
+        # Autosharded
+        expected_values = [[[0, 1], [4, 5], [2, 3], [6, 7]], [[8], [], [], []]]
+      else:
+        expected_values = [[[0, 1], [2, 3], [0, 1], [2, 3]],
+                           [[4, 5], [6, 7], [4, 5], [6, 7]], [[8], [], [8], []]]
       self._test_iterator(input_type, dataset_fn, worker_devices,
                           expected_values, sess,
                           enable_get_next_as_optional=True)
