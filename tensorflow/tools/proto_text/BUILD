@@ -8,8 +8,6 @@
 # Note that proto3 well-known types (e.g. Any) are not handled in a special way
 # by the generated code.
 
-load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
-
 package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
@@ -74,11 +72,6 @@ cc_library(
 tf_proto_library_cc(
     name = "test_proto",
     srcs = ["test.proto"],
-)
-
-cc_proto_library(
-    name = "test_cc_proto",
-    deps = [":test_proto_cc"],
 )
 
 tf_generate_proto_text_sources(
