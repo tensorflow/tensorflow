@@ -370,13 +370,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  uint64 seed = module->config().seed();
-  if (seed == 0) {
-    seed = tensorflow::random::New64();
-  }
-
-  CompilerResources resources(dev, seed + 1, poplarExecutor->GetRandomGenMode(),
-                              poplarExecutor->GetConvolutionOptions(),
+  CompilerResources resources(dev, poplarExecutor->GetConvolutionOptions(),
                               poplarExecutor->GetPoolingOptions(),
                               poplarExecutor->DisableGraphConvCaching(),
                               poplarExecutor->GetNumberOfReplicas(),

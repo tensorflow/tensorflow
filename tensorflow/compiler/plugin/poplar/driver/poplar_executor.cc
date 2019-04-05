@@ -892,19 +892,6 @@ void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
   reports_.push_back(evt);
 }
 
-const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
-  switch (current_config_.random_type()) {
-    case IpuOptions::NOT_REPEATABLE:
-      return poprand::NOT_REPEATABLE;
-    case IpuOptions::SYSTEM_REPEATABLE:
-      return poprand::SYSTEM_REPEATABLE;
-    case IpuOptions::ALWAYS_REPEATABLE:
-      return poprand::ALWAYS_REPEATABLE;
-    default:
-      return poprand::NOT_REPEATABLE;
-  }
-}
-
 Status PoplarExecutor::GetCompilerEvents(
     std::list<tensorflow::IpuTraceEvent>& out) {
   std::lock_guard<std::recursive_mutex> g(mutex_);

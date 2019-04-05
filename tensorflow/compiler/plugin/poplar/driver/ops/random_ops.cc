@@ -34,15 +34,18 @@ StatusOr<poplar::program::Program> TruncatedNormal(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0),
+  poplar::Tensor ref;
+  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
                                      output_shape, res, tensor_map));
 
-  poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
-  res.random.truncatedNormal(graph, out, 0.0, 1.0, 1.0, seq,
-                             GetDebugName(inst));
+  poplar::Type dtype;
+  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
 
+  poplar::program::Sequence seq;
+  auto out = poprand::truncatedNormal(graph, nullptr, 0, ref, dtype, 0.0, 1.0,
+                                      1.0, seq, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 
@@ -72,15 +75,19 @@ StatusOr<poplar::program::Program> RandomNormalScale(
   double sd2_val;
   TF_ASSIGN_OR_RETURN(sd2_val, DoubleValueOfScalarLiteral(sd2->literal()));
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0),
+  poplar::Tensor ref;
+  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
                                      output_shape, res, tensor_map));
 
-  poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
-  res.random.normal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val, seq,
-                    GetDebugName(inst));
+  poplar::Type dtype;
+  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
 
+  poplar::program::Sequence seq;
+  auto out =
+      poprand::normal(graph, nullptr, 0, ref, dtype, mean1_val + mean2_val,
+                      sd1_val * sd2_val, seq, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 
@@ -110,16 +117,19 @@ StatusOr<poplar::program::Program> RandomUniformScale(
   double upper_val;
   TF_ASSIGN_OR_RETURN(upper_val, DoubleValueOfScalarLiteral(upper->literal()));
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0),
+  poplar::Tensor ref;
+  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
                                      output_shape, res, tensor_map));
 
-  poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
-  res.random.uniform(graph, out, lower_val * scale_val + shift_val,
-                     upper_val * scale_val + shift_val, seq,
-                     GetDebugName(inst));
+  poplar::Type dtype;
+  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
 
+  poplar::program::Sequence seq;
+  auto out = poprand::uniform(
+      graph, nullptr, 0, ref, dtype, lower_val * scale_val + shift_val,
+      upper_val * scale_val + shift_val, seq, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 
@@ -137,14 +147,18 @@ StatusOr<poplar::program::Program> RandomNormal(CompilerResources& res,
   double sd_val;
   TF_ASSIGN_OR_RETURN(sd_val, DoubleValueOfScalarLiteral(sd->literal()));
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0),
+  poplar::Tensor ref;
+  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
                                      output_shape, res, tensor_map));
 
-  poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
-  res.random.normal(graph, out, mean_val, sd_val, seq, GetDebugName(inst));
+  poplar::Type dtype;
+  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
 
+  poplar::program::Sequence seq;
+  auto out = poprand::normal(graph, nullptr, 0, ref, dtype, mean_val, sd_val,
+                             seq, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 
@@ -166,14 +180,18 @@ StatusOr<poplar::program::Program> RandomUniform(CompilerResources& res,
     upper_val -= 1.0;
   }
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0),
+  poplar::Tensor ref;
+  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
                                      output_shape, res, tensor_map));
 
-  poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
-  res.random.uniform(graph, out, lower_val, upper_val, seq, GetDebugName(inst));
+  poplar::Type dtype;
+  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
 
+  poplar::program::Sequence seq;
+  auto out = poprand::uniform(graph, nullptr, 0, ref, dtype, lower_val,
+                              upper_val, seq, GetDebugName(inst));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 

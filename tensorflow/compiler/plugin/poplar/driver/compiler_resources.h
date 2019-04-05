@@ -55,8 +55,6 @@ struct CompilerResources {
 
   poplin::matmul::PlanningCache dot_cache;
 
-  poprand::Random random;
-
   const poplar::OptionFlags default_conv_options;
 
   const poplar::OptionFlags default_pooling_options;
@@ -86,15 +84,13 @@ struct CompilerResources {
 
   dot_graph_caching::DotGraphCache dot_graph_cache;
 
-  CompilerResources(const poplar::Device& dev, uint64 seed,
-                    poprand::RandomGenMode mode,
+  CompilerResources(const poplar::Device& dev,
                     const poplar::OptionFlags& conv_options,
                     const poplar::OptionFlags& pooling_options,
                     bool disable_graph_convolution_caching,
                     uint32 replication_factor, HloModule* module)
       : main_graph(dev),
         annotations(module),
-        random(mode, seed),
         default_conv_options(conv_options),
         default_pooling_options(pooling_options),
         disable_graph_convolution_caching(disable_graph_convolution_caching),

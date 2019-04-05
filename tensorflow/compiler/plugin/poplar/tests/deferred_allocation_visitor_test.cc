@@ -56,8 +56,8 @@ class DeferredAllocationsVisitorTest : public HloTestBase {};
 
 std::unique_ptr<CompilerResources> GetMockResources(HloModule* module) {
   auto resources = absl::make_unique<CompilerResources>(
-      poplar::Device::createCPUDevice(), 0, poprand::NOT_REPEATABLE,
-      poplar::OptionFlags(), poplar::OptionFlags(), false, 1, module);
+      poplar::Device::createCPUDevice(), poplar::OptionFlags(),
+      poplar::OptionFlags(), false, 1, module);
   poplin::addCodelets(resources->main_graph);
   popnn::addCodelets(resources->main_graph);
   popops::addCodelets(resources->main_graph);
@@ -85,20 +85,20 @@ TEST_F(DeferredAllocationsVisitorTest, TestDeferredAllocation) {
   const string& hlo_string = R"(
 
 HloModule module
-%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
-  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg_1 = f32[2]{0} parameter(1)
-  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
-  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  arg_0 = f32[1,4,4,2] parameter(0)
+  arg_1 = f32[2] parameter(1)
+  broadcast.6.clone = f32[1,4,4,2] broadcast(arg_1), dimensions={3}
+  ROOT add.7.clone = f32[1,4,4,2] add(arg_0, broadcast.6.clone)
 }
 
-ENTRY %cluster (arg0.1: (f32[1,4,4,2], f32[2], f32[1,1,2,2])) -> f32[1,4,4,2] {
-  %arg = (f32[1,4,4,2], f32[2], f32[1,1,2,2]) parameter(0)
-  %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[2], f32[1,1,2,2]) %arg), index=0
-  %gte2 = f32[1,1,2,2] get-tuple-element((f32[1,4,4,2], f32[2], f32[1,1,2,2]) %arg), index=2
-  %convolution.5 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0, f32[1,1,2,2]{3,2,1,0} %gte2), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %gte1 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[1,1,2,2]) %arg), index=1
-  ROOT %fusion = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.5, f32[2]{0} %gte1), kind=kCustom, calls=%_pop_op_conv_biasadd
+ENTRY cluster (arg0.1: (f32[1,4,4,2], f32[2], f32[1,1,2,2])) -> f32[1,4,4,2] {
+  arg = (f32[1,4,4,2], f32[2], f32[1,1,2,2]) parameter(0)
+  gte0 = f32[1,4,4,2] get-tuple-element(arg), index=0
+  gte2 = f32[1,1,2,2] get-tuple-element(arg), index=2
+  convolution.5 = f32[1,4,4,2] convolution( gte0, gte2), window={size=1x1}, dim_labels=b01f_01io->b01f
+  gte1 = f32[2] get-tuple-element(arg), index=1
+  ROOT fusion = f32[1,4,4,2] fusion(convolution.5, gte1), kind=kCustom, calls=_pop_op_conv_biasadd
 }
 )";
   std::unique_ptr<HloModule> module =
@@ -130,21 +130,21 @@ TEST_F(DeferredAllocationsVisitorTest, TestDeferredAllocationNestedTuple) {
   const string& hlo_string = R"(
 
 HloModule module
-%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
-  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg_1 = f32[2]{0} parameter(1)
-  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
-  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  arg_0 = f32[1,4,4,2] parameter(0)
+  arg_1 = f32[2] parameter(1)
+  broadcast.6.clone = f32[1,4,4,2] broadcast(arg_1), dimensions={3}
+  ROOT add.7.clone = f32[1,4,4,2] add(arg_0, broadcast.6.clone)
 }
 
-ENTRY %cluster (arg0.1: ((f32[1,4,4,2], f32[2], f32[1,1,2,2]))) -> f32[1,4,4,2] {
-  %arg = ((f32[1,4,4,2], f32[2], f32[1,1,2,2])) parameter(0)
-  %gte = (f32[1,4,4,2], f32[2], f32[1,1,2,2]) get-tuple-element(((f32[1,4,4,2], f32[2], f32[1,1,2,2])) %arg), index=0
-  %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[2], f32[1,1,2,2]) %gte), index=0
-  %gte2 = f32[1,1,2,2] get-tuple-element((f32[1,4,4,2], f32[2], f32[1,1,2,2]) %gte), index=2
-  %convolution.5 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0, f32[1,1,2,2]{3,2,1,0} %gte2), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %gte1 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[1,1,2,2]) %gte), index=1
-  ROOT %fusion = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.5, f32[2]{0} %gte1), kind=kCustom, calls=%_pop_op_conv_biasadd
+ENTRY cluster (arg0.1: ((f32[1,4,4,2], f32[2], f32[1,1,2,2]))) -> f32[1,4,4,2] {
+  arg = ((f32[1,4,4,2], f32[2], f32[1,1,2,2])) parameter(0)
+  gte = (f32[1,4,4,2], f32[2], f32[1,1,2,2]) get-tuple-element(arg), index=0
+  gte0 = f32[1,4,4,2] get-tuple-element(gte), index=0
+  gte2 = f32[1,1,2,2] get-tuple-element(gte), index=2
+  convolution.5 = f32[1,4,4,2] convolution(gte0, gte2), window={size=1x1}, dim_labels=b01f_01io->b01f
+  gte1 = f32[2] get-tuple-element(gte), index=1
+  ROOT fusion = f32[1,4,4,2] fusion(convolution.5, gte1), kind=kCustom, calls=_pop_op_conv_biasadd
 }
 )";
   std::unique_ptr<HloModule> module =
@@ -180,22 +180,22 @@ TEST_F(DeferredAllocationsVisitorTest,
   const string& hlo_string = R"(
 
 HloModule module
-%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
-  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg_1 = f32[2]{0} parameter(1)
-  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
-  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  arg_0 = f32[1,4,4,2] parameter(0)
+  arg_1 = f32[2] parameter(1)
+  broadcast.6.clone = f32[1,4,4,2] broadcast(arg_1), dimensions={3}
+  ROOT add.7.clone = f32[1,4,4,2] add(arg_0, broadcast.6.clone)
 }
 
-ENTRY %cluster (arg0.1: ((f32[1,4,4,2], (f32[2], f32[1,1,2,2])))) -> f32[1,4,4,2] {
-  %arg = ((f32[1,4,4,2], (f32[2], f32[1,1,2,2]))) parameter(0)
-  %gte = (f32[1,4,4,2], (f32[2], f32[1,1,2,2])) get-tuple-element(((f32[1,4,4,2], (f32[2], f32[1,1,2,2]))) %arg), index=0
-  %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], (f32[2], f32[1,1,2,2])) %gte), index=0
-  %gte1 = (f32[2], f32[1,1,2,2]) get-tuple-element((f32[1,4,4,2], (f32[2], f32[1,1,2,2])) %gte), index=1
-  %gte1.1 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2]) %gte1), index=1
-  %convolution.5 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0, f32[1,1,2,2]{3,2,1,0} %gte1.1), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %gte1.0 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2]) %gte1), index=0
-  ROOT %fusion = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.5, f32[2]{0} %gte1.0), kind=kCustom, calls=%_pop_op_conv_biasadd
+ENTRY cluster (arg0.1: ((f32[1,4,4,2], (f32[2], f32[1,1,2,2])))) -> f32[1,4,4,2] {
+  arg = ((f32[1,4,4,2], (f32[2], f32[1,1,2,2]))) parameter(0)
+  gte = (f32[1,4,4,2], (f32[2], f32[1,1,2,2])) get-tuple-element(arg), index=0
+  gte0 = f32[1,4,4,2] get-tuple-element(gte), index=0
+  gte1 = (f32[2], f32[1,1,2,2]) get-tuple-element(gte), index=1
+  gte1.1 = f32[1,1,2,2] get-tuple-element(gte1), index=1
+  convolution.5 = f32[1,4,4,2] convolution(gte0, gte1.1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  gte1.0 = f32[2] get-tuple-element(gte1), index=0
+  ROOT fusion = f32[1,4,4,2] fusion(convolution.5, gte1.0), kind=kCustom, calls=_pop_op_conv_biasadd
 }
 )";
   std::unique_ptr<HloModule> module =
@@ -234,37 +234,37 @@ TEST_F(DeferredAllocationsVisitorTest,
   const string& hlo_string = R"(
 
 HloModule module
-%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
-  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg_1 = f32[2]{0} parameter(1)
-  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
-  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  arg_0 = f32[1,4,4,2] parameter(0)
+  arg_1 = f32[2] parameter(1)
+  broadcast.6.clone = f32[1,4,4,2] broadcast(arg_1), dimensions={3}
+  ROOT add.7.clone = f32[1,4,4,2] add(arg_0, broadcast.6.clone)
 }
 
-%_pop_op_conv_biasadd.1 (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
-  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg_1 = f32[2]{0} parameter(1)
-  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
-  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+_pop_op_conv_biasadd.1 (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  arg_0 = f32[1,4,4,2] parameter(0)
+  arg_1 = f32[2] parameter(1)
+  broadcast.6.clone = f32[1,4,4,2] broadcast(arg_1), dimensions={3}
+  ROOT add.7.clone = f32[1,4,4,2] add(arg_0, broadcast.6.clone)
 }
 
-ENTRY %cluster (arg0.1: ((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))))) -> (f32[1,4,4,2], f32[1,4,4,2]) {
-  %arg = (((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))) parameter(0)
-  %gte = ((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) get-tuple-element((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))) %arg), index=0
-  %gte0 = (f32[1,4,4,2], f32[1,4,4,2]) get-tuple-element(((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) %gte), index=0
-  %gte0.0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,4,4,2]) %gte0), index=0
-  %gte1 = (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) get-tuple-element(((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) %gte), index=1
-  %gte1.1 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=1
-  %convolution.0 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0.0, f32[1,1,2,2]{3,2,1,0} %gte1.1), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %gte1.0 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=0
-  %fusion.0 = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.0, f32[2]{0} %gte1.0), kind=kCustom, calls=%_pop_op_conv_biasadd
+ENTRY cluster (arg0.1: ((((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))))) -> (f32[1,4,4,2], f32[1,4,4,2]) {
+  arg = (((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]))) parameter(0)
+  gte = ((f32[1,4,4,2], f32[1,4,4,2]), (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2])) get-tuple-element(arg), index=0
+  gte0 = (f32[1,4,4,2], f32[1,4,4,2]) get-tuple-element(gte), index=0
+  gte0.0 = f32[1,4,4,2] get-tuple-element(gte0), index=0
+  gte1 = (f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) get-tuple-element(gte), index=1
+  gte1.1 = f32[1,1,2,2] get-tuple-element(gte1), index=1
+  convolution.0 = f32[1,4,4,2] convolution(gte0.0, gte1.1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  gte1.0 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) gte1), index=0
+  fusion.0 = f32[1,4,4,2] fusion(convolution.0, gte1.0), kind=kCustom, calls=_pop_op_conv_biasadd
 
-  %gte0.1 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,4,4,2]) %gte0), index=1
-  %gte1.3 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=3
-  %convolution.1 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0.1, f32[1,1,2,2]{3,2,1,0} %gte1.3), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %gte1.2 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) %gte1), index=2
-  %fusion.1 = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.1, f32[2]{0} %gte1.2), kind=kCustom, calls=%_pop_op_conv_biasadd.1
-  ROOT %tuple = (f32[1,4,4,2], f32[1,4,4,2]) tuple(f32[1,4,4,2] fusion.0, f32[1,4,4,2] fusion.1)
+  gte0.1 = f32[1,4,4,2] get-tuple-element(gte0), index=1
+  gte1.3 = f32[1,1,2,2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) gte1), index=3
+  convolution.1 = f32[1,4,4,2] convolution(gte0.1, gte1.3), window={size=1x1}, dim_labels=b01f_01io->b01f
+  gte1.2 = f32[2] get-tuple-element((f32[2], f32[1,1,2,2], f32[2], f32[1,1,2,2]) gte1), index=2
+  fusion.1 = f32[1,4,4,2] fusion(convolution.1, gte1.2), kind=kCustom, calls=_pop_op_conv_biasadd.1
+  ROOT tuple = (f32[1,4,4,2], f32[1,4,4,2]) tuple(fusion.0, fusion.1)
 }
 )";
   std::unique_ptr<HloModule> module =
@@ -324,22 +324,22 @@ TEST_F(DeferredAllocationsVisitorTest,
   const string& hlo_string = R"(
 
 HloModule module
-%_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
-  %arg_0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg_1 = f32[2]{0} parameter(1)
-  %broadcast.6.clone = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %arg_1), dimensions={3}
-  ROOT %add.7.clone = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %arg_0, f32[1,4,4,2]{3,2,1,0} %broadcast.6.clone)
+_pop_op_conv_biasadd (arg_0: f32[1,4,4,2], arg_1: f32[2]) -> f32[1,4,4,2] {
+  arg_0 = f32[1,4,4,2] parameter(0)
+  arg_1 = f32[2] parameter(1)
+  broadcast.6.clone = f32[1,4,4,2] broadcast(arg_1), dimensions={3}
+  ROOT add.7.clone = f32[1,4,4,2] add(arg_0, broadcast.6.clone)
 }
 
-ENTRY %cluster (arg: f32[1,1,2,2]) -> f32[1,4,4,2] {
-  %arg = f32[1,1,2,2] parameter(0)
-  %after-all = token[] after-all()
-  %infeed = ((f32[1,4,4,2], f32[2]), token[]) infeed(token[] %after-all), infeed_config="7"
-  %gte = (f32[1,4,4,2], f32[2]) get-tuple-element(((f32[1,4,4,2], f32[2]), token[]) %infeed), index=0
-  %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[2]) %gte), index=0
-  %convolution.5 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %gte0, f32[1,1,2,2]{3,2,1,0} %arg), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %gte1 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2]) %gte), index=1
-  ROOT %fusion = f32[1,4,4,2]{3,2,1,0} fusion(f32[1,4,4,2]{3,2,1,0} %convolution.5, f32[2]{0} %gte1), kind=kCustom, calls=%_pop_op_conv_biasadd
+ENTRY cluster (arg: f32[1,1,2,2]) -> f32[1,4,4,2] {
+  arg = f32[1,1,2,2] parameter(0)
+  after-all = token[] after-all()
+  infeed = ((f32[1,4,4,2], f32[2]), token[]) infeed(token[] after-all), infeed_config="7"
+  gte = (f32[1,4,4,2], f32[2]) get-tuple-element(((f32[1,4,4,2], f32[2]), token[]) infeed), index=0
+  gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[2]) gte), index=0
+  convolution.5 = f32[1,4,4,2] convolution(gte0, arg), window={size=1x1}, dim_labels=b01f_01io->b01f
+  gte1 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2]) gte), index=1
+  ROOT fusion = f32[1,4,4,2] fusion(convolution.5, gte1), kind=kCustom, calls=_pop_op_conv_biasadd
 }
 )";
   std::unique_ptr<HloModule> module =
@@ -374,96 +374,96 @@ TEST_F(DeferredAllocationsVisitorTest, TestDeferredAllocationInsideLoops) {
   const string& hlo_string = R"(
 HloModule module
 
-%while_Sum-reduction.13 (x.14: f32[], y.15: f32[]) -> f32[] {
-  %x.14 = f32[] parameter(0)
-  %y.15 = f32[] parameter(1)
-  ROOT %add.16 = f32[] add(f32[] %x.14, f32[] %y.15)
+while_Sum-reduction.13 (x.14: f32[], y.15: f32[]) -> f32[] {
+  x.14 = f32[] parameter(0)
+  y.15 = f32[] parameter(1)
+  ROOT add.16 = f32[] add(x.14, y.15)
 }
 
-%_functionalize_body_1__.17 (arg_tuple.18: (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2])) -> (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) {
-  %arg_tuple.18 = (s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) parameter(0)
-  %get-tuple-element.21 = f32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=2
-  %get-tuple-element.19 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=0
-  %constant.26 = s32[] constant(1)
-  %add.27 = s32[] add(s32[] %get-tuple-element.19, s32[] %constant.26)
-  %get-tuple-element.20 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=1
-  %constant.30 = s32[] constant(1)
-  %add.31 = s32[] add(s32[] %get-tuple-element.20, s32[] %constant.30)
-  %get-tuple-element.24 = f32[1,4,4,2]{3,2,1,0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=5
-  %get-tuple-element.25 = f32[1,1,2,2]{3,2,1,0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=6
-  %convolution.48 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %get-tuple-element.24, f32[1,1,2,2]{3,2,1,0} %get-tuple-element.25), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %get-tuple-element.23 = f32[2]{0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=4
-  %constant.33 = f32[] constant(0.1)
-  %broadcast.34 = f32[2]{0} broadcast(f32[] %constant.33), dimensions={}
-  %constant.32 = f32[2]{0} constant({16, 16})
-  %multiply.35 = f32[2]{0} multiply(f32[2]{0} %broadcast.34, f32[2]{0} %constant.32)
-  %subtract.36 = f32[2]{0} subtract(f32[2]{0} %get-tuple-element.23, f32[2]{0} %multiply.35)
-  %broadcast.49 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[2]{0} %subtract.36), dimensions={3}
-  %add.50 = f32[1,4,4,2]{3,2,1,0} add(f32[1,4,4,2]{3,2,1,0} %convolution.48, f32[1,4,4,2]{3,2,1,0} %broadcast.49)
-  %convert.51 = f32[1,4,4,2]{3,2,1,0} convert(f32[1,4,4,2]{3,2,1,0} %add.50)
-  %constant.52 = f32[] constant(0)
-  %convert.53 = f32[] convert(f32[] %constant.52)
-  %reduce.54 = f32[] reduce(f32[1,4,4,2]{3,2,1,0} %convert.51, f32[] %convert.53), dimensions={0,1,2,3}, to_apply=%while_Sum-reduction.13
-  %convert.55 = f32[] convert(f32[] %reduce.54)
-  %get-tuple-element.22 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.18), index=3
-  %tuple.56 = (f32[2]{0}) tuple(f32[2]{0} %subtract.36)
-  %get-tuple-element.57 = f32[2]{0} get-tuple-element((f32[2]{0}) %tuple.56), index=0
-  %constant.40 = f32[] constant(0.1)
-  %broadcast.41 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[] %constant.40), dimensions={}
-  %constant.28 = f32[] constant(1)
-  %broadcast.29 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[] %constant.28), dimensions={}
-  %reverse.38 = f32[1,1,2,2]{3,2,1,0} reverse(f32[1,1,2,2]{3,2,1,0} %get-tuple-element.25), dimensions={0,1}
-  %convolution.39 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %broadcast.29, f32[1,1,2,2]{3,2,1,0} %reverse.38), window={size=1x1}, dim_labels=b01f_01oi->b01f
-  %multiply.42 = f32[1,4,4,2]{3,2,1,0} multiply(f32[1,4,4,2]{3,2,1,0} %broadcast.41, f32[1,4,4,2]{3,2,1,0} %convolution.39)
-  %subtract.43 = f32[1,4,4,2]{3,2,1,0} subtract(f32[1,4,4,2]{3,2,1,0} %get-tuple-element.24, f32[1,4,4,2]{3,2,1,0} %multiply.42)
-  %tuple.58 = (f32[1,4,4,2]{3,2,1,0}) tuple(f32[1,4,4,2]{3,2,1,0} %subtract.43)
-  %get-tuple-element.59 = f32[1,4,4,2]{3,2,1,0} get-tuple-element((f32[1,4,4,2]{3,2,1,0}) %tuple.58), index=0
-  %constant.44 = f32[] constant(0.1)
-  %broadcast.45 = f32[1,1,2,2]{3,2,1,0} broadcast(f32[] %constant.44), dimensions={}
-  %convolution.37 = f32[1,1,2,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %get-tuple-element.24, f32[1,4,4,2]{3,2,1,0} %broadcast.29), window={size=4x4}, dim_labels=f01b_i01o->01bf
-  %multiply.46 = f32[1,1,2,2]{3,2,1,0} multiply(f32[1,1,2,2]{3,2,1,0} %broadcast.45, f32[1,1,2,2]{3,2,1,0} %convolution.37)
-  %subtract.47 = f32[1,1,2,2]{3,2,1,0} subtract(f32[1,1,2,2]{3,2,1,0} %get-tuple-element.25, f32[1,1,2,2]{3,2,1,0} %multiply.46)
-  %tuple.60 = (f32[1,1,2,2]{3,2,1,0}) tuple(f32[1,1,2,2]{3,2,1,0} %subtract.47)
-  %get-tuple-element.61 = f32[1,1,2,2]{3,2,1,0} get-tuple-element((f32[1,1,2,2]{3,2,1,0}) %tuple.60), index=0
-  ROOT %tuple.62 = (s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) tuple(s32[] %add.27, s32[] %add.31, f32[] %convert.55, s32[] %get-tuple-element.22, f32[2]{0} %get-tuple-element.57, f32[1,4,4,2]{3,2,1,0} %get-tuple-element.59, f32[1,1,2,2]{3,2,1,0} %get-tuple-element.61)
+_functionalize_body_1__.17 (arg_tuple.18: (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2])) -> (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) {
+  arg_tuple.18 = (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) parameter(0)
+  get-tuple-element.21 = f32[] get-tuple-element(arg_tuple.18), index=2
+  get-tuple-element.19 = s32[] get-tuple-element(arg_tuple.18), index=0
+  constant.26 = s32[] constant(1)
+  add.27 = s32[] add(get-tuple-element.19, constant.26)
+  get-tuple-element.20 = s32[] get-tuple-element(arg_tuple.18), index=1
+  constant.30 = s32[] constant(1)
+  add.31 = s32[] add(get-tuple-element.20, constant.30)
+  get-tuple-element.24 = f32[1,4,4,2] get-tuple-element(arg_tuple.18), index=5
+  get-tuple-element.25 = f32[1,1,2,2] get-tuple-element(arg_tuple.18), index=6
+  convolution.48 = f32[1,4,4,2] convolution(get-tuple-element.24, get-tuple-element.25), window={size=1x1}, dim_labels=b01f_01io->b01f
+  get-tuple-element.23 = f32[2] get-tuple-element(arg_tuple.18), index=4
+  constant.33 = f32[] constant(0.1)
+  broadcast.34 = f32[2] broadcast(constant.33), dimensions={}
+  constant.32 = f32[2] constant({16, 16})
+  multiply.35 = f32[2] multiply(broadcast.34, constant.32)
+  subtract.36 = f32[2] subtract(get-tuple-element.23, multiply.35)
+  broadcast.49 = f32[1,4,4,2] broadcast(subtract.36), dimensions={3}
+  add.50 = f32[1,4,4,2] add(convolution.48, broadcast.49)
+  convert.51 = f32[1,4,4,2] convert(add.50)
+  constant.52 = f32[] constant(0)
+  convert.53 = f32[] convert(constant.52)
+  reduce.54 = f32[] reduce(convert.51, convert.53), dimensions={0,1,2,3}, to_apply=while_Sum-reduction.13
+  convert.55 = f32[] convert(reduce.54)
+  get-tuple-element.22 = s32[] get-tuple-element(arg_tuple.18), index=3
+  tuple.56 = (f32[2]) tuple(f32[2] subtract.36)
+  get-tuple-element.57 = f32[2] get-tuple-element((f32[2]) tuple.56), index=0
+  constant.40 = f32[] constant(0.1)
+  broadcast.41 = f32[1,4,4,2] broadcast(constant.40), dimensions={}
+  constant.28 = f32[] constant(1)
+  broadcast.29 = f32[1,4,4,2] broadcast(constant.28), dimensions={}
+  reverse.38 = f32[1,1,2,2] reverse(get-tuple-element.25), dimensions={0,1}
+  convolution.39 = f32[1,4,4,2] convolution(broadcast.29, reverse.38), window={size=1x1}, dim_labels=b01f_01oi->b01f
+  multiply.42 = f32[1,4,4,2] multiply(broadcast.41, convolution.39)
+  subtract.43 = f32[1,4,4,2] subtract(get-tuple-element.24, multiply.42)
+  tuple.58 = (f32[1,4,4,2]) tuple(subtract.43)
+  get-tuple-element.59 = f32[1,4,4,2] get-tuple-element(tuple.58), index=0
+  constant.44 = f32[] constant(0.1)
+  broadcast.45 = f32[1,1,2,2] broadcast(constant.44), dimensions={}
+  convolution.37 = f32[1,1,2,2] convolution(get-tuple-element.24, broadcast.29), window={size=4x4}, dim_labels=f01b_i01o->01bf
+  multiply.46 = f32[1,1,2,2] multiply(broadcast.45, convolution.37)
+  subtract.47 = f32[1,1,2,2] subtract(get-tuple-element.25, multiply.46)
+  tuple.60 = (f32[1,1,2,2]) tuple(subtract.47)
+  get-tuple-element.61 = f32[1,1,2,2] get-tuple-element(tuple.60), index=0
+  ROOT tuple.62 = (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) tuple(add.27, add.31, convert.55, get-tuple-element.22, get-tuple-element.57, get-tuple-element.59, get-tuple-element.61)
 }
 
-%_functionalize_cond_1__.63 (arg_tuple.64: (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2])) -> (pred[]) {
-  %arg_tuple.64 = (s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) parameter(0)
-  %get-tuple-element.67 = f32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=2
-  %get-tuple-element.69 = f32[2]{0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=4
-  %get-tuple-element.70 = f32[1,4,4,2]{3,2,1,0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=5
-  %get-tuple-element.71 = f32[1,1,2,2]{3,2,1,0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=6
-  %get-tuple-element.65 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=0
-  %get-tuple-element.68 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=3
-  %less-than.74 = pred[] compare(s32[] %get-tuple-element.65, s32[] %get-tuple-element.68), direction=LT
-  %get-tuple-element.66 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=1
-  %constant.72 = s32[] constant(2)
-  %less-than.73 = pred[] compare(s32[] %get-tuple-element.66, s32[] %constant.72), direction=LT
-  %and.75 = pred[] and(pred[] %less-than.74, pred[] %less-than.73)
-  ROOT %tuple.76 = (pred[]) tuple(pred[] %and.75)
+_functionalize_cond_1__.63 (arg_tuple.64: (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2])) -> (pred[]) {
+  arg_tuple.64 = (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) parameter(0)
+  get-tuple-element.67 = f32[] get-tuple-element(arg_tuple.64), index=2
+  get-tuple-element.69 = f32[2] get-tuple-element(arg_tuple.64), index=4
+  get-tuple-element.70 = f32[1,4,4,2] get-tuple-element(arg_tuple.64), index=5
+  get-tuple-element.71 = f32[1,1,2,2] get-tuple-element(arg_tuple.64), index=6
+  get-tuple-element.65 = s32[] get-tuple-element(arg_tuple.64), index=0
+  get-tuple-element.68 = s32[] get-tuple-element(arg_tuple.64), index=3
+  less-than.74 = pred[] compare(get-tuple-element.65, get-tuple-element.68), direction=LT
+  get-tuple-element.66 = s32[] get-tuple-element(arg_tuple.64), index=1
+  constant.72 = s32[] constant(2)
+  less-than.73 = pred[] compare(get-tuple-element.66, constant.72), direction=LT
+  and.75 = pred[] and(pred[] less-than.74, pred[] less-than.73)
+  ROOT tuple.76 = (pred[]) tuple(pred[] and.75)
 }
 
-%cond_wrapper.77 (inputs.78: (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2])) -> pred[] {
-  %inputs.78 = (s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) parameter(0)
-  %call.79 = (pred[]) call((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %inputs.78), to_apply=%_functionalize_cond_1__.63
-  ROOT %get-tuple-element.80 = pred[] get-tuple-element((pred[]) %call.79), index=0
+cond_wrapper.77 (inputs.78: (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2])) -> pred[] {
+  inputs.78 = (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) parameter(0)
+  call.79 = (pred[]) call(inputs.78), to_apply=_functionalize_cond_1__.63
+  ROOT get-tuple-element.80 = pred[] get-tuple-element((pred[]) call.79), index=0
 }
 
-ENTRY %cluster_4790582643659166751_f15n_0__.98 (arg0.1: f32[1,4,4,2], arg1.2: f32[2], arg2.3: f32[1,1,2,2]) -> (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) {
-  %constant.4 = s32[] constant(0)
-  %constant.5 = s32[] constant(0)
-  %constant.6 = f32[] constant(0)
-  %constant.7 = s32[] constant(10)
-  %constant.8 = s32[] constant(0)
-  %constant.9 = s32[] constant(0)
-  %constant.10 = f32[] constant(0)
-  %constant.11 = s32[] constant(10)
-  %arg1.2 = f32[2]{0} parameter(1)
-  %arg0.1 = f32[1,4,4,2]{3,2,1,0} parameter(0)
-  %arg2.3 = f32[1,1,2,2]{3,2,1,0} parameter(2)
-  %tuple.12 = (s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) tuple(s32[] %constant.8, s32[] %constant.9, f32[] %constant.10, s32[] %constant.11, f32[2]{0} %arg1.2, f32[1,4,4,2]{3,2,1,0} %arg0.1, f32[1,1,2,2]{3,2,1,0} %arg2.3)
-  ROOT %while.81 = (s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) while((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %tuple.12), condition=%cond_wrapper.77, body=%_functionalize_body_1__.17
+ENTRY cluster_4790582643659166751_f15n_0__.98 (arg0.1: f32[1,4,4,2], arg1.2: f32[2], arg2.3: f32[1,1,2,2]) -> (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) {
+  constant.4 = s32[] constant(0)
+  constant.5 = s32[] constant(0)
+  constant.6 = f32[] constant(0)
+  constant.7 = s32[] constant(10)
+  constant.8 = s32[] constant(0)
+  constant.9 = s32[] constant(0)
+  constant.10 = f32[] constant(0)
+  constant.11 = s32[] constant(10)
+  arg1.2 = f32[2] parameter(1)
+  arg0.1 = f32[1,4,4,2] parameter(0)
+  arg2.3 = f32[1,1,2,2] parameter(2)
+  tuple.12 = (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) tuple(constant.8, constant.9, constant.10, constant.11, arg1.2, arg0.1, arg2.3)
+  ROOT while.81 = (s32[], s32[], f32[], s32[], f32[2], f32[1,4,4,2], f32[1,1,2,2]) while(tuple.12), condition=cond_wrapper.77, body=_functionalize_body_1__.17
 }
 )";
   std::unique_ptr<HloModule> module =

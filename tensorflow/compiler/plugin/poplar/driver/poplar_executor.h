@@ -57,8 +57,6 @@ limitations under the License.
 #include <poplar/OptionFlags.hpp>
 #include <poplar/Tensor.hpp>
 
-#include <poprand/RandomGen.hpp>
-
 namespace se = stream_executor;
 
 namespace xla {
@@ -251,8 +249,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   Status ConfigurePoplarDevice(const IpuOptions&);
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
-
-  const poprand::RandomGenMode GetRandomGenMode() const;
 
   const poplar::OptionFlags& GetOptionsFlags() const { return option_flags_; }
 
