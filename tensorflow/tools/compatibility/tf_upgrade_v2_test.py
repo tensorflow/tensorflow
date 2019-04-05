@@ -1566,6 +1566,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testNnErosion2d(self):
+    text = "tf.nn.erosion2d(v, k, s, r, p)"
+    expected_text = "tf.nn.erosion2d(v, k, s, r, p, data_format='NHWC')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

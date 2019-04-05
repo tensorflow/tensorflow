@@ -1832,8 +1832,8 @@ def _add_argument_transformer(parent, node, full_name, name, logs,
   node.keywords.append(ast.keyword(arg=arg_name, value=arg_value_ast))
   logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
-      "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1],
-                                                          full_name or name))
+      "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1]),
+                                               full_name or name)
   ))
   return node
 
