@@ -1161,7 +1161,6 @@ xla_test(
     shard_count = 31,
     tags = [
         "optonly",
-        "no_rocm",
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -2168,7 +2167,6 @@ xla_test(
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
         "optonly",
-        "no_rocm",  # timeout occurs when running on ROCm CI
     ],
     deps = [
         ":client_library_test_base",
