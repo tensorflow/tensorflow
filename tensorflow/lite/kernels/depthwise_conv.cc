@@ -188,11 +188,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, outputSize);
 }
 
-template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteDepthwiseConvParams* params, OpData* data,
                const TfLiteTensor* input, const TfLiteTensor* filter,
-               const TfLiteTensor* bias, TfLiteTensor* output) {
+               const TfLiteTensor* bias, TfLiteTensor* output,
+               KernelType kernel_type) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -224,11 +224,11 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                  GetTensorShape(output), GetTensorData<float>(output));
 }
 
-template <KernelType kernel_type>
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteDepthwiseConvParams* params, OpData* data,
                    const TfLiteTensor* input, const TfLiteTensor* filter,
-                   const TfLiteTensor* bias, TfLiteTensor* output) {
+                   const TfLiteTensor* bias, TfLiteTensor* output,
+                   KernelType kernel_type) {
   auto input_offset = -input->params.zero_point;
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
@@ -308,12 +308,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
-      EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
-                             output);
+      EvalFloat(context, node, params, data, input, filter, bias, output,
+                kernel_type);
       break;
     case kTfLiteUInt8:
-      EvalQuantized<kernel_type>(context, node, params, data, input, filter,
-                                 bias, output);
+      EvalQuantized(context, node, params, data, input, filter, bias, output,
+                    kernel_type);
       break;
     case kTfLiteInt8: {
       EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
@@ -321,8 +321,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      context->ReportError(context, "Type %s currently not supported.",
+                           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
