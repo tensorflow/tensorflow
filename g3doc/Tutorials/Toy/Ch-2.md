@@ -1,4 +1,4 @@
-# Chapter 2: Emiting Basic MLIR
+# Chapter 2: Emitting Basic MLIR
 
 [TOC]
 
@@ -47,7 +47,7 @@ Let's look at the anatomy of this MLIR operation:
 -   it is identified by its name, which is expected to be a unique string (e.g.
     `toy.transpose`).
 -   it takes as input zero or more operands (or arguments), which are SSA values
-    defined by other operations or refering to function and block arguments
+    defined by other operations or referring to function and block arguments
     (e.g. `%array`).
 -   it produces zero or more results (we will limit ourselves to a single result
     in the context of Toy), which are SSA values (e.g. `%t_array`).

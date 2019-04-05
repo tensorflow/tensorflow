@@ -333,7 +333,7 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Function; }
 
   /// This function is used by the internals of the Function class to null out
-  /// attributes refering to functions that are about to be deleted.
+  /// attributes referring to functions that are about to be deleted.
   static void dropFunctionReference(Function *value);
 };
 

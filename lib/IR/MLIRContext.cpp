@@ -1156,7 +1156,7 @@ FunctionAttr FunctionAttr::get(Function *value, MLIRContext *context) {
 }
 
 /// This function is used by the internals of the Function class to null out
-/// attributes refering to functions that are about to be deleted.
+/// attributes referring to functions that are about to be deleted.
 void FunctionAttr::dropFunctionReference(Function *value) {
   auto &impl = value->getContext()->getImpl();
 

@@ -180,7 +180,7 @@ private:
     if (!mlirGen(*funcAST.getBody()))
       return nullptr;
 
-    // Implicitly return void if no return statement was emited.
+    // Implicitly return void if no return statement was emitted.
     // FIXME: we may fix the parser instead to always return the last expression
     // (this would possibly help the REPL case later)
     if (function->getBlocks().back().back().getName().getStringRef() !=
