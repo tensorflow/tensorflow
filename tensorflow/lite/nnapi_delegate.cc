@@ -334,7 +334,7 @@ TfLiteStatus AddOpsAndParams(
     };
 
     auto add_resize_bilinear_params = [subgraph, &add_scalar_int32, &augmented_inputs](void* data) {
-      auto builtin = reinterpret_cast<TfLiteResizeBilinearParams*>(data);
+      const auto* builtin = reinterpret_cast<TfLiteResizeBilinearParams*>(data);
       if  (builtin->align_corners) {
         logError("Resize bilinear does not support align corners in NNAPI");
         return kTfLiteError;
