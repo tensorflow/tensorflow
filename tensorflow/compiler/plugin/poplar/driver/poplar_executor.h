@@ -355,9 +355,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
       std::unique_ptr<tensorflow::data::IteratorContext>,
       const std::vector<xla::Shape>&);
 
-  void setFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
-                           const std::string& value);
-
  private:
   struct TensorControl {
     size_t size = 0;

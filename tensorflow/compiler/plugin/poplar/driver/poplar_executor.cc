@@ -157,7 +157,6 @@ void ResetXfeedManager(int device_ordinal) {
   xfeed_manager->Reset();
 }
 
-
 namespace {
 void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
                                  const OutfeedInfos& outfeed_infos,
@@ -185,7 +184,7 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
     p->ResetXfeedManagers();
   }
 }
-}
+}  // namespace
 
 PoplarExecutor::TensorControl::TensorControl(size_t size_) {
   size = size_;
@@ -1405,17 +1404,6 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
 
 const int PoplarExecutor::device_ordinal() const { return ordinal_; }
 
-void PoplarExecutor::setFlagIfNotPresent(poplar::OptionFlags& opts,
-                                         const std::string& key,
-                                         const std::string& value) {
-  for (const auto& opt : opts) {
-    if (opt.first == key) {
-      return;
-    }
-  }
-  opts.set(key, value);
-}
-
 poplar::DeviceManager& PoplarExecutor::GetDeviceManager() {
   static poplar::DeviceManager device_mgr =
       poplar::DeviceManager::createDeviceManager();
@@ -1488,7 +1476,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         executable.OnEngineLoaded();
         current_engine_ = engine;
 
-        ConfigurePoplarXFeedManager(executable.GetInfeedInfos(), executable.GetOutfeedInfos(), ordinal_);
+        ConfigurePoplarXFeedManager(executable.GetInfeedInfos(),
+                                    executable.GetOutfeedInfos(), ordinal_);
 
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Load engine ]", e);
@@ -1562,7 +1551,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
             if (CompilerReportingTextFormat()) {
               auto opts = GetReportFlags();
-              setFlagIfNotPresent(opts, "showExecutionSteps", "true");
+              SetFlagIfNotPresent(opts, "showExecutionSteps", "true");
 
               poplar::printExecutionSummary(report_stream, graph_profile,
                                             exec_profile, opts);

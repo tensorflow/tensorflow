@@ -594,6 +594,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
         ConnectSeedCallback(*engine, replication_factor, seed_setup.second);
       } catch (const std::exception& e) {
+        if (poplarExecutor->CompilerReportingEnabled()) {
+          DumpIfPoplarOutOfMemoryAllocationException(
+              poplarExecutor->GetReportFlags());
+        }
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
     }
@@ -607,7 +611,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         auto rep = engine->getGraphProfile();
         if (poplarExecutor->CompilerReportingTextFormat()) {
           auto opts = poplarExecutor->GetReportFlags();
-          poplarExecutor->setFlagIfNotPresent(opts, "showVarStorage", "true");
+          SetFlagIfNotPresent(opts, "showVarStorage", "true");
           poplar::printGraphSummary(stream, rep, opts);
         } else if (poplarExecutor->CompilerReportingCborFormat()) {
           poplar::serializeToCBOR(stream, rep);
