@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -1565,7 +1566,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       VLOG(1) << "Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
               << algo.algo_id() << ", " << algo.tensor_ops_enabled() << ")"
               << " run time: " << total_time << " ms.";
-      if (total_time < best_result.elapsed_time_in_ms()) {
+      if (IsTimeLessThan(total_time, best_result.elapsed_time_in_ms())) {
         best_result.set_elapsed_time_in_ms(total_time);
         best_result.set_algorithm(algo);
       }

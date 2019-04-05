@@ -117,17 +117,25 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
   const AutotuneResult* best_result = std::min_element(
       results.begin(), results.end(),
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return proto_utils::FromDurationProto(lhs.run_time()) <
-               proto_utils::FromDurationProto(rhs.run_time());
+        double a = absl::ToDoubleMilliseconds(
+            proto_utils::FromDurationProto(lhs.run_time()));
+        double b = absl::ToDoubleMilliseconds(
+            proto_utils::FromDurationProto(rhs.run_time()));
+        return IsTimeLessThan(a, b);
       });
 
   const AutotuneResult* best_result_no_scratch = std::min_element(
       results.begin(), results.end(),
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return std::make_tuple(lhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(lhs.run_time())) <
-               std::make_tuple(rhs.scratch_bytes(),
-                               proto_utils::FromDurationProto(rhs.run_time()));
+        if (lhs.scratch_bytes() != rhs.scratch_bytes()) {
+            return lhs.scratch_bytes() < rhs.scratch_bytes();
+        } else {
+            double a = absl::ToDoubleMilliseconds(
+                proto_utils::FromDurationProto(lhs.run_time()));
+            double b = absl::ToDoubleMilliseconds(
+                proto_utils::FromDurationProto(rhs.run_time()));
+            return IsTimeLessThan(a, b);
+        }
       });
 
   if (best_result == results.end()) {

@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/matmul_op.h"
+#include "tensorflow/core/kernels/ops_util.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -315,8 +316,8 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
                   .ok();
           if (cublas_launch_status) {
             if (profile_result.is_valid()) {
-              if (profile_result.elapsed_time_in_ms() <
-                  best_result.elapsed_time_in_ms()) {
+              if (IsTimeLessThan(profile_result.elapsed_time_in_ms(),
+                                 best_result.elapsed_time_in_ms())) {
                 best_result = profile_result;
               }
             }
@@ -332,8 +333,8 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
                 .ok();
         if (cublas_launch_status) {
           if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
+            if (IsTimeLessThan(profile_result.elapsed_time_in_ms(),
+                               best_result.elapsed_time_in_ms())) {
               best_result = profile_result;
             }
           }
@@ -344,8 +345,8 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
                                      transpose_a ? m : k, transpose_a ? k : m,
                                      a_ptr, b_ptr, &c_ptr, &profile_result);
           if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
+            if (IsTimeLessThan(profile_result.elapsed_time_in_ms(),
+                               best_result.elapsed_time_in_ms())) {
               best_result = profile_result;
             }
           }
