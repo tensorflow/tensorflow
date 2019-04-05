@@ -4473,15 +4473,17 @@ void Fill(const RuntimeShape& value_shape, const T* value_data,
 }
 
 template <typename Scalar>
-void Reverse(std::vector<bool>& axes, int input_size,
-             const RuntimeShape& input_shape, const Scalar* input_data,
-             const RuntimeShape& output_shape, Scalar* output_data) {
+void Reverse(std::vector<bool>& axes, const RuntimeShape& input_shape,
+             const Scalar* input_data, const RuntimeShape& output_shape,
+             Scalar* output_data, Scalar* input_copy_data) {
   gemmlowp::ScopedProfilingLabel label("Reverse");
   int axes_size = static_cast<int>(axes.size());
   int axis = 0;
 
-  Scalar* input_copy = (Scalar*)malloc(input_size * sizeof(Scalar));
-  memcpy(input_copy, input_data, input_size * sizeof(Scalar));
+  // Here on kernel will work on copy of input data
+  int64_t total_size = input_shape.FlatSize();
+  memcpy(input_copy_data, input_data, total_size * sizeof(Scalar));
+
   // Currently as Tensorflow limits Dimension to 8,
   // So the cost for below loop is minimum
   for (int axis_i = 0; axis_i < axes_size; ++axis_i) {
@@ -4505,13 +4507,12 @@ void Reverse(std::vector<bool>& axes, int input_size,
         const int start_pos = (i * dims_at_axis + j) * copy_size;
         Scalar* output_ptr = output_data + start_pos;
         int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
-        memcpy(output_ptr, input_copy + loc, copy_size * sizeof(Scalar));
+        memcpy(output_ptr, input_copy_data + loc, copy_size * sizeof(Scalar));
       }
     }
     // retain data for next axis
-    memcpy(input_copy, output_data, input_size * sizeof(Scalar));
+    memcpy(input_copy_data, output_data, total_size * sizeof(Scalar));
   }
-  free(input_copy);
 }
 
 template <typename Scalar, typename TS>

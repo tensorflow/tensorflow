@@ -51,6 +51,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
+  // Allocate temporary tensor which is required in kernel operation
+  int temp_tensor_id = 0;
+  context->AddTensors(context, 1, &temp_tensor_id);
+
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(1);
+  node->temporaries->data[0] = temp_tensor_id;
+
+  TfLiteTensor* input_copy = GetTemporary(context, node, /*index=*/0);
+  input_copy->type = input->type;
+  input_copy->allocation_type = kTfLiteArenaRw;
+
+  TfLiteIntArray* input_copy_size = TfLiteIntArrayCopy(input->dims);
+  TF_LITE_ENSURE_OK(
+      context, context->ResizeTensor(context, input_copy, input_copy_size));
+
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
   TF_LITE_ENSURE_EQ(context, output->type, input->type);
@@ -78,41 +94,42 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* input_copy = GetTemporary(context, node, /*index=*/0);
 
   switch (output->type) {
     case kTfLiteFloat32: {
       reference_ops::Reverse<float>(
-          axes, NumElements(input), GetTensorShape(input),
-          GetTensorData<float>(input), GetTensorShape(output),
-          GetTensorData<float>(output));
+          axes, GetTensorShape(input), GetTensorData<float>(input),
+          GetTensorShape(output), GetTensorData<float>(output),
+          GetTensorData<float>(input_copy));
       break;
     }
     case kTfLiteUInt8: {
       reference_ops::Reverse<uint8_t>(
-          axes, NumElements(input), GetTensorShape(input),
-          GetTensorData<uint8_t>(input), GetTensorShape(output),
-          GetTensorData<uint8_t>(output));
+          axes, GetTensorShape(input), GetTensorData<uint8_t>(input),
+          GetTensorShape(output), GetTensorData<uint8_t>(output),
+          GetTensorData<uint8_t>(input_copy));
       break;
     }
     case kTfLiteInt16: {
       reference_ops::Reverse<int16_t>(
-          axes, NumElements(input), GetTensorShape(input),
-          GetTensorData<int16_t>(input), GetTensorShape(output),
-          GetTensorData<int16_t>(output));
+          axes, GetTensorShape(input), GetTensorData<int16_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output),
+          GetTensorData<int16_t>(input_copy));
       break;
     }
     case kTfLiteInt32: {
       reference_ops::Reverse<int32_t>(
-          axes, NumElements(input), GetTensorShape(input),
-          GetTensorData<int32_t>(input), GetTensorShape(output),
-          GetTensorData<int32_t>(output));
+          axes, GetTensorShape(input), GetTensorData<int32_t>(input),
+          GetTensorShape(output), GetTensorData<int32_t>(output),
+          GetTensorData<int32_t>(input_copy));
       break;
     }
     case kTfLiteInt64: {
       reference_ops::Reverse<int64_t>(
-          axes, NumElements(input), GetTensorShape(input),
-          GetTensorData<int64_t>(input), GetTensorShape(output),
-          GetTensorData<int64_t>(output));
+          axes, GetTensorShape(input), GetTensorData<int64_t>(input),
+          GetTensorShape(output), GetTensorData<int64_t>(output),
+          GetTensorData<int64_t>(input_copy));
       break;
     }
     default: {
