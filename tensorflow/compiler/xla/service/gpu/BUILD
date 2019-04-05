@@ -565,12 +565,18 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
+    ]
+     + if_cuda_is_configured([
+        ":cusolver_context",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ],
+     ])
+     + if_rocm_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+     ]),
+
 )
 
 cc_library(
@@ -907,12 +913,12 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = if_cuda_is_configured(["nvptx_compiler.cc"]) 
+    srcs = if_cuda_is_configured(["nvptx_compiler.cc"])
            + if_rocm_is_configured(["amdgpu_compiler.cc"]),
     hdrs = if_cuda_is_configured([
             "nvptx_compiler.h",
             "cudnn_batchnorm_rewriter.h",
-            ]) 
+            ])
            + if_rocm_is_configured(["amdgpu_compiler.h"]),
     deps = [
         ":cudnn_conv_pad_for_tensor_cores",
@@ -992,7 +998,7 @@ cc_library(
     if_cuda_is_configured([
          "cudnn_batchnorm_rewriter",
         ":cusolver_rewriter",
-        ":cudnn_conv_algorithm_picker", 
+        ":cudnn_conv_algorithm_picker",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
     ])

@@ -309,12 +309,12 @@ if __name__ == "__main__":
         if dtype_ == np.int32:
           continue
 
-        # TODO: Fix BatchMatmulGradientTest
-        # setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
-        #         _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
-
-        # ROCm: BatchMatmul broadcasting is currently unsupported, refer to PR 387 for details
         if not test.is_built_with_rocm():
+          # TODO: Fix BatchMatmulGradientTest on ROCm
+          setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
+                _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
+
+          # ROCm: BatchMatmul broadcasting is currently unsupported, refer to PR 387 for details
           # Broadcasting is supported only in v2.
           setattr(
               BatchMatmulGradientTest,
