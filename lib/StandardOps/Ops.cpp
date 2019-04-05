@@ -318,8 +318,7 @@ struct SimplifyAllocConst : public RewritePattern {
         continue;
       }
       auto *defOp = allocOp.getOperand(dynamicDimPos)->getDefiningOp();
-      ConstantIndexOp constantIndexOp;
-      if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
+      if (auto constantIndexOp = dyn_cast_or_null<ConstantIndexOp>(defOp)) {
         // Dynamic shape dimension will be folded.
         newShapeConstants.push_back(constantIndexOp.getValue());
         // Record to check for zero uses later below.
@@ -1095,7 +1094,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
     // Check that the memref operand's defining operation is an AllocOp.
     Value *memref = dealloc.getMemRef();
     Operation *defOp = memref->getDefiningOp();
-    if (!defOp || !defOp->isa<AllocOp>())
+    if (!isa_nonnull<AllocOp>(defOp))
       return matchFailure();
 
     // Check that all of the uses of the AllocOp are other DeallocOps.

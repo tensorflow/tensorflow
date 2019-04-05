@@ -316,12 +316,9 @@ AffineMap AffineApplyNormalizer::renumber(const AffineApplyNormalizer &other) {
 static llvm::SetVector<unsigned>
 indicesFromAffineApplyOp(ArrayRef<Value *> operands) {
   llvm::SetVector<unsigned> res;
-  for (auto en : llvm::enumerate(operands)) {
-    auto *t = en.value();
-    if (t->getDefiningOp() && t->getDefiningOp()->isa<AffineApplyOp>()) {
+  for (auto en : llvm::enumerate(operands))
+    if (isa_nonnull<AffineApplyOp>(en.value()->getDefiningOp()))
       res.insert(en.index());
-    }
-  }
   return res;
 }
 
@@ -459,9 +456,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
     // 2. Compose AffineApplyOps and dispatch dims or symbols.
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       auto *t = operands[i];
-      auto affineApply = t->getDefiningOp()
-                             ? t->getDefiningOp()->dyn_cast<AffineApplyOp>()
-                             : AffineApplyOp();
+      auto affineApply = dyn_cast_or_null<AffineApplyOp>(t->getDefiningOp());
       if (affineApply) {
         // a. Compose affine.apply operations.
         LLVM_DEBUG(affineApply.getOperation()->print(
@@ -536,7 +531,7 @@ static void composeAffineMapAndOperands(AffineMap *map,
 void mlir::fullyComposeAffineMapAndOperands(
     AffineMap *map, SmallVectorImpl<Value *> *operands) {
   while (llvm::any_of(*operands, [](Value *v) {
-    return v->getDefiningOp() && v->getDefiningOp()->isa<AffineApplyOp>();
+    return isa_nonnull<AffineApplyOp>(v->getDefiningOp());
   })) {
     composeAffineMapAndOperands(map, operands);
   }
@@ -1190,9 +1185,7 @@ AffineForOp mlir::getForInductionVarOwner(Value *val) {
   if (!ivArg || !ivArg->getOwner())
     return AffineForOp();
   auto *containingInst = ivArg->getOwner()->getParent()->getContainingOp();
-  if (!containingInst)
-    return AffineForOp();
-  return containingInst->dyn_cast<AffineForOp>();
+  return dyn_cast_or_null<AffineForOp>(containingInst);
 }
 
 /// Extracts the induction variables from a list of AffineForOps and returns

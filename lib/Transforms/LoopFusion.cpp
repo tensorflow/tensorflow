@@ -1547,11 +1547,9 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
     if (storeLoadFwdGuaranteed) {
       // A single store disappears: -1 for that.
       computeCostMap[srcLoopIVs[numSrcLoopIVs - 1].getOperation()] = -1;
-      for (auto *loadOp : dstLoadOpInsts) {
-        auto *parentInst = loadOp->getParentOp();
-        if (parentInst && parentInst->isa<AffineForOp>())
-          computeCostMap[parentInst] = -1;
-      }
+      for (auto *loadOp : dstLoadOpInsts)
+        if (auto forOp = dyn_cast_or_null<AffineForOp>(loadOp->getParentOp()))
+          computeCostMap[forOp] = -1;
     }
 
     // Compute op instance count for the src loop nest with iteration slicing.
@@ -2259,7 +2257,7 @@ public:
         continue;
       // Use list expected to match the dep graph info.
       auto *op = memref->getDefiningOp();
-      if (op && op->isa<AllocOp>())
+      if (isa_nonnull<AllocOp>(op))
         op->erase();
     }
   }

@@ -64,7 +64,7 @@ void mlir::getReachableAffineApplyOps(
     auto *opInst = state.value->getDefiningOp();
     // Note: getDefiningOp will return nullptr if the operand is not an
     // Operation (i.e. block argument), which is a terminator for the search.
-    if (opInst == nullptr || !opInst->isa<AffineApplyOp>()) {
+    if (!isa_nonnull<AffineApplyOp>(opInst)) {
       worklist.pop_back();
       continue;
     }
@@ -463,12 +463,9 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       auto *symbol = operands[i];
       assert(isValidSymbol(symbol));
       // Check if the symbol is a constant.
-      if (auto *opInst = symbol->getDefiningOp()) {
-        if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-          dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
-                                            constOp.getValue());
-        }
-      }
+      if (auto cOp = dyn_cast_or_null<ConstantIndexOp>(symbol->getDefiningOp()))
+        dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
+                                          cOp.getValue());
     }
   };
 

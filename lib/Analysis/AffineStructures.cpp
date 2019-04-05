@@ -727,11 +727,8 @@ void FlatAffineConstraints::addInductionVarOrTerminalSymbol(Value *id) {
   // Add top level symbol.
   addSymbolId(getNumSymbolIds(), id);
   // Check if the symbol is a constant.
-  if (auto *opInst = id->getDefiningOp()) {
-    if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-      setIdToConstant(*id, constOp.getValue());
-    }
-  }
+  if (auto constOp = dyn_cast_or_null<ConstantIndexOp>(id->getDefiningOp()))
+    setIdToConstant(*id, constOp.getValue());
 }
 
 LogicalResult FlatAffineConstraints::addAffineForOpDomain(AffineForOp forOp) {

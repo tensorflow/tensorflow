@@ -527,6 +527,17 @@ inline auto Operation::getOperands() -> operand_range {
   return {operand_begin(), operand_end()};
 }
 
+/// Provide dyn_cast_or_null functionality for Operation casts.
+template <typename T> T dyn_cast_or_null(Operation *op) {
+  return op ? op->dyn_cast<T>() : T();
+}
+
+/// Provide isa_nonnull functionality for Operation casts, i.e. if the operation
+/// is non-null and a class of 'T'.
+template <typename T> bool isa_nonnull(Operation *op) {
+  return op && op->isa<T>();
+}
+
 /// This class implements the result iterators for the Operation class
 /// in terms of getResult(idx).
 class ResultIterator final

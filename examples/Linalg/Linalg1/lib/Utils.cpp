@@ -30,5 +30,5 @@ unsigned linalg::getViewRank(Value *view) {
   assert(view->getType().isa<ViewType>() && "expected a ViewType");
   if (auto viewOp = view->getDefiningOp()->dyn_cast<ViewOp>())
     return viewOp.getRank();
-  return view->getDefiningOp()->dyn_cast<SliceOp>().getRank();
+  return view->getDefiningOp()->cast<SliceOp>().getRank();
 }
