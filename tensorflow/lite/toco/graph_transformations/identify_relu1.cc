@@ -26,17 +26,6 @@ namespace toco {
 
 namespace {
 
-std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
-    Model* model, const Operator* op) {
-  auto it = model->operators.begin();
-  for (; it != model->operators.end(); ++it) {
-    if (it->get() == op) {
-      break;
-    }
-  }
-  return it;
-}
-
 bool CheckArrayIsScalarFloat(Model* model, const std::string& name, float val) {
   const auto& op_array = model->GetArray(name);
   if (!op_array.buffer || op_array.buffer->type != ArrayDataType::kFloat ||
@@ -68,7 +57,7 @@ int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
   }
 
   // Get the paired op and ensure it's the counter to the first.
-  const auto* op_1 = GetOpWithInput(*model, op_0->outputs[0]);
+  const auto* op_1 = GetOpWithOutput(*model, op_0->inputs[0]);
   if (!op_1 ||
       (op_1->type != OperatorType::kMinimum &&
        op_1->type != OperatorType::kMaximum) ||
@@ -91,6 +80,7 @@ int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
       GetSingleScalarInputIndexOfBinaryOp(model, min_op, 1.0f);
   int max_scalar_input_index =
       GetSingleScalarInputIndexOfBinaryOp(model, max_op, -1.0f);
+
   if (min_scalar_input_index == -1 || max_scalar_input_index == -1) {
     return ::tensorflow::Status::OK();
   }
@@ -106,7 +96,6 @@ int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
 
   DeleteOpAndArrays(model, op_0);
   DeleteOpAndArrays(model, op_1);
-
   *modified = true;
   return ::tensorflow::Status::OK();
 }
