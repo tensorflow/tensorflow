@@ -2,13 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
+
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu import utils
 from tensorflow.contrib.ipu import popnn_rnn
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
@@ -17,8 +18,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import test
 from tensorflow.python.client import session as sl
 
 dataType = np.float16
@@ -60,7 +59,7 @@ def RunLayer(layer_func, x):
   with ipu.ops.ipu_scope("/device:IPU:0"):
     r = ipu_compiler.compile(layer_func, inputs=[px, ph, pc])
 
-  opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
+  opts = utils.create_ipu_config(profiling=True)
   ipu.utils.configure_ipu_system(opts)
 
   with sl.Session() as sess:
@@ -87,4 +86,6 @@ class LstmSizeTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
+  os.environ['TF_XLA_FLAGS'] = (
+      '--tf_xla_min_cluster_size=1 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

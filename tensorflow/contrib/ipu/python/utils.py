@@ -728,21 +728,14 @@ def get_memory_size_from_events(events):
   :param events: A list of IpuTraceEvent objects.
   :return: The total size as an integer, or None.
   """
-  size = None
   for evt in events:
     if evt.type == IpuTraceEvent.COMPILE_END:
-      in_memory_usage_section = False
       try:
-        for l in evt.compile_end.compilation_report.decode('utf-8').split(
-            "\n"):
-          l = l.strip()
-          if l.startswith('Memory Usage'):
-            in_memory_usage_section = True
-          if l.startswith('Including Gaps') and in_memory_usage_section:
-            m = re.match(r'.+:\s+([\d,]+) B', l)
-            if m:
-              return int(m.group(1).replace(',', ''))
+        js = json.loads(evt.compile_end.compilation_report.decode('utf-8'))
+        return sum(js["memory"]["byTile"]["total"])
       except UnicodeDecodeError:
+        pass
+      except json.decoder.JSONDecodeError:
         pass
   return None
 

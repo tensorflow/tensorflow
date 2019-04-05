@@ -130,7 +130,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
+    opts = utils.create_ipu_config(profiling=True)
     utils.configure_ipu_system(opts)
     sess = sl.Session()
 
@@ -147,7 +147,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
 
     evts = utils.extract_all_events(out)
     size = utils.get_memory_size_from_events(evts)
-    self.assertTrue(size < 227000000)
+    self.assertTrue(size < 81000000)
 
   def testTraining(self):
     x = array_ops.placeholder(datatype, shape=[1, 224, 224, 4])
@@ -165,7 +165,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
+    opts = utils.create_ipu_config(profiling=True)
     utils.configure_ipu_system(opts)
 
     sess = sl.Session()
@@ -183,7 +183,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
 
     evts = utils.extract_all_events(out)
     size = utils.get_memory_size_from_events(evts)
-    self.assertTrue(size < 243000000)
+    self.assertTrue(size < 174000000)
 
 
 if __name__ == "__main__":
