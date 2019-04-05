@@ -273,19 +273,15 @@ void packFunctionArguments(llvm::Module *module) {
 // Out of line for PIMPL unique_ptr.
 ExecutionEngine::~ExecutionEngine() = default;
 
-std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module &m);
-
 Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
-    Module *m, std::function<llvm::Error(llvm::Module *)> transformer) {
+    Module *m, PassManager *pm,
+    std::function<llvm::Error(llvm::Module *)> transformer) {
   auto engine = llvm::make_unique<ExecutionEngine>();
   auto expectedJIT = impl::OrcJIT::createDefault(transformer);
   if (!expectedJIT)
     return expectedJIT.takeError();
 
-  // Construct and run the default MLIR pipeline.
-  PassManager manager;
-  getDefaultPasses(manager, {});
-  if (failed(manager.run(m)))
+  if (pm && failed(pm->run(m)))
     return make_string_error("passes failed");
 
   auto llvmModule = translateModuleToLLVMIR(*m);
@@ -302,6 +298,14 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   engine->jit = std::move(*expectedJIT);
 
   return std::move(engine);
+}
+
+Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
+    Module *m, std::function<llvm::Error(llvm::Module *)> transformer) {
+  // Construct and run the default MLIR pipeline.
+  PassManager manager;
+  getDefaultPasses(manager, {});
+  return create(m, &manager, transformer);
 }
 
 Expected<void (*)(void **)> ExecutionEngine::lookup(StringRef name) const {

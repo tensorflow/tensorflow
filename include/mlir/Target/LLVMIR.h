@@ -34,12 +34,11 @@ namespace mlir {
 
 class Module;
 
-/// Convert the given MLIR module into LLVM IR.  Create an LLVM IR module in
-/// "llvmContext" and return a unique pointer to it. In case of error, report it
+/// Convert the given MLIR module into LLVM IR.  The LLVM context is extracted
+/// from the registered LLVM IR dialect.  In case of error, report it
 /// to the error handler registered with the MLIR context, if any (obtained from
 /// the MLIR module), and return `nullptr`.
-std::unique_ptr<llvm::Module>
-convertModuleToLLVMIR(Module &module, llvm::LLVMContext &llvmContext);
+std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module &m);
 
 } // namespace mlir
 

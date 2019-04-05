@@ -25,6 +25,7 @@
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Target/LLVMIR.h"
 #include "mlir/Translation.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -441,7 +442,6 @@ bool ModuleTranslation::convertFunctions() {
 }
 
 std::unique_ptr<llvm::Module> ModuleTranslation::translateModule(Module &m) {
-
   Dialect *dialect = m.getContext()->getRegisteredDialect("llvm");
   assert(dialect && "LLVM dialect must be registered");
   auto *llvmDialect = static_cast<LLVM::LLVMDialect *>(dialect);
@@ -468,7 +468,7 @@ std::unique_ptr<llvm::Module> ModuleTranslation::translateModule(Module &m) {
   return std::move(translator.llvmModule);
 }
 
-std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module &m) {
+std::unique_ptr<llvm::Module> mlir::translateModuleToLLVMIR(Module &m) {
   return ModuleTranslation::translateModule(m);
 }
 
