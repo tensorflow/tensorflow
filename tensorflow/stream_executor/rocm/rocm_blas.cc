@@ -1887,22 +1887,22 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     }
   }
 
-  assert(!(ldc < m || bsc < ldc * n));
-
-  if (ROCMBlasTranspose(transa) == rocblas_operation_none)
-    assert(!(lda < m || bsa < lda * k));
-  else
-    assert(!(lda < k || bsa < lda * m));
-
-  if (ROCMBlasTranspose(transb) == rocblas_operation_none)
-    assert(!(ldb < k || bsb < ldb * n));
-  else
-    assert(!(ldb < n || bsc < ldc * k));
-
-  MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
-  MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
-
   if (bsa_is_constant && bsb_is_constant && bsc_is_constant) {
+    assert(!(ldc < m || bsc < ldc * n));
+
+    if (ROCMBlasTranspose(transa) == rocblas_operation_none)
+      assert(!(lda < m || bsa < lda * k));
+    else
+      assert(!(lda < k || bsa < lda * m));
+
+    if (ROCMBlasTranspose(transb) == rocblas_operation_none)
+      assert(!(ldb < k || bsb < ldb * n));
+    else
+      assert(!(ldb < n || bsb < ldb * k));
+
+    MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
+    MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
+
     bool ok = DoBlasInternal(
         rocblas_func, stream, true /* = pointer_mode_host */,
         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
@@ -1912,6 +1912,9 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
     if (ok) {
       return port::Status::OK();
     }
+  } else {
+    LOG(ERROR) << "rocBLAS does not currently support broadcasting for GEMMBatched operation.";
+    assert(false);
   }
 
   return port::Status(port::error::INTERNAL,
