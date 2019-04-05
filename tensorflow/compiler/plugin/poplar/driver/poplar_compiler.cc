@@ -254,9 +254,10 @@ bool AreAllOutputsParameters(
       root->GetModule()->entry_computation_layout().result_shape());
 }
 
-StatusOr<std::string> SerializeComputationToGraphDef(const HloComputation& comp) {
-  return RenderGraph(
-      comp, comp.name(), {}, RenderedGraphFormat::kDot, nullptr, true);
+StatusOr<std::string> SerializeComputationToGraphDef(
+    const HloComputation& comp) {
+  return RenderGraph(comp, comp.name(), {}, RenderedGraphFormat::kDot, nullptr,
+                     true);
 }
 
 HloPrintOptions GetPrintOptions() {
@@ -303,8 +304,7 @@ void ConnectSeedCallback(poplar::Engine& engine, int replication_factor,
   auto callback = [gen, replication_factor](void* ptr) mutable {
     std::uniform_int_distribution<uint64_t> dis;
     uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
-
-    for (int i = 0; i < replication_factor; ++i) {
+    for (int i = 0; i < std::max(replication_factor, 1); ++i) {
       seedValue[i] = dis(gen);
     }
   };
@@ -370,13 +370,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  uint64 seed = module->config().seed();
-  if (seed == 0) {
-    seed = tensorflow::random::New64();
-  }
-
-  CompilerResources resources(dev, seed + 1, poplarExecutor->GetRandomGenMode(),
-                              poplarExecutor->GetConvolutionOptions(),
+  CompilerResources resources(dev, poplarExecutor->GetConvolutionOptions(),
                               poplarExecutor->GetPoolingOptions(),
                               poplarExecutor->DisableGraphConvCaching(),
                               poplarExecutor->GetNumberOfReplicas(),
@@ -511,8 +505,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     if (status.ok()) {
       dot_graph = status.ValueOrDie();
     }
-    poplarExecutor->AddCompileBeginEventRecord(
-        module->name(), dot_graph);
+    poplarExecutor->AddCompileBeginEventRecord(module->name(), dot_graph);
   }
 
   // Set layout if there isn't one
@@ -601,6 +594,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
         ConnectSeedCallback(*engine, replication_factor, seed_setup.second);
       } catch (const std::exception& e) {
+        if (poplarExecutor->CompilerReportingEnabled()) {
+          DumpIfPoplarOutOfMemoryAllocationException(
+              poplarExecutor->GetReportFlags());
+        }
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
     }
@@ -614,7 +611,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         auto rep = engine->getGraphProfile();
         if (poplarExecutor->CompilerReportingTextFormat()) {
           auto opts = poplarExecutor->GetReportFlags();
-          poplarExecutor->setFlagIfNotPresent(opts, "showVarStorage", "true");
+          SetFlagIfNotPresent(opts, "showVarStorage", "true");
           poplar::printGraphSummary(stream, rep, opts);
         } else if (poplarExecutor->CompilerReportingCborFormat()) {
           poplar::serializeToCBOR(stream, rep);

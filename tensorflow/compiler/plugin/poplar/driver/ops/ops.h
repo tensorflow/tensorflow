@@ -101,6 +101,13 @@ bool HasReplicatedGraph(CompilerResources&);
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
                                          const std::exception& e);
 
+void SetFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
+                         const std::string& value);
+
+// Try and dump the profiler report to a file if a OOM exception occurs.
+void DumpIfPoplarOutOfMemoryAllocationException(
+    poplar::OptionFlags report_options);
+
 StatusOr<poplin::ConvParams> GetConvolutionParameters(
     const HloInstruction* operand_op, int64 input_index, int64 kernel_index);
 

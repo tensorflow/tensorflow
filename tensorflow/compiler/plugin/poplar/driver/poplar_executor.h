@@ -57,8 +57,6 @@ limitations under the License.
 #include <poplar/OptionFlags.hpp>
 #include <poplar/Tensor.hpp>
 
-#include <poprand/RandomGen.hpp>
-
 namespace se = stream_executor;
 
 namespace xla {
@@ -252,8 +250,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
-  const poprand::RandomGenMode GetRandomGenMode() const;
-
   const poplar::OptionFlags& GetOptionsFlags() const { return option_flags_; }
 
   const poplar::OptionFlags& GetReportFlags() const { return report_options_; }
@@ -358,9 +354,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
       const std::string&, std::unique_ptr<tensorflow::data::IteratorBase>,
       std::unique_ptr<tensorflow::data::IteratorContext>,
       const std::vector<xla::Shape>&);
-
-  void setFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
-                           const std::string& value);
 
  private:
   struct TensorControl {

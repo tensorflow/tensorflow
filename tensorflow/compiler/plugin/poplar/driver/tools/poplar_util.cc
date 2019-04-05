@@ -9,6 +9,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
 
 #include <poputil/TileMapping.hpp>
@@ -17,6 +18,7 @@ using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
+static const char* s_dump_oom_profiler = "TF_DUMP_OOM_PROFILER";
 
 poplar::Graph& GetMasterGraph(CompilerResources& res) { return res.main_graph; }
 
@@ -177,6 +179,41 @@ Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
   }
 
   return tensorflow::errors::Unknown(prefix, e.what());
+}
+
+void SetFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
+                         const std::string& value) {
+  for (const auto& opt : opts) {
+    if (opt.first == key) {
+      return;
+    }
+  }
+  opts.set(key, value);
+}
+
+void DumpIfPoplarOutOfMemoryAllocationException(
+    poplar::OptionFlags report_options) {
+  char* dump_filename = getenv(s_dump_oom_profiler);
+  if (dump_filename) {
+    try {
+      std::rethrow_exception(std::current_exception());
+    } catch (const poplar::graph_memory_allocation_error& p_e) {
+      if (p_e.graphProfile.type() == poplar::ProfileValue::Type::MAP &&
+          p_e.graphProfile.size() != 0) {
+        std::ofstream stream(dump_filename);
+        if (!stream) {
+          LOG(WARNING) << "Unable to open file " << dump_filename
+                       << ", the profiler summary will not be saved.";
+        } else {
+          SetFlagIfNotPresent(report_options, "showVarStorage", "true");
+          LOG(INFO) << "Profile summary has been saved to " << dump_filename
+                    << ".";
+          poplar::printProfileSummary(stream, p_e.graphProfile, {},
+                                      report_options);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace poplarplugin

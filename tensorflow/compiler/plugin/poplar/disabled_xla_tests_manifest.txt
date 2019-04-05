@@ -321,12 +321,15 @@ MathExhaustiveTest POPLAR // Precision errors
 SVDTest POPLAR // Crashing in while loop
 SelfAdjointEigTest POPLAR
 
-VariadicReduceTest.Reduce_R3x2_to_R1x2_simple POPLAR # Variadic reduce
+VariadicReduceTest.Reduce_R3x2_to_R1x2_simple POPLAR // Variadic reduce
 VariadicReduceTest.Reduce_R1x2_to_R0x2_simple POPLAR
 VariadicReduceTest.Reduce_R3x2_to_R2x2_simple POPLAR
 VariadicReduceTest.Reduce_R1x2_to_R0x2_argmax POPLAR
 
-ScatterTest.OutOfBoundsIndex POPLAR # Don't currently handle bad bounds
+ScatterTest.OutOfBoundsIndex POPLAR // Don't currently handle bad bounds
 ScatterTest.OutOfBoundsUnsignedIndex POPLAR
 ScatterTest.NegativeIndex POPLAR
 ScatterTest.OutOfBoundsUpdateWindow POPLAR
+
+PrngTest.PassInGlobalRngSeed POPLAR // disable until poplar CPU random works
+PrngTest.DifferentValuesForIdenticalRngNodesInSameComputation  POPLAR

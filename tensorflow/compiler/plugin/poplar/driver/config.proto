@@ -45,16 +45,8 @@ message IpuOptions {
   };
   Profiling profiling = 2;
 
-  // Type type of randomness (see poprand library)
-  enum RandomType {
-    NOT_REPEATABLE = 0;
-    SYSTEM_REPEATABLE = 1;
-    ALWAYS_REPEATABLE = 2;
-  };
-  RandomType random_type = 3;
-
   // Options to control Poplar compilation
-  repeated PoplarOptionFlag compilation_options = 4;
+  repeated PoplarOptionFlag compilation_options = 3;
 
   // Options controlling the configuration of each IPU device
   message DeviceConfig {
@@ -71,8 +63,7 @@ message IpuOptions {
     // Number of replicas (should be a divisor of the number of IPUs
     int32 num_replicas = 3;
   };
-
-  repeated DeviceConfig device_config = 5;
+  repeated DeviceConfig device_config = 4;
 
   // Options to control the memory size and speed of the execution trade-off.
   message SpeedSizeConfig {
@@ -86,18 +77,17 @@ message IpuOptions {
     bool recompute_norm_inputs = 3;
     bool has_recompute_norm_inputs = 4;
   }
-
-  SpeedSizeConfig speed_size_config = 6;
+  SpeedSizeConfig speed_size_config = 5;
 
   // Options controlling the configuration of convolutions
-  repeated PoplarOptionFlag convolution_options = 7;
+  repeated PoplarOptionFlag convolution_options = 6;
 
   // Options controlling the configuration of pooling operations
-  repeated PoplarOptionFlag pooling_options = 8;
+  repeated PoplarOptionFlag pooling_options = 7;
 
   // Retain control dependencies from the Tensorflow graph
-  bool retain_control_dependencies = 9;
+  bool retain_control_dependencies = 8;
 
   // The maximum number of bytes to wait before scheduling an all-reduce
-  int64 max_cross_replica_sum_buffer_size = 10;
+  int64 max_cross_replica_sum_buffer_size = 9;
 };
