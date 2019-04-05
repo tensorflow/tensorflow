@@ -3342,6 +3342,7 @@ def rnn(step_function,
         inputs,
         initial_states,
         go_backwards=False,
+        # reverse_sequence=False,
         mask=None,
         constants=None,
         unroll=False,
@@ -3373,6 +3374,8 @@ def rnn(step_function,
           structure.
       go_backwards: Boolean. If True, do the iteration over the time
           dimension in reverse order and return the reversed sequence.
+      reverse_sequence: Reverse the order of the sequence of outputs that is being returned.
+          (this can be useful if you try to implement a system like ELMo)
       mask: Binary tensor with shape `(samples, time, 1)`,
           with a zero for every element that is masked.
       constants: List of constant values passed at each step.
@@ -3504,6 +3507,7 @@ def rnn(step_function,
         successive_states.append(states)
       last_output = successive_outputs[-1]
       new_states = successive_states[-1]
+      # reverse successive_outputs if reverse_sequence has been set
       outputs = array_ops.stack(successive_outputs)
 
       if zero_output_for_mask:
@@ -3524,6 +3528,7 @@ def rnn(step_function,
         successive_states.append(states)
       last_output = successive_outputs[-1]
       new_states = successive_states[-1]
+      # reverse successive_outputs if reverse_sequence has been set
       outputs = array_ops.stack(successive_outputs)
 
   else:
