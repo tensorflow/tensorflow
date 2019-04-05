@@ -1368,25 +1368,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "benchmark_test",
-    size = "small",
-    srcs = [
-        "platform/benchmark.py",
-        "platform/benchmark_test.py",
-    ],
-    additional_deps = [
-        ":client_testlib",
-        ":platform",
-    ],
-    main = "platform/benchmark_test.py",
-    tags = [
-        "manual",
-        "no_pip",
-        "notap",
-    ],
-)
-
-tf_py_test(
     name = "proto_test",
     size = "small",
     srcs = ["framework/proto_test.py"],
