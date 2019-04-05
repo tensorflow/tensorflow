@@ -155,6 +155,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testCaptureNonTrainableVariable(self):
+
+    v = variables.Variable(1.0, trainable=False)
+
+    @def_function.function
+    def f():
+      return v + 1
+
+    c = f.get_concrete_function()
+    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
@@ -2883,6 +2894,40 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     result = func(g1, g2, c1, g3, c2)
     self.assertEqual(result.numpy(), 5.0 * 7.0 * 17.0)
 
+  def testNestedCallWatchedVariables(self):
+
+    v = variables.Variable(4.)
+
+    @def_function.function
+    def f():
+      return v ** 2.
+
+    with backprop.GradientTape() as tape:
+      f()
+
+    self.assertEqual((v,), tape.watched_variables())
+
+    @def_function.function
+    def g():
+      return f()
+
+    with backprop.GradientTape() as tape:
+      g()
+
+    self.assertEqual((v,), tape.watched_variables())
+
+    # f() can rely on the variable being read during its trace. g() checks that
+    # variables from a function which knows about them are recorded on the
+    # tape. h() tests that functions forward knowledge of variables to callers.
+
+    @def_function.function
+    def h():
+      return g()
+
+    with backprop.GradientTape() as tape:
+      h()
+
+    self.assertEqual((v,), tape.watched_variables())
 
   def testStandardTrainingLoopInFunction(self):
     layer = core.Dense(2)

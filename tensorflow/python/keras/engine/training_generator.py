@@ -459,8 +459,6 @@ def convert_to_generator_like(data,
     # Scrub `Nones` that might have been passed for `targets`, `sample_weights`.
     data = tuple(
         ele for ele in data if not all(e is None for e in nest.flatten(ele)))
-    if len(data) == 1:
-      data = data[0]
 
   if data_utils.is_generator_or_sequence(data) or isinstance(
       data, iterator_ops.EagerIterator):

@@ -107,7 +107,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   std::unique_ptr<tensorflow::EagerContext> ctx(new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r));
+      request->async(), device_mgr, false, r, nullptr));
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);

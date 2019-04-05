@@ -30,6 +30,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -115,6 +116,10 @@ class MetricsAggregator(Aggregator):
 class OutputsAggregator(Aggregator):
   """Aggregator that concatenates outputs."""
 
+  # Used to indicate that the aggregator cannot allocate an object for the
+  # output at this location.
+  _DEFER_OUTPUT_ALLOCATION = '__defer_output_allocation__'
+
   def create(self, batch_outs):
     if self.use_steps:
       # Cannot pre-allocate the returned NumPy arrays bc
@@ -124,8 +129,21 @@ class OutputsAggregator(Aggregator):
     else:
       # Pre-allocate NumPy arrays.
       for batch_out in batch_outs:
-        shape = (self.num_samples_or_steps,) + batch_out.shape[1:]
-        self.results.append(np.zeros(shape, dtype=batch_out.dtype))
+        if composite_tensor_utils.is_composite_or_composite_value(batch_out):
+          # If the output is not a ndarray, it will be either a composite tensor
+          # or a composite tensor's Value object. In either case, we can't
+          # allocate an array to hold the object - we'll handle it later.
+          self.results.append(self._DEFER_OUTPUT_ALLOCATION)
+        elif isinstance(batch_out, np.ndarray):
+          # If the output is a ndarray, append an output array pre-allocated
+          # to the expected shape of the output.
+          shape = (self.num_samples_or_steps,) + batch_out.shape[1:]
+          self.results.append(np.zeros(shape, dtype=batch_out.dtype))
+        else:
+          # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
+          # Fail fast rather than trying to concatenate it.
+          raise RuntimeError('Attempted to aggregate unsupported object %s.' %
+                             batch_out)
 
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
     if self.use_steps:
@@ -133,7 +151,28 @@ class OutputsAggregator(Aggregator):
         self.results[i].append(batch_out)
     else:
       for i, batch_out in enumerate(batch_outs):
-        self.results[i][batch_start:batch_end] = batch_out
+        if composite_tensor_utils.is_composite_or_composite_value(batch_out):
+          # This is the case where we're outputting some object (a
+          # CompositeTensor or CompositeTensor's value) and so cannot simply
+          # convert to a numpy array.
+          if self.results[i] == self._DEFER_OUTPUT_ALLOCATION:
+            # If there is not yet an element in this output slot, assign the
+            # currently-examined batch object.
+            self.results[i] = batch_out
+          else:
+            # If there will be multiple calls to aggregate(), create an array
+            # of objects - we cannot assume we know how to combine them.
+            self.results[i] = composite_tensor_utils.append_composite_tensor(
+                self.results[i], batch_out)
+        elif isinstance(batch_out, np.ndarray):
+          # In this case, 'results' is an ndarray - we know it's been fully
+          # allocated and we can just
+          self.results[i][batch_start:batch_end] = batch_out
+        else:
+          # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
+          # Fail fast rather than trying to concatenate it.
+          raise RuntimeError('Attempted to aggregate unsupported object %s.' %
+                             batch_out)
 
   def finalize(self):
     if self.use_steps:
@@ -380,7 +419,8 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, dict):
+  if isinstance(x_weight, collections.Mapping):
+    generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
       x_weights.append(x_weight.get(name))

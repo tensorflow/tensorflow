@@ -287,6 +287,14 @@ def _maybe_set_handle_data(dtype, handle, tensor):
               shape_and_type=handle_data.shape_and_type[1:]))
 
 
+def variable_accessed(variable):
+  """Records that `variable` was accessed for the tape and FuncGraph."""
+  if hasattr(ops.get_default_graph(), "watch_variable"):
+    ops.get_default_graph().watch_variable(variable)
+  if variable.trainable:
+    tape.variable_accessed(variable)
+
+
 class ResourceVariable(variables.VariableV1):
   """Variable based on resource handles.
 
@@ -522,7 +530,7 @@ class ResourceVariable(variables.VariableV1):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
           unique_id = shared_name
@@ -852,8 +860,7 @@ class ResourceVariable(variables.VariableV1):
                                               T=self.dtype)
 
   def _read_variable_op(self):
-    if self.trainable:
-      tape.variable_accessed(self)
+    variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     _maybe_set_handle_data(self._dtype, self._handle, result)
@@ -885,8 +892,7 @@ class ResourceVariable(variables.VariableV1):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
-      if self.trainable:
-        tape.variable_accessed(self)
+      variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
 
@@ -899,6 +905,16 @@ class ResourceVariable(variables.VariableV1):
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
                   is_set=True,
                   shape_and_type=handle_data.shape_and_type[1:]))
+
+    return array_ops.identity(value)
+
+  def gather_nd(self, indices, name=None):
+    """Reads the value of this variable sparsely, using `gather_nd`."""
+    with ops.name_scope("GatherNd" if name is None else name) as name:
+      if self.trainable:
+        variable_accessed(self)
+      value = gen_resource_variable_ops.resource_gather_nd(
+          self._handle, indices, dtype=self._dtype, name=name)
 
     return array_ops.identity(value)
 
@@ -1023,8 +1039,7 @@ class ResourceVariable(variables.VariableV1):
     return assign_add_op
 
   def _lazy_read(self, op):
-    if self.trainable:
-      tape.variable_accessed(self)
+    variable_accessed(self)
     return _UnreadVariable(
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,

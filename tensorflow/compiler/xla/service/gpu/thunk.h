@@ -98,6 +98,11 @@ class Thunk {
                                  se::Stream* stream,
                                  HloExecutionProfiler* profiler) = 0;
 
+ protected:
+  const HloModuleConfig& GetModuleConfig() const {
+    return hlo_instruction()->GetModule()->config();
+  }
+
  private:
   Kind kind_;
   const HloInstruction* hlo_instruction_;

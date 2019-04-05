@@ -87,6 +87,25 @@ TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts);
 
+// Set the value of a Gauge metric. If the metric with given name does not
+// exist, it will create a new Gauge metric. Right now it only supports type
+// int64, consider to add more type supports if needed.
+TF_CAPI_EXPORT extern void TFE_MonitoringSetGauge(const char* name,
+                                                  const char* label,
+                                                  int64_t value);
+
+// Increase a Counter metric by the given value. If the metric with given name
+// does not exist, it will create a new Counter metric.
+TF_CAPI_EXPORT extern void TFE_MonitoringAddCounter(const char* name,
+                                                    const char* label,
+                                                    int64_t value);
+
+// Add the given value to a Sampler metric. If the metric with given name
+// does not exist, it will create a new Sampler metric.
+TF_CAPI_EXPORT extern void TFE_MonitoringAddSampler(const char* name,
+                                                    const char* label,
+                                                    double value);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

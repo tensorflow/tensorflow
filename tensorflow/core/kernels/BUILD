@@ -714,8 +714,25 @@ cc_library(
 #   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #   #include "third_party/tensorflow/core/kernels/eigen_contraction_kernel.h"
 #   #endif
+#
+# We define a two-level target because if we just add
+#   ":no_mkldnn_contraction_kernel": []
+# in the same select list with //third_party/tensorflow:{android,arm,ios,ppc},
+# there can be more than one match, e.g., when building for android and MKL-DNN
+# contraction kernel is disabled. Bazel doesn't allow multiple matches.
+# See more details in
+#   https://github.com/tensorflow/tensorflow/issues/24414
 cc_library(
     name = "eigen_contraction_kernel",
+    hdrs = ["eigen_contraction_kernel.h"],
+    deps = select({
+        ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
+        "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
+    }),
+)
+
+cc_library(
+    name = "eigen_contraction_kernel_with_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
@@ -723,7 +740,6 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
-        ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
@@ -736,9 +752,15 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
-        ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
+)
+
+cc_library(
+    name = "eigen_contraction_kernel_no_mkl",
+    srcs = ["eigen_contraction_kernel.cc"],
+    hdrs = ["eigen_contraction_kernel.h"],
+    deps = ["//third_party/eigen3"],
 )
 
 cc_library(
@@ -765,6 +787,25 @@ cc_library(
     ],
     deps = [
         ":eigen_contraction_kernel",
+        ":eigen_spatial_convolutions-inl",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "eigen_helpers_no_mkl",
+    hdrs = [
+        "eigen_activations.h",
+        "eigen_attention.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_backward_spatial_convolutions.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_pooling.h",
+        "eigen_softmax.h",
+        "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
+    ],
+    deps = [
         ":eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
@@ -1449,6 +1490,27 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "conv_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -2350,6 +2412,7 @@ tf_kernel_library(
         ":bounds_check",
         ":dense_update_functor",
         ":gather_functor",
+        ":gather_nd_op",
         ":scatter_functor",
         ":training_op_helpers",
         ":variable_ops",
@@ -3572,12 +3635,26 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "batch_matmul_op_common_test",
+    size = "small",
+    srcs = ["batch_matmul_op_common_test.cc"],
+    deps = [
+        ":batch_matmul_op",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "batch_matmul_op_test",
     size = "small",
     srcs = ["batch_matmul_op_test.cc"],
     deps = [
         ":batch_matmul_op",
+        ":broadcast_to_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -5418,6 +5495,8 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
+        "batch_matmul_op_common.cc",
+        "batch_matmul_op_common.h",
         "batch_util.h",
         "cwise_ops.h",
         "cwise_ops_common.h",
@@ -5912,6 +5991,7 @@ filegroup(
             "*_3d*",
             "*.cu.*",
             # Ops already in android_srcs
+            "batch_matmul_op_common.cc",
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,

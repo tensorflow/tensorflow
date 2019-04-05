@@ -24,22 +24,9 @@ import threading
 
 import numpy as np
 
-from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 import unittest
-
-
-class EnumTest(unittest.TestCase):
-  """Verifies Python enumerations match their protocol buffer equivalents."""
-
-  def testPrimitiveType(self):
-    for name, value in xla_client.PrimitiveType.__members__.items():
-      self.assertEqual(value, getattr(xla_data_pb2, name))
-
-  def testFormat(self):
-    for name, value in xla_client.Format.__members__.items():
-      self.assertEqual(value, getattr(xla_data_pb2, name))
 
 
 class ComputationTest(unittest.TestCase):
@@ -123,14 +110,12 @@ class ComputationsWithConstantsTest(ComputationTest):
 
   def testConstantScalarSumS8(self):
     c = self._NewComputation()
-    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
-    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
     self._ExecuteAndCompareExact(c, expected=np.int8(3))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
-    root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
-    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
     self._ExecuteAndCompareClose(c, expected=4.25)
 
   def testConstantScalarSumF64(self):

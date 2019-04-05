@@ -196,12 +196,12 @@ struct Dilation<GPUDevice, T> {
     const int total_count = batch * output_rows * output_cols * depth;
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
-    DilationKernel<<<config.block_count, config.thread_per_block, 0,
-                     d.stream()>>>(
-        config.virtual_thread_count, input.data(), filter.data(), batch,
-        input_rows, input_cols, depth, filter_rows, filter_cols, output_rows,
-        output_cols, stride_rows, stride_cols, rate_rows, rate_cols, pad_top,
-        pad_left, output.data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        DilationKernel<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), config.virtual_thread_count, input.data(), filter.data(),
+        batch, input_rows, input_cols, depth, filter_rows, filter_cols,
+        output_rows, output_cols, stride_rows, stride_cols, rate_rows,
+        rate_cols, pad_top, pad_left, output.data()));
   }
 };
 
@@ -279,12 +279,13 @@ struct DilationBackpropFilter<GPUDevice, T> {
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
     config = GetCudaLaunchConfig(total_count, d);
-    DilationBackpropFilterKernel<<<config.block_count, config.thread_per_block,
-                                   0, d.stream()>>>(
-        config.virtual_thread_count, input.data(), filter.data(),
-        out_backprop.data(), batch, input_rows, input_cols, depth, filter_rows,
-        filter_cols, output_rows, output_cols, stride_rows, stride_cols,
-        rate_rows, rate_cols, pad_top, pad_left, filter_backprop.data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        DilationBackpropFilterKernel<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+        input.data(), filter.data(), out_backprop.data(), batch, input_rows,
+        input_cols, depth, filter_rows, filter_cols, output_rows, output_cols,
+        stride_rows, stride_cols, rate_rows, rate_cols, pad_top, pad_left,
+        filter_backprop.data()));
   }
 };
 

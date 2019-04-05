@@ -817,6 +817,18 @@ TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
 
 TEST_F(OperatorTest, VersioningSliceTest) {
   SimpleVersioningTest<SliceOperator>();
+
+  // Check that a string input results in a version 3 op.
+  SliceOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model string_model;
+  Array& string_array = string_model.GetOrCreateArray(op.inputs[0]);
+  string_array.data_type = ArrayDataType::kString;
+  OperatorSignature string_signature = {.op = &op, .model = &string_model};
+  EXPECT_EQ(base_op->GetVersion(string_signature), 3);
 }
 
 TEST_F(OperatorTest, VersioningLogisticTest) {

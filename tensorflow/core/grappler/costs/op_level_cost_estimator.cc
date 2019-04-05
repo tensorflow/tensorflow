@@ -1,3 +1,4 @@
+
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -615,6 +616,7 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   int64 iz = image_shape.dim(channel_index).size();
   int64 kx = filter_shape.dim(filter_x_index).size();
   int64 ky = filter_shape.dim(filter_y_index).size();
+  int64 kz = filter_shape.dim(in_channel_index).size();
   std::vector<int64> strides = GetStrides(op_info);
   const auto padding = GetPadding(op_info);
   int64 sx = strides[x_index];
@@ -624,20 +626,23 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   int64 oz = filter_shape.dim(out_channel_index).size();
   // Only check equality when both sizes are known (in other words, when
   // neither is set to a minimum dimension size of 1).
-  if (iz != 1 && filter_shape.dim(in_channel_index).size() != 1) {
-    CHECK_EQ(iz, filter_shape.dim(in_channel_index).size());
+  if (iz != 1 && kz != 1) {
+    CHECK_EQ(iz % kz, 0) << "Input channel " << iz
+                         << " is not a multiple of filter channel " << kz
+                         << ".";
   } else {
-    iz = std::max<int64>(iz, filter_shape.dim(in_channel_index).size());
+    iz = kz = std::max<int64>(iz, kz);
   }
   OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
-      batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
+      batch, ix, iy, iz, kx, ky, kz, oz, ox, oy, sx, sy, padding};
 
   VLOG(1) << "Batch Size:" << batch;
   VLOG(1) << "Image Dims:" << ix << "," << iy;
-  VLOG(1) << "Input Features:" << iz;
+  VLOG(1) << "Input Depth:" << iz;
   VLOG(1) << "Kernel Dims:" << kx << "," << ky;
-  VLOG(1) << "Output Features:" << oz;
+  VLOG(1) << "Kernel Depth:" << kz;
   VLOG(1) << "Output Dims:" << ox << "," << oy;
+  VLOG(1) << "Output Depth:" << oz;
   VLOG(1) << "Strides:" << sx << "," << sy;
   VLOG(1) << "Padding:" << (padding == Padding::VALID ? "VALID" : "SAME");
   return conv_dims;
@@ -656,13 +661,13 @@ int64 OpLevelCostEstimator::CountConv2DOperations(
   //  in DepthwiseConv2dNative conv_dims.oz is actually the channel depth
   //  multiplier; The effective output channel depth oz_effective is
   //  conv_dims.iz * conv_dims.oz. thus # ops = N x H x W x oz_effective x 2RS.
-  //  Compare to Conv2D where # ops =  N x H x W x iz x oz x 2RS,
-  //  oz = oz_effective,  then Conv2D_ops / Depthwise_conv2d_native_ops = iz.
+  //  Compare to Conv2D where # ops =  N x H x W x kz x oz x 2RS,
+  //  oz = oz_effective,  then Conv2D_ops / Depthwise_conv2d_native_ops = kz.
   int64 ops = conv_dims.batch;
   ops *= conv_dims.ox * conv_dims.oy;
   ops *= conv_dims.kx * conv_dims.ky;
   if (op_info.op() == kConv2d) {
-    ops *= conv_dims.iz * conv_dims.oz;
+    ops *= conv_dims.kz * conv_dims.oz;
   } else {
     // To ensure output tensor dims to be correct for DepthwiseConv2DNative,
     // although ops are the same as Conv2D.
@@ -955,7 +960,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
   ops *= conv_dims.ox * conv_dims.oy;
   ops *= conv_dims.kx * conv_dims.ky;
   if (op_info.op() == kConv2dBackpropInput) {
-    ops *= conv_dims.iz * conv_dims.oz;
+    ops *= conv_dims.kz * conv_dims.oz;
   } else {
     // conv_dims always use forward path definition regardless
     conv_dims.oz *= conv_dims.iz;
@@ -1012,7 +1017,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   ops *= conv_dims.ox * conv_dims.oy;
   ops *= conv_dims.kx * conv_dims.ky;
   if (op_info.op() == kConv2dBackpropFilter) {
-    ops *= conv_dims.iz * conv_dims.oz;
+    ops *= conv_dims.kz * conv_dims.oz;
   } else {
     // conv_dims always use forward path definition regardless
     conv_dims.oz *= conv_dims.iz;
@@ -1466,6 +1471,8 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   std::vector<int64> ksize = GetKernelSize(op_info);
   int64 kx = ksize[x_index];
   int64 ky = ksize[y_index];
+  // These ops don't support groupwise operation, therefore kz == iz.
+  int64 kz = iz;
 
   std::vector<int64> strides = GetStrides(op_info);
   int64 sx = strides[x_index];
@@ -1477,7 +1484,7 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   int64 oz = iz;
 
   OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
-      batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
+      batch, ix, iy, iz, kx, ky, kz, oz, ox, oy, sx, sy, padding};
   return conv_dims;
 }
 

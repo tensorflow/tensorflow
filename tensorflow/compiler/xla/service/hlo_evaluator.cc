@@ -243,12 +243,13 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     const auto& computation_shape =
         computation.parameter_instruction(i)->shape();
     const auto& arg_shape = arg_literals[i]->shape();
-    if (!ShapeUtil::Equal(computation_shape, arg_shape)) {
+    if (!Shape::Equal().MinorToMajorOnlyInLayout()(computation_shape,
+                                                   arg_shape)) {
       return InvalidArgument(
           "Shape mismatch at parameter %d. Computation expected %s, but arg "
           "was %s.",
           i, ShapeUtil::HumanStringWithLayout(computation_shape),
-          ShapeUtil::HumanString(arg_shape));
+          ShapeUtil::HumanStringWithLayout(arg_shape));
     }
   }
 

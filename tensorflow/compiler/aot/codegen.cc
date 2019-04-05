@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
-#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -38,7 +38,7 @@ namespace tfcompile {
 
 namespace {
 
-using BufferInfo = cpu_function_runtime::BufferInfo;
+using BufferInfo = xla::cpu_function_runtime::BufferInfo;
 
 bool IsAlpha(char c) {
   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -372,7 +372,7 @@ std::vector<string> BufferInfosToCppExpression(
                            ? "~0ULL"
                            : absl::StrCat(encoded.second, "ULL");
                    return absl::StrCat(
-                       "::tensorflow::cpu_function_runtime::BufferInfo({",
+                       "::xla::cpu_function_runtime::BufferInfo({",
                        encoded.first, "ULL, ", encoded_second_as_str, "})");
                  });
   return buffer_infos_as_strings;
@@ -407,13 +407,15 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(GenArgMethods(config, ps, compile_result, &methods_arg));
   TF_RETURN_IF_ERROR(GenResultMethods(config, ps, &methods_result));
   TF_RETURN_IF_ERROR(GenVariableMethods(config, ps, &methods_variable));
-  const size_t arg_bytes_aligned = cpu_function_runtime::AlignedBufferBytes(
-      buffer_infos_for_args.data(), buffer_infos_for_args.size(),
-      /*allocate_entry_params=*/true);
+  const size_t arg_bytes_aligned =
+      xla::cpu_function_runtime::AlignedBufferBytes(
+          buffer_infos_for_args.data(), buffer_infos_for_args.size(),
+          /*allocate_entry_params=*/true);
   const size_t arg_bytes_total = TotalBufferBytes(buffer_infos_for_args);
-  const size_t temp_bytes_aligned = cpu_function_runtime::AlignedBufferBytes(
-      buffer_infos_for_temps.data(), buffer_infos_for_temps.size(),
-      /*allocate_entry_params=*/true);
+  const size_t temp_bytes_aligned =
+      xla::cpu_function_runtime::AlignedBufferBytes(
+          buffer_infos_for_temps.data(), buffer_infos_for_temps.size(),
+          /*allocate_entry_params=*/true);
   const size_t temp_bytes_total = TotalBufferBytes(buffer_infos_for_temps);
 
   // Create rewrite strings for namespace start and end.
@@ -607,8 +609,8 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = {{NUM_BUFFERS}};
 
-  static const ::tensorflow::cpu_function_runtime::BufferInfo* BufferInfos() {
-    static const ::tensorflow::cpu_function_runtime::BufferInfo
+  static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
+    static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
 {{BUFFER_INFOS_AS_STRING}}
       };

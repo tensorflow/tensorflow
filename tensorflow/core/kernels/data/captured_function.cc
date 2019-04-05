@@ -283,7 +283,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, Tensor* val) const override {
-    if (index < args_.size() && args_[index].IsInitialized()) {
+    if (index < args_.size()) {
       // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
       // order to be able to `std::move(args_[index])` into `*val`.
       *val = args_[index];
@@ -291,11 +291,8 @@ class OwnedArgsCallFrame : public CallFrameBase {
     } else if (index < args_.size() + captured_inputs_->size()) {
       *val = (*captured_inputs_)[index - args_.size()];
       return Status::OK();
-    } else if (index >= args_.size() + captured_inputs_->size()) {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
     } else {
-      return errors::Internal("Attempted to get argument ", index,
-                              " more than once.");
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
   }
 
@@ -319,17 +316,14 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, Tensor* val) const override {
-    if (index < args_.size() && args_[index].IsInitialized()) {
+    if (index < args_.size()) {
       *val = args_[index];
       return Status::OK();
     } else if (index < args_.size() + captured_inputs_->size()) {
       *val = (*captured_inputs_)[index - args_.size()];
       return Status::OK();
-    } else if (index >= args_.size() + captured_inputs_->size()) {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
     } else {
-      return errors::Internal("Attempted to get argument ", index,
-                              " more than once.");
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
   }
 

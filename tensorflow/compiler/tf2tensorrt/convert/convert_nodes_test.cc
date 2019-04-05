@@ -186,8 +186,8 @@ void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
-  return TrtDimsEquals(lhs.shape_, rhs.shape_) && lhs.type_ == rhs.type_ &&
-         lhs.GetValues() == rhs.GetValues();
+  return TrtDimsEquals(lhs.shape_, rhs.shape_) &&
+         lhs.TrtDType() == rhs.TrtDType() && lhs.GetValues() == rhs.GetValues();
 }
 
 template <typename T>
@@ -200,6 +200,16 @@ void ValidateWeights(const TRT_ShapedWeights& weights,
   for (int i = 0; i < expected_value.size(); ++i) {
     EXPECT_EQ(expected_value[i], actual_values[i]);
   }
+}
+
+template <typename CType>
+std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
+  std::vector<CType> res;
+  res.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    res.push_back(start_value + CType(i));
+  }
+  return res;
 }
 
 // Fake ITensor implementation for testing purposes.
@@ -283,7 +293,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   }
   // Test constructor with DataType argument.
   {
-    TRT_ShapedWeights weights(DT_FLOAT);
+    TRT_ShapedWeights weights(nvinfer1::DataType::kFLOAT);
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -300,7 +310,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   {
     TrtWeightStore store;
     TRT_ShapedWeights weights =
-        store.GetTempWeights(DT_FLOAT, GetTestDims({2, 5}));
+        store.GetTempWeights(nvinfer1::DataType::kFLOAT, GetTestDims({2, 5}));
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -346,7 +356,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       assigned = *original_ptr;
 
       for (auto ptr : {original_ptr, &copy, &assigned}) {
-        EXPECT_EQ(true, ptr->is_tensor());
+        ASSERT_TRUE(ptr->is_tensor());
         EXPECT_EQ(false, ptr->is_weights());
         if (original_ptr == &tw) {
           EXPECT_EQ(-1, ptr->batch_size());
@@ -369,7 +379,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
     assigned = tw;
 
     for (auto ptr : {&tw, &copy, &assigned}) {
-      EXPECT_EQ(true, ptr->is_tensor());
+      ASSERT_TRUE(ptr->is_tensor());
       EXPECT_EQ(false, ptr->is_weights());
       EXPECT_EQ(1, ptr->batch_size());
       EXPECT_NE(nullptr, ptr->tensor());
@@ -469,7 +479,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
     TRT_TensorOrWeights output;
     ExpectStatus(
         convert_to_tensor_or_weights({batch_size, non_batch_dim}, &output));
-    EXPECT_EQ(true, output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     EXPECT_EQ(batch_size, output.batch_size());
     EXPECT_NE(nullptr, output.tensor());
     ExpectTrtDimsEqualsArray({non_batch_dim}, output.GetTrtDims());
@@ -661,7 +671,7 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
       params->outputs->emplace_back(output_tensor);
       output_tensors.push_back(output_tensor);
     }
-    TRT_ShapedWeights output_weights(DT_FLOAT);
+    TRT_ShapedWeights output_weights(nvinfer1::DataType::kFLOAT);
     params->outputs->emplace_back(output_weights);
     return Status::OK();
   };
@@ -768,8 +778,8 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
 }
 
 TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
-  TRT_ShapedWeights weights =
-      weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({2, 3, 5}));
+  TRT_ShapedWeights weights = weight_store_->GetTempWeights(
+      nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
   nvinfer1::ITensor* output_tensor = nullptr;
   for (bool validation_only : {false, true}) {
     TF_EXPECT_OK(converter_->PrepareTensorForShape(
@@ -822,8 +832,8 @@ TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
 
 template <typename T>
 void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
-  TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(DataTypeToEnum<T>::v(), GetTestDims({2, 3}));
+  TRT_ShapedWeights weights = weight_store->GetTempWeights(
+      TfDataTypeToTrt(DataTypeToEnum<T>::v()), GetTestDims({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
   memcpy(weights.GetValues(), values.data(), weights.size_bytes());
 
@@ -992,14 +1002,14 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {
-  for (auto dtype : {DT_FLOAT, DT_INT32}) {
+  for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
         weight_store_->GetTempWeights(dtype, GetTestDims({2, 3, 5}));
     nvinfer1::ITensor* tensor =
         converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
     ASSERT_NE(nullptr, tensor);
-    EXPECT_EQ(TfDataTypeToTrt(dtype), tensor->getType())
-        << "Expected " << DebugString(TfDataTypeToTrt(dtype)) << " vs. actual "
+    EXPECT_EQ(dtype, tensor->getType())
+        << "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
     ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
   }
@@ -1236,7 +1246,7 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values) {
-    const DataType dtype = DataTypeToEnum<T>::v();
+    const nvinfer1::DataType dtype = TfDataTypeToTrt(DataTypeToEnum<T>::v());
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
     const int64_t num_elements = TrtWeightDimsNumElements(trt_dims);
     QCHECK_EQ(num_elements, values.size())
@@ -1442,6 +1452,9 @@ TEST_F(OpConverterTest, ConvertConst) {
 
   TestConvertConst<DT_FLOAT, float, float>(this);
   TestConvertConst<DT_INT8, int8, int32>(this);
+  TestConvertConst<DT_UINT8, uint8, int32>(this);
+  TestConvertConst<DT_INT16, int16, int32>(this);
+  TestConvertConst<DT_UINT16, uint16, int32>(this);
   TestConvertConst<DT_INT32, int32, int32>(this);
 }
 
@@ -1495,7 +1508,7 @@ TEST_F(OpConverterTest, ConvertTranspose) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_transpose", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({3, 1, 2}, output.tensor()->getDimensions());
 
     const DataVec input_data{
@@ -1599,7 +1612,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_reshape", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     const std::vector<int> expected_output_dims(shape.begin() + 1, shape.end());
     const nvinfer1::Dims actual_output_dims = output.tensor()->getDimensions();
     ExpectTrtDimsEqualsArray(expected_output_dims, actual_output_dims);
@@ -1669,7 +1682,7 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
 
     const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
@@ -1725,7 +1738,7 @@ void TestConvertBiasAdd(OpConverterTest* test) {
       test->RunValidationAndConversion(node_def);
       TRT_TensorOrWeights output;
       TF_EXPECT_OK(test->GetTensorOrWeights("my_biasadd", &output));
-      EXPECT_TRUE(output.is_tensor());
+      ASSERT_TRUE(output.is_tensor());
       ExpectTrtDimsEqualsArray(dims_array, output.tensor()->getDimensions());
 
       // Build and run the engine.
@@ -1828,7 +1841,7 @@ void TestBinaryTensorOpWeightNoBroadcast(OpConverterTest* test) {
     // Check the dims of the output ITensor.
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 1, 2}, output.tensor()->getDimensions());
 
     const DataVec input_data{
@@ -1883,7 +1896,7 @@ void TestBinaryTensorOpWeightWithChannelWiseBroadcast(OpConverterTest* test) {
     // Check the dims of the output ITensor.
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
 
     const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
@@ -1918,7 +1931,7 @@ void TestBinaryTensorOpWeightWithUniformlyBroadcast(OpConverterTest* test) {
   // Check the dims of the output ITensor.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
 
   const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
@@ -1957,7 +1970,7 @@ void TestBinaryTensorOpWeightFallback(OpConverterTest* test,
 
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
 
   // Check the dims of the output ITensor.
   std::vector<int> expected_output_dims = input_dims;
@@ -2009,7 +2022,7 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   // Check output dims.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
 
   const DataVec input_data{
@@ -2171,7 +2184,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2192,7 +2205,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2213,7 +2226,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2254,7 +2267,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
     EXPECT_EQ(1, ranges.count(output.tensor()));
     EXPECT_EQ(6.0f, ranges[output.tensor()]);
@@ -2276,7 +2289,7 @@ void TestConvertSquare(OpConverterTest* test) {
   test->RunValidationAndConversion(node_def);
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
-  EXPECT_TRUE(output.is_tensor());
+  ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({1, 20}, output.tensor()->getDimensions());
 
   const int num_inputs = 20;
@@ -2400,10 +2413,10 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     TF_EXPECT_OK(GetTensorOrWeights("my_nms:2", &nmsed_classes));
     TF_EXPECT_OK(GetTensorOrWeights("my_nms:3", &valid_detections));
 
-    EXPECT_TRUE(nmsed_boxes.is_tensor());
-    EXPECT_TRUE(nmsed_scores.is_tensor());
-    EXPECT_TRUE(nmsed_classes.is_tensor());
-    EXPECT_TRUE(valid_detections.is_tensor());
+    ASSERT_TRUE(nmsed_boxes.is_tensor());
+    ASSERT_TRUE(nmsed_scores.is_tensor());
+    ASSERT_TRUE(nmsed_classes.is_tensor());
+    ASSERT_TRUE(valid_detections.is_tensor());
 
     ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_boxes_dims,
                              nmsed_boxes.tensor()->getDimensions());
@@ -2506,7 +2519,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
     if (op_name == "Relu6") {
       // Relu6 should set quantization range automatically.
@@ -2625,7 +2638,7 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -2755,7 +2768,7 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3271,7 +3284,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3413,7 +3426,7 @@ TEST_F(OpConverterTest, ConvertSlice) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_slice", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3682,7 +3695,7 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_conv2d", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -3706,7 +3719,9 @@ TEST_F(OpConverterTest, ConvertTopK) {
         "TopKV2 got 0 inputs but expected 2, at my_topk");
   }
 
-  for (const auto dtype : {DT_FLOAT, DT_INT32}) {
+  // TODO(tmorris): This test isn't setting the input dtype properly. TopK with
+  // int32 is unsupported by TRT.
+  for (const auto dtype : {DT_FLOAT}) {
     // Get the NodeDef for TopKV2.
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), dtype);
@@ -3733,7 +3748,7 @@ TEST_F(OpConverterTest, ConvertTopK) {
       TF_EXPECT_OK(GetTensorOrWeights("my_topk", &outputs[0]));
       TF_EXPECT_OK(GetTensorOrWeights("my_topk:1", &outputs[1]));
       for (auto& output : outputs) {
-        EXPECT_TRUE(output.is_tensor());
+        ASSERT_TRUE(output.is_tensor());
         ExpectTrtDimsEqualsArray({1, 2, 2}, output.tensor()->getDimensions());
       }
 
@@ -3804,7 +3819,7 @@ void TestConvertGather(OpConverterTest* test) {
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_gather", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
@@ -4031,7 +4046,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
 
     const std::vector<float> input = {-0.9f, 0.6f, 0.0f, -3.5f, 100.0f, 2.9f};
@@ -4047,6 +4062,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
 }
 
 // Get the NodeDef for ConcatV2.
+// TODO(hinsu): Consider switching this to static function.
 auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
@@ -4072,16 +4088,11 @@ void TestConvertConcat(OpConverterTest* test) {
     std::vector<CType> expected_output;
   };
 
-  // Ok.
-  auto make_vector = [](int size, CType start_value = 0) {
-    std::vector<CType> v(size);
-    for (int i = 0; i < size; ++i) {
-      v[i] = CType(start_value) + CType(i);
-    }
-    return v;
-  };
   const std::vector<std::vector<CType>> common_input{
-      make_vector(6), make_vector(6, /*start_value=*/6)};
+      InitTestVector<CType>(6),
+      InitTestVector<CType>(6, /*start_value=*/CType(6))};
+  // TODO(hinsu): Use std::vector instead of an array to avoid use of explicit
+  // size.
   const int kConcatOKCases = 4;
   TestParams ok_params[kConcatOKCases] = {
       {
@@ -4089,14 +4100,14 @@ void TestConvertConcat(OpConverterTest* test) {
           /*input_values=*/common_input,
           /*axis=*/1,
           /*expected_output_dims=*/{2, 2, 3},
-          /*expected_output=*/make_vector(12),
+          /*expected_output=*/InitTestVector<CType>(12),
       },
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
           /*input_values=*/common_input,
           /*axis=*/2,
           /*expected_output_dims=*/{1, 4, 3},
-          /*expected_output=*/make_vector(12),
+          /*expected_output=*/InitTestVector<CType>(12),
       },
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -4118,7 +4129,8 @@ void TestConvertConcat(OpConverterTest* test) {
            {CType(9), CType(10)}},
           /*axis=*/1,
           /*expected_output_dims=*/{10},
-          /*expected_output=*/make_vector(10, /*start_value=*/1),
+          /*expected_output=*/
+          InitTestVector<CType>(10, /*start_value=*/CType(1)),
       },
   };
 
@@ -4129,14 +4141,15 @@ void TestConvertConcat(OpConverterTest* test) {
     NodeDef node_def = get_concat_nodedef(dtype, num_inputs);
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
-      test->AddTestTensor(StrCat("values_", j), ok_params[i].input_shapes[j]);
+      test->AddTestTensor(StrCat("values_", j), ok_params[i].input_shapes[j], 1,
+                          TfDataTypeToTrt(dtype));
     }
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
     test->RunValidationAndConversion(node_def);
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_concat", &output));
-    EXPECT_TRUE(output.is_tensor());
+    ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
     // Create input data for tensors.
@@ -4149,7 +4162,9 @@ void TestConvertConcat(OpConverterTest* test) {
     DataVec output_data{
         {"my_concat",
          ConstructTensor<CType>(ok_params[i].expected_output.size())}};
-    test->BuildAndRun(input_data, &output_data);
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(ok_params[i].expected_output));
   }
@@ -4198,7 +4213,7 @@ TEST_F(OpConverterTest, ConvertConcat) {
     AddTestWeights<int32>("axis", {1}, {1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "ConcatV2 received inputs with inconsistent rank, at my_concat");
+        "Received inputs with inconsistent rank, at my_concat");
   }
   {
     // An input is a weight, should fail.
@@ -4220,15 +4235,679 @@ TEST_F(OpConverterTest, ConvertConcat) {
     AddTestWeights<int32>("axis", {1}, {1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "ConcatV2 received inputs with inconsistent shape, at my_concat");
+        "Received inputs with inconsistent shape, at my_concat");
   }
 
   TestConvertConcat<DT_FLOAT>(this);
-  // TODO(tmorris): We appear to not be handling FP16 inputs correctly. Enable
-  // once this is fixed.
-  // TestConvertConcat<DT_HALF>(this);
+  TestConvertConcat<DT_HALF>(this);
   // TODO(tmorris): Enable once TRT adds support.
   // TestConvertConcat<DT_INT32>(this);
+}
+
+// Get the NodeDef for Split.
+auto get_split_nodedef = [](DataType dtype, int num_split) -> NodeDef {
+  Scope s = Scope::NewRootScope();
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  auto value = ops::Placeholder(s.WithOpName("value"), dtype);
+  auto split = ops::Split(s.WithOpName("my_split"), axis, value, num_split);
+  return split.operation.node()->def();
+};
+
+template <DataType dtype>
+void TestConvertSplit(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> input_shape;
+    std::vector<CType> value;
+    int axis;
+    int num_split;
+    std::vector<int> expected_output_dims;
+    std::vector<std::vector<CType>> expected_outputs;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  const int kSplitOKCases = 4;
+  TestParams ok_params[kSplitOKCases] = {
+      // Identity (num_split = 1)
+      {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
+       /*num_split=*/1, /*expected_output_dims=*/{1, 2, 3},
+       /*expected_outputs=*/{InitTestVector<CType>(6)}},
+      {/*input_shape=*/{1, 2, 3},
+       /*value=*/common_input,
+       /*axis=*/3,
+       /*num_split=*/3,
+       /*expected_output_dims=*/{1, 2, 1},
+       /*expected_outputs=*/
+       {{CType(0), CType(3)}, {CType(1), CType(4)}, {CType(2), CType(5)}}},
+      {/*input_shape=*/{1, 6},
+       /*value=*/common_input,
+       /*axis=*/2,
+       /*num_split=*/6,
+       /*expected_output_dims=*/{1, 1},
+       /*expected_outputs=*/
+       {{CType(0)},
+        {CType(1)},
+        {CType(2)},
+        {CType(3)},
+        {CType(4)},
+        {CType(5)}}},
+      {/*input_shape=*/{1, 6},
+       /*value=*/common_input,
+       /*axis=*/-1,
+       /*num_split=*/2,
+       /*expected_output_dims=*/{1, 3},
+       /*expected_outputs=*/
+       {InitTestVector<CType>(3), InitTestVector<CType>(3, CType(3))}},
+  };
+
+  for (int i = 0; i < kSplitOKCases; ++i) {
+    test->Reset();
+    NodeDef node_def = get_split_nodedef(dtype, ok_params[i].num_split);
+    // Create inputs.
+    test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
+    test->AddTestTensor("value", ok_params[i].input_shape, 1,
+                        TfDataTypeToTrt(dtype));
+    // Convert.
+    test->RunValidationAndConversion(node_def);
+
+    // Get output tensors and verify output dims.
+    EXPECT_EQ(ok_params[i].expected_outputs.size(), ok_params[i].num_split);
+    std::vector<TRT_TensorOrWeights> outputs(ok_params[i].num_split);
+    DataVec output_data;
+    for (int j = 0; j < outputs.size(); ++j) {
+      const string name = j == 0 ? StrCat("my_split") : StrCat("my_split:", j);
+      TF_EXPECT_OK(test->GetTensorOrWeights(name, &outputs[j]));
+      EXPECT_TRUE(outputs[j].is_tensor());
+      ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                               outputs[j].tensor()->getDimensions());
+      // Create buffer to store output.
+      output_data.push_back(
+          {name,
+           ConstructTensor<CType>(ok_params[i].expected_outputs[j].size())});
+    }
+
+    // Verify output values are correct.
+    const DataVec input_data{
+        {"value", test::AsTensor<CType>(ok_params[i].value)}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    for (int j = 0; j < outputs.size(); ++j) {
+      EXPECT_THAT(GetSpanForData<CType>(output_data[j]),
+                  ElementsAreArray(ok_params[i].expected_outputs[j]));
+    }
+  }
+}
+
+TEST_F(OpConverterTest, ConvertSplit) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_split", "Split", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Split got 0 inputs but expected 2, at my_split");
+  }
+  {
+    // Axis is a tensor, should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    AddTestTensor("axis", {1});
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"axis\" for Split must be a constant, at my_split");
+  }
+  {
+    // Axis is out of bounds, should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    AddTestWeights<int32>("axis", {1}, {4});
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of 4 is out of bounds, must be in "
+                               "range [-4, 4), at my_split");
+  }
+  {
+    // Axis is out of bounds (negative), should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    AddTestWeights<int32>("axis", {1}, {-5});
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of -5 is out of bounds, must be in "
+                               "range [-4, 4), at my_split");
+  }
+  {
+    // Axis is batch dimension, should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    AddTestWeights<int32>("axis", {1}, {0});
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_split");
+  }
+  {
+    // Value is a weight, should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 1);
+    AddTestWeights<int32>("axis", {1}, {1});
+    AddTestWeights<float>("value", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"value\" for Split must be a tensor, at my_split");
+  }
+  {
+    // Dim is not evenly divisibly by num_split, should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 2);
+    AddTestWeights<int32>("axis", {1}, {3});
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Dimension 3 of size 3 is not evenly divisble by 2, at my_split");
+  }
+  {
+    // num_split > dim size, should fail.
+    Reset();
+    NodeDef node_def = get_split_nodedef(DT_FLOAT, 4);
+    AddTestWeights<int32>("axis", {1}, {3});
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Dimension 3 of size 3 is not evenly divisble by 4, at my_split");
+  }
+
+  TestConvertSplit<DT_FLOAT>(this);
+  TestConvertSplit<DT_HALF>(this);
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+  TestConvertSplit<DT_INT32>(this);
+#endif
+}
+
+// Get the NodeDef for Unpack (Unstack in TF API).
+auto get_unpack_nodedef = [](DataType dtype, int num, int axis) -> NodeDef {
+  Scope s = Scope::NewRootScope();
+  auto value = ops::Placeholder(s.WithOpName("value"), dtype);
+  auto unstack_attrs = ops::Unstack::Axis(axis);
+  auto unstack =
+      ops::Unstack(s.WithOpName("my_unpack"), value, num, unstack_attrs);
+  return unstack.operation.node()->def();
+};
+
+template <DataType dtype>
+void TestConvertUnpack(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> input_shape;
+    std::vector<CType> value;
+    int axis;
+    int num;
+    std::vector<int> expected_output_dims;
+    std::vector<std::vector<CType>> expected_outputs;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  const int kUnpackOKCases = 4;
+  TestParams ok_params[kUnpackOKCases] = {
+      {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
+       /*num=*/1, /*expected_output_dims=*/{2, 3},
+       /*expected_outputs=*/{InitTestVector<CType>(6)}},
+      {/*input_shape=*/{1, 2, 3},
+       /*value=*/common_input,
+       /*axis=*/3,
+       /*num=*/3,
+       /*expected_output_dims=*/{1, 2},
+       /*expected_outputs=*/
+       {{CType(0), CType(3)}, {CType(1), CType(4)}, {CType(2), CType(5)}}},
+      {/*input_shape=*/{6, 1},
+       /*value=*/common_input,
+       /*axis=*/-2,
+       /*num=*/6,
+       /*expected_output_dims=*/{1},
+       /*expected_outputs=*/
+       {{CType(0)},
+        {CType(1)},
+        {CType(2)},
+        {CType(3)},
+        {CType(4)},
+        {CType(5)}}},
+      {/*input_shape=*/{6},
+       /*value=*/common_input,
+       /*axis=*/1,
+       /*num=*/6,
+       /*expected_output_dims=*/{},
+       /*expected_outputs=*/
+       {{CType(0)},
+        {CType(1)},
+        {CType(2)},
+        {CType(3)},
+        {CType(4)},
+        {CType(5)}}},
+  };
+
+  for (int i = 0; i < kUnpackOKCases; ++i) {
+    test->Reset();
+    NodeDef node_def =
+        get_unpack_nodedef(dtype, ok_params[i].num, ok_params[i].axis);
+    // Create inputs.
+    test->AddTestTensor("value", ok_params[i].input_shape, 1,
+                        TfDataTypeToTrt(dtype));
+    // Convert.
+    test->RunValidationAndConversion(node_def);
+
+    // Get output tensors and verify output dims.
+    EXPECT_EQ(ok_params[i].expected_outputs.size(), ok_params[i].num);
+    std::vector<TRT_TensorOrWeights> outputs(ok_params[i].num);
+    DataVec output_data;
+    for (int j = 0; j < outputs.size(); ++j) {
+      const string name = j == 0 ? "my_unpack" : StrCat("my_unpack:", j);
+      TF_EXPECT_OK(test->GetTensorOrWeights(name, &outputs[j]));
+      EXPECT_TRUE(outputs[j].is_tensor());
+      ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                               outputs[j].tensor()->getDimensions());
+      // Create buffer to store output.
+      output_data.push_back(
+          {name,
+           ConstructTensor<CType>(ok_params[i].expected_outputs[j].size())});
+    }
+
+    // Verify output values are correct.
+    const DataVec input_data{
+        {"value", test::AsTensor<CType>(ok_params[i].value)}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    for (int j = 0; j < outputs.size(); ++j) {
+      EXPECT_THAT(GetSpanForData<CType>(output_data[j]),
+                  ElementsAreArray(ok_params[i].expected_outputs[j]));
+    }
+  }
+}
+
+TEST_F(OpConverterTest, ConvertUnpack) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_unpack", "Unpack", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Unpack got 0 inputs but expected 1, at my_unpack");
+  }
+  {
+    // Value is weights, should fail.
+    Reset();
+    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/3, /*axis=*/3);
+    AddTestWeights<float>("value", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"value\" for Unpack must be a tensor, at my_unpack");
+  }
+  {
+    // Axis is out of bounds, should fail.
+    Reset();
+    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/4);
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of 4 is out of bounds, must be in "
+                               "range [-4, 4), at my_unpack");
+  }
+  {
+    // Axis is out of bounds (negative), should fail.
+    Reset();
+    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/-5);
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of -5 is out of bounds, must be in "
+                               "range [-4, 4), at my_unpack");
+  }
+  {
+    // Axis is batch dimension, should fail.
+    Reset();
+    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/0);
+    AddTestTensor("value", {1, 2, 3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_unpack");
+  }
+  {
+    // Dim size does not match num, should fail.
+    Reset();
+    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/5, /*axis=*/2);
+    AddTestTensor("value", {1, 6});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Dimension 2 has size 6 which is not equal to num of 5, at my_unpack");
+  }
+  {
+    // Output would be TF scalar, should fail.
+    Reset();
+    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/0);
+    AddTestTensor("value", {});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Input \"value\" for Unpack must be rank 2 or greater, at my_unpack");
+  }
+
+  TestConvertUnpack<DT_FLOAT>(this);
+  TestConvertUnpack<DT_HALF>(this);
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+  TestConvertUnpack<DT_INT32>(this);
+#endif
+}
+
+// Get the NodeDef for Pack.
+NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
+  Scope s = Scope::NewRootScope();
+  std::vector<Input> values;
+  for (int i = 0; i < num_inputs; ++i) {
+    const string input_name = StrCat("values_", i);
+    values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
+  }
+  // Pack op is renamed to Stack in APIs.
+  auto pack =
+      ops::Stack(s.WithOpName("my_pack"), absl::Span<const Input>(values),
+                 ops::Stack::Axis(axis));
+  return pack.operation.node()->def();
+}
+
+template <DataType dtype>
+void TestConvertPack(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<std::vector<int>> input_shapes;
+    std::vector<std::vector<CType>> input_values;
+    int axis;
+    std::vector<int> expected_output_dims;
+    std::vector<CType> expected_output;
+  };
+
+  const std::vector<std::vector<CType>> common_input{
+      InitTestVector<CType>(6),
+      InitTestVector<CType>(6, /*start_value=*/CType(6))};
+  std::vector<TestParams> params = {
+      {
+          /*input_shapes=*/{{2, 3}, {2, 3}},
+          /*input_values=*/common_input,
+          /*axis=*/1,
+          /*expected_output_dims=*/{2, 2, 3},
+          /*expected_output=*/InitTestVector<CType>(12),
+      },
+      {
+          /*input_shapes=*/{{2, 3}, {2, 3}},
+          /*input_values=*/common_input,
+          /*axis=*/2,
+          /*expected_output_dims=*/{2, 2, 3},
+          /*expected_output=*/
+          {CType(0), CType(1), CType(2), CType(6), CType(7), CType(8), CType(3),
+           CType(4), CType(5), CType(9), CType(10), CType(11)},
+      },
+      {
+          /*input_shapes=*/{{2, 3}, {2, 3}},
+          /*input_values=*/common_input,
+          /*axis=*/3,
+          /*expected_output_dims=*/{2, 3, 2},
+          /*expected_output=*/
+          {CType(0), CType(6), CType(1), CType(7), CType(2), CType(8), CType(3),
+           CType(9), CType(4), CType(10), CType(5), CType(11)},
+      },
+      {
+          /*input_shapes=*/{{2, 3}},
+          /*input_values=*/{InitTestVector<CType>(6)},
+          /*axis=*/1,
+          /*expected_output_dims=*/{1, 2, 3},
+          /*expected_output=*/InitTestVector<CType>(6),
+      },
+      {
+          /*input_shapes=*/{{2, 3}},
+          /*input_values=*/{InitTestVector<CType>(6)},
+          /*axis=*/2,
+          /*expected_output_dims=*/{2, 1, 3},
+          /*expected_output=*/InitTestVector<CType>(6),
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+    const int num_inputs = params[i].input_shapes.size();
+    EXPECT_EQ(num_inputs, params[i].input_values.size());
+
+    NodeDef node_def = GetPackNodeDef(dtype, num_inputs, params[i].axis);
+    // Create inputs.
+    for (int j = 0; j < num_inputs; ++j) {
+      test->AddTestTensor(StrCat("values_", j), params[i].input_shapes[j], 1,
+                          TfDataTypeToTrt(dtype));
+    }
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_pack", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+    // Create input data for tensors.
+    DataVec input_data;
+    for (int j = 0; j < num_inputs; ++j) {
+      input_data.push_back({StrCat("values_", j),
+                            test::AsTensor<CType>(params[i].input_values[j])});
+    }
+    DataVec output_data{
+        {"my_pack", ConstructTensor<CType>(params[i].expected_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertPack) {
+  {
+    // An input is a weight, should fail.
+    Reset();
+    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/1);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestWeights<float>("values_1", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"values_1\" for Pack must be a tensor, at my_pack");
+  }
+  {
+    // Axis is out of bounds, should fail.
+    Reset();
+    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/-5);
+    AddTestTensor("values_0", {2, 3});
+    AddTestTensor("values_1", {2, 3});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of -5 is out of bounds, must be in "
+                               "range [-4, 4), at my_pack");
+  }
+  {
+    // Axis is batch dimension, should fail.
+    Reset();
+    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/-4);
+    AddTestTensor("values_0", {2, 3});
+    AddTestTensor("values_1", {2, 3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_pack");
+  }
+  {
+    // Inputs have inconsistent rank, should fail.
+    Reset();
+    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/1);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestTensor("values_1", {1, 6});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Received inputs with inconsistent rank, at my_pack");
+  }
+  {
+    // Inputs have inconsistent shapes, should fail.
+    Reset();
+    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/1);
+    AddTestTensor("values_0", {1, 2});
+    AddTestTensor("values_1", {2, 2});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Received inputs with inconsistent shape, at my_pack");
+  }
+
+  TestConvertPack<DT_FLOAT>(this);
+  TestConvertPack<DT_HALF>(this);
+
+  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
+  // TestConvertPack<DT_INT32>(this);
+}
+
+// Get the NodeDef for ArgMin or ArgMax.
+template <typename OpType>
+NodeDef GetArgMinMaxNodeDef(DataType input_dtype, DataType output_dtype) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), input_dtype);
+  auto dimension = ops::Placeholder(s.WithOpName("dimension"), DT_INT32);
+  auto attrs = OpType::OutputType(output_dtype);
+  auto arg = OpType(s.WithOpName("my_arg"), input, dimension, attrs);
+  return arg.operation.node()->def();
+}
+
+template <typename OpType, DataType dtype>
+void TestConvertArgMinMax(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<int> input_shape;
+    std::vector<CType> input_value;
+    int axis;
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_argmax_output;
+    std::vector<int> expected_argmin_output;
+  };
+
+  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  std::vector<TestParams> params = {
+      {
+          /*input_shape=*/{2, 3},
+          /*input_value=*/common_input,
+          /*axis=*/2,
+          /*expected_output_dims=*/{2},
+          /*expected_argmax_output=*/{2, 2},
+          /*expected_argmin_output=*/{0, 0},
+      },
+      {
+          /*input_shape=*/{2, 3},
+          /*input_value=*/common_input,
+          /*axis=*/-2,
+          /*expected_output_dims=*/{3},
+          /*expected_argmax_output=*/{1, 1, 1},
+          /*expected_argmin_output=*/{0, 0, 0},
+      },
+      {
+          /*input_shape=*/{6},
+          /*input_value=*/common_input,
+          /*axis=*/1,
+          /*expected_output_dims=*/{},
+          /*expected_argmax_output=*/{5},
+          /*expected_argmin_output=*/{0},
+      },
+      {
+          /*input_shape=*/{10},
+          /*input_value=*/
+          {CType(-5), CType(3), CType(5), CType(1), CType(6), CType(-9),
+           CType(7), CType(1), CType(0), CType(-1)},
+          /*axis=*/-1,
+          /*expected_output_dims=*/{},
+          /*expected_argmax_output=*/{6},
+          /*expected_argmin_output=*/{5},
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+
+    NodeDef node_def = GetArgMinMaxNodeDef<OpType>(dtype, DT_INT32);
+    // Create inputs.
+    test->AddTestTensor("input", params[i].input_shape, /*batch_size=*/1,
+                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+    test->AddTestWeights<int32>("dimension", {1}, {params[i].axis});
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_arg", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+    // Create input data for tensors.
+    const DataVec input_data{
+        {"input", test::AsTensor<CType>(params[i].input_value)}};
+    DataVec output_data{
+        {"my_arg",
+         ConstructTensor<int32>(params[i].expected_argmax_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+
+    if (node_def.op() == "ArgMax") {
+      EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
+                  ElementsAreArray(params[i].expected_argmax_output));
+    } else if (node_def.op() == "ArgMin") {
+      EXPECT_THAT(GetSpanForData<int32>(output_data[0]),
+                  ElementsAreArray(params[i].expected_argmin_output));
+    } else {
+      ASSERT_TRUE(false);
+    }
+  }
+}
+
+TEST_F(OpConverterTest, ConvertArgMinMax) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_argmax", "ArgMax", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ArgMax got 0 inputs but expected 2, at my_argmax");
+  }
+  {
+    // Dimension is a tensor, should fail.
+    Reset();
+    NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT32);
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("dimension", {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"dimension\" for ArgMax must be a constant, at my_arg");
+  }
+  {
+    // Output type is INT64, should fail.
+    Reset();
+    NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT64);
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("dimension", {1}, {3});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Output type int64 is not supported, at my_arg");
+  }
+  {
+    // Axis is batch dimension, should fail
+    Reset();
+    NodeDef node_def = GetArgMinMaxNodeDef<ops::ArgMax>(DT_FLOAT, DT_INT32);
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("dimension", {1}, {0});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "TensorRT does not allow manipulation of the batch dimension, at "
+        "my_arg");
+  }
+
+  TestConvertArgMinMax<ops::ArgMin, DT_FLOAT>(this);
+  TestConvertArgMinMax<ops::ArgMax, DT_FLOAT>(this);
+  TestConvertArgMinMax<ops::ArgMin, DT_HALF>(this);
+  TestConvertArgMinMax<ops::ArgMax, DT_HALF>(this);
+  // TRT does not support int32 for TopK layer which is used to implement ArgMin
+  // and ArgMax.
+  // TestConvertArgMinMax<ops::ArgMin, DT_INT32>(this);
+  // TestConvertArgMinMax<ops::ArgMax, DT_INT32>(this);
 }
 
 }  // namespace convert

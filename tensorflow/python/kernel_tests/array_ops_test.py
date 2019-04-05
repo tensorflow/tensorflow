@@ -190,6 +190,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       self.assertAllClose(numpy_result, tf_result.eval())
 
+  @test_util.run_deprecated_v1
   def testEmptyInput1D(self):
     mask = np.array([]).astype(bool)
     arr = np.array([]).astype(np.float32)
@@ -436,6 +437,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             np_answer = x_np[:, ::-1, :]
             self.assertAllEqual(x_tf, np_answer)
 
+  @test_util.run_deprecated_v1
   def testReverseColumnsOf3Channels(self):
     with self.session(use_gpu=True):
       for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
@@ -876,7 +878,7 @@ class GradSliceChecker(object):
 class StridedSliceGradTest(test_util.TensorFlowTestCase):
   """Test that strided slice's custom gradient produces correct gradients."""
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testGradient(self):
     with self.session(use_gpu=True) as sess:
       var = variables.Variable(
@@ -903,6 +905,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       # Test tensor type mask
       _ = grad[ops.convert_to_tensor(raw) <= 76]
 
+  @test_util.run_v1_only("b/120545219")
   def testGradientZero(self):
     with self.session(use_gpu=True) as sess:
       var = variables.Variable(8.)
@@ -1111,7 +1114,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
   def testSliceAssignResource(self):
     self.doTestSliceAssign(use_resource=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testUninitialized(self):
     with self.assertRaisesRegexp(
         errors.FailedPreconditionError,
@@ -1120,6 +1123,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         v = variables.VariableV1([1, 2])
         sess.run(v[:].assign([1, 2]))
 
+  @test_util.run_v1_only("b/120545219")
   def testTypeError(self):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
@@ -1220,6 +1224,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
+  @test_util.run_deprecated_v1
   def testTwoDimensional(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)

@@ -31,6 +31,7 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -795,21 +796,34 @@ class ModelCheckpoint(Callback):
       filepath: string, path to save the model file.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`,
-          the latest best model according to
-          the quantity monitored will not be overwritten.
-      mode: one of {auto, min, max}.
-          If `save_best_only=True`, the decision
-          to overwrite the current save file is made
-          based on either the maximization or the
-          minimization of the monitored quantity. For `val_acc`,
-          this should be `max`, for `val_loss` this should
-          be `min`, etc. In `auto` mode, the direction is
-          automatically inferred from the name of the monitored quantity.
-      save_weights_only: if True, then only the model's weights will be
-          saved (`model.save_weights(filepath)`), else the full model
-          is saved (`model.save(filepath)`).
-      period: Interval (number of epochs) between checkpoints.
+      save_best_only: if `save_best_only=True`, the latest best model according
+        to the quantity monitored will not be overwritten.
+      mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
+        overwrite the current save file is made based on either the maximization
+        or the minimization of the monitored quantity. For `val_acc`, this
+        should be `max`, for `val_loss` this should be `min`, etc. In `auto`
+        mode, the direction is automatically inferred from the name of the
+        monitored quantity.
+      save_weights_only: if True, then only the model's weights will be saved
+        (`model.save_weights(filepath)`), else the full model is saved
+        (`model.save(filepath)`).
+      save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
+        the model after each epoch. When using integer, the callback saves the
+        model at end of a batch at which this many samples have been seen since
+        last saving. Note that if the saving isn't aligned to epochs, the
+        monitored metric may potentially be less reliable (it could reflect as
+        little as 1 batch, since the metrics get reset every epoch). Defaults to
+        `'epoch'`
+      load_weights_on_restart: Whether the training should restore the model. If
+        True, the model will attempt to load the checkpoint file from `filepath`
+        at the start of `model.fit()`. This saves the need of manually calling
+        `model.load_weights()` before `model.fit(). In multi-worker distributed
+        training, this provides fault-tolerance and loads the model
+        automatically upon recovery of workers. The callback gives up loading if
+        the filepath does not exist, and raises ValueError if format does not
+        match. Defaults to False.
+      **kwargs: Additional arguments for backwards compatibility. Possible key
+        is `period`.
   """
 
   def __init__(self,
@@ -819,15 +833,28 @@ class ModelCheckpoint(Callback):
                save_best_only=False,
                save_weights_only=False,
                mode='auto',
-               period=1):
+               save_freq='epoch',
+               load_weights_on_restart=False,
+               **kwargs):
     super(ModelCheckpoint, self).__init__()
     self.monitor = monitor
     self.verbose = verbose
     self.filepath = filepath
     self.save_best_only = save_best_only
     self.save_weights_only = save_weights_only
-    self.period = period
+    self.save_freq = save_freq
+    self.load_weights_on_restart = load_weights_on_restart
     self.epochs_since_last_save = 0
+    self._samples_seen_since_last_saving = 0
+
+    # Deprecated field `period` is for the number of epochs between which
+    # the model is saved.
+    if 'period' in kwargs:
+      self.period = kwargs['period']
+      logging.warning('`period` argument is deprecated. Please use `save_freq` '
+                      'to specify the frequency in number of samples seen.')
+    else:
+      self.period = 1
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('ModelCheckpoint mode %s is unknown, '
@@ -848,8 +875,12 @@ class ModelCheckpoint(Callback):
         self.monitor_op = np.less
         self.best = np.Inf
 
-    # Only the chief worker writes model checkpoints.
-    self._chief_worker_only = True
+    if self.save_freq != 'epoch' and not isinstance(self.save_freq, int):
+      raise ValueError('Unrecognized save_freq: {}'.format(self.save_freq))
+
+    # Only the chief worker writes model checkpoints, but all workers
+    # restore checkpoint at on_train_begin().
+    self._chief_worker_only = False
 
   def set_model(self, model):
     self.model = model
@@ -859,11 +890,62 @@ class ModelCheckpoint(Callback):
         model.__class__.__name__ != 'Sequential'):
       self.save_weights_only = True
 
-  def on_epoch_end(self, epoch, logs=None):
+  def on_train_begin(self, logs=None):
+    # TODO(rchao): Replace dc_context reference with
+    # distributed_training_utils.should_current_worker_load_model() once
+    # distributed_training_utils.py no longer depends on callbacks.py.
+    if K.in_multi_worker_mode(
+    ) and not dc_context.get_current_worker_context().experimental_should_init:
+      # For multi-worker training, it should not restore a model in certain
+      # worker setting (e.g. non-chief worker in ParameterServerStrategy).
+      return
+
+    if (self.load_weights_on_restart and self.filepath is not None and
+        os.path.exists(self.filepath)):
+      try:
+        self.model.load_weights(self.filepath)
+      except (IOError, ValueError) as e:
+        raise ValueError('Error loading file from {}. Reason: {}'.format(
+            self.filepath, e))
+
+  def on_batch_end(self, batch, logs=None):
     logs = logs or {}
+    if isinstance(self.save_freq, int):
+      self._samples_seen_since_last_saving += logs.get('size', 1)
+      if self._samples_seen_since_last_saving >= self.save_freq:
+        self._save_model(epoch=self._current_epoch, logs=logs)
+        self._samples_seen_since_last_saving = 0
+
+  def on_epoch_begin(self, epoch, logs=None):
+    self._current_epoch = epoch
+
+  def on_epoch_end(self, epoch, logs=None):
     self.epochs_since_last_save += 1
-    if self.epochs_since_last_save >= self.period:
+    if self.save_freq == 'epoch':
+      self._save_model(epoch=epoch, logs=logs)
+
+  def _save_model(self, epoch, logs):
+    """Saves the model.
+
+    Arguments:
+        epoch: the epoch this iteration is in.
+        logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
+    """
+    logs = logs or {}
+
+    # TODO(rchao): Replace dc_context reference with
+    # distributed_training_utils.should_current_worker_checkpoint() once
+    # distributed_training_utils.py no longer depends on callbacks.py.
+    if K.in_multi_worker_mode(
+    ) and not dc_context.get_current_worker_context().should_checkpoint:
+      # For multi-worker training, it should not checkpoint a model in certain
+      # worker setting (e.g. non-chief worker in MultiWorkerMirroredStrategy).
+      return
+
+    if isinstance(self.save_freq,
+                  int) or self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
+
       filepath = self.filepath.format(epoch=epoch + 1, **logs)
       if self.save_best_only:
         current = logs.get(self.monitor)

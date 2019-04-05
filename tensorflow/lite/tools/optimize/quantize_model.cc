@@ -59,7 +59,9 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
     if (input_type == TensorType_FLOAT32) {
       // Add tensor for quantize operator. Scales and zero points are not
       // needed.
-      const string leading_op_name = tensor->name + "_quantize";
+      const string leading_op_name = tensor->name;
+      const string new_name_original_input = tensor->name + "_int8";
+      tensor->name = new_name_original_input;
       utils::MakeTensor(leading_op_name, tensor->shape, input_type,
                         &leading_op_input);
     } else {
@@ -72,7 +74,9 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
       //  zero point is shifted by +128.
       TFLITE_DCHECK_GE(zero_point, -128);
       TFLITE_DCHECK_LE(zero_point, 127);
-      const string leading_op_name = tensor->name + "_requantize";
+      const string leading_op_name = tensor->name;
+      const string new_name_original_input = tensor->name + "_int8";
+      tensor->name = new_name_original_input;
       utils::MakeTensorWithQuantParam(leading_op_name, tensor->shape,
                                       input_type, scale, zero_point + 128,
                                       &leading_op_input);
@@ -107,7 +111,9 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
     // Create a new tensor to be the output of the tailing op.
     std::unique_ptr<TensorT> tailing_op_output;
     if (output_type == TensorType_FLOAT32) {
-      const string tailing_op_name = tensor->name + "_dequantize";
+      const string tailing_op_name = tensor->name;
+      const string new_name_original_output = tensor->name + "_int8";
+      tensor->name = new_name_original_output;
       utils::MakeTensor(tailing_op_name, tensor->shape, output_type,
                         &tailing_op_output);
     } else {
@@ -120,7 +126,9 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
       //  zero point is shifted by +128.
       TFLITE_DCHECK_GE(zero_point, -128);
       TFLITE_DCHECK_LE(zero_point, 127);
-      const string tailing_op_name = tensor->name + "_requantize";
+      const string tailing_op_name = tensor->name;
+      const string new_name_original_output = tensor->name + "_int8";
+      tensor->name = new_name_original_output;
       utils::MakeTensorWithQuantParam(tailing_op_name, tensor->shape,
                                       output_type, scale, zero_point + 128,
                                       &tailing_op_output);
@@ -174,6 +182,68 @@ void SetInputAndOutputTypes(ModelT* model, SubGraphT* subgraph,
   }
 }
 
+// Insert requant op for just concat operator. To improve accuracy, we have made
+// the restriction that for int8 quantized concat, the inputs and outpus must
+// have the same scale and zero point.
+TfLiteStatus ResolveConflictsForConcat(ModelT* model, SubGraphT* subgraph,
+                                       ErrorReporter* error_reporter) {
+  // Iterate backward to make sure the insertion is not messing with
+  // iteration.
+  for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
+    OperatorT* op = subgraph->operators[op_idx].get();
+    const BuiltinOperator op_code =
+        model->operator_codes[op->opcode_index]->builtin_code;
+    if (op_code != BuiltinOperator_CONCATENATION) {
+      continue;
+    }
+    // If an op is concat and requant is needed, use the min of min and max of
+    // max, which means using the scale and zero point of output.
+    TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
+    if (!utils::QuantizationParametersExist(output_tensor)) {
+      error_reporter->Report(
+          "Unable to get scale or zero point from the tensor at %d, which "
+          "is the output tensor for concat.",
+          op->outputs[0]);
+      return kTfLiteError;
+    }
+    const float output_scale = output_tensor->quantization->scale[0];
+    const float output_zp = output_tensor->quantization->zero_point[0];
+    for (size_t input_idx = 0; input_idx < op->inputs.size(); ++input_idx) {
+      TensorT* input_tensor = subgraph->tensors[op->inputs[input_idx]].get();
+      if (!utils::QuantizationParametersExist(input_tensor)) {
+        error_reporter->Report(
+            "Unable to get scale or zero point from tensor at %d, which is "
+            "an input tensor of concat.",
+            op->inputs[input_idx]);
+        return kTfLiteError;
+      }
+      if (input_tensor->quantization->scale[0] == output_scale &&
+          input_tensor->quantization->zero_point[0] == output_zp) {
+        // This input does not need to be requantized.
+        continue;
+      }
+
+      std::unique_ptr<TensorT> additional_tensor;
+      const string requant_tensor_name = input_tensor->name + "_requantized";
+      utils::MakeTensorWithQuantParam(requant_tensor_name, input_tensor->shape,
+                                      TensorType_INT8, output_scale, output_zp,
+                                      &additional_tensor);
+      const int32_t additional_tensor_idx = subgraph->tensors.size();
+      subgraph->tensors.push_back(std::move(additional_tensor));
+
+      // Add requant op before this input.
+      std::unique_ptr<OperatorT> requant_op;
+      utils::MakeQuantizeOperator(model, &requant_op, op->inputs[input_idx],
+                                  additional_tensor_idx);
+      op->inputs[input_idx] = additional_tensor_idx;
+
+      subgraph->operators.insert(subgraph->operators.begin() + op_idx,
+                                 std::move(requant_op));
+    }
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
@@ -196,6 +266,10 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
         return kTfLiteError;
       }
     }
+
+    // Resolve conflicts for concat.
+    ResolveConflictsForConcat(model, subgraph, error_reporter);
+
     // For each subgraph, set the types of quantize inputs and outputs to the
     // user defined ones.
     if ((input_type != TensorType_FLOAT32 && input_type != TensorType_INT8 &&

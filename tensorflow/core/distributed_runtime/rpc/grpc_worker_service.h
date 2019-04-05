@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
@@ -25,7 +26,6 @@ limitations under the License.
 
 namespace grpc {
 class ByteBuffer;
-class ServerBuilder;
 }  // namespace grpc
 
 namespace tensorflow {

@@ -3744,7 +3744,7 @@ def make_slice_tests(options):
   test_parameters = [
       # 4-D
       {
-          "dtype": [tf.float32, tf.int32, tf.int64],
+          "dtype": [tf.float32, tf.int32, tf.int64, tf.string],
           "index_type": [tf.int32, tf.int64],
           "input_shape": [[12, 2, 2, 5]],
           "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
@@ -3752,7 +3752,7 @@ def make_slice_tests(options):
       },
       # 2-D
       {
-          "dtype": [tf.float32, tf.int32, tf.int64],
+          "dtype": [tf.float32, tf.int32, tf.int64, tf.string],
           "index_type": [tf.int32, tf.int64],
           "input_shape": [[2, 3]],
           "begin": [[0, 0], [1, 0]],
@@ -3795,7 +3795,7 @@ def make_slice_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=18)
+      expected_tf_failures=24)
 
 
 @register_make_test_function()

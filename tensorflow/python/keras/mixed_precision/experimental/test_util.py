@@ -17,9 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 
 
@@ -48,11 +50,44 @@ def create_identity_with_grad_check_fn(expected_gradient, expected_dtype=None):
       if expected_dtype:
         assert dx.dtype == expected_dtype, (
             'dx.dtype should be %s but is: %s' % (expected_dtype, dx.dtype))
-      expected_tensor = ops.convert_to_tensor(expected_gradient, dtype=dx.dtype)
-      assert_op = check_ops.assert_equal(dx, expected_tensor, data=[dx])
+      expected_tensor = ops.convert_to_tensor(expected_gradient, dtype=dx.dtype,
+                                              name='expected_gradient')
+      assert_op = check_ops.assert_equal(dx, expected_tensor)
       with ops.control_dependencies([assert_op]):
         dx = array_ops.identity(dx)
       return dx
     return x, grad
   return identity_with_grad_check
+
+
+def create_identity_with_nan_gradients_fn(have_nan_gradients):
+  """Returns a function that optionally has NaN gradients.
+
+  This serves as a hook to introduce NaN gradients to a model. This returns an
+  identity function. The identity's gradient function will check if the boolean
+  tensor `have_nan_gradients` is True. If so, the gradient will be NaN.
+  Otherwise, the gradient will also be the identity.
+
+  Args:
+    have_nan_gradients: A scalar boolean tensor. If True, gradients will be NaN.
+      Otherwise, the gradient function is the identity function.
+
+  Returns:
+    An identity function whose gradient function will return NaNs, if
+    `have_nan_gradients` is True.
+  """
+  @custom_gradient.custom_gradient
+  def identity_with_nan_gradients(x):
+    """Function whose gradient is NaN iff `have_nan_gradients` is True."""
+    x = array_ops.identity(x)
+    def grad(dx):
+      nan_scalar = constant_op.constant(float('NaN'), dtype=dx.dtype)
+      return control_flow_ops.cond(
+          have_nan_gradients,
+          lambda: array_ops.fill(dx.shape, nan_scalar),
+          lambda: dx
+      )
+    return x, grad
+  return identity_with_nan_gradients
+
 

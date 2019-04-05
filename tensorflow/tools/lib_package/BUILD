@@ -89,6 +89,9 @@ pkg_tar(
 pkg_tar(
     name = "clib",
     files = select({
+        "//tensorflow:macos": [
+            "//tensorflow:libtensorflow.dylib",
+        ],
         "//tensorflow:windows": [
             "//tensorflow:tensorflow.dll",
             "//tensorflow:tensorflow_dll_import_lib",

@@ -38,6 +38,8 @@ upper_tabs:
         path: /lite/convert/cmdline_reference
       - title: "Python API"
         path: /lite/convert/python_api
+      - title: "Convert quantized models"
+        path: /lite/convert/quantization
 
       - heading: "Convert a TensorFlow 2.0 model"
       - title: "TensorFlow Lite converter and 2.0"

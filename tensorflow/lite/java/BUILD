@@ -30,6 +30,12 @@ aar_with_jni(
     android_library = ":tensorflowlite_flex",
 )
 
+# EXPERIMENTAL: AAR target that supports GPU acceleration.
+aar_with_jni(
+    name = "tensorflow-lite-with-gpu",
+    android_library = ":tensorflowlite_gpu",
+)
+
 android_library(
     name = "tensorflowlite",
     srcs = JAVA_SRCS,
@@ -49,6 +55,24 @@ android_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflowlite_native_flex",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# EXPERIMENTAL: Android target that supports GPU acceleration.
+android_library(
+    name = "tensorflowlite_gpu",
+    # Note that we pull in the base sources directly here, as the aar_with_jni
+    # rule only bundles sources of the primary `android_library` argument, not
+    # its transitive dependencies. With the next stable release, the GPU
+    # aar target will *not* include the base TensorFlow Lite sources; clients
+    # will depend on both the base tensorflowlite aar as well as the GPU aar.
+    srcs = JAVA_SRCS + ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/experimental:gpu_delegate"],
+    manifest = "AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tensorflowlite",
+        ":tensorflowlite_native_gpu",
         "@org_checkerframework_qual",
     ],
 )
@@ -229,6 +253,12 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "tensorflowlite_native_gpu",
+    srcs = ["libtensorflowlite_gpu_jni.so"],
+    visibility = ["//visibility:public"],
+)
+
 tflite_jni_binary(
     name = "libtensorflowlite_jni.so",
     deps = [
@@ -243,5 +273,13 @@ tflite_jni_binary(
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:init_tensorflow",
+    ],
+)
+
+# EXPERIMENTAL: Native target that supports GPU acceleration.
+tflite_jni_binary(
+    name = "libtensorflowlite_gpu_jni.so",
+    deps = [
+        "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],
 )

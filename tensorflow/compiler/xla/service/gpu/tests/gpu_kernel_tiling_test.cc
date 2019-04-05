@@ -474,6 +474,38 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
 }
 
+TEST_F(GpuKernelTilingTest,
+       ColumnReductionResultTwoPartsWithLayoutChangeTiled) {
+  const char *const kHloString = R"(
+    HloModule reduce_with_no_layout_change
+    reduction0 {
+      x0 = f32[] parameter(0)
+      y0 = f32[] parameter(1)
+      ROOT add0 = f32[] add(x0, y0)
+    }
+
+    ENTRY kernel_entry {
+      arg0 = f32[8,64,4]{2,1,0}  parameter(0)
+      constant0 = f32[] constant(0)
+      ROOT reduce0 = f32[8,4]{0,1} reduce(arg0, constant0), dimensions={1},
+        to_apply=reduction0
+    })";
+
+  // Check that the kernel is tiled by looking for llvm.nvvm.atomic.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+; CHECK-LABEL: define void @reduce
+; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: }
+)",
+                     /*match_optimized_ir=*/true);
+
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
 
@@ -212,6 +213,18 @@ class KerasInitializersTest(test.TestCase):
       self.assertIn('init_ops_v2', rn.__class__.__module__)
     finally:
       tf2._force_enable = tf2_force_enabled  # pylint: disable=protected-access
+
+  def test_custom_initializer_saving(self):
+
+    def my_initializer(shape, dtype=None):
+      return array_ops.ones(shape, dtype=dtype)
+
+    inputs = keras.Input((10,))
+    outputs = keras.layers.Dense(1, kernel_initializer=my_initializer)(inputs)
+    model = keras.Model(inputs, outputs)
+    model2 = model.from_config(
+        model.get_config(), custom_objects={'my_initializer': my_initializer})
+    self.assertEqual(model2.layers[1].kernel_initializer, my_initializer)
 
 
 if __name__ == '__main__':

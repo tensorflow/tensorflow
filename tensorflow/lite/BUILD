@@ -75,6 +75,9 @@ cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/core:tflite_portable_logging",
@@ -399,7 +402,9 @@ cc_library(
         "//tensorflow:android": ["-llog"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(

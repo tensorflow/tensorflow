@@ -43,11 +43,11 @@ py_library(
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "debug_pip",
+    data = [":grpc_tensorflow_server"],
     deps = [
         ":cli_test_utils",
         ":debug_py",
         ":grpc_debug_test_server",
-        ":grpc_tensorflow_server",
         ":grpc_tensorflow_server_lib",
         ":offline_analyzer_lib",
         ":session_debug_testlib",
@@ -1130,6 +1130,8 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
+        # TODO(b/129786860): Re-enable this test.
+        "notap",
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit

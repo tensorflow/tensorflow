@@ -49,19 +49,21 @@ EagerContext::EagerContext(const SessionOptions& opts,
                            std::unique_ptr<const DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
     : EagerContext(opts, default_policy, async, device_mgr.release(),
-                   /*device_mgr_owned*/ true, rendezvous) {}
+                   /*device_mgr_owned*/ true, rendezvous, nullptr) {}
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
                            bool async, const DeviceMgr* device_mgr,
-                           bool device_mgr_owned, Rendezvous* rendezvous)
+                           bool device_mgr_owned, Rendezvous* rendezvous,
+                           const CustomKernelCreator* custom_kernel_creator)
     : policy_(default_policy),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
           device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-          opts.config.graph_options().optimizer_options(), thread_pool_.get())),
+          opts.config.graph_options().optimizer_options(), thread_pool_.get(),
+          nullptr, custom_kernel_creator)),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),

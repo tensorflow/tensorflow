@@ -360,6 +360,11 @@ Status Member::MergeDeviceNames(const Member& other,
       &requested_device_name_copy, other.requested_device_name_,
       allow_soft_placement));
 
+  DeviceNameUtils::EnsureSpecification(&requested_device_name_copy,
+                                       assigned_device_name_copy);
+  DeviceNameUtils::EnsureSpecification(&requested_device_name_copy,
+                                       resource_device_name_copy);
+
   // We checked for all errors, now change the devices.
   assigned_device_name_ = assigned_device_name_copy;
   resource_device_name_ = resource_device_name_copy;
@@ -914,7 +919,9 @@ Status ColocationGraph::GetDevicesForNode(
             "required incompatible device '",
             DeviceNameUtils::ParsedNameToString(
                 root_member.requested_device_name()),
-            "'", debug_info);
+            "'. All available devices [",
+            absl::StrJoin(DevicesToString(device_set_->devices()), ", "), "]. ",
+            debug_info);
       }
     }
   } else {
@@ -1009,10 +1016,15 @@ string ColocationGraph::DebugInfo(const int node_root) {
     strings::StrAppend(&text, "\n", td.first, ": ", td.second);
   }
   strings::StrAppend(&text,
-                     "\n\nColocation members and user-requested devices:");
+                     "\n\nColocation members, user-requested devices, and "
+                     "framework assigned devices, if any:");
   for (const Node* node : colocation_nodes) {
     strings::StrAppend(&text, "\n  ", node->name(), " (", node->type_string(),
                        ") ", node->requested_device());
+    if (node->has_assigned_device_name()) {
+      strings::StrAppend(
+          &text, " framework assigned device=", node->assigned_device_name());
+    }
   }
   strings::StrAppend(&text, "\n");
 

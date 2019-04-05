@@ -624,10 +624,10 @@ class FusedConv2DOpTest : public OpsTestBase {
     RunAndFetch(root, "with_bias", output, allow_gpu_device);
   }
 
-  void RunConv2DWithBiasAndRelu(const Tensor& input_data,
-                                const Tensor& filter_data,
-                                const Tensor& bias_data, Tensor* output,
-                                bool allow_gpu_device = false, int stride = 1) {
+  void RunConv2DWithBiasAndActivation(
+      const Tensor& input_data, const Tensor& filter_data,
+      const Tensor& bias_data, const string& activation_type, Tensor* output,
+      bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     ops::Conv2D conv = ops::Conv2D(
@@ -640,9 +640,17 @@ class FusedConv2DOpTest : public OpsTestBase {
         root.WithOpName("with_bias"), conv,
         ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
 
-    ops::Relu with_relu = ops::Relu(root.WithOpName("with_relu"), with_bias);
+    if (activation_type == "Relu") {
+      ops::Relu(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "Relu6") {
+      ops::Relu6(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "Elu") {
+      ops::Elu(root.WithOpName("with_activation"), with_bias);
+    } else {
+      ops::Identity(root.WithOpName("with_activation"), with_bias);
+    }
 
-    RunAndFetch(root, "with_relu", output, allow_gpu_device);
+    RunAndFetch(root, "with_activation", output, allow_gpu_device);
   }
 
   void RunConv2DWithBatchNorm(const Tensor& input_data,
@@ -674,10 +682,11 @@ class FusedConv2DOpTest : public OpsTestBase {
     RunAndFetch(root, "with_fused_batch_norm", output, allow_gpu_device);
   }
 
-  void RunConv2DWithBatchNormAndRelu(
+  void RunConv2DWithBatchNormAndActivation(
       const Tensor& input_data, const Tensor& filter_data,
       const Tensor& scale_data, const Tensor& offset_data,
-      const Tensor& mean_data, const Tensor& variance_data, Tensor* output,
+      const Tensor& mean_data, const Tensor& variance_data,
+      const string& activation_type, Tensor* output,
       bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
@@ -698,10 +707,18 @@ class FusedConv2DOpTest : public OpsTestBase {
         ops::Const(root.WithOpName("var"), Input::Initializer(variance_data)),
         attr);
 
-    ops::Relu with_relu =
-        ops::Relu(root.WithOpName("with_relu"), with_fused_batch_norm.y);
+    if (activation_type == "Relu") {
+      ops::Relu(root.WithOpName("with_activation"), with_fused_batch_norm.y);
+    } else if (activation_type == "Relu6") {
+      ops::Relu6(root.WithOpName("with_activation"), with_fused_batch_norm.y);
+    } else if (activation_type == "Elu") {
+      ops::Elu(root.WithOpName("with_activation"), with_fused_batch_norm.y);
+    } else {
+      ops::Identity(root.WithOpName("with_activation"),
+                    with_fused_batch_norm.y);
+    }
 
-    RunAndFetch(root, "with_relu", output, allow_gpu_device);
+    RunAndFetch(root, "with_activation", output, allow_gpu_device);
   }
 
   void RunFusedConv2DOp(const Tensor& input_data, const Tensor& filter_data,
@@ -855,25 +872,27 @@ class FusedConv2DOpTest : public OpsTestBase {
                              run_default, run_fused);
   }
 
-  // Verifies that computing Conv2D+BiasAdd+Relu in a graph is identical to
-  // FusedConv2D.
-  void VerifyConv2DWithBiasAndRelu(int filter_size, int filter_count,
-                                   int depth = kDepth,
-                                   int image_width = kImageWidth,
-                                   int image_height = kImageHeight,
-                                   int image_batch_count = kImageBatchCount) {
+  // Verifies that computing Conv2D+BiasAdd+{Activation} in a graph is identical
+  // to FusedConv2D.
+  void VerifyConv2DWithBiasAndActivation(
+      const string& activation, int filter_size, int filter_count,
+      int depth = kDepth, int image_width = kImageWidth,
+      int image_height = kImageHeight,
+      int image_batch_count = kImageBatchCount) {
     const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out,
-                                   /*allow_gpu_device=*/true);
+        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
+                            const Tensor& bias_data, Tensor* out) {
+          RunConv2DWithBiasAndActivation(
+              input_data, filter_data, bias_data, activation, out,
+              /*allow_gpu_device=*/activation == "Relu");
         };
 
     const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
+        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
+                            const Tensor& bias_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data, {bias_data},
-                           {"BiasAdd", "Relu"}, out, /*allow_gpu_device=*/true);
+                           {"BiasAdd", activation}, out,
+                           /*allow_gpu_device=*/activation == "Relu");
         };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
@@ -912,30 +931,31 @@ class FusedConv2DOpTest : public OpsTestBase {
                                     filter_count, run_default, run_fused);
   }
 
-  // Verifies that computing Conv2D+FusedBatchNorm+Relu in a graph is identical
-  // to FusedConv2D.
-  void VerifyConv2DWithBatchNormAndRelu(
-      int filter_size, int filter_count, int depth = kDepth,
-      int image_width = kImageWidth, int image_height = kImageHeight,
+  // Verifies that computing Conv2D+FusedBatchNorm+{Activation} in a graph is
+  // identical to FusedConv2D.
+  void VerifyConv2DWithBatchNormAndActivation(
+      const string& activation, int filter_size, int filter_count,
+      int depth = kDepth, int image_width = kImageWidth,
+      int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
     const BatchNormGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
-          RunConv2DWithBatchNormAndRelu(input_data, filter_data, scale_data,
-                                        offset_data, mean_data, variance_data,
-                                        out);
+        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
+                            const Tensor& scale_data, const Tensor& offset_data,
+                            const Tensor& mean_data,
+                            const Tensor& variance_data, Tensor* out) {
+          RunConv2DWithBatchNormAndActivation(
+              input_data, filter_data, scale_data, offset_data, mean_data,
+              variance_data, activation, out);
         };
 
     const BatchNormGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
+        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
+                            const Tensor& scale_data, const Tensor& offset_data,
+                            const Tensor& mean_data,
+                            const Tensor& variance_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data,
                            {scale_data, offset_data, mean_data, variance_data},
-                           {"FusedBatchNorm", "Relu"}, out);
+                           {"FusedBatchNorm", activation}, out);
         };
 
     VerifyFusedBatchNormTensorsNear(depth, image_width, image_height,
@@ -956,7 +976,7 @@ TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest);
 TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest);
 
 // -------------------------------------------------------------------------- //
-// Conv2D + BiasAdd + {Relu}                                                  //
+// Conv2D + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
 
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolution) {
@@ -977,26 +997,37 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolution) {
   this->VerifyConv2DWithBias(filter_size, filter_count);
 }
 
-TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndRelu) {
+// Relu --------------------------------------------------------------------- //
+
+TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
   const int filter_count = 12;
-  this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
+                                            filter_count);
+  }
 }
 
-TYPED_TEST_P(FusedConv2DWithBiasOpTest, ImageSizeConvolutionAndRelu) {
+TYPED_TEST_P(FusedConv2DWithBiasOpTest, ImageSizeConvolutionAndActivation) {
   const int filter_size = TestFixture::kImageWidth;
   const int filter_count = 12;
-  this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
+                                            filter_count);
+  }
 }
 
-TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
+TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
+                                            filter_count);
+  }
 }
 
 // -------------------------------------------------------------------------- //
-// Conv2D + FusedBatchNorm + {Relu}                                           //
+// Conv2D + FusedBatchNorm + {Activation}                                     //
 // -------------------------------------------------------------------------- //
 
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolution) {
@@ -1017,39 +1048,49 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolution) {
   this->VerifyConv2DWithBatchNorm(filter_size, filter_count);
 }
 
-TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolutionAndRelu) {
+TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
   const int filter_count = 12;
-  this->VerifyConv2DWithBatchNormAndRelu(filter_size, filter_count);
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
+                                                 filter_count);
+  }
 }
 
-TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, ImageSizeConvolutionAndRelu) {
+TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
+             ImageSizeConvolutionAndActivation) {
   const int filter_size = TestFixture::kImageWidth;
   const int filter_count = 12;
-  this->VerifyConv2DWithBatchNormAndRelu(filter_size, filter_count);
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
+                                                 filter_count);
+  }
 }
 
-TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndRelu) {
+TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  this->VerifyConv2DWithBatchNormAndRelu(filter_size, filter_count);
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
+                                                 filter_count);
+  }
 }
 
-REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,    //
-                            OneByOneConvolution,          //
-                            ImageSizeConvolution,         //
-                            SpatialConvolution,           //
-                            OneByOneConvolutionAndRelu,   //
-                            ImageSizeConvolutionAndRelu,  //
-                            SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,          //
+                            OneByOneConvolution,                //
+                            ImageSizeConvolution,               //
+                            SpatialConvolution,                 //
+                            OneByOneConvolutionAndActivation,   //
+                            ImageSizeConvolutionAndActivation,  //
+                            SpatialConvolutionAndActivation);
 
-REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,  //
-                            OneByOneConvolution,             //
-                            ImageSizeConvolution,            //
-                            SpatialConvolution,              //
-                            OneByOneConvolutionAndRelu,      //
-                            ImageSizeConvolutionAndRelu,     //
-                            SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
+                            OneByOneConvolution,                //
+                            ImageSizeConvolution,               //
+                            SpatialConvolution,                 //
+                            OneByOneConvolutionAndActivation,   //
+                            ImageSizeConvolutionAndActivation,  //
+                            SpatialConvolutionAndActivation);
 
 using FusedBiasAddDataTypes = ::testing::Types<float, double>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
@@ -1058,476 +1099,5 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
 using FusedBatchNormDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
                                FusedBatchNormDataTypes);
-
-////////////////////////////////////////////////////////////////////////////////
-// Performance benchmarks for the FusedConv2DWithBiasOp.                      //
-////////////////////////////////////////////////////////////////////////////////
-
-struct Conv2DGraph {
-  Graph* graph;
-  Node* conv2d;
-};
-
-struct Conv2DWithBiasGraph {
-  Graph* graph;
-  Node* conv2d;
-  Node* bias;
-};
-
-struct Conv2DWithBiasAndReluGraph {
-  Graph* graph;
-  Node* conv2d;
-  Node* bias;
-  Node* relu;
-};
-
-struct Conv2DWithBatchNormGraph {
-  Graph* graph;
-  Node* conv2d;
-  Node* batch_norm;
-};
-
-struct Conv2DWithBatchNormAndReluGraph {
-  Graph* graph;
-  Node* conv2d;
-  Node* batch_norm;
-  Node* relu;
-};
-
-static Tensor MakeRandomTensor(const TensorShape& shape) {
-  Tensor tensor(DT_FLOAT, TensorShape(shape));
-  tensor.flat<float>() = tensor.flat<float>().setRandom();
-  return tensor;
-}
-
-// Creates a simple Tensorflow graph with single Conv2D node.
-static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
-                          int filter_w, int filter_h, int out_depth) {
-  Graph* graph = new Graph(OpRegistry::Global());
-
-  Tensor images_t = MakeRandomTensor({batch, height, width, in_depth});
-  Tensor filter_t = MakeRandomTensor({filter_w, filter_h, in_depth, out_depth});
-
-  Node* images = test::graph::Constant(graph, images_t, "images");
-  Node* filter = test::graph::Constant(graph, filter_t, "filter");
-
-  Node* conv2d;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "Conv2D")
-                  .Input(images)
-                  .Input(filter)
-                  .Attr("T", DT_FLOAT)
-                  .Attr("strides", {1, 1, 1, 1})
-                  .Attr("padding", "SAME")
-                  .Finalize(graph, &conv2d));
-
-  return {graph, conv2d};
-}
-
-// Creates a Tensorflow graph with a Conv2D node followed by BiasAdd.
-static Conv2DWithBiasGraph Conv2DWithBias(int batch, int height, int width,
-                                          int in_depth, int filter_w,
-                                          int filter_h, int out_depth) {
-  Conv2DGraph conv_graph =
-      Conv2D(batch, height, width, in_depth, filter_w, filter_h, out_depth);
-
-  Graph* graph = conv_graph.graph;
-  Node* conv2d = conv_graph.conv2d;
-
-  Tensor bias_t = MakeRandomTensor({out_depth});
-  Node* bias = test::graph::Constant(graph, bias_t, "bias");
-
-  Node* out;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("bias"), "BiasAdd")
-                  .Input(conv2d)
-                  .Input(bias)
-                  .Attr("T", DT_FLOAT)
-                  .Attr("data_format", "NHWC")
-                  .Finalize(graph, &out));
-
-  return {graph, conv2d, out};
-}
-
-// Creates a Tensorflow graph with a Conv2D node followed by BiasAdd and Relu.
-static Conv2DWithBiasAndReluGraph Conv2DWithBiasAndRelu(int batch, int height,
-                                                        int width, int in_depth,
-                                                        int filter_w,
-                                                        int filter_h,
-                                                        int out_depth) {
-  Conv2DWithBiasGraph conv_graph = Conv2DWithBias(
-      batch, height, width, in_depth, filter_w, filter_h, out_depth);
-
-  Graph* graph = conv_graph.graph;
-  Node* conv2d = conv_graph.conv2d;
-  Node* bias = conv_graph.bias;
-
-  Node* relu;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("relu"), "Relu")
-                  .Input(bias)
-                  .Attr("T", DT_FLOAT)
-                  .Finalize(graph, &relu));
-
-  return {graph, conv2d, bias, relu};
-}
-
-// Creates a Tensorflow graph with a Conv2D node followed by FusedBatchNorm.
-static Conv2DWithBatchNormGraph Conv2DWithBatchNorm(int batch, int height,
-                                                    int width, int in_depth,
-                                                    int filter_w, int filter_h,
-                                                    int out_depth) {
-  Conv2DGraph conv_graph =
-      Conv2D(batch, height, width, in_depth, filter_w, filter_h, out_depth);
-
-  Graph* graph = conv_graph.graph;
-  Node* conv2d = conv_graph.conv2d;
-
-  Tensor scale_t = MakeRandomTensor({out_depth});
-  Tensor offset_t = MakeRandomTensor({out_depth});
-  Tensor mean_t = MakeRandomTensor({out_depth});
-  Tensor variance_t = MakeRandomTensor({out_depth});
-
-  Node* scale = test::graph::Constant(graph, scale_t, "scale");
-  Node* offset = test::graph::Constant(graph, offset_t, "offset");
-  Node* mean = test::graph::Constant(graph, mean_t, "mean");
-  Node* variance = test::graph::Constant(graph, variance_t, "variance");
-
-  Node* out;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("batch_norm"), "FusedBatchNorm")
-                  .Input(conv2d)
-                  .Input(scale)
-                  .Input(offset)
-                  .Input(mean)
-                  .Input(variance)
-                  .Attr("T", DT_FLOAT)
-                  .Attr("is_training", false)
-                  .Finalize(graph, &out));
-
-  return {graph, conv2d, out};
-}
-
-// Creates a Tensorflow graph with a Conv2D node followed by FusedBatchNorm and
-// Relu.
-static Conv2DWithBatchNormAndReluGraph Conv2DWithBatchNormAndRelu(
-    int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth) {
-  Conv2DWithBatchNormGraph conv_graph = Conv2DWithBatchNorm(
-      batch, height, width, in_depth, filter_w, filter_h, out_depth);
-
-  Graph* graph = conv_graph.graph;
-  Node* conv2d = conv_graph.conv2d;
-  Node* batch_norm = conv_graph.batch_norm;
-
-  Node* relu;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("relu"), "Relu")
-                  .Input(batch_norm)
-                  .Attr("T", DT_FLOAT)
-                  .Finalize(graph, &relu));
-
-  return {graph, conv2d, batch_norm, relu};
-}
-
-// Creates a tensorflow graph with a single FusedConv2D (with BiasAdd) node and
-// fuses into it additional computations (e.g. Relu).
-static Graph* FusedConv2DWithBias(int batch, int height, int width,
-                                  int in_depth, int filter_w, int filter_h,
-                                  int out_depth,
-                                  const std::vector<string>& fused_ops = {}) {
-  Graph* graph = new Graph(OpRegistry::Global());
-
-  Tensor images_t = MakeRandomTensor({batch, height, width, in_depth});
-  Tensor filter_t = MakeRandomTensor({filter_w, filter_h, in_depth, out_depth});
-  Tensor bias_t = MakeRandomTensor({out_depth});
-
-  Node* images = test::graph::Constant(graph, images_t, "images");
-  Node* filter = test::graph::Constant(graph, filter_t, "filter");
-  Node* bias = test::graph::Constant(graph, bias_t, "bias");
-
-  std::vector<NodeBuilder::NodeOut> args = {bias};
-
-  Node* conv;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
-                  .Input(images)
-                  .Input(filter)
-                  .Attr("num_args", 1)
-                  .Input(args)
-                  .Attr("T", DT_FLOAT)
-                  .Attr("strides", {1, 1, 1, 1})
-                  .Attr("padding", "SAME")
-                  .Attr("fused_ops", fused_ops)
-                  .Finalize(graph, &conv));
-
-  return graph;
-}
-
-// Creates a tensorflow graph with a single FusedConv2D (with FusedBatchNorm)
-// node and fuses into it additional computations (e.g. Relu).
-static Graph* FusedConv2DWithBatchNorm(
-    int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const std::vector<string>& fused_ops = {}) {
-  Graph* graph = new Graph(OpRegistry::Global());
-
-  Tensor images_t = MakeRandomTensor({batch, height, width, in_depth});
-  Tensor filter_t = MakeRandomTensor({filter_w, filter_h, in_depth, out_depth});
-  Tensor scale_t = MakeRandomTensor({out_depth});
-  Tensor offset_t = MakeRandomTensor({out_depth});
-  Tensor mean_t = MakeRandomTensor({out_depth});
-  Tensor variance_t = MakeRandomTensor({out_depth});
-
-  Node* images = test::graph::Constant(graph, images_t, "images");
-  Node* filter = test::graph::Constant(graph, filter_t, "filter");
-  Node* scale = test::graph::Constant(graph, scale_t, "scale");
-  Node* offset = test::graph::Constant(graph, offset_t, "offset");
-  Node* mean = test::graph::Constant(graph, mean_t, "mean");
-  Node* variance = test::graph::Constant(graph, variance_t, "variance");
-
-  std::vector<NodeBuilder::NodeOut> args = {scale, offset, mean, variance};
-
-  Node* conv;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
-                  .Input(images)
-                  .Input(filter)
-                  .Attr("num_args", 4)
-                  .Input(args)
-                  .Attr("T", DT_FLOAT)
-                  .Attr("strides", {1, 1, 1, 1})
-                  .Attr("padding", "SAME")
-                  .Attr("fused_ops", fused_ops)
-                  .Finalize(graph, &conv));
-
-  return graph;
-}
-
-// Macro arguments names: --------------------------------------------------- //
-//    N: batch size
-//    H: height
-//    W: width
-//    C: channels
-//   FC: filter count
-//   FH: filter height
-//   FW: filter width
-
-#define BM_SETUP(N, H, W, C, type, LABEL, NAME)                               \
-  testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) * (C)); \
-  testing::SetLabel(LABEL);
-
-#define BM_NAME(name, type, N, H, W, C, FW, FH, FC) \
-  name##_##type##_##N##_##H##_##W##_##C##_##FW##_##FH##_##FC
-
-#define BM_Conv2D(N, H, W, C, FW, FH, FC, type, LABEL)                       \
-  static void BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC)(int iters) {  \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                               \
-    test::Benchmark(#type, Conv2D(N, H, W, C, FW, FH, FC).graph).Run(iters); \
-  }                                                                          \
-  BENCHMARK(BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC));
-
-#define BM_Conv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
-  static void BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH,       \
-                      FC)(int iters) {                                   \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                           \
-    test::Benchmark(#type, Conv2DWithBias(N, H, W, C, FW, FH, FC).graph) \
-        .Run(iters);                                                     \
-  }                                                                      \
-  BENCHMARK(BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH, FC));
-
-#define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
-  static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                    \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                            \
-    test::Benchmark(#type,                                                \
-                    Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC).graph)  \
-        .Run(iters);                                                      \
-  }                                                                       \
-  BENCHMARK(BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC));
-
-#define BM_FusedConv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
-  static void BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH,       \
-                      FC)(int iters) {                                        \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type,                                                    \
-                    FusedConv2DWithBias(N, H, W, C, FW, FH, FC, {"BiasAdd"})) \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH, FC));
-
-#define BM_FusedConv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
-  static void BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                         \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                 \
-    test::Benchmark(#type, FusedConv2DWithBias(N, H, W, C, FW, FH, FC,         \
-                                               {"BiasAdd", "Relu"}))           \
-        .Run(iters);                                                           \
-  }                                                                            \
-  BENCHMARK(                                                                   \
-      BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC));
-
-#define BM_Conv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)           \
-  static void BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH,       \
-                      FC)(int iters) {                                        \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type, Conv2DWithBatchNorm(N, H, W, C, FW, FH, FC).graph) \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC));
-
-#define BM_Conv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
-  static void BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                         \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                 \
-    test::Benchmark(#type,                                                     \
-                    Conv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC).graph)  \
-        .Run(iters);                                                           \
-  }                                                                            \
-  BENCHMARK(                                                                   \
-      BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, FC));
-
-#define BM_FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)     \
-  static void BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, \
-                      FC)(int iters) {                                       \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                               \
-    test::Benchmark(#type, FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC,  \
-                                                    {"FusedBatchNorm"}))     \
-        .Run(iters);                                                         \
-  }                                                                          \
-  BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC));
-
-#define BM_FusedConv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type,      \
-                                           LABEL)                             \
-  static void BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C,   \
-                      FW, FH, FC)(int iters) {                                \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type,                                                    \
-                    FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC,          \
-                                             {"FusedBatchNorm", "Relu"}))     \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C, FW, \
-                    FH, FC));
-
-// -------------------------------------------------------------------------- //
-// Pixel CNN convolutions.
-// -------------------------------------------------------------------------- //
-
-// 1x1 Convolution: MatMulFunctor
-
-BM_Conv2D(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_Conv2D(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_Conv2D(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-// 1) BiasAdd {+ Relu}
-
-BM_Conv2DWithBias(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_Conv2DWithBias(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_Conv2DWithBias(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-BM_FusedConv2DWithBias(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_FusedConv2DWithBias(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_FusedConv2DWithBias(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-// 2) FusedBatchNorm {+ Relu}
-
-BM_Conv2DWithBatchNorm(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_Conv2DWithBatchNorm(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_Conv2DWithBatchNorm(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-BM_Conv2DWithBatchNormAndRelu(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_Conv2DWithBatchNormAndRelu(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_Conv2DWithBatchNormAndRelu(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-BM_FusedConv2DWithBatchNorm(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_FusedConv2DWithBatchNorm(16, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 16");
-BM_FusedConv2DWithBatchNorm(32, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 32");
-
-BM_FusedConv2DWithBatchNormAndRelu(8, 32, 32, 128, 1, 1, 1024, cpu, "1x1 /b 8");
-BM_FusedConv2DWithBatchNormAndRelu(16, 32, 32, 128, 1, 1, 1024, cpu,
-                                   "1x1 /b 16");
-BM_FusedConv2DWithBatchNormAndRelu(32, 32, 32, 128, 1, 1, 1024, cpu,
-                                   "1x1 /b 32");
-
-// -------------------------------------------------------------------------- //
-// 3x3 Convolution: SpatialConvolution
-// -------------------------------------------------------------------------- //
-
-BM_Conv2D(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_Conv2D(16, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 16");
-BM_Conv2D(32, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 32");
-
-// 1) BiasAdd {+ Relu}
-
-BM_Conv2DWithBias(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_Conv2DWithBias(16, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 16");
-BM_Conv2DWithBias(32, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 32");
-
-BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 16");
-BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 32");
-
-BM_FusedConv2DWithBias(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_FusedConv2DWithBias(16, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 16");
-BM_FusedConv2DWithBias(32, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 32");
-
-BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 16");
-BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 32");
-
-// 2) FusedBatchNorm {+ Relu}
-
-BM_Conv2DWithBatchNorm(8, 32, 32, 128, 3, 3, 1024, cpu, "1x1 /b 8");
-BM_Conv2DWithBatchNorm(16, 32, 32, 128, 3, 3, 1024, cpu, "1x1 /b 16");
-BM_Conv2DWithBatchNorm(32, 32, 32, 128, 3, 3, 1024, cpu, "1x1 /b 32");
-
-BM_Conv2DWithBatchNormAndRelu(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_Conv2DWithBatchNormAndRelu(16, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 16");
-BM_Conv2DWithBatchNormAndRelu(32, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 32");
-
-BM_FusedConv2DWithBatchNorm(8, 32, 32, 128, 3, 3, 1024, cpu, "1x1 /b 8");
-BM_FusedConv2DWithBatchNorm(16, 32, 32, 128, 3, 3, 1024, cpu, "1x1 /b 16");
-BM_FusedConv2DWithBatchNorm(32, 32, 32, 128, 3, 3, 1024, cpu, "1x1 /b 32");
-
-BM_FusedConv2DWithBatchNormAndRelu(8, 32, 32, 128, 3, 3, 1024, cpu, "3x3 /b 8");
-BM_FusedConv2DWithBatchNormAndRelu(16, 32, 32, 128, 3, 3, 1024, cpu,
-                                   "3x3 /b 16");
-BM_FusedConv2DWithBatchNormAndRelu(32, 32, 32, 128, 3, 3, 1024, cpu,
-                                   "3x3 /b 32");
-
-#if GOOGLE_CUDA
-// -------------------------------------------------------------------------- //
-// 1x1 Convolution
-// -------------------------------------------------------------------------- //
-
-BM_Conv2D(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
-BM_Conv2D(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
-BM_Conv2D(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
-
-BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
-BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
-BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
-
-BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
-BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
-BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
-
-// -------------------------------------------------------------------------- //
-// 3x3 Convolution
-// -------------------------------------------------------------------------- //
-
-BM_Conv2D(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
-BM_Conv2D(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
-BM_Conv2D(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
-
-BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
-BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
-BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
-
-BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
-BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
-BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
-#endif
 
 }  // namespace tensorflow
