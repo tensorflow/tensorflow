@@ -5237,7 +5237,7 @@ TEST_F(OpConverterTest, ConvertSpaceToDepth) {
   TestConvertSpaceToDepth<DT_INT32>(this);
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 2, 0)
 // Get the NodeDef for ClipByValue.
 NodeDef GetClipByValueNodeDef(DataType dtype) {
   Scope s = Scope::NewRootScope();
@@ -5354,7 +5354,7 @@ TEST_F(OpConverterTest, ConvertClipByValue) {
   // TRT does not support INT32 for this layer.
   // TestConvertClipByValue<DT_INT32>(this);
 }
-#endif // IS_TRT_VERSION_GE(5, 1, 0, 0)
+#endif // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
 }  // namespace convert
 }  // namespace tensorrt
