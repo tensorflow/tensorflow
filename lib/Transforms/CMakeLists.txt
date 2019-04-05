@@ -1,7 +1,6 @@
 add_llvm_library(MLIRTransforms
   Canonicalizer.cpp
   CMakeLists.txt
-  ConstantFold.cpp
   CSE.cpp
   DialectConversion.cpp
   DmaGeneration.cpp
@@ -16,6 +15,7 @@ add_llvm_library(MLIRTransforms
   PipelineDataTransfer.cpp
   SimplifyAffineStructures.cpp
   StripDebugInfo.cpp
+  TestConstantFold.cpp
   Utils/GreedyPatternRewriteDriver.cpp
   Utils/LoopUtils.cpp
   Utils/Utils.cpp

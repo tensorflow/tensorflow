@@ -26,6 +26,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 
+#include <numeric>
+
 namespace toy {
 
 namespace {
