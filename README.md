@@ -11,6 +11,11 @@ Note that this repository contains the core of the MLIR framework. The
 TensorFlow compilers we are building on top of MLIR will be part of the
 main TensorFlow repository soon.
 
+# How to Contribute
+
+We'd love to accept your patches and contributions to this project soon. But we
+are not yet ready to accept community contributions at this time.
+
 ## More resources
 
 For more information on MLIR, please see:
