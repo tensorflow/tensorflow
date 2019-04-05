@@ -313,7 +313,7 @@ def eager_py_func(func, inp, Tout, name=None):
   This function allows expressing computations in a TensorFlow graph as
   Python functions. In particular, it wraps a Python function `func`
   in a once-differentiable TensorFlow operation that executes it with eager
-  execution enabled. As a consequence, `tf.contrib.eager.py_func` makes it
+  execution enabled. As a consequence, `tf.py_function` makes it
   possible to express control flow using Python constructs (`if`, `while`,
   `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
   `tf.while_loop`). For example, you might use `tf.py_function` to
@@ -339,11 +339,11 @@ def eager_py_func(func, inp, Tout, name=None):
     y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
   ```
 
-  You can also use `tf.contrib.eager.py_func` to debug your models at runtime
+  You can also use `tf.py_function` to debug your models at runtime
   using Python tools, i.e., you can isolate portions of your code that
   you want to debug, wrap them in Python functions and insert `pdb` tracepoints
   or print statements as desired, and wrap those functions in
-  `tf.contrib.eager.py_func`.
+  `tf.py_function`.
 
   For more information on eager execution, see the
   [Eager guide](https://tensorflow.org/guide/eager).
@@ -352,7 +352,7 @@ def eager_py_func(func, inp, Tout, name=None):
   the latter, the former lets you use TensorFlow operations in the wrapped
   Python function. In particular, while `tf.py_func` only runs on CPUs and
   wraps functions that take NumPy arrays as inputs and return NumPy arrays as
-  outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
+  outputs, `tf.py_function` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
@@ -366,7 +366,7 @@ def eager_py_func(func, inp, Tout, name=None):
   * The operation must run in the same address space as the Python program
     that calls `tf.py_function()`. If you are using distributed
     TensorFlow, you must run a `tf.train.Server` in the same process as the
-    program that calls `tf.contrib.eager.py_func()` and you must pin the created
+    program that calls `tf.py_function()` and you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
 
 
