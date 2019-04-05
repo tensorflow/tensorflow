@@ -60,6 +60,7 @@ tools.extend([
     ToolSubst('toy-ch1', unresolved='ignore'),
     ToolSubst('toy-ch2', unresolved='ignore'),
     ToolSubst('toy-ch3', unresolved='ignore'),
+    ToolSubst('toy-ch4', unresolved='ignore'),
 ])
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

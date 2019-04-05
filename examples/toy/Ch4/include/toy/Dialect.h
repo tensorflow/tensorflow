@@ -234,7 +234,8 @@ public:
 };
 
 class TransposeOp : public mlir::Op<TransposeOp, mlir::OpTrait::OneOperand,
-                                    mlir::OpTrait::OneResult> {
+                                    mlir::OpTrait::OneResult,
+                                    mlir::OpTrait::HasNoSideEffect> {
 public:
   static llvm::StringRef getOperationName() { return "toy.transpose"; }
 
@@ -248,6 +249,11 @@ public:
   static void build(mlir::Builder *builder, mlir::OperationState *state,
                     mlir::Value *value);
 
+  // Register our patterns for rewrite by the Canonicalization framework.
+  static void
+  getCanonicalizationPatterns(mlir::OwningRewritePatternList &results,
+                              mlir::MLIRContext *context);
+
   /// Inherit constructor.
   using Op::Op;
 };
@@ -258,7 +264,8 @@ public:
 ///    %0 = "toy.transpose"(%arg1) : (!toy<"array<10>">) -> !toy<"array<5, 2>">
 ///
 class ReshapeOp : public mlir::Op<ReshapeOp, mlir::OpTrait::OneOperand,
-                                  mlir::OpTrait::OneResult> {
+                                  mlir::OpTrait::OneResult,
+                                  mlir::OpTrait::HasNoSideEffect> {
 public:
   static llvm::StringRef getOperationName() { return "toy.reshape"; }
 
@@ -272,6 +279,11 @@ public:
   static void build(mlir::Builder *builder, mlir::OperationState *state,
                     mlir::Value *value, ToyArrayType reshapedType);
 
+  // Register our patterns for rewrite by the Canonicalization framework.
+  static void
+  getCanonicalizationPatterns(mlir::OwningRewritePatternList &results,
+                              mlir::MLIRContext *context);
+
   /// Inherit constructor.
   using Op::Op;
 };
@@ -280,7 +292,8 @@ public:
 /// a matrix multiplication is implemented, while for one dimensional array a
 /// dot product is performed.
 class MulOp : public mlir::Op<MulOp, mlir::OpTrait::NOperands<2>::Impl,
-                              mlir::OpTrait::OneResult> {
+                              mlir::OpTrait::OneResult,
+                              mlir::OpTrait::HasNoSideEffect> {
 public:
   static llvm::StringRef getOperationName() { return "toy.mul"; }
 
@@ -306,7 +319,8 @@ public:
 
 /// Element wise addition of two arrays. The shape must match.
 class AddOp : public mlir::Op<AddOp, mlir::OpTrait::NOperands<2>::Impl,
-                              mlir::OpTrait::OneResult> {
+                              mlir::OpTrait::OneResult,
+                              mlir::OpTrait::HasNoSideEffect> {
 public:
   static llvm::StringRef getOperationName() { return "toy.add"; }
 

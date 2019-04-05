@@ -310,12 +310,9 @@ void ReturnOp::build(mlir::Builder *builder, mlir::OperationState *state,
 }
 
 mlir::LogicalResult ReturnOp::verify() {
-  if (getNumOperands() > 1) {
-    std::string msg;
-    raw_string_ostream os(msg);
-    os << "expects zero or one operand, got " << getNumOperands();
-    return emitOpError(os.str());
-  }
+  if (getNumOperands() > 1)
+    return emitOpError("expects zero or one operand, got " +
+                       Twine(getNumOperands()));
   if (hasOperand() && failed(verifyToySingleOperand(this)))
     return mlir::failure();
   return mlir::success();
