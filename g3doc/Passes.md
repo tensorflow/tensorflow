@@ -4,7 +4,7 @@ This document describes the available MLIR passes and their contracts.
 
 [TOC]
 
-## Affine control lowering (`-lower-affine`) {#lower-affine-apply}
+## Affine control lowering (`-lower-affine`)
 
 Convert operations related to affine control into a graph of blocks using
 operations from the standard dialect.
@@ -51,7 +51,7 @@ already present before the pass.
     they do not depend on the loop iterator value or on the result of
     `affine.apply`.
 
-## Conversion from Standard to LLVM IR dialect (`-convert-to-llvmir`) {#convert-to-llvmir}
+## Conversion from Standard to LLVM IR dialect (`-convert-to-llvmir`)
 
 Convert standard operations into the LLVM IR dialect operations.
 
@@ -76,7 +76,7 @@ value is returned, packed into an LLVM IR struct type. Function calls and
 returns are updated accordingly. Block argument types are updated to use LLVM IR
 types.
 
-## DMA generation (`-dma-generate`) {#dma-generate}
+## DMA generation (`-dma-generate`)
 
 Replaces all loads and stores on memref's living in 'slowMemorySpace' by
 introducing DMA operations (strided DMA if necessary) to transfer data to/from
@@ -148,17 +148,17 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
 Performs tiling or blocking of loop nests. It currently works on perfect loop
 nests.
 
-## Loop unroll (`-loop-unroll`) {#loop-unroll}
+## Loop unroll (`-loop-unroll`)
 
 This pass implements loop unrolling. It is able to unroll loops with arbitrary
 bounds, and generate a cleanup loop when necessary.
 
-## Loop unroll and jam (`-loop-unroll-jam`) {#loop-unroll-jam}
+## Loop unroll and jam (`-loop-unroll-jam`)
 
 This pass implements unroll and jam for loops. It works on both perfect or
 imperfect loop nests.
 
-## Loop fusion (`-loop-fusion`) {#loop-fusion}
+## Loop fusion (`-loop-fusion`)
 
 Performs fusion of loop nests using a slicing-based approach. The fused loop
 nests, when possible, are rewritten to access significantly smaller local
@@ -170,7 +170,7 @@ achieved at the expense of redundant computation through a cost model that
 evaluates available choices such as the depth at which a source slice should be
 materialized in the designation slice.
 
-## Memref bound checking (`-memref-bound-check`) {#memref-bound-check}
+## Memref bound checking (`-memref-bound-check`)
 
 Checks all load's and store's on memref's for out of bound accesses, and reports
 any out of bound accesses (both overrun and underrun) with location information.
@@ -184,7 +184,7 @@ test/Transforms/memref-bound-check.mlir:19:13: error: 'load' op memref out of lo
             ^
 ```
 
-## Memref dataflow optimization (`-memref-dataflow-opt`) {#memref-dataflow-opt}
+## Memref dataflow optimization (`-memref-dataflow-opt`)
 
 This pass performs store to load forwarding for memref's to eliminate memory
 accesses and potentially the entire memref if all its accesses are forwarded.
@@ -230,7 +230,7 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 }
 ```
 
-## Memref dependence analysis (`-memref-dependence-check`) {#memref-dependence-check}
+## Memref dependence analysis (`-memref-dependence-check`)
 
 This pass performs dependence analysis to determine dependences between pairs of
 memory operations (load's and store's) on memref's. Dependence analysis exploits
@@ -245,7 +245,7 @@ test/Transforms/memref-dataflow-opt.mlir:232:7: note: dependence from 2 to 1 at 
       store %cf9, %m[%idx] : memref<10xf32>
 ```
 
-## Pipeline data transfer (`-pipeline-data-transfer`) {#pipeline-data-transfer}
+## Pipeline data transfer (`-pipeline-data-transfer`)
 
 This pass performs a transformation to overlap non-blocking DMA operations in a
 loop with computations through double buffering. This is achieved by advancing

@@ -25,11 +25,11 @@ document describes the human-readable textual form.
 
 [TOC]
 
-## High-Level Structure {#high-level-structure}
+## High-Level Structure
 
 The top-level unit of code in MLIR is a [Module](#module). A module contains a
 list of [Functions](#functions). Functions are represented as a composition of
-[operations](#operations) and contain a Control Flow Graph (CFG) of
+[Operations](#operations) and contain a Control Flow Graph (CFG) of
 [Blocks](#blocks), which contain operations and end with
 [terminator operations](#terminator-operations) (like branches).
 
@@ -115,7 +115,7 @@ func @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
 }
 ```
 
-## Notation {#notation}
+## Notation
 
 MLIR has a simple and unambiguous grammar, allowing it to reliably round-trip
 through a textual form. This is important for development of the compiler - e.g.
@@ -145,7 +145,7 @@ Code examples are presented in blue boxes.
 example ::= `b` (`an` | `om`)* `a`
 ```
 
-### Common syntax {#common-syntax}
+### Common syntax
 
 The following core grammar productions are used in this document:
 
@@ -166,7 +166,7 @@ string-literal  ::= `"` [^"\n\f\v\r]* `"`   TODO define escaping rules
 Not listed here, but MLIR does support comments. They use standard BCPL syntax,
 starting with a `//` and going until the end of the line.
 
-### Identifiers and keywords {#identifiers-and-keywords}
+### Identifiers and keywords
 
 Syntax:
 
@@ -203,16 +203,16 @@ The scope of SSA values is defined based on the standard definition of
 identifiers in mapping functions are in scope for the mapping body. Function
 identifiers and mapping identifiers are visible across the entire module.
 
-## Polyhedral Structures {#polyhedral-structures}
+## Polyhedral Structures
 
 MLIR uses techniques from polyhedral compilation to make dependence analysis and
 loop transformations efficient and reliable. This section introduces some of the
 core concepts that are used throughout the document.
 
-### Dimensions and Symbols {#dimensions-and-symbols}
+### Dimensions and Symbols
 
 Dimensions and symbols are the two kinds of identifiers that can appear in the
-polyhedral structures, and are always of '[index](#index-type)' type. Dimensions
+polyhedral structures, and are always of [`index`](#index-type) type. Dimensions
 are declared in parentheses and symbols are declared in square brackets.
 
 Examples:
@@ -255,7 +255,7 @@ Example:
 %x = alloc()[%N] : memref<40x50xf32, #affine_map2to3>
 ```
 
-### Affine Expressions {#affine-expressions}
+### Affine Expressions
 
 Syntax:
 
@@ -306,7 +306,7 @@ examples, $$(i+j+1, j)$$, $$(i \mod 2, j+i)$$, $$(j, i/4, i \mod 4)$$, $$(2i+1,
 j)$$ are two-dimensional affine functions of $$(i, j)$$, but $$(i \cdot j,
 i^2)$$, $$(i \mod j, i/j)$$ are not affine functions of $$(i, j)$$.
 
-### Affine Maps {#affine-maps}
+### Affine Maps
 
 Syntax:
 
@@ -333,7 +333,7 @@ dimension indices and symbols into a list of results, with affine expressions
 combining the indices and symbols. Affine maps distinguish between
 [indices and symbols](#dimensions-and-symbols) because indices are inputs to the
 affine map when the latter may be called through an operation, such as
-[affine.apply](Dialects/Affine.md#'affine.apply'-operation) operation, whereas
+[affine.apply](Dialects/Affine.md#affineapply-operation) operation, whereas
 symbols are bound when an affine mapping is established (e.g. when a memref is
 formed, establishing a memory [layout map](#layout-map)).
 
@@ -341,7 +341,7 @@ Affine maps are used for various core structures in MLIR. The restrictions we
 impose on their form allows powerful analysis and transformation, while keeping
 the representation closed with respect to several operations of interest.
 
-#### Named affine mappings {#named-affine-mappings}
+#### Named affine mappings
 
 Syntax:
 
@@ -376,7 +376,7 @@ Examples:
                                            size (10, s0)>
 ```
 
-### Semi-affine maps {#semi-affine-maps}
+### Semi-affine maps
 
 Semi-affine maps are extensions of affine maps to allow multiplication,
 `floordiv`, `ceildiv`, and `mod` with respect to symbolic identifiers.
@@ -426,7 +426,7 @@ module-header-def ::= semi-affine-map-def
 semi-affine-map ::= semi-affine-map-id | semi-affine-map-inline
 ```
 
-### Integer Sets {#integer-sets}
+### Integer Sets
 
 An integer set is a conjunction of affine constraints on a list of identifiers.
 The identifiers associated with the integer set are separated out into two
@@ -487,7 +487,7 @@ affine.if #set42(%i, %j)[%M, %N] {
 MLIR provides a first class set of polyhedral operations and analyses within the
 [affine dialect](Dialects/Affine.md).
 
-## Type System {#type-system}
+## Type System
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
 number of primitive types (like integers) and also aggregate types for tensors
@@ -525,7 +525,7 @@ ssa-use-and-type ::= ssa-use `:` type
 ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
 ```
 
-### Type Aliases {#type-aliases}
+### Type Aliases
 
 ``` {.ebnf}
 type-alias-def ::= '!' alias-name '=' 'type' type
@@ -548,11 +548,11 @@ Example:
 "foo"(%x) : !avx.m128 -> ()
 ```
 
-### Builtin Types {#builtin-types}
+### Builtin Types
 
 Builtin types consist of only the types needed for the validity of the IR.
 
-#### Function Type {#function-type}
+#### Function Type
 
 Syntax:
 
@@ -565,17 +565,17 @@ function-type ::= type-list-parens `->` function-result-type
 ```
 
 MLIR supports first-class functions: the
-[`constant` operation](#'constant'-operation) produces the address of a function
+[`constant` operation](#constant-operation) produces the address of a function
 as an SSA value. This SSA value may be passed to and returned from functions,
 merged across control flow boundaries with [block arguments](#blocks), and
-called with the [`call_indirect` operation](#'call_indirect'-operation).
+called with the [`call_indirect` operation](#call-indirect-operation).
 
 Function types are also used to indicate the arguments and results of
 [operations](#operations).
 
-### Standard Types {#standard-types}
+### Standard Types
 
-#### Index Type {#index-type}
+#### Index Type
 
 Syntax:
 
@@ -588,12 +588,12 @@ The `index` type is a signless integer whose size is equal to the natural
 machine word of the target ([rationale](Rationale.md#signless-types)) and is
 used by the affine constructs in MLIR. Unlike fixed-size integers. It cannot be
 used as an element of vector, tensor or memref type
-([rationale](Rationale.md#index-type-disallowed-in-aggregate-types)).
+([rationale](Rationale.md#index-type-disallowed-in-vectortensormemref-types)).
 
 **Rationale:** integers of platform-specific bit widths are practical to express
 sizes, dimensionalities and subscripts.
 
-#### Integer Type {#integer-type}
+#### Integer Type
 
 Syntax:
 
@@ -613,7 +613,7 @@ bit one).
 TODO: Need to decide on a representation for quantized integers
 ([initial thoughts](Rationale.md#quantized-integer-operations)).
 
-#### Floating Point Types {#floating-point-types}
+#### Floating Point Types
 
 Syntax:
 
@@ -625,7 +625,7 @@ float-type ::= `f16` | `bf16` | `f32` | `f64`
 MLIR supports float types of certain widths that are widely used as indicated
 above.
 
-#### Vector Type {#vector-type}
+#### Vector Type
 
 Syntax:
 
@@ -647,7 +647,7 @@ Note: hexadecimal integer literals are not allowed in vector type declarations,
 `vector<0x42xi32>` is invalid because it is interpreted as a 2D vector with
 shape `(0, 42)` and zero shapes are not allowed.
 
-#### Tensor Type {#tensor-type}
+#### Tensor Type
 
 Syntax:
 
@@ -671,7 +671,7 @@ you cannot control layout or get a pointer to the data. For low level buffer
 access, MLIR has a [`memref` type](#memref-type). This abstracted runtime
 representation holds both the tensor data values as well as information about
 the (potentially dynamic) shape of the tensor. The
-[`dim` operation](#'dim'-operation) returns the size of a dimension from a value
+[`dim` operation](#dim-operation) returns the size of a dimension from a value
 of tensor type.
 
 Note: hexadecimal integer literals are not allowed in tensor type declarations
@@ -705,7 +705,7 @@ tensor<0 x 42 x f32>
 tensor<0xf32>
 ```
 
-#### Memref Type {#memref-type}
+#### Memref Type
 
 Syntax:
 
@@ -772,12 +772,12 @@ Symbol capture example:
 %A = <strong>alloc</strong> (%n)[%o] : <16x?xf32, #imapA>
 ```
 
-##### Index Space {#index-space}
+##### Index Space
 
 A memref dimension list defines an index space within which the memref can be
 indexed to access data.
 
-##### Index {#index}
+##### Index
 
 Data is accessed through a memref type using a multidimensional index into the
 multidimensional index space defined by the memref's dimension list.
@@ -793,7 +793,7 @@ Examples
 %v = load %A[%i, %j] : memref<16x32xf32, #imapA, hbm>
 ```
 
-##### Index Map {#index-map}
+##### Index Map
 
 An index map is a one-to-one [semi-affine map](#semi-affine-maps) that
 transforms a multidimensional index from one index space to another. For
@@ -825,7 +825,7 @@ Index map examples:
                                          size (M, N)
 ```
 
-##### Layout Map {#layout-map}
+##### Layout Map
 
 A layout map is a [semi-affine map](#semi-affine-maps) which encodes logical to
 physical index space mapping, by mapping input dimensions to their ordering from
@@ -842,7 +842,7 @@ Layout map examples:
 #layout_map_col_major = (i, j), [M, N] -> (j, i) size (M, N)
 ```
 
-##### Affine Map Composition {#affine-map-composition}
+##### Affine Map Composition
 
 A memref specifies a semi-affine map composition as part of its type. A
 semi-affine map composition is a composition of semi-affine maps beginning with
@@ -861,7 +861,7 @@ access pattern analysis, and for performance optimizations like vectorization,
 copy elision and in-place updates. If an affine map composition is not specified
 for the memref, the identity affine map is assumed.
 
-#### Complex Type {#complex-type}
+#### Complex Type
 
 Syntax:
 
@@ -880,7 +880,7 @@ complex<f32>
 complex<i32>
 ```
 
-#### Tuple Type {#tuple-type}
+#### Tuple Type
 
 Syntax:
 
@@ -893,7 +893,7 @@ each element may be of a different type.
 
 **Rationale:** Though this type is first class in the type system, MLIR provides
 no standard operations for operating on `tuple` types
-[rationale](Rationale.md#tuple-type).
+([rationale](Rationale.md#tuple-types)).
 
 Examples:
 
@@ -908,7 +908,7 @@ tuple<f32>
 tuple<i32, f32, tensor<i1>, i5>
 ```
 
-## Attributes {#attributes}
+## Attributes
 
 Syntax:
 
@@ -923,11 +923,11 @@ dependent-attribute-name ::= (letter|[_]) (letter|digit|[_$])*
 
 Attributes are the mechanism for specifying constant data in MLIR in places
 where a variable is never allowed - e.g. the index of a
-[`dim` operation](#'dim'-operation), or the stride of a convolution. They
-consist of a name and a [concrete attribute value](#attribute-values). It is
-possible to attach attributes to operations, functions, and function arguments.
-The set of expected attributes, their structure, and their interpretation are
-all contextually dependent on what they are attached to.
+[`dim` operation](#dim-operation), or the stride of a convolution. They consist
+of a name and a [concrete attribute value](#attribute-values). It is possible to
+attach attributes to operations, functions, and function arguments. The set of
+expected attributes, their structure, and their interpretation are all
+contextually dependent on what they are attached to.
 
 There are two main classes of attributes; dependent and dialect. Dependent
 attributes derive their structure and meaning from what they are attached to,
@@ -954,7 +954,7 @@ specific and dependent attributes. This is because an operation represents a
 distinct semantic context, and can thus provide a single source of meaning to
 dependent attributes.
 
-### Attribute Values {#attribute-values}
+### Attribute Values
 
 Attributes values are represented by the following forms:
 
@@ -971,7 +971,7 @@ attribute-value ::= affine-map-attribute
                   | type-attribute
 ```
 
-#### AffineMap Attribute {#affine-map-attribute}
+#### AffineMap Attribute
 
 Syntax:
 
@@ -981,7 +981,7 @@ affine-map-attribute ::= affine-map
 
 An affine-map attribute is an attribute that represents a affine-map object.
 
-#### Array Attribute {#array-attribute}
+#### Array Attribute
 
 Syntax:
 
@@ -992,7 +992,7 @@ array-attribute ::= `[` (attribute-value (`,` attribute-value)*)? `]`
 An array attribute is an attribute that represents a collection of attribute
 values.
 
-#### Boolean Attribute {#bool-attribute}
+#### Boolean Attribute
 
 Syntax:
 
@@ -1003,7 +1003,7 @@ bool-attribute ::= bool-literal
 A boolean attribute is a literal attribute that represents a one-bit boolean
 value, true or false.
 
-#### Elements Attributes {#elements-attributes}
+#### Elements Attributes
 
 Syntax:
 
@@ -1017,7 +1017,7 @@ elements-attribute ::= dense-elements-attribute
 An elements attribute is a literal attribute that represents a constant
 [vector](#vector-type) or [tensor](#tensor-type) value.
 
-##### Dense Elements Attribute {#dense-elements-attribute}
+##### Dense Elements Attribute
 
 Syntax:
 
@@ -1031,7 +1031,7 @@ constant vector or tensor value has been packed to the element bitwidth. The
 element type of the vector or tensor constant must be of integer, index, or
 floating point type.
 
-##### Opaque Elements Attribute {#opaque-elements-attribute}
+##### Opaque Elements Attribute
 
 Syntax:
 
@@ -1048,7 +1048,7 @@ it.
 
 Note: The parsed string literal must be in hexadecimal form.
 
-##### Sparse Elements Attribute {#sparse-elements-attribute}
+##### Sparse Elements Attribute
 
 Syntax:
 
@@ -1078,7 +1078,7 @@ Example:
 ///   [0, 0, 0, 0]]
 ```
 
-##### Splat Elements Attribute {#splat-elements-attribute}
+##### Splat Elements Attribute
 
 Syntax:
 
@@ -1090,7 +1090,7 @@ splat-elements-attribute ::= `splat` `<` ( tensor-type | vector-type ) `,`
 A splat elements attribute is an elements attribute that represents a tensor or
 vector constant where all elements have the same value.
 
-#### Integer Attribute {#integer-attribute}
+#### Integer Attribute
 
 Syntax:
 
@@ -1102,7 +1102,7 @@ An integer attribute is a literal attribute that represents an integral value of
 the specified integer or index type. The default type for this attribute, if one
 is not specified, is a 64-bit integer.
 
-#### Integer Set Attribute {#integer-set-attribute}
+#### Integer Set Attribute
 
 Syntax:
 
@@ -1112,7 +1112,7 @@ integer-set-attribute ::= affine-map
 
 An integer-set attribute is an attribute that represents a integer-set object.
 
-#### Float Attribute {#float-attribute}
+#### Float Attribute
 
 Syntax:
 
@@ -1123,7 +1123,7 @@ float-attribute ::= float-literal (`:` float-type)?
 A float attribute is a literal attribute that represents a floating point value
 of the specified [float type](#floating-point-types).
 
-#### Function Attribute {#function-attribute}
+#### Function Attribute
 
 Syntax:
 
@@ -1134,7 +1134,7 @@ function-attribute ::= function-id `:` function-type
 A function attribute is a literal attribute that represents a reference to the
 given function object.
 
-#### String Attribute {#string-attribute}
+#### String Attribute
 
 Syntax:
 
@@ -1144,7 +1144,7 @@ string-attribute ::= string-literal
 
 A string attribute is an attribute that represents a string literal value.
 
-#### Type Attribute {#type-attribute}
+#### Type Attribute
 
 Syntax:
 
@@ -1154,7 +1154,7 @@ type-attribute ::= type
 
 A type attribute is an attribute that represents a [type object](#type-system).
 
-## Module {#module}
+## Module
 
 ``` {.ebnf}
 module ::= module-header-def* function*
@@ -1169,7 +1169,7 @@ prepopulate a symbol table with known named types and mappings (e.g. for TPU)
 and will define the set of operations that are allowed (allowing the verifier to
 detect common errors).
 
-## Functions {#functions}
+## Functions
 
 MLIR functions have a signature (including argument and result types) and
 associated attributes according to the following grammar:
@@ -1206,7 +1206,7 @@ func @count(%x: i64) -> (i64, i64)
 }
 ```
 
-#### Blocks {#blocks}
+#### Blocks
 
 Syntax:
 
@@ -1265,7 +1265,7 @@ of SSA is immediately apparent, and function arguments are no longer a special
 case: they become arguments to the entry block
 [[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
 
-### Operations {#operations}
+### Operations
 
 Syntax:
 
@@ -1332,21 +1332,21 @@ reason about IR dumps and manipulate operations in C++, the MLIR compiler
 infrastructure uses C++ templates to make working with them convenient and safe.
 The details of this are not described in this document.
 
-## Standard Operations {#standard-operations}
+## Standard Operations
 
 TODO: shape, which returns a 1D tensor, and can take an unknown rank tensor as
 input.
 
 TODO: rank, which returns an index.
 
-#### Terminator operations {#terminator-operations}
+#### Terminator operations
 
 Terminator operations are required at the end of each block. They may contain a
 list of successors, i.e. other blocks to which the control flow will proceed.
 Currently, all terminator operations must be registered in some known
 [dialect](#dialects), unlike regular operations.
 
-##### 'br' terminator operation {#'br'-terminator-operation}
+##### 'br' terminator operation
 
 Syntax:
 
@@ -1363,7 +1363,7 @@ arguments in the target block.
 The MLIR branch operation is not allowed to target the entry block for a
 function.
 
-##### 'cond_br' terminator operation {#'cond_br'-terminator-operation}
+##### 'cond_br' terminator operation
 
 Syntax:
 
@@ -1394,7 +1394,7 @@ func @select(%a : i32, %b :i32, %flag : i1) -> i32 {
 }
 ```
 
-##### 'return' terminator operation {#'return'-terminator-operation}
+##### 'return' terminator operation
 
 Syntax:
 
@@ -1407,9 +1407,9 @@ produces the result values. The count and types of the operands must match the
 result types of the enclosing function. It is legal for multiple blocks in a
 single function to return.
 
-### Core Operations {#core-operations}
+### Core Operations
 
-#### 'call' operation {#'call'-operation}
+#### 'call' operation
 
 Syntax:
 
@@ -1428,7 +1428,7 @@ Example:
 %31 = call @my_add(%0, %1) : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
 
-#### 'call_indirect' operation {#'call_indirect'-operation}
+#### 'call_indirect' operation
 
 Syntax:
 
@@ -1442,7 +1442,7 @@ and merged together with block arguments. The operands and result types of the
 call must match the specified function type.
 
 Function values can be created with the
-[`constant` operation](#'constant'-operation).
+[`constant` operation](#constant-operation).
 
 Example:
 
@@ -1451,7 +1451,7 @@ Example:
         : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
 
-#### 'dim' operation {#'dim'-operation}
+#### 'dim' operation
 
 Syntax:
 
@@ -1460,7 +1460,7 @@ operation ::= ssa-id `=` `dim` ssa-id `,` integer-literal `:` type
 ```
 
 The `dim` operation takes a memref or tensor operand and a dimension index, and
-returns an ['index'](#index-type) that is the size of that dimension.
+returns an [`index`](#index-type) that is the size of that dimension.
 
 The `dim` operation is represented with a single integer attribute named
 `index`, and the type specifies the type of the memref or tensor operand.
@@ -1479,7 +1479,7 @@ Examples:
 %y = "std.dim"(%A){index: 1} : (tensor<4 x ? x f32>) -> index
 ```
 
-#### 'reshape' operation {#'reshape'-operation}
+#### 'reshape' operation
 
 Syntax:
 
@@ -1509,7 +1509,7 @@ Example:
 
 ```
 
-#### 'view' operation {#'view'-operation}
+#### 'view' operation
 
 Syntax:
 
@@ -1550,9 +1550,9 @@ Example:
           (%s1) [%0, %n1] %A : memref<16x?xf32, #map_a, hbm>
 ```
 
-### Memory Operations {#memory-operations}
+### Memory Operations
 
-#### 'alloc' operation {#'alloc'-operation}
+#### 'alloc' operation
 
 Syntax:
 
@@ -1581,7 +1581,7 @@ Example:
 %B = alloc(%M, %N)[%x, %y] : memref<?x?xf32, #layout_map1, vmem>
 ```
 
-#### 'alloc_static' operation {#'alloc_static'-operation}
+#### 'alloc_static' operation
 
 Syntax:
 
@@ -1593,7 +1593,7 @@ operation ::=
 Allocates a new memref of specified type with a fixed base pointer location in
 memory. 'alloc_static' does not support types that have dynamic shapes or that
 require dynamic symbols in their layout function (use the
-[`alloc'`operation](#'alloc'-operation) in those cases).
+[`alloc` operation](#alloc-operation) in those cases).
 
 Example:
 
@@ -1604,7 +1604,7 @@ Example:
 The `alloc_static` operation is used to represent code after buffer allocation
 has been performed.
 
-#### 'dealloc' operation {#'dealloc'-operation}
+#### 'dealloc' operation
 
 Syntax:
 
@@ -1613,8 +1613,8 @@ operation ::= `dealloc` ssa-use `:` memref-type
 ```
 
 Delineates the end of the lifetime of the memory corresponding to a memref
-allocation. It is paired with an [`alloc`](#'alloc'-operation) or
-[`alloc_static`](#'alloc_static'-operation) operation.
+allocation. It is paired with an [`alloc`](#alloc-operation) or
+[`alloc_static`](#alloc-static-operation) operation.
 
 Example:
 
@@ -1686,7 +1686,7 @@ Example:
 dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
 ```
 
-#### 'extract_element' operation {#'extract_element'-operation}
+#### 'extract_element' operation
 
 Syntax:
 
@@ -1709,7 +1709,7 @@ Examples:
 %5 = extract_element %ut[%1, %2] : tensor<*xi32>
 ```
 
-#### 'load' operation {#'load'-operation}
+#### 'load' operation
 
 Syntax:
 
@@ -1726,10 +1726,9 @@ identifier).
 In an `affine.if` or `affine.for` body, the indices of a load are restricted to
 SSA values bound to surrounding loop induction variables,
 [symbols](#dimensions-and-symbols), results of a
-[`constant` operation](#'constant'-operation), or the result of an
-`affine.apply` operation that can in turn take as arguments all of the
-aforementioned SSA values or the recursively result of such an `affine.apply`
-operation.
+[`constant` operation](#constant-operation), or the result of an `affine.apply`
+operation that can in turn take as arguments all of the aforementioned SSA
+values or the recursively result of such an `affine.apply` operation.
 
 Example:
 
@@ -1746,13 +1745,13 @@ Example:
 **Context:** The `load` and `store` operations are specifically crafted to fully
 resolve a reference to an element of a memref, and (in affine `affine.if` and
 `affine.for` operations) the compiler can follow use-def chains (e.g. through
-[`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
+[`affine.apply`](Dialects/Affine.md#affineapply-operation) operations) to
 precisely analyze references at compile-time using polyhedral techniques. This
 is possible because of the
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
 in these contexts.
 
-#### 'store' operation {#'store'-operation}
+#### 'store' operation
 
 Syntax:
 
@@ -1767,11 +1766,11 @@ provided within brackets need to match the rank of the memref.
 
 In an affine context, the indices of a store are restricted to SSA values bound
 to surrounding loop induction variables,
-[symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols), results of
-a [`constant` operation](#'constant'-operation), or the result of an
-[`affine.apply`](Dialect/Affine.md#'affine.apply'-operation) operation that can
-in turn take as arguments all of the aforementioned SSA values or the
-recursively result of such an `affine.apply` operation.
+[symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols), results of
+a [`constant` operation](#constant-operation), or the result of an
+[`affine.apply`](Dialects/Affine.md#affineapply-operation) operation that can in
+turn take as arguments all of the aforementioned SSA values or the recursively
+result of such an `affine.apply` operation.
 
 Example:
 
@@ -1782,13 +1781,13 @@ store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 **Context:** The `load` and `store` operations are specifically crafted to fully
 resolve a reference to an element of a memref, and (in polyhedral `affine.if`
 and `affine.for` operations) the compiler can follow use-def chains (e.g.
-through [`affine.apply`](Dialects/Affine.md#'affine.apply'-operation)
-operations) to precisely analyze references at compile-time using polyhedral
-techniques. This is possible because of the
-[restrictions on dimensions and symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols)
+through [`affine.apply`](Dialects/Affine.md#affineapply-operation) operations)
+to precisely analyze references at compile-time using polyhedral techniques.
+This is possible because of the
+[restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
 in these contexts.
 
-#### 'tensor_load' operation {#'tensor_load'-operation}
+#### 'tensor_load' operation
 
 Syntax:
 
@@ -1807,7 +1806,7 @@ Example:
 %12 = tensor_load %10 : memref<4x?xf32, #layout, hbm>
 ```
 
-#### 'tensor_store' operation {#'tensor_store'-operation}
+#### 'tensor_store' operation
 
 Syntax:
 
@@ -1827,7 +1826,7 @@ Example:
 tensor_store %8, %10 : memref<4x?xf32, #layout, hbm>
 ```
 
-### Arithmetic Operations {#arithmetic-operations}
+### Arithmetic Operations
 
 Basic arithmetic in MLIR is specified by standard operations described in this
 section.
@@ -1836,7 +1835,7 @@ TODO: "sub" etc. Let's not get excited about filling this out yet, we can define
 these on demand. We should be highly informed by and learn from the operations
 supported by HLO and LLVM.
 
-#### 'addi' operation {#'addi'-operation}
+#### 'addi' operation
 
 Examples:
 
@@ -1856,7 +1855,7 @@ required to be the same type. This type may be an integer scalar type, a vector
 whose element type is integer, or a tensor of integers. It has no standard
 attributes.
 
-#### 'addf' operation {#'addf'-operation}
+#### 'addf' operation
 
 Examples:
 
@@ -1881,7 +1880,7 @@ TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
 
-#### 'cmpi' operation {#'cmpi'-operation}
+#### 'cmpi' operation
 
 Examples:
 
@@ -1936,13 +1935,15 @@ point-related particularities, e.g., `-ffast-math` behavior, IEEE754 compliance,
 etc ([rationale](Rationale.md#splitting-floating-point-vs-integer-operations)).
 The type of comparison is specified as attribute to avoid introducing ten
 similar operations, taking into account that they are often implemented using
-the same operation downstream ([rationale](Rationale.md#cmpi-predicate)). The
+the same operation downstream
+([rationale](Rationale.md#specifying-comparison-kind-as-attribute)). The
 separation between signed and unsigned order comparisons is necessary because of
 integers being signless. The comparison operation must know how to interpret
 values with the foremost bit being set: negatives in two's complement or large
-positives ([rationale](Rationale.md#sign-in-cmpi)).
+positives
+([rationale](Rationale.md#specifying-sign-in-integer-comparison-operations)).
 
-#### 'constant' operation {#'constant'-operation}
+#### 'constant' operation
 
 Syntax:
 
@@ -1979,7 +1980,7 @@ anticipate the desire to multithread the compiler, and disallowing SSA values to
 directly reference a function simplifies this
 ([rationale](Rationale.md#multithreading-the-compiler)).
 
-#### 'divis' operation {#'divis'-operation}
+#### 'divis' operation
 
 Signed integer division. Rounds towards zero. Treats the leading bit as sign,
 i.e. `6 / -2 = -3`.
@@ -2011,7 +2012,7 @@ is required to be the same type. This type may be an integer scalar type, a
 vector whose element type is integer, or a tensor of integers. It has no
 standard attributes.
 
-#### 'diviu' operation {#'diviu'-operation}
+#### 'diviu' operation
 
 Unsigned integer division. Rounds towards zero. Treats the leading bit as the
 most significant, i.e. for `i16` given two's complement representation, `6 /
@@ -2068,7 +2069,7 @@ same element type, same mappings, same address space, and same rank, yet the
 source and destination types may not be the same. The operation is invalid if
 converting to a mismatching constant dimension.
 
-#### 'mulf' operation {#'mulf'-operation}
+#### 'mulf' operation
 
 Examples:
 
@@ -2093,7 +2094,7 @@ TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
 
-#### 'remis' operation {#'remis'-operation}
+#### 'remis' operation
 
 Signed integer division remainder. Treats the leading bit as sign, i.e. `6 %
 -2 = 0`.
@@ -2125,7 +2126,7 @@ is required to be the same type. This type may be an integer scalar type, a
 vector whose element type is integer, or a tensor of integers. It has no
 standard attributes.
 
-#### 'remiu' operation {#'remiu'-operation}
+#### 'remiu' operation
 
 Unsigned integer division remainder. Treats the leading bit as the most
 significant, i.e. for `i16`, `6 % -2 = 6 % (2^16 - 2) = 6`.
@@ -2157,7 +2158,7 @@ is required to be the same type. This type may be an integer scalar type, a
 vector whose element type is integer, or a tensor of integers. It has no
 standard attributes.
 
-#### 'select' operation {#'select'-operation}
+#### 'select' operation
 
 Syntax:
 
@@ -2188,10 +2189,10 @@ The operation applies to vectors and tensors elementwise given the _shape_ of
 all operands is identical. The choice is made for each element individually
 based on the value at the same position as the element in the condition operand.
 
-The `select` operation combined with [`cmpi`](#'cmpi'-operation) can be used to
+The `select` operation combined with [`cmpi`](#cmpi-operation) can be used to
 implement `min` and `max` with signed or unsigned comparison semantics.
 
-#### 'tensor_cast' operation {#'tensor_cast'-operation}
+#### 'tensor_cast' operation
 
 Syntax:
 
@@ -2220,7 +2221,7 @@ same element type, and the source and destination types may not be the same.
 They must either have the same rank, or one may be an unknown rank. The
 operation is invalid if converting to a mismatching constant dimension.
 
-## Dialects {#dialects}
+## Dialects
 
 MLIR supports multiple dialects containing a set of operations and types defined
 together, potentially outside of the main tree. Dialects are produced and
@@ -2233,7 +2234,7 @@ Currently, MLIR supports the following dialects:
 *   [Vector dialect](Dialects/Vector.md)
 *   [TensorFlow dialect](#tensorflow-operations)
 
-### TensorFlow operations {#tensorflow-operations}
+### TensorFlow operations
 
 MLIR operations can represent arbitrary TensorFlow operations with a reversible
 mapping. Switch and merge nodes are represented with the MLIR control flow
@@ -2262,7 +2263,7 @@ Examples:
    : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 ```
 
-### Target specific operations {#target-specific-operations}
+### Target specific operations
 
 We expect to expose many target-specific (such as TPU-specific) operations
 directly through to MLIR.
@@ -2291,7 +2292,7 @@ Example:
 These operations only work when targeting LLVM as a backend (e.g. for CPUs and
 GPUs), and are required to align with the LLVM definition of these intrinsics.
 
-### Dialect specific types {#dialect-specific-types}
+### Dialect specific types
 
 Similarly to operations, dialects may define custom extensions to the type
 system. These extensions fit within the same type system as described in the
@@ -2311,7 +2312,7 @@ Example:
 !tf<"string">
 ```
 
-### TensorFlow types {#tensorflow-types}
+### TensorFlow types
 
 The TensorFlow dialect in MLIR defines several extended types:
 

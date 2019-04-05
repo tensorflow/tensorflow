@@ -81,7 +81,7 @@ memref<1x? x vector<4xf32>>
 !llvm.type<"{<4 x float>*, i64}">
 ```
 
-### Function Types {#function-types}
+### Function Types
 
 Function types get converted to LLVM function types. The arguments are converted
 individually according to these rules. The result types need to accommodate the

@@ -4,24 +4,24 @@ This dialect provides a powerful abstraction for affine operations and analyses.
 
 [TOC]
 
-## Restrictions on Dimension and Symbols {#restrictions-on-dimensions-and-symbols}
+## Restrictions on Dimensions and Symbols
 
 The affine dialect imposes certain restrictions on dimension and symbolic
 identifiers to enable powerful analysis and transformation. A symbolic
 identifier can be bound to an SSA value that is either an argument to the
 function, a value defined at the top level of that function (outside of all
 loops and if operations), the result of a
-[`constant` operation](../LangRef.md#'constant'-operation), or the result of an
-[`affine.apply` operation](#'affine.apply'-operation) that recursively takes as
+[`constant` operation](../LangRef.md#constant-operation), or the result of an
+[`affine.apply` operation](#affineapply-operation) that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
-[`affine.for` operations](#'affine.for'-operation), and the result of an
-[`affine.apply` operation](#'affine.apply'-operation) (which recursively may use
+[`affine.for` operations](#affinefor-operation), and the result of an
+[`affine.apply` operation](#affineapply-operation) (which recursively may use
 other dimensions and symbols).
 
-## Operations {#operations}
+## Operations
 
-#### 'affine.apply' operation {#'affine.apply'-operation}
+#### 'affine.apply' operation
 
 Syntax:
 
@@ -47,7 +47,7 @@ Example:
 %2 = affine.apply (i)[s0] -> (i+s0) (%42)[%n]
 ```
 
-#### 'affine.for' operation {#'affine.for'-operation}
+#### 'affine.for' operation
 
 Syntax:
 
@@ -62,9 +62,9 @@ shorthand-bound ::= ssa-id | `-`? integer-literal
 
 The `affine.for` operation represents an affine loop nest. It has one region
 containing its body. This region must contain one block that terminates with
-[`affine.terminator`](#'affine.terminator"-operation). *Note:* when `affine.for`
-is printed in custom format, the terminator is omitted. The block has one
-argument of [`index`](../LangRef.md#index-type) type that represents the induction
+[`affine.terminator`](#affineterminator-operation). *Note:* when `affine.for` is
+printed in custom format, the terminator is omitted. The block has one argument
+of [`index`](../LangRef.md#index-type) type that represents the induction
 variable of the loop.
 
 The `affine.for` operation executes its body a number of times iterating from a
@@ -108,7 +108,7 @@ func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
 }
 ```
 
-#### 'affine.if' operation {#'affine.if'-operation}
+#### 'affine.if' operation
 
 Syntax:
 
@@ -127,12 +127,12 @@ and the SSA values bound to the dimensions and symbols in the integer set. The
 [same restrictions](#restrictions-on-dimensions-and-symbols) hold for these SSA
 values as for all bindings of SSA values to dimensions and symbols.
 
-The `if` operation contains two regions for the "then" and "else" clauses. The
-latter may be empty (i.e. contain no blocks), meaning the absence of the else
-clause. When non-empty, both regions must contain exactly one block terminating
-with [`affine.terminator`](#'affine.terminator'-operation). *Note:* when `if` is
-printed in custom format, the terminator is omitted. These blocks must not have
-any arguments.
+The `affine.if` operation contains two regions for the "then" and "else"
+clauses. The latter may be empty (i.e. contain no blocks), meaning the absence
+of the else clause. When non-empty, both regions must contain exactly one block
+terminating with [`affine.terminator`](#affineterminator-operation). *Note:*
+when `affine.if` is printed in custom format, the terminator is omitted. These
+blocks must not have any arguments.
 
 Example:
 
@@ -154,7 +154,7 @@ func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
 }
 ```
 
-#### `affine.terminator` operation {#'affine.terminator'-operation}
+#### `affine.terminator` operation
 
 Syntax:
 
@@ -163,11 +163,11 @@ operation ::= `"affine.terminator"() : () -> ()`
 ```
 
 Affine terminator is a special terminator operation for blocks inside affine
-loops ([`for`](#'for'-operation)) and branches ([`if`](#'if'-operation)). It
-unconditionally transmits the control flow to the successor of the operation
-enclosing the region.
+loops ([`affine.for`](#affinefor-operation)) and branches
+([`affine.if`](#affineif-operation)). It unconditionally transmits the control
+flow to the successor of the operation enclosing the region.
 
-*Rationale*: bodies of affine operations are [blocks](../LangRef.md#block) that
+*Rationale*: bodies of affine operations are [blocks](../LangRef.md#blocks) that
 must have terminators. Loops and branches represent structured control flow and
 should not accept arbitrary branches as terminators.
 

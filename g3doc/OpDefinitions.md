@@ -136,7 +136,7 @@ Operation definitions consists of:
 
         These are the results of other operations and mostly only known at
         runtime. They can have a fixed type or correspond to set of possible
-        types. See [Type constraints](type-constraints) specification below.
+        types. See [Type constraints](#type-constraints) specification below.
 
     1.  Attributes.
 
@@ -162,9 +162,9 @@ Operation definitions consists of:
 
     Traits of the operations. They are operation properties that affect syntax
     or semantics. MLIR C++ models various traits in the `mlir::OpTrait`
-    namespace. In TableGen, we have the corresponding `OpTrait` class to
-    wrap around any C++ trait symbol and use it in operation definition.
-    For example, `NoSideEffect` is just a definition that expands to
+    namespace. In TableGen, we have the corresponding `OpTrait` class to wrap
+    around any C++ trait symbol and use it in operation definition. For example,
+    `NoSideEffect` is just a definition that expands to
     `OpTrait<"HasNoSideEffect">`; having such a definition makes the trait
     inside TableGen more integrated and easier to parse as a declarative
     language.

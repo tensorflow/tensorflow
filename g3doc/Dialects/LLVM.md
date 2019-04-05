@@ -20,7 +20,7 @@ obtained from the dialect object using `.getLLVMContext()` and
 `getLLVMModule()`. All LLVM IR objects that interact with the LLVM IR dialect
 must exist in the dialect's context.
 
-## Types {#types}
+## Types
 
 The LLVM IR dialect defines a single MLIR type, `LLVM::LLVMType`, that can wrap
 any existing LLVM IR type. Its syntax is as follows
@@ -45,7 +45,7 @@ associated with the LLVM context of the dialect. In this document, we use the
 term "wrapped LLVM IR type" to refer to the LLVM IR dialect type containing a
 specific LLVM IR type.
 
-## Operations {#operations}
+## Operations
 
 All operations in the LLVM IR dialect have a custom form in MLIR. The mnemonic
 of an operation is that used in LLVM IR prefixed with "`llvm.`".
@@ -250,12 +250,12 @@ Bitwise reinterpretation: `bitcast <value>`.
 
 Selection: `select <condition>, <lhs>, <rhs>`.
 
-### Pseudo-operations {#pseudo-operations}
+### Pseudo-operations
 
 These operations do not have LLVM IR counterparts but are necessary to map LLVM
 IR into MLIR.
 
-#### `llvm.constant` {#constant-operation}
+#### `llvm.constant`
 
 Unlike LLVM IR, MLIR does not have first-class constant values. Therefore, all
 constants must be created as SSA values before being used in other operations.
@@ -283,7 +283,7 @@ Examples:
 %3 = llvm.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">
 ```
 
-#### `llvm.undef` {#undef-operation}
+#### `llvm.undef`
 
 Unlike LLVM IR, MLIR does not have first-class undefined values. Such values
 must be created as SSA values using `llvm.undef`. This operation has no operands

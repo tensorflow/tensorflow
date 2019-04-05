@@ -13,14 +13,14 @@ See [MLIR Rewrites](QuickstartRewrites.md) for a quick start on graph rewriting
 in MLIR. If your transformation involves pattern matching operation DAGs, this
 is a great place to start.
 
-## Pass Types {#pass-types}
+## Pass Types
 
 MLIR provides different pass classes for several different granularities of
 transformation. Depending on the granularity of the transformation being
-performed, a pass may derive from [FunctionPass](#function-pass) or
-[ModulePass](#module-pass); with each requiring a different set of constraints.
+performed, a pass may derive from [FunctionPass](#functionpass) or
+[ModulePass](#modulepass); with each requiring a different set of constraints.
 
-### FunctionPass {#function-pass}
+### FunctionPass
 
 A function pass operates on a per-function granularity, executing on
 non-external functions within a module in no particular order. Function passes
@@ -70,7 +70,7 @@ static PassRegistration<MyFunctionPass> pass(
     "flag-name-to-invoke-pass-via-mlir-opt", "Pass description here");
 ```
 
-### ModulePass {#module-pass}
+### ModulePass
 
 A module pass operates on a per-module granularity, executing on the entire
 program as a unit. As such, module passes are able to add/remove/modify any
@@ -231,7 +231,7 @@ void MyPass::runOn*() {
 }
 ```
 
-## Pass Manager {#pass-manager}
+## Pass Manager
 
 Above we introduced the different types of passes and their constraints. Now
 that we have our pass we need to be able to run it over a specific module. This
@@ -286,7 +286,7 @@ Function Pipeline
 MyModulePass2
 ```
 
-## Pass Registration {pass-registration}
+## Pass Registration
 
 Briefly shown in the example definitions of the various
 [pass types](#pass-types) is the `PassRegistration` class. This is a utility to

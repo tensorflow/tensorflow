@@ -4,11 +4,11 @@ This dialect provides mid-level abstraction for the MLIR super-vectorizer.
 
 [TOC]
 
-## Operations {#operations}
+## Operations
 
-### Vector transfers {#vector-transfers}
+### Vector transfers
 
-#### `vector.transfer_read` operation {#'vector.transfer_read'-operation}
+#### `vector.transfer_read` operation
 
 Syntax:
 
@@ -117,7 +117,7 @@ the same amount of data as the `3 * 5` values transferred. An additional `1`
 broadcast is required. On a GPU this broadcast could be implemented using a
 warp-shuffle if loop `j` were mapped to `threadIdx.x`.
 
-#### `vector.transfer_write` operation {#'vector.transfer_write'-operation}
+#### `vector.transfer_write` operation
 
 Syntax:
 
@@ -156,9 +156,9 @@ code. It is the responsibility of `vector.transfer_write`'s implementation to
 ensure the memory writes are valid. Different lowerings may be pertinent
 depending on the hardware support.
 
-### Vector views {#vector-views}
+### Vector views
 
-#### `vector.type_cast` operation {#'vector.type_cast'-operation}
+#### `vector.type_cast` operation
 
 Syntax:
 

@@ -26,7 +26,7 @@ Further, the scheme can be applied:
 *   *per-axis* (also called *per-channel*) : Applying individually to each index
     along a specific axis of a tensor type.
 
-### Fixed point values {#fixed-point}
+### Fixed point values
 
 [Fixed point](https://en.wikipedia.org/wiki/Fixed-point_arithmetic) values are a
 [Real](https://en.wikipedia.org/wiki/Real_number) number divided by a *scale*.
@@ -51,7 +51,7 @@ This makes it convenient to represent scaled values on a computer as signed
 integers, and perform arithmetic on those signed integers, because the results
 will be correct scaled values.
 
-### Affine values {#affine}
+### Affine values
 
 Mathematically speaking, affine values are the result of
 [adding a Real-valued *zero point*, to a scaled value](https://en.wikipedia.org/wiki/Affine_transformation#Representation).
@@ -99,7 +99,7 @@ scope of this document, and it is safe to assume unless otherwise stated that
 rounding should be according to the IEEE754 default of RNE (where hardware
 permits).
 
-### Converting between Real and fixed point or affine {#converting-between}
+### Converting between Real and fixed point or affine
 
 To convert a Real value to a fixed point value, you must know the scale. To
 convert a Real value to an affine value, you must know the scale and zero point.
@@ -127,7 +127,7 @@ point values is indicative of common types on typical hardware but is not
 constrained to particular bit depths or a requirement that the entire range of
 an N-bit integer is used.
 
-#### Affine to Real {#affine-to-real}
+#### Affine to Real
 
 To convert an output tensor of affine elements represented by uint8
 or uint16 to a tensor of Real-valued elements (usually represented with a
@@ -144,7 +144,7 @@ $$
 In the above, we assume that the result of subtraction is in 32-bit signed
 integer format, and that $$roundToNearestFloat$$ returns a Single.
 
-#### Affine to fixed point {#affine-to-fixed-point}
+#### Affine to fixed point
 
 When the affine and fixed point scales are the same, subtract the zero point
 from the affine value to get the equivalent fixed point value.
@@ -153,7 +153,7 @@ $$
 scaled\_value = affine\_value_{non\mbox{-}negative} - zero\_point_{non\mbox{-}negative}
 $$
 
-#### Fixed point to affine {#fixed-point-to-affine}
+#### Fixed point to affine
 
 When the affine and fixed point scales are the same, add the zero point to the
 fixed point value to get the equivalent affine value.
@@ -162,7 +162,7 @@ $$
 affine\_value_{non\mbox{-}negative} = scaled\_value + zero\_point_{non\mbox{-}negative}
 $$
 
-## Usage within MLIR {#usage-within-mlir}
+## Usage within MLIR
 
 There are several components to the quantization system being developed within
 MLIR:
@@ -176,11 +176,11 @@ MLIR:
     *   [Type conversion ops](#quantized-type-conversion-ops) for converting
         between types based on a QuantizedType and its *expressed* and *storage*
         sub-types.
-    *   [Instrumentation ops](#instrumentation-ops) for assigning
+    *   [Instrumentation ops](#instrumentation-and-constraint-ops) for assigning
         instrumentation points within the computation where runtime statistics
         may help guide the quantization process.
 
-*   [Integration with simulated quantization at training time](#fake-quant)
+*   [Integration with simulated quantization at training time](#integration-with-simulated-quantization-at-training-time)
 
 *   [TFLite native quantization](#tflite-native-quantization)
 
@@ -188,15 +188,16 @@ MLIR:
     *   Passes and tools exist to convert directly from the *TensorFlow* dialect
         to the TFLite quantized op-set.
 
-*   [*FxpMath* dialect](#fxp-math-dialect) containing (experimental) generalized
+*   [*FxpMath* dialect](#fxpmath-dialect) containing (experimental) generalized
     representations of fixed-point math ops and conversions:
 
     *   [Real math ops](#real-math-ops) representing common combinations of
         arithmetic operations that closely match corresponding fixed-point math
         concepts (as opposed to being spread across multiple ops as is typical
         in source dialects).
-    *   [Fixed-point math ops](#fxp-math-ops) that for carrying out computations
-        on integers, as are typically needed by uniform quantization schemes.
+    *   [Fixed-point math ops](#fixed-point-math-ops) that for carrying out
+        computations on integers, as are typically needed by uniform
+        quantization schemes.
     *   Passes to lower from real math ops to fixed-point math ops.
 
 *   [Solver tools](#solver-tools) which can (experimentally and generically
@@ -208,22 +209,22 @@ Not every application of quantization will use all facilities. Specifically, the
 TensorFlow to TensorFlow Lite conversion uses the QuantizedTypes but has its own
 ops for type conversion and expression of the backing math.
 
-## Quantization Dialect {#quantization-dialect}
+## Quantization Dialect
 
-### Quantized type {#quantized-type}
+### Quantized type
 
 TODO : Flesh this section out.
 
 *   QuantizedType base class
 *   UniformQuantizedType
 
-### Quantized type conversion ops {#quantized-type-conversion-ops}
+### Quantized type conversion ops
 
 *   qcast : Convert from an expressed type to QuantizedType
 *   dcast : Convert from a QuantizedType to its expressed type
 *   scast : Convert between a QuantizedType and its storage type
 
-### Instrumentation and constraint ops {#instrumentation-ops}
+### Instrumentation and constraint ops
 
 TODO : These ops are not defined yet
 
@@ -234,7 +235,7 @@ TODO : These ops are not defined yet
     fixed-point values, underlying storage type, or whether to constrain to
     power of two scales.
 
-## Integration with simulated quantization at training time {#fake-quant}
+## Integration with simulated quantization at training time
 
 TensorFlow has historically used the
 [tf.quantization.fake_quant_\*](https://www.tensorflow.org/api_docs/python/tf/quantization/fake_quant_with_min_max_args)
@@ -260,7 +261,7 @@ This scheme also naturally allows computations that are *partially quantized*
 where the parts which could not be reduced to integral ops are still carried out
 in floating point with appropriate conversions at the boundaries.
 
-## TFLite Native Quantization {#tflite-native-quantization}
+## TFLite Native Quantization
 
 TODO : Flesh this out
 
@@ -278,9 +279,9 @@ TODO : Flesh this out
     -> tfl.Q) and replaces with (op). Also replace (constant_float -> tfl.Q)
     with (constant_quant).
 
-## FxpMath Dialect {#fxp-math-dialect}
+## FxpMath Dialect
 
-### Real math ops {#real-math-ops}
+### Real math ops
 
 Note that these all support explicit clamps, which allows for simple fusions and
 representation of some common sequences quantization-compatible math. Of
@@ -310,7 +311,7 @@ TODO: This op set is still evolving and needs to be completed.
     *   CMPLZ
     *   CMPGZ
 
-### Fixed-point math ops {#fxp-math-ops}
+### Fixed-point math ops
 
 TODO: This op set only has enough ops to lower a simple power-of-two
 RealAddEwOp.
@@ -318,7 +319,7 @@ RealAddEwOp.
 *   RoundingDivideByPotFxpOp
 *   SaturatingAddFxpOp
 
-## Solver tools {#solver-tools}
+## Solver tools
 
 Solver tools exist to analyze an MLIR-computation, expressed in either a
 supported source dialect or in the *real math ops* set and solve for appropriate

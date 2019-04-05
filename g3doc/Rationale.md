@@ -8,7 +8,7 @@ about their consistency or readability.
 
 [TOC]
 
-## Abstract {#abstract}
+## Abstract
 
 MLIR is a compiler intermediate representation with similarities to traditional
 three-address SSA representations (like
@@ -26,7 +26,7 @@ MLIR stands for one of "Multi-Level IR" or "Multi-dimensional Loop IR" or
 provides the rationale behind MLIR -- its actual
 [specification document](LangRef.md) and other content is hosted elsewhere.
 
-## Introduction and Motivation {#introduction-and-motivation}
+## Introduction and Motivation
 
 The Multi-Level Intermediate Representation (MLIR) is intended for easy
 expression and optimization of computations involving deep loop nests and dense
@@ -101,12 +101,12 @@ memory hierarchy.
 *   MLIR allows us to build modular and reusable target independent and target
     dependent passes - since each pass/emitter can read in another's output.
 
-## Design Decisions {#design-decisions}
+## Design Decisions
 
 This section sheds light on some of the design decisions -- some of these are
 indirectly implied by the specification document.
 
-### Loads and stores {#loads-and-stores}
+### Loads and stores
 
 The 'load' and 'store' instructions are specifically crafted to fully resolve to
 an element of a memref. These instructions take as arguments n+1 indices for an
@@ -114,7 +114,7 @@ n-ranked tensor. This disallows the equivalent of pointer arithmetic or the
 ability to index into the same memref in other ways (something which C arrays
 allow for example). Furthermore, in an affine construct, the compiler can follow
 use-def chains (e.g. through
-[affine.apply instructions](Dialects/Affine.md#'affine.apply'-operation)) to
+[affine.apply instructions](Dialects/Affine.md#affineapply-operation)) to
 precisely analyze references at compile-time using polyhedral techniques. This
 is possible because of the
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols).
@@ -126,7 +126,7 @@ have an SSA representation --
 [an extension](#mlfunction-extensions-for-"escaping-scalars") to allow that is
 described later in this doc.
 
-### Symbols and types {#symbols-and-types}
+### Symbols and types
 
 The current MLIR disallows use of symbols in types. For example, when a tensor
 or memref dimension is statically unknown, it is denoted in the type as '?'. An
@@ -166,7 +166,7 @@ type - memref<8x%Nxf32>. We went for the current approach in MLIR because it
 simplifies the design --- types remain immutable when the values of symbols
 change.
 
-### Block Arguments vs PHI nodes {#block-arguments-vs-phi-nodes}
+### Block Arguments vs PHI nodes
 
 MLIR Functions represent SSA using "[block arguments](LangRef.md#blocks)" rather
 than [PHI instructions](http://llvm.org/docs/LangRef.html#i-phi) used in LLVM.
@@ -203,7 +203,7 @@ and described in
 interest
 [starts here](https://www.google.com/url?q=https://youtu.be/Ntj8ab-5cvE?t%3D596&sa=D&ust=1529450150971000&usg=AFQjCNFQHEWL7m8q3eO-1DiKw9zqC2v24Q).
 
-### Signless types {#signless-types}
+### Signless types
 
 Integers in the MLIR type system have a bitwidth (note that the `int` type is a
 symbolic width equal to the machine word size), but they do not have an
@@ -231,7 +231,7 @@ More information about this split is available in an old
 [talk on youtube](https://www.youtube.com/watch?v=VeRaLPupGks) talking about
 LLVM 2.0.
 
-### Index type disallowed in vector/tensor/memref types {#index-type-disallowed-in-aggregate-types}
+### Index type disallowed in vector/tensor/memref types
 
 Index types are not allowed as elements of `vector`, `tensor` or `memref` type.
 Index types are intended to be used for platform-specific "size" values and may
@@ -253,7 +253,7 @@ fixed-width integer types, at the SSA value level. It has an additional benefit
 of supporting smaller integer types, e.g. `i8` or `i16`, for small indices
 instead of (presumably larger) `index` type.
 
-### Bit width of a non-primitive types and `index` is undefined {#bit-width-of-a-compound-type}
+### Bit width of a non-primitive types and `index` is undefined
 
 The bit width of a compound type is not defined by MLIR, it may be defined by a
 specific lowering pass. In MLIR, bit width is a property of certain primitive
@@ -273,7 +273,7 @@ introduced.
 The bit width is not defined for dialect-specific types at MLIR level. Dialects
 are free to define their own quantities for type sizes.
 
-### Splitting floating point vs integer operations {#splitting-floating-point-vs-integer-operations}
+### Splitting floating point vs integer operations
 
 The MLIR operation set is likely to
 [follow LLVM](http://llvm.org/docs/LangRef.html#binary-operations) and split
@@ -299,7 +299,7 @@ We are a long way from this sort of thing being a priority to care about in
 MLIR, but since we have experience and know the right way to do this, we'd
 rather design it in from the beginning.
 
-### Specifying sign in integer comparison operations {#sign-in-cmpi}
+### Specifying sign in integer comparison operations
 
 Since integers are [signless](#signless-types), it is necessary to define the
 sign for integer comparison operations. This sign indicates how to treat the
@@ -313,7 +313,7 @@ and cannot be padded by this operation, it is impossible to compare two values
 whose bit representations would differ while the values are interpreted as
 equal.
 
-### Specifying comparison kind as attribute {#cmpi-predicate}
+### Specifying comparison kind as attribute
 
 Unlike arithmetic, comparison operators share several common properties, e.g.
 they cannot be considered associative. In practice, comparisons are sometimes
@@ -337,7 +337,7 @@ possible to store the predicate as string attribute, it would have rendered
 impossible to implement switching logic based on the comparison kind and made
 attribute validity checks (one out of ten possible kinds) more complex.
 
-### 'select' operation to implement min/max {#select-operation}
+### 'select' operation to implement min/max
 
 Although `min` and `max` operations are likely to occur as a result of
 transforming affine loops in ML functions, we did not make them first-class
@@ -364,7 +364,7 @@ However, this control flow granularity is not available in the ML functions
 where min/max, and thus `select`, are likely to appear. In addition, simpler
 control flow may be beneficial for optimization in general.
 
-### Quantized integer operations {#quantized-integer-operations}
+### Quantized integer operations
 
 We haven't designed integer quantized operations in MLIR, but experience from
 TensorFlow suggests that it is better to put information about the quantization
@@ -390,19 +390,19 @@ to re-examine the representation for quantized arithmetic when we have that
 experience. When we do, we should chat with benoitjacob@ and
 [read the paper](https://arxiv.org/abs/1712.05877).
 
-### Dialect type extensions {#dialect-type-extensions}
+### Dialect type extensions
 
 This section describes the design decisions that shaped the dialect extensible
 type system present in MLIR.
 
-#### Reserving dialect type kinds {#reserving-type-kinds}
+#### Reserving dialect type kinds
 
 Dialects that wish to define type extensions must reserve a range of type kinds
 within a '.def' file within the core IR library. This means that every dialect
 wishing to define custom types must modify this file, but it guarantees that all
 type casting checkings are performed in O(1) time.
 
-#### Interactions between dialects {#type-interactions-between-dialects}
+#### Interactions between dialects
 
 There are two different interactions between dialects that are important to
 understand. When types of a dialect are:
@@ -427,7 +427,7 @@ understand. When types of a dialect are:
         invariants, e.g. if the standard tensor type can contain a specific type
         of that dialect.
 
-#### Separating builtin and standard types {#separating-builtin-and-standard-types}
+#### Separating builtin and standard types
 
 Following the separation between the built-in and standard dialect, it makes
 sense to separate built-in types and standard dialect types. Built-in types are
@@ -436,7 +436,7 @@ appears in function signatures and generic assembly forms of operations).
 Integer, float, vector, memref and tensor types, while important, are not
 necessary for IR validity.
 
-#### Unregistered types {#unregistered-types}
+#### Unregistered types
 
 MLIR supports unregistered operations in generic assembly form. MLIR also
 supports a similar concept for types. When parsing, if the dialect for dialect
@@ -455,7 +455,7 @@ identify and parse them.
 
 This representation was chosen for several reasons:
 
-##### Dialects must provide custom type parsers {#dialect-type-custom-parser}
+##### Dialects must provide custom type parsers
 
 Dialect type parsing cannot plug into the existing parser infrastructure as
 operations do with the OpAsmParser/Printer. Operations have a defined syntax
@@ -485,7 +485,7 @@ to think of these types as existing within the namespace of the dialect. If a
 dialect wishes to assign a canonical name to a type, it can be done via
 [type aliases](LangRef.md#type-aliases).
 
-### Tuple types {#tuple-type}
+### Tuple types
 
 The MLIR type system provides first class support for defining
 [tuple types](LangRef.md#tuple-type). This is due to the fact that `Tuple`
@@ -519,12 +519,12 @@ specific needs. The custom assembly form can de-duplicate information from the
 operation to derive a more concise form, thus better facilitating the
 comprehension of the IR.
 
-## Examples {#examples}
+## Examples
 
 This section describes a few very simple examples that help understand how MLIR
 represents computation.
 
-### Non-affine control flow {#non-affine-control-flow}
+### Non-affine control flow
 
 ```mlir {.mlir}
 // A simple linear search in every row of a matrix
@@ -585,7 +585,7 @@ inside the called function (`@search_body`) is necessary to determine if the
 `%i` loop could be parallelized: such function access analysis is calling
 context sensitive.
 
-### Non-affine loop bounds {#non-affine-loop-bounds}
+### Non-affine loop bounds
 
 Loop bounds that are not affine lead to a nesting of functions as shown below.
 
@@ -627,7 +627,7 @@ func @inner_nest2(%m, %n) -> i32 {
 }
 ```
 
-### Reference 2D Convolution {#reference-2d-convolution}
+### Reference 2D Convolution
 
 The following example illustrates a reference implementation of a 2D
 convolution, which uses an integer set `#domain` to represent valid input data
@@ -697,7 +697,7 @@ func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
 
 TODO (Add more examples showing the IR for a variety of interesting cases)
 
-## Design alternatives and extensions {#design-alternatives-and-extensions}
+## Design alternatives and extensions
 
 This is a list of some design alternatives and extensions that we discussed in
 detail but did not include in the spec or postponed them for future
@@ -705,7 +705,7 @@ consideration on demand. We will revisit these discussions when we have more
 implementation experience and learn more about the challenges and limitations of
 our current design in practice.
 
-### Polyhedral code representation alternatives: schedule lists vs schedules trees vs affine loop/if forms {#mlfunction-representation-alternatives-polyhedral-schedule-lists-vs-polyhedral-schedules-trees-vs-affine-loop-if-forms}
+### Polyhedral code representation alternatives: schedule lists vs schedules trees vs affine loop/if forms
 
 The current MLIR uses a representation of polyhedral schedules using a tree of
 if/for loops. We extensively debated the tradeoffs involved in the typical
@@ -738,7 +738,7 @@ At a high level, we have two alternatives here:
     AffineLoopTreeFunction, Polyhedral Schedule Tree function, and external
     functions.
 
-#### Schedule Tree Representation for MLFunctions {#schedule-tree-representation-for-mlfunctions}
+#### Schedule Tree Representation for MLFunctions
 
 This representation is based on a simplified form of the domain/schedule
 representation used by the polyhedral compiler community. Domains represent what
@@ -791,7 +791,7 @@ func @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
 
 ```
 
-### Affine Relations {#affine-relations}
+### Affine Relations
 
 The current MLIR spec includes affine maps and integer sets, but not affine
 relations. Affine relations are a natural way to model read and write access
@@ -853,7 +853,7 @@ bb0 (%0, %1: memref<128xf32>, i64):
 }
 ```
 
-### Read/Write/May_Read/May_Write sets for External Functions {#read-write-may_read-may_write-sets-for-external-functions}
+### Read/Write/May_Read/May_Write sets for External Functions
 
 Having read, write, may_read, and may_write sets for external functions which
 include opaque ones, high-performance vendor libraries such as CuDNN, CuB, MKL,
@@ -890,7 +890,7 @@ func @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
 
 ```
 
-### Memref Extensions {#memref-extensions}
+### Memref Extensions
 
 1.  Arbitrary polyhedral shapes for tensors: e.g., triangular shapes in tensor
     dimensions where there is symmetry: use integer set (affine constraints) to
@@ -911,7 +911,7 @@ func @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
     representation. 2(b) requires no change, but impacts how cost models look at
     index and layout maps.
 
-### `affine.if` and `affine.for` Extensions for "Escaping Scalars" {#extensions-for-"escaping-scalars"}
+### `affine.if` and `affine.for` Extensions for "Escaping Scalars"
 
 We considered providing a representation for SSA values that are live out of
 `if/else` conditional bodies and loop carried in `affine.for` loops. We
@@ -925,7 +925,7 @@ arguments and a yield like terminator in for/if instructions.
 
 The abandoned design of supporting escaping scalars is as follows:
 
-#### For Instruction {#for-instruction}
+#### For Instruction
 
 Syntax:
 
@@ -955,7 +955,7 @@ func int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
 }
 ```
 
-#### If/else Instruction {#if-else-instruction}
+#### If/else Instruction
 
 Syntax:
 
