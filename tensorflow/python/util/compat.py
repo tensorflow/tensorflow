@@ -115,7 +115,7 @@ def path_to_str(path):
 
   Args:
     path: An object that can be converted to path representation.
-  
+
   Returns:
     A `str` object.
 
