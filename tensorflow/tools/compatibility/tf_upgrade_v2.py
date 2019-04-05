@@ -1017,6 +1017,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.train.sdca_fprint",
         "tf.train.sdca_optimizer",
         "tf.train.sdca_shrink_l1",
+        "tf.losses.softmax_cross_entropy"
+
     }
 
     # Manual mapping of function names to be reordered to their list of argument
