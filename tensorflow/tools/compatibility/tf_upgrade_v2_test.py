@@ -1351,6 +1351,14 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_contrib_rnn_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.rnn")
+    self.assertIn("tf.contrib.rnn.* has been deprecated", report)
+
+  def test_contrib_cudnn_rnn_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.cudnn_rnn")
+    self.assertIn("tf.contrib.cudnn_rnn.* has been deprecated", report)
+
   def test_max_pool_2d(self):
     text = "tf.nn.max_pool(value=4)"
     expected_text = "tf.nn.max_pool2d(input=4)"
