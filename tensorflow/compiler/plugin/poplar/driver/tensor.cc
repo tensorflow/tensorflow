@@ -301,7 +301,7 @@ static StatusOr<poplar::Tensor> PathTransform(
         }
         std::vector<unsigned> permutation = *optional_permutation;
         std::vector<unsigned> shuffle(permutation.size());
-        for (int d = 0; d < permutation.size(); d++) {
+        for (unsigned int d = 0; d < permutation.size(); d++) {
           shuffle[permutation[d]] = d;
         }
         in = in.dimShuffle(shuffle);
@@ -341,7 +341,7 @@ static StatusOr<poplar::Tensor> ReversePathTransform(
         }
         std::vector<unsigned> permutation = *optional_permutation;
         std::vector<unsigned> shuffle(permutation.size());
-        for (int d = 0; d < permutation.size(); d++) {
+        for (unsigned int d = 0; d < permutation.size(); d++) {
           shuffle[d] = permutation[d];
         }
         in = in.dimShuffle(shuffle);
@@ -475,7 +475,7 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
 
 static StatusOr<poplar::Tensor> AddConvAddBiasTensor(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* layout, int64 layout_output_idx,
+    const HloInstruction* layout, uint64 layout_output_idx,
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map) {
   OutVector outputs = FindInstructionOutputs(tensor_map, layout);
@@ -495,7 +495,7 @@ static StatusOr<poplar::Tensor> AddConvAddBiasTensor(
 
 static StatusOr<poplar::Tensor> AddMatMulAddBiasTensor(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* layout, int64 layout_output_idx,
+    const HloInstruction* layout, uint64 layout_output_idx,
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map) {
   OutVector outputs = FindInstructionOutputs(tensor_map, layout);
@@ -522,7 +522,7 @@ static std::vector<std::size_t> PoplarLeftMatMulShape(
   std::size_t m = 1;
   std::size_t k = 1;
 
-  for (int i = 0; i < left_shape.size(); ++i) {
+  for (unsigned int i = 0; i < left_shape.size(); ++i) {
     if (absl::c_find(lhs_batch_dimensions, i) != lhs_batch_dimensions.end()) {
       b *= left_shape[i];
     } else if (absl::c_find(lhs_reduction_dimensions, i) !=
@@ -547,7 +547,7 @@ static std::vector<std::size_t> PoplarRightMatMulShape(
   std::size_t n = 1;
   std::size_t k = 1;
 
-  for (int i = 0; i < right_shape.size(); ++i) {
+  for (unsigned int i = 0; i < right_shape.size(); ++i) {
     if (absl::c_find(rhs_batch_dimensions, i) != rhs_batch_dimensions.end()) {
       b *= right_shape[i];
     } else if (absl::c_find(rhs_reduction_dimensions, i) !=
@@ -565,7 +565,7 @@ static std::vector<unsigned> InvertPermutation(
     const std::vector<unsigned>& permutation) {
   std::vector<unsigned> result(permutation.size());
 
-  for (int i = 0; i < permutation.size(); ++i) {
+  for (unsigned int i = 0; i < permutation.size(); ++i) {
     result[permutation[i]] = i;
   }
 
@@ -587,7 +587,7 @@ static poplar::Tensor BackShapeLeftMatMul(
     tmp_size.push_back(shape[lhs_batch_dimensions[i]]);
   }
 
-  for (int i = 0; i < shape.size(); ++i) {
+  for (unsigned int i = 0; i < shape.size(); ++i) {
     if (absl::c_find(lhs_batch_dimensions, i) == lhs_batch_dimensions.end() &&
         absl::c_find(lhs_reduction_dimensions, i) ==
             lhs_reduction_dimensions.end()) {
@@ -607,7 +607,7 @@ static poplar::Tensor BackShapeLeftMatMul(
   permutation.insert(permutation.end(), lhs_batch_dimensions.begin(),
                      lhs_batch_dimensions.end());
 
-  for (int i = 0; i < shape.size(); ++i) {
+  for (unsigned int i = 0; i < shape.size(); ++i) {
     if (absl::c_find(lhs_batch_dimensions, i) == lhs_batch_dimensions.end() &&
         absl::c_find(lhs_reduction_dimensions, i) ==
             lhs_reduction_dimensions.end()) {
@@ -661,7 +661,7 @@ static poplar::Tensor BackShapeRightMatMul(
     tmp_size.push_back(shape[rhs_reduction_dimensions[i]]);
   }
 
-  for (int i = 0; i < shape.size(); ++i) {
+  for (unsigned int i = 0; i < shape.size(); ++i) {
     if (absl::c_find(rhs_batch_dimensions, i) == rhs_batch_dimensions.end() &&
         absl::c_find(rhs_reduction_dimensions, i) ==
             rhs_reduction_dimensions.end()) {
@@ -679,7 +679,7 @@ static poplar::Tensor BackShapeRightMatMul(
   permutation.insert(permutation.end(), rhs_reduction_dimensions.begin(),
                      rhs_reduction_dimensions.end());
 
-  for (int i = 0; i < shape.size(); ++i) {
+  for (unsigned int i = 0; i < shape.size(); ++i) {
     if (absl::c_find(permutation, i) == permutation.end()) {
       permutation.push_back(i);
     }
@@ -713,7 +713,7 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
 
 StatusOr<poplar::Tensor> AddNormScaleTensor(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* layout, int64 layout_output_idx,
+    const HloInstruction* layout, uint64 layout_output_idx,
     const unsigned feature_dimension,
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map) {
@@ -736,7 +736,7 @@ StatusOr<poplar::Tensor> AddNormScaleTensor(
 
 StatusOr<poplar::Tensor> AddNormOffsetTensor(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* layout, int64 layout_output_idx,
+    const HloInstruction* layout, uint64 layout_output_idx,
     const unsigned feature_dimension,
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map) {
@@ -759,7 +759,7 @@ StatusOr<poplar::Tensor> AddNormOffsetTensor(
 
 static StatusOr<poplar::Tensor> AddElementwiseBinary(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* layout, int64 layout_output_idx,
+    const HloInstruction* layout, uint64 layout_output_idx,
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map) {
   OutVector outputs = FindInstructionOutputs(tensor_map, layout);
@@ -994,28 +994,26 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
 template <typename TYPE>
 static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
                               const xla::Shape& shape, const poplar::Type& type,
-                              poplar::Tensor& tensor) {
+                              poplar::Tensor& tensor, const std::string& name) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const TYPE* data(static_cast<const TYPE*>(literal.untyped_data()));
 
   if (num_elements == 0) {
-    tensor = graph.addConstant(type, {0}, (TYPE)0);
+    tensor = graph.addConstant(type, {0}, (TYPE)0, name);
   } else if (num_elements == 1) {
-    tensor = graph.addConstant(type, dim, data[0]);
+    tensor = graph.addConstant(type, dim, data[0], name);
   } else {
-    tensor = graph.addConstant(type, dim, data);
+    tensor = graph.addConstant(type, dim, data, name);
   }
   graph.setTileMapping(tensor, 0);
 
   tensor = ConvertToDeviceLayout(shape, tensor);
 }
 
-static void AddFp16ConstantTensor(poplar::Graph& graph,
-                                  const xla::Literal& literal,
-                                  const xla::Shape& shape,
-                                  const poplar::Type& type,
-                                  poplar::Tensor& tensor) {
+static void AddFp16ConstantTensor(
+    poplar::Graph& graph, const xla::Literal& literal, const xla::Shape& shape,
+    const poplar::Type& type, poplar::Tensor& tensor, const std::string& name) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
@@ -1032,11 +1030,9 @@ static void AddFp16ConstantTensor(poplar::Graph& graph,
   tensor = ConvertToDeviceLayout(shape, tensor);
 }
 
-static void Add64BitConstantTensor(poplar::Graph& graph,
-                                   const xla::Literal& literal,
-                                   const xla::Shape& shape,
-                                   const poplar::Type& type,
-                                   poplar::Tensor& tensor) {
+static void Add64BitConstantTensor(
+    poplar::Graph& graph, const xla::Literal& literal, const xla::Shape& shape,
+    const poplar::Type& type, poplar::Tensor& tensor, const std::string& name) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const void* data(static_cast<const void*>(literal.untyped_data()));
@@ -1047,11 +1043,11 @@ static void Add64BitConstantTensor(poplar::Graph& graph,
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 
   if (num_elements == 0) {
-    tensor = graph.addConstant(type, {0}, (int32)0);
+    tensor = graph.addConstant(type, {0}, (int32)0, name);
   } else if (num_elements == 1) {
-    tensor = graph.addConstant(type, dim, data32[0]);
+    tensor = graph.addConstant(type, dim, data32[0], name);
   } else {
-    tensor = graph.addConstant(type, dim, data32);
+    tensor = graph.addConstant(type, dim, data32, name);
   }
   graph.setTileMapping(tensor, 0);
 }
@@ -1127,25 +1123,26 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
     }
     return ConvertToDeviceLayout(shape, tensor);
   } else {
+    const auto& name = GetDebugName(src.first);
     switch (literal.shape().element_type()) {
       case PRED:
-        AddConstantTensor<bool>(graph, literal, shape, type, tensor);
+        AddConstantTensor<bool>(graph, literal, shape, type, tensor, name);
         break;
       case S32:
-        AddConstantTensor<int>(graph, literal, shape, type, tensor);
+        AddConstantTensor<int>(graph, literal, shape, type, tensor, name);
         break;
       case U32:
-        AddConstantTensor<unsigned>(graph, literal, shape, type, tensor);
+        AddConstantTensor<unsigned>(graph, literal, shape, type, tensor, name);
         break;
       case U64:
       case S64:
-        Add64BitConstantTensor(graph, literal, shape, type, tensor);
+        Add64BitConstantTensor(graph, literal, shape, type, tensor, name);
         break;
       case F16:
-        AddFp16ConstantTensor(graph, literal, shape, type, tensor);
+        AddFp16ConstantTensor(graph, literal, shape, type, tensor, name);
         break;
       case F32:
-        AddConstantTensor<float>(graph, literal, shape, type, tensor);
+        AddConstantTensor<float>(graph, literal, shape, type, tensor, name);
         break;
       default:
         // The unsupported cases were caught in the call to PoplarDataType above
