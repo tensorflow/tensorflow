@@ -103,7 +103,7 @@ TEST_FUNC(linalg_ops_folded_slices) {
 
   f->walk<SliceOp>([](SliceOp slice) {
     auto *sliceResult = slice.getResult();
-    auto viewOp = createFullyComposedView(sliceResult);
+    auto viewOp = emitAndReturnFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());
     slice.erase();
   });

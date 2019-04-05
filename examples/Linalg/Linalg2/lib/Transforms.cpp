@@ -98,7 +98,7 @@ static mlir::Value *createFullyComposedIndexing(unsigned dim,
   return linalg::intrinsics::range(min, max, step).getValue();
 }
 
-ViewOp linalg::createFullyComposedView(Value *v) {
+ViewOp linalg::emitAndReturnFullyComposedView(Value *v) {
   ScopedContext scope(FuncBuilder(v->getDefiningOp()),
                       v->getDefiningOp()->getLoc());
   assert(v->getType().isa<ViewType>() && "must be a ViewType");

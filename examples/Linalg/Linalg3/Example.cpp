@@ -161,6 +161,41 @@ TEST_FUNC(matmul_as_matvec_as_loops) {
   cleanupAndPrintFunction(f);
 }
 
+TEST_FUNC(matmul_as_matvec_as_affine) {
+  MLIRContext context;
+  Module module(&context);
+  mlir::Function *f =
+      makeFunctionWithAMatmulOp(module, "matmul_as_matvec_as_affine");
+  lowerToFinerGrainedTensorContraction(f);
+  composeSliceOps(f);
+  lowerToLoops(f);
+  PassManager pm;
+  pm.addPass(createLowerLinalgLoadStorePass());
+  if (succeeded(pm.run(f->getModule())))
+    cleanupAndPrintFunction(f);
+
+  // clang-format off
+  // CHECK-LABEL: func @matmul_as_matvec_as_affine(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>) {
+  //       CHECK: %[[M:.*]] = dim %arg0, 0 : memref<?x?xf32>
+  //       CHECK: %[[N:.*]] = dim %arg2, 1 : memref<?x?xf32>
+  //       CHECK: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
+  //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[N]]) {
+  //   CHECK-NOT: {{.*}} = linalg.
+  //       CHECK:   affine.for %i1 = 0 to (d0) -> (d0)(%[[M]]) {
+  //       CHECK:     affine.for %i2 = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK:       %4 = cmpi "eq", %i2, %c0 : index
+  //       CHECK:       %6 = load %arg2[%5, %3] : memref<?x?xf32>
+  //       CHECK:       %7 = select %4, %cst, %6 : f32
+  //   CHECK-NOT: {{.*}} = linalg.
+  //       CHECK:       %9 = load %arg1[%8, %3] : memref<?x?xf32>
+  //       CHECK:       %10 = load %arg0[%5, %8] : memref<?x?xf32>
+  //       CHECK:       %11 = mulf %10, %9 : f32
+  //       CHECK:       %12 = addf %7, %11 : f32
+  //   CHECK-NOT: {{.*}} = linalg.
+  //       CHECK:       store %12, %arg2[%5, %3] : memref<?x?xf32>
+  // clang-format on
+}
+
 int main() {
   RUN_TESTS();
   return 0;

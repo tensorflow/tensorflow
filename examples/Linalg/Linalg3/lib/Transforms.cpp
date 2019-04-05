@@ -23,7 +23,10 @@
 #include "linalg2/Intrinsics.h"
 #include "linalg3/Ops.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 
 using namespace mlir;
@@ -35,7 +38,7 @@ using namespace linalg::intrinsics;
 void linalg::composeSliceOps(mlir::Function *f) {
   f->walk<SliceOp>([](SliceOp sliceOp) {
     auto *sliceResult = sliceOp.getResult();
-    auto viewOp = createFullyComposedView(sliceResult);
+    auto viewOp = emitAndReturnFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());
     sliceOp.erase();
   });
@@ -220,4 +223,90 @@ void linalg::lowerToLoops(mlir::Function *f) {
     }
     op->erase();
   });
+}
+
+namespace {
+
+/// Rewriting linalg::LoadOp and linalg::StoreOp to mlir::LoadOp and
+/// mlir::StoreOp requires finding the proper indexing in the supporting MemRef.
+/// This is most easily achieved by calling emitAndReturnFullyComposedView to
+/// fold away all the SliceOp.
+template <typename LoadOrStoreOpTy> struct Rewriter : public RewritePattern {
+  explicit Rewriter(MLIRContext *context)
+      : RewritePattern(LoadOrStoreOpTy::getOperationName(), 1, context) {}
+
+  /// Performs the rewrite.
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override;
+};
+
+struct LowerLinalgLoadStorePass
+    : public FunctionPass<LowerLinalgLoadStorePass> {
+  void runOnFunction() {
+    OwningRewritePatternList patterns;
+    auto *context = &getContext();
+    patterns.push_back(llvm::make_unique<Rewriter<linalg::LoadOp>>(context));
+    patterns.push_back(llvm::make_unique<Rewriter<linalg::StoreOp>>(context));
+    applyPatternsGreedily(getFunction(), std::move(patterns));
+  }
+};
+} // namespace
+
+/// Emits and returns the standard load and store ops from the view indexings.
+/// If the indexing is of index type, use it as an index to the load/store.
+/// If the indexing is a range, use range.min + indexing as an index to the
+/// load/store.
+template <typename LoadOrStoreOp>
+static SmallVector<Value *, 8>
+emitAndReturnLoadStoreOperands(LoadOrStoreOp loadOrStoreOp, ViewOp viewOp) {
+  unsigned storeDim = 0;
+  SmallVector<Value *, 8> operands;
+  for (auto *indexing : viewOp.getIndexings()) {
+    if (indexing->getType().isa<IndexType>()) {
+      operands.push_back(indexing);
+      continue;
+    }
+    RangeOp range = indexing->getDefiningOp()->cast<RangeOp>();
+    ValueHandle min(range.getMin());
+    Value *storeIndex = *(loadOrStoreOp.getIndices().begin() + storeDim++);
+    using edsc::op::operator+;
+    operands.push_back(min + ValueHandle(storeIndex));
+  }
+  return operands;
+}
+
+template <>
+PatternMatchResult
+Rewriter<linalg::LoadOp>::matchAndRewrite(Operation *op,
+                                          PatternRewriter &rewriter) const {
+  auto load = op->cast<linalg::LoadOp>();
+  SliceOp slice = load.getView()->getDefiningOp()->dyn_cast<SliceOp>();
+  ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
+                      : load.getView()->getDefiningOp()->cast<ViewOp>();
+  ScopedContext scope(FuncBuilder(load), load.getLoc());
+  auto *memRef = view.getSupportingMemRef();
+  auto operands = emitAndReturnLoadStoreOperands(load, view);
+  rewriter.replaceOpWithNewOp<mlir::LoadOp>(op, memRef, operands);
+  return matchSuccess();
+}
+
+template <>
+PatternMatchResult
+Rewriter<linalg::StoreOp>::matchAndRewrite(Operation *op,
+                                           PatternRewriter &rewriter) const {
+  auto store = op->cast<linalg::StoreOp>();
+  SliceOp slice = store.getView()->getDefiningOp()->dyn_cast<SliceOp>();
+  ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
+                      : store.getView()->getDefiningOp()->cast<ViewOp>();
+  ScopedContext scope(FuncBuilder(store), store.getLoc());
+  auto *valueToStore = store.getValueToStore();
+  auto *memRef = view.getSupportingMemRef();
+  auto operands = emitAndReturnLoadStoreOperands(store, view);
+  rewriter.replaceOpWithNewOp<mlir::StoreOp>(op, valueToStore, memRef,
+                                             operands);
+  return matchSuccess();
+}
+
+FunctionPassBase *linalg::createLowerLinalgLoadStorePass() {
+  return new LowerLinalgLoadStorePass();
 }

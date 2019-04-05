@@ -29,7 +29,7 @@ class ViewOp;
 /// Takes a `view` of type ViewType (i.e. either a ViewOp or a SliceOp) and
 /// composes away all the SliceOp to return a single ViewOp.
 /// Inserts the required operations after `view`.
-ViewOp createFullyComposedView(mlir::Value *v);
+ViewOp emitAndReturnFullyComposedView(mlir::Value *v);
 
 } // namespace linalg
 
