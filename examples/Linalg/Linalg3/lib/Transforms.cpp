@@ -71,8 +71,8 @@ static Value *tryFold(AffineMap map, SmallVector<Value *, 4> operands) {
   return nullptr;
 }
 
-static Value *makeFoldedComposedAffineApply(AffineMap map,
-                                            ArrayRef<Value *> operandsRef) {
+Value *linalg::makeFoldedComposedAffineApply(AffineMap map,
+                                             ArrayRef<Value *> operandsRef) {
   SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
   if (auto *v = tryFold(map, operands)) {
@@ -83,18 +83,7 @@ static Value *makeFoldedComposedAffineApply(AffineMap map,
   return b->create<AffineApplyOp>(loc, map, operands).getResult();
 }
 
-struct RangeParts {
-  explicit RangeParts(unsigned reserved);
-  RangeParts(ArrayRef<Value *> ranges);
-
-  SmallVector<Value *, 4> makeRanges();
-
-  SmallVector<Value *, 4> mins;
-  SmallVector<Value *, 4> maxes;
-  SmallVector<Value *, 4> steps;
-};
-
-RangeParts::RangeParts(unsigned reserved) {
+linalg::RangeParts::RangeParts(unsigned reserved) {
   mins.reserve(reserved);
   maxes.reserve(reserved);
   steps.reserve(reserved);
@@ -112,12 +101,12 @@ extractFromRanges(ArrayRef<Value *> ranges,
   return res;
 }
 
-RangeParts::RangeParts(ArrayRef<Value *> ranges)
+linalg::RangeParts::RangeParts(ArrayRef<Value *> ranges)
     : mins(extractFromRanges(ranges, [](RangeOp r) { return r.getMin(); })),
       maxes(extractFromRanges(ranges, [](RangeOp r) { return r.getMax(); })),
       steps(extractFromRanges(ranges, [](RangeOp r) { return r.getStep(); })) {}
 
-SmallVector<Value *, 4> RangeParts::makeRanges() {
+SmallVector<Value *, 4> linalg::RangeParts::makeRanges() {
   SmallVector<Value *, 4> res;
   res.reserve(mins.size());
   for (auto z : llvm::zip(mins, maxes, steps)) {
@@ -149,14 +138,15 @@ SmallVector<Value *, 4> makeGenericRanges(AffineMap map,
   return makeGenericRangeParts(map, ranges).makeRanges();
 }
 
-static SmallVector<Value *, 4> makeGenericLoopRanges(
-    AffineMap operandRangesToLoopsMap, ArrayRef<Value *> ranges,
-    llvm::Optional<ArrayRef<Value *>> tileSizes = llvm::None) {
-  RangeParts res = makeGenericRangeParts(operandRangesToLoopsMap, ranges);
-  if (!tileSizes.hasValue())
+SmallVector<Value *, 4>
+linalg::makeGenericLoopRanges(AffineMap operandRangesToLoopMaps,
+                              ArrayRef<Value *> ranges,
+                              ArrayRef<Value *> tileSizes) {
+  RangeParts res = makeGenericRangeParts(operandRangesToLoopMaps, ranges);
+  if (tileSizes.empty())
     return res.makeRanges();
   SmallVector<Value *, 4> tiledSteps;
-  for (auto z : llvm::zip(res.steps, *tileSizes)) {
+  for (auto z : llvm::zip(res.steps, tileSizes)) {
     auto *step = std::get<0>(z);
     auto tileSize = std::get<1>(z);
     auto stepValue = step->getDefiningOp()->cast<ConstantIndexOp>().getValue();
@@ -171,11 +161,12 @@ static SmallVector<Value *, 4> makeGenericLoopRanges(
 
 template <class ContractionOp>
 static SmallVector<mlir::AffineForOp, 4>
-writeAsLoops(ContractionOp contraction) {
-  ScopedContext scope(mlir::FuncBuilder(contraction.getOperation()),
+writeContractionAsLoops(ContractionOp contraction) {
+  ScopedContext scope(FuncBuilder(contraction.getOperation()),
                       contraction.getLoc());
-  auto loopRanges = makeGenericLoopRanges(operandRangesToLoopsMap(contraction),
-                                          getRanges(contraction));
+  auto allRanges = getRanges(contraction);
+  auto loopRanges =
+      makeGenericLoopRanges(operandRangesToLoopsMap(contraction), allRanges);
 
   SmallVector<IndexHandle, 4> parallelIvs(contraction.getNumParallelDims());
   SmallVector<IndexHandle, 4> reductionIvs(contraction.getNumReductionDims());
@@ -201,27 +192,33 @@ writeAsLoops(ContractionOp contraction) {
   });
   // clang-format on
 
-  SmallVector<mlir::AffineForOp, 4> res;
-  res.reserve(pivs.size() + rivs.size());
+  // Return the AffineForOp for better compositionality (e.g. tiling).
+  SmallVector<mlir::AffineForOp, 4> loops;
+  loops.reserve(pivs.size() + rivs.size());
   for (auto iv : parallelIvs)
-    res.push_back(getForInductionVarOwner(iv.getValue()));
+    loops.push_back(getForInductionVarOwner(iv.getValue()));
   for (auto iv : reductionIvs)
-    res.push_back(getForInductionVarOwner(iv.getValue()));
-  return res;
+    loops.push_back(getForInductionVarOwner(iv.getValue()));
+
+  return loops;
+}
+
+llvm::Optional<SmallVector<mlir::AffineForOp, 4>>
+linalg::writeAsLoops(Operation *op) {
+  if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
+    return writeContractionAsLoops(matmulOp);
+  } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
+    return writeContractionAsLoops(matvecOp);
+  } else if (auto dotOp = op->dyn_cast<linalg::DotOp>()) {
+    return writeContractionAsLoops(dotOp);
+  }
+  return llvm::None;
 }
 
 void linalg::lowerToLoops(mlir::Function *f) {
   f->walk([](Operation *op) {
-    if (auto matmulOp = op->dyn_cast<linalg::MatmulOp>()) {
-      writeAsLoops(matmulOp);
-    } else if (auto matvecOp = op->dyn_cast<linalg::MatvecOp>()) {
-      writeAsLoops(matvecOp);
-    } else if (auto dotOp = op->dyn_cast<linalg::DotOp>()) {
-      writeAsLoops(dotOp);
-    } else {
-      return;
-    }
-    op->erase();
+    if (writeAsLoops(op))
+      op->erase();
   });
 }
 

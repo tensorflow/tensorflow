@@ -19,13 +19,39 @@
 #define LINALG3_TRANSFORMS_H_
 
 #include "linalg2/Transforms.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 
 namespace mlir {
+class AffineForOp;
+class AffineMap;
 class Function;
 class FunctionPassBase;
+class Operation;
+class Value;
 } // namespace mlir
 
 namespace linalg {
+
+struct RangeParts {
+  explicit RangeParts(unsigned reserved);
+  RangeParts(llvm::ArrayRef<mlir::Value *> ranges);
+  llvm::SmallVector<mlir::Value *, 4> makeRanges();
+
+  llvm::SmallVector<mlir::Value *, 4> mins;
+  llvm::SmallVector<mlir::Value *, 4> maxes;
+  llvm::SmallVector<mlir::Value *, 4> steps;
+};
+
+mlir::Value *
+makeFoldedComposedAffineApply(mlir::AffineMap map,
+                              llvm::ArrayRef<mlir::Value *> operandsRef);
+
+llvm::SmallVector<mlir::Value *, 4>
+makeGenericLoopRanges(mlir::AffineMap operandRangesToLoopMaps,
+                      llvm::ArrayRef<mlir::Value *> ranges,
+                      llvm::ArrayRef<mlir::Value *> tileSizes = {});
 
 /// Traverses `f` and rewrites linalg.slice, and the operations it depends on,
 /// to only use linalg.view operations.
@@ -34,6 +60,13 @@ void composeSliceOps(mlir::Function *f);
 /// Traverses `f` and rewrites linalg.matmul (resp. linalg.matvec)
 /// as linalg.matvec (resp. linalg.dot).
 void lowerToFinerGrainedTensorContraction(mlir::Function *f);
+
+/// Operation-wise writing of linalg operations to loop form.
+/// It is the caller's responsibility to erase the `op` if necessary.
+/// This returns the enclosing loops around the body of `op` for further
+/// composition of transformations.
+llvm::Optional<llvm::SmallVector<mlir::AffineForOp, 4>>
+writeAsLoops(mlir::Operation *op);
 
 /// Traverses `f` and rewrites linalg operations in loop form.
 void lowerToLoops(mlir::Function *f);

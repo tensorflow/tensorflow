@@ -29,20 +29,20 @@
 
 template <class ConcreteOp>
 mlir::Value *
-linalg::TensorContractionBase<ConcreteOp>::getInputView(unsigned i) {
-  return *(getInputs().begin() + i);
+linalg::TensorContractionBase<ConcreteOp>::getInputView(unsigned viewIndex) {
+  return *(getInputs().begin() + viewIndex);
 }
 
 template <class ConcreteOp>
 mlir::Value *
-linalg::TensorContractionBase<ConcreteOp>::getOutputView(unsigned i) {
-  return *(getOutputs().begin() + i);
+linalg::TensorContractionBase<ConcreteOp>::getOutputView(unsigned viewIndex) {
+  return *(getOutputs().begin() + viewIndex);
 }
 
 template <class ConcreteOp>
-mlir::AffineMap
-linalg::TensorContractionBase<ConcreteOp>::loopsToOperandRangesMap() {
-  return static_cast<ConcreteOp *>(this)->loopsToOperandRangesMap();
+llvm::SmallVector<mlir::AffineMap, 8>
+linalg::TensorContractionBase<ConcreteOp>::loopsToOperandRangeMaps() {
+  return static_cast<ConcreteOp *>(this)->loopsToOperandRangeMaps();
 }
 
 template <class ConcreteOp>
@@ -56,7 +56,24 @@ void linalg::TensorContractionBase<ConcreteOp>::emitScalarImplementation(
 template <class ConcreteOp>
 mlir::AffineMap linalg::operandRangesToLoopsMap(
     linalg::TensorContractionBase<ConcreteOp> &tensorContraction) {
-  return inverseSubMap(tensorContraction.loopsToOperandRangesMap());
+  mlir::AffineMap current;
+  // Individual submaps may not be invertible but their union must be invertible
+  // by construction.
+  for (auto m : tensorContraction.loopsToOperandRangeMaps()) {
+    if (!m)
+      continue;
+    if (!current) {
+      current = m;
+      continue;
+    }
+    llvm::SmallVector<mlir::AffineExpr, 8> results(current.getResults().begin(),
+                                                   current.getResults().end());
+    results.append(m.getResults().begin(), m.getResults().end());
+    current = mlir::AffineMap::get(
+        std::max(current.getNumDims(), m.getNumDims()),
+        current.getNumSymbols() + m.getNumSymbols(), results, {});
+  }
+  return inverseSubMap(current);
 }
 
 // Extract the ranges from a given ViewOp or SliceOp.

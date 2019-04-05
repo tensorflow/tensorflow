@@ -70,8 +70,13 @@ public:
   //////////////////////////////////////////////////////////////////////////////
   // Used in Linalg3 and later.
   //////////////////////////////////////////////////////////////////////////////
-  mlir::Value *getInputView(unsigned i);
-  mlir::Value *getOutputView(unsigned i);
+  mlir::Value *getInputView(unsigned viewIndex);
+  mlir::Value *getOutputView(unsigned viewIndex);
+  mlir::Value *getView(unsigned viewIndex) {
+    return viewIndex < getNumInputs()
+               ? getInputView(viewIndex)
+               : getOutputView(viewIndex - getNumInputs());
+  }
 
   /// Each op is responsible for declaring how it lowers itself to scalar form,
   /// given the enclosing parallel and reduction induction variables.
@@ -86,10 +91,9 @@ public:
   /// ConcreteOp implementation, the resulting map must match those.
   /// In favorable cases, this can be calculated by an analysis but specifying
   /// it explicitly is not expensive and generalizes to cases where an analysis
-  /// is not available.
-  /// For details, see the description of loopsToOperandRangesMap in each
-  /// ConcreteOp
-  mlir::AffineMap loopsToOperandRangesMap();
+  /// is not available. For details, see the description of
+  /// loopsToOperandRangeMaps in each ConcreteOp.
+  llvm::SmallVector<mlir::AffineMap, 8> loopsToOperandRangeMaps();
 };
 
 /// Implements c = A * B where c is a scalar and A and B are 1-D vectors.
@@ -135,7 +139,7 @@ public:
   ///   (d0) -> (d0, d0)(%k)
   /// And the operands ranges are:
   ///   (%k, %k)
-  mlir::AffineMap loopsToOperandRangesMap();
+  llvm::SmallVector<mlir::AffineMap, 8> loopsToOperandRangeMaps();
 
   ///  Given an enclosing reduction loop with iv `r_i`, emits MLIR corresponding
   ///  to:
@@ -195,7 +199,7 @@ public:
   ///   (d0, d1) -> (d0, d1, d1, d0)(%m, %k)
   /// And the operands ranges are:
   ///   (%m, %k, %k, %m)
-  mlir::AffineMap loopsToOperandRangesMap();
+  llvm::SmallVector<mlir::AffineMap, 8> loopsToOperandRangeMaps();
 
   ///  Given an enclosing parallel loop with iv `i` and an enclosing parallel
   ///  loop with iv `r_j`, emits MLIR corresponding to:
@@ -255,7 +259,7 @@ public:
   ///   (d0, d1, d2) -> (d0, d2, d2, d1, d0, d1)(%m, %n, %k)
   /// And the operands ranges are:
   ///   (%m, %k, %k, %n, %m, %n)
-  mlir::AffineMap loopsToOperandRangesMap();
+  llvm::SmallVector<mlir::AffineMap, 8> loopsToOperandRangeMaps();
 
   ///  Given a enclosing parallel loops with ivs `i` and `j`, and an enclosing
   ///  reduction loop with iv `r_k`, emits MLIR corresponding to:

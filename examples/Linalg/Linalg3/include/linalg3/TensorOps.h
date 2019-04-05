@@ -23,7 +23,7 @@
 namespace linalg {
 
 ///
-/// Ideally all these functions would go in an Analysis but until
+/// Ideally all these functions would go in an Analysis but as long as
 /// TensorContractionBase is templated, they need to remain close enough.
 ///
 
