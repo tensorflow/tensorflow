@@ -149,9 +149,6 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
   TF_RETURN_IF_ERROR(
       ImportGraphDef(options, item.graph, &graph, &shape_refiner));
 
-  std::unique_ptr<DeadnessAnalysis> deadness;
-  TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(graph, &deadness));
-
   // Collect nodes that can be fused via XLA, while ignoring those that
   // explicitly ask for XLA: (*) nodes that are marked to be compiled
   // explicitly. (*) nodes assigned to XLA device.
@@ -188,14 +185,6 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
     // the XLA cluster so it can't implement the forward-tensor-ref semantic.
     // Leave such nodes out of XLA clusters.
     if (HasForwardedRefInput(*node)) {
-      continue;
-    }
-
-    // If inputs to `node` can have conflicting deadness (i.e. some are alive
-    // and some are dead) then don't compile it.  XLA cannot represent the
-    // deadness semantics of these nodes correctly and auto-clustering these
-    // nodes can cause deadness to propagate to nodes that should be live.
-    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
       continue;
     }
 
@@ -241,6 +230,9 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
     worklist.push_back(&clusters[node->id()]);
   }
 
+  std::unique_ptr<DeadnessAnalysis> deadness_analysis;
+  TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(graph, &deadness_analysis));
+
   // Repeatedly contract edges between clusters that are on the same device,
   // provided the contraction would not create a cycle. This is a simplified
   // version of the clustering in mark_for_compilation_pass that also deals with
@@ -281,6 +273,17 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
       // Ops that consume shapes cannot be the root of a cluster. This is an
       // optimization.
       if (clusters[from].Size() == 1 && IsShapeConsumerOp(*node_from)) {
+        continue;
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          DeadnessAnalysis::DeadnessPredicate pred_from,
+          deadness_analysis->GetPredicateFor(node_from, Graph::kControlSlot));
+      TF_ASSIGN_OR_RETURN(
+          DeadnessAnalysis::DeadnessPredicate pred_to,
+          deadness_analysis->GetPredicateFor(node_to, Graph::kControlSlot));
+
+      if (pred_from != pred_to) {
         continue;
       }
 

@@ -2,6 +2,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 cc_library(
     name = "add",
     srcs = ["add.cc"],
@@ -24,7 +26,10 @@ cc_test(
         "-lEGL",
         "-lGLESv3",
     ],
-    tags = ["notap"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":add",
         ":test_util",
@@ -102,7 +107,10 @@ cc_test(
         "-lEGL",
         "-lGLESv3",
     ],
-    tags = ["notap"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":elementwise",
         ":test_util",
@@ -222,6 +230,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "relu_test",
+    srcs = ["relu_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":relu",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "reshape",
     srcs = ["reshape.cc"],
@@ -258,19 +286,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/gl:node_shader",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_library(
-    name = "sub",
-    srcs = ["sub.cc"],
-    hdrs = ["sub.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
     ],
@@ -343,7 +358,6 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "reshape",
     "slice",
     "softmax",
-    "sub",
     "transpose_conv",
     "upsampling_bilinear",
 ]
@@ -369,3 +383,5 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+tflite_portable_test_suite()

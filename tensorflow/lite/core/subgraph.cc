@@ -24,6 +24,16 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
+struct TfLiteQuantizationDeleter {
+  void operator()(TfLiteQuantization* q) {
+    if (q) TfLiteQuantizationFree(q);
+  }
+};
+
+using ScopedTfLiteQuantization =
+    std::unique_ptr<TfLiteQuantization, TfLiteQuantizationDeleter>;
+
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
@@ -324,7 +334,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
 TfLiteExternalContext* Subgraph::GetExternalContext(
     TfLiteExternalContextType type) {
-  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+  if (static_cast<int>(type) >= 0 && type < kTfLiteMaxExternalContexts) {
     return external_contexts_[type];
   }
   return nullptr;
@@ -337,7 +347,7 @@ TfLiteExternalContext* Subgraph::GetExternalContext(
 
 void Subgraph::SetExternalContext(TfLiteExternalContextType type,
                                   TfLiteExternalContext* ctx) {
-  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+  if (static_cast<int>(type) >= 0 && type < kTfLiteMaxExternalContexts) {
     external_contexts_[type] = ctx;
   }
 }
@@ -519,14 +529,13 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
+  std::unique_ptr<void, decltype(free)*> builtin_data_deleter(builtin_data,
+                                                              free);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError("AddNodeWithParameters is disallowed when graph is immutable.");
     return kTfLiteError;
   }
   state_ = kStateUninvokable;
-
-  std::unique_ptr<void, decltype(free)*> builtin_data_deleter(builtin_data,
-                                                              free);
 
   TF_LITE_ENSURE_OK(context_, CheckTensorIndices("node inputs", inputs.data(),
                                                  inputs.size()));
@@ -820,6 +829,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
+  // Ensure quantization cleanup on failure.
+  ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadOnly is disallowed when graph is immutable.");
@@ -847,7 +858,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     tensor.data.raw = const_cast<char*>(buffer);
     if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
     tensor.params = GetLegacyQuantization(quantization);
-    tensor.quantization = quantization;
+    tensor.quantization = *scoped_quantization.release();
     tensor.allocation_type = kTfLiteMmapRo;
     tensor.allocation = allocation;
   } else {
@@ -858,7 +869,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
                       allocation, false, &tensor);
     // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
     // if there are other required callers.
-    tensor.quantization = quantization;
+    tensor.quantization = *scoped_quantization.release();
   }
   return kTfLiteOk;
 }
@@ -870,6 +881,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantization quantization, bool is_variable) {
+  // Ensure quantization cleanup on failure.
+  ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadWrite is disallowed when graph is immutable.");
@@ -906,7 +919,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
                     nullptr, is_variable, &tensor);
   // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
   // if there are other required callers.
-  tensor.quantization = quantization;
+  tensor.quantization = *scoped_quantization.release();
   return kTfLiteOk;
 }
 

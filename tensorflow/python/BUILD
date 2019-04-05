@@ -182,6 +182,7 @@ py_library(
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:execution_callbacks",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
@@ -1093,6 +1094,22 @@ py_library(
     ],
 )
 
+py_library(
+    name = "composite_tensor_utils",
+    srcs = ["framework/composite_tensor_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":composite_tensor",
+        ":sparse_ops",
+        ":sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_concat_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
@@ -1106,6 +1123,23 @@ py_test(
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
+)
+
+tf_py_test(
+    name = "framework_composite_tensor_utils_test",
+    srcs = ["framework/composite_tensor_utils_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":composite_tensor",
+        ":composite_tensor_utils",
+        ":framework_test_lib",
+        ":sparse_ops",
+        ":sparse_tensor",
+        "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+    ],
+    main = "framework/composite_tensor_utils_test.py",
 )
 
 # This target is maintained separately from :util to provide separate visibility
@@ -1210,6 +1244,8 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
@@ -1401,7 +1437,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -2782,6 +2817,7 @@ py_library(
         ":state_ops_gen",
         ":tensor_shape",
         ":util",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
@@ -2897,6 +2933,7 @@ py_library(
         ":graph_util",
         ":math_ops",
         ":nn_ops_gen",
+        ":platform",
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
@@ -2994,8 +3031,9 @@ cuda_py_test(
         ":logging_ops",
         ":random_ops_gen",
         "//tensorflow/python/kernel_tests/random:util",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
 )
 
 py_library(
@@ -4050,17 +4088,24 @@ tf_py_test(
     name = "util_nest_test",
     size = "small",
     srcs = ["util/nest_test.py"],
-    additional_deps = [
+    additional_deps = [":util_nest_test_main_lib"],
+    main = "util/nest_test.py",
+)
+
+py_library(
+    name = "util_nest_test_main_lib",
+    testonly = True,
+    srcs = ["util/nest_test.py"],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":util",
-        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    main = "util/nest_test.py",
 )
 
 tf_py_test(
@@ -5760,22 +5805,29 @@ cuda_py_test(
     name = "matmul_benchmark",
     size = "medium",
     srcs = ["ops/matmul_benchmark.py"],
-    additional_deps = [
-        ":math_ops",
-        ":random_ops",
+    additional_deps = [":matmul_benchmark_main_lib"],
+    main = "ops/matmul_benchmark.py",
+    xla_enable_strict_auto_jit = True,
+)
+
+py_library(
+    name = "matmul_benchmark_main_lib",
+    testonly = True,
+    srcs = ["ops/matmul_benchmark.py"],
+    deps = [
         ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":math_ops",
         ":platform",
         ":platform_benchmark",
+        ":random_ops",
         ":variables",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
-    main = "ops/matmul_benchmark.py",
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

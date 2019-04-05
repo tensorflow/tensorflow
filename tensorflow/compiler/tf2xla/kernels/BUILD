@@ -184,7 +184,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:list_kernels",
-        "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:random_op",
         "//tensorflow/core/kernels:resource_variable_ops",

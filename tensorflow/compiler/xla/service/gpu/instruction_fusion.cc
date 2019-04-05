@@ -119,9 +119,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Check if we can use output fusion for (A @ B) * alpha
-  if (producer->opcode() == HloOpcode::kDot ||
-      (producer->opcode() == HloOpcode::kFusion &&
-       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
+  if (producer->opcode() == HloOpcode::kDot && ImplementedAsGemm(*producer)) {
     int64 other_operand_index = 1 - operand_index;
     HloInstruction* op1 = nullptr;
     HloInstruction* op2 = nullptr;
@@ -198,7 +196,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 
   // Do not fuse to-vector reduction into other consumers. They should be
   // unfused or the root of a kInput fusion.
-  if (IsReductionToVector(*producer)) {
+  if (IsReductionFromOrToContiguousDimensions(*producer)) {
     return false;
   }
 
@@ -279,7 +277,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer) ||
+  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
       consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }

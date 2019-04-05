@@ -32,12 +32,10 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
-
 all_combinations = combinations.combine(
     distribution=[
         strategy_combinations.one_device_strategy,
-    ],
-    mode=["graph"])
+    ], mode=["graph"])
 
 
 class NormalizationTest(test.TestCase, parameterized.TestCase):
@@ -48,10 +46,12 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
   def testBNWithZeroBatchInput(self, distribution, fused):
     with distribution.scope(), self.cached_session() as sess:
       bn_list = []
-      inputs = ops.convert_to_tensor(
-          np.random.random((0, 4, 4, 3)) + 100, dtype=dtypes.float32)
-      targets = ops.convert_to_tensor(
-          np.random.random((0, 4, 4, 3)), dtype=dtypes.float32)
+      inputs = np.random.random((0, 4, 4, 3)) + 100
+      targets = np.random.random((0, 4, 4, 3))
+      inputs_placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, 4, 4, 3])
+      targets_placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, 4, 4, 3])
 
       def step_fn(is_training, inputs, targets=None):
         bn = normalization.BatchNormalization(
@@ -68,9 +68,9 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
           return array_ops.identity(loss)
 
       train_op = distribution.extended.call_for_each_replica(
-          step_fn, args=(True, inputs, targets))
+          step_fn, args=(True, inputs_placeholder, targets_placeholder))
       predict_op = distribution.extended.call_for_each_replica(
-          step_fn, args=(False, inputs))
+          step_fn, args=(False, inputs_placeholder))
       bn = bn_list[0]
 
       self.evaluate(variables.global_variables_initializer())
@@ -86,7 +86,10 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual([0, 0, 0], np_beta)
 
       for _ in range(100):
-        np_output, _, _ = sess.run([train_op] + bn.updates)
+        np_output, _, _ = sess.run([train_op] + bn.updates, {
+            inputs_placeholder: inputs,
+            targets_placeholder: targets
+        })
         self.assertEqual(0.0, np_output)
 
       # Verify that the statistics and weights are not changed after training.
@@ -100,10 +103,9 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual([0, 0, 0], np_beta)
 
       # Test inference.
-      np_output = sess.run(predict_op)
+      np_output = sess.run(predict_op, {inputs_placeholder: inputs})
       self.assertEqual([], np_output.tolist())
 
 
 if __name__ == "__main__":
   test.main()
-

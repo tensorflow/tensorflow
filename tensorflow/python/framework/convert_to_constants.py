@@ -79,21 +79,33 @@ def _get_tensors_from_graph(graph, tensors):
   return new_tensors
 
 
-def _construct_concrete_function(input_func, graph_def):
+def _construct_concrete_function(input_func, graph_def,
+                                 converted_handles):
   """Creates a ConcreteFunction from the input function and frozen graph.
 
   Args:
     input_func: ConcreteFunction.
     graph_def: TensorFlow GraphDef.
+    converted_handles: a set of handles of the varialbes in input_func that were
+      converted to constant in `graph_def`.
 
   Returns:
     ConcreteFunction containing the graph_def.
   """
+  captured_inputs = input_func.inputs[-len(input_func.captured_inputs):]
+  captured_input_indices = [
+      input_func.captured_inputs.index(handle)
+      for handle in converted_handles
+  ]
+  converted_inputs = set(
+      [captured_inputs[index] for index in captured_input_indices])
+  not_converted_inputs = set(input_func.inputs).difference(converted_inputs)
+
   output_graph = func_graph.FuncGraph(input_func.graph.name)
   with output_graph.as_default():
     importer.import_graph_def(graph_def, name="")
     output_graph.inputs = _get_tensors_from_graph(output_graph,
-                                                  input_func.inputs)
+                                                  not_converted_inputs)
     output_graph.outputs = _get_tensors_from_graph(output_graph,
                                                    input_func.outputs)
 
@@ -101,16 +113,24 @@ def _construct_concrete_function(input_func, graph_def):
   output_graph.structured_input_signature = (
       input_func.graph.structured_input_signature)
 
+  # pylint: disable=protected-access
   # Create the ConcreteFunction and add it to the global context.
-  output_func = function.ConcreteFunction(output_graph)
+  output_func = function.ConcreteFunction(
+      output_graph, attrs=input_func._attrs, signature=input_func._signature)
   output_func.add_to_graph()
 
   # Inject the captured inputs into the ConcreteFunction.
-  output_func._captured_inputs = input_func.captured_inputs  # pylint: disable=protected-access
-  output_func.graph.variables = input_func.graph.variables
-
-  output_func._arg_keywords = input_func._arg_keywords  # pylint: disable=protected-access
-  output_func._num_position_args = input_func._num_positional_args  # pylint: disable=protected-access
+  output_func._captured_inputs = [
+      handle for handle in input_func.captured_inputs
+      if handle not in converted_handles
+  ]
+  output_func.graph.variables = [
+      var for var in input_func.graph.variables
+      if var.handle not in converted_handles
+  ]
+  output_func._arg_keywords = input_func._arg_keywords
+  output_func._num_positional_args = input_func._num_positional_args
+  # pylint: enable=protected-access
 
   # Register the gradients in the current root context.
   with ops.init_scope():
@@ -147,11 +167,14 @@ def convert_variables_to_constants_v2(func):
   # TODO(b/125838789): Use `func.graph.captures`.
   # Get mapping from input name to variable value.
   tensor_data = {}
+  map_name_to_handle = {}
   input_tensors = func.inputs[-len(func.captured_inputs):]
   for var in func.graph.variables:
     index = func.captured_inputs.index(var.handle)
     tensor = input_tensors[index]
-    tensor_data[get_name(tensor.name)] = var.numpy()
+    node_name = get_name(tensor.name)
+    tensor_data[node_name] = var.numpy()
+    map_name_to_handle[node_name] = var.handle
 
   resource_identities = {}
   resource_placeholders = {}
@@ -178,6 +201,7 @@ def convert_variables_to_constants_v2(func):
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
 
+  converted_handles = set([])
   for input_node in graph_def.node:
     output_node = output_graph_def.node.add()
     # Convert Placeholder ops that are inputs to ReadVariableOps into Const ops.
@@ -192,6 +216,7 @@ def convert_variables_to_constants_v2(func):
           tensor_util.make_tensor_proto(
               data, dtype=dtype.type, shape=data.shape))
       how_many_converted += 1
+      converted_handles.add(map_name_to_handle[input_node.name])
     # Change the dtype for Identity ops that are inputs to ReadVariableOps.
     elif input_node.name in resource_identities:
       output_node.CopyFrom(input_node)
@@ -209,4 +234,5 @@ def convert_variables_to_constants_v2(func):
 
   logging.info("Converted %d variables to const ops.", how_many_converted)
   # TODO(b/126613403): Use wrap_function.function_from_graph_def.
-  return _construct_concrete_function(func, output_graph_def)
+  return _construct_concrete_function(func, output_graph_def,
+                                      converted_handles)

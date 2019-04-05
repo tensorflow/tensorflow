@@ -32,8 +32,8 @@ class FakeClockEnv : public EnvWrapper {
  public:
   FakeClockEnv() : EnvWrapper(Env::Default()), current_millis_(0) {}
   void AdvanceByMillis(const uint64 millis) { current_millis_ += millis; }
-  uint64 NowMicros() override { return current_millis_ * 1000; }
-  uint64 NowSeconds() override { return current_millis_ * 1000; }
+  uint64 NowMicros() const override { return current_millis_ * 1000; }
+  uint64 NowSeconds() const override { return current_millis_ * 1000; }
 
  private:
   uint64 current_millis_;

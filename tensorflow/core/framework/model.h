@@ -160,6 +160,9 @@ class Node {
     return inputs_;
   }
 
+  // Returns a longer node name that is guaranteed to be unique.
+  string long_name() const { return strings::StrCat(name_, "(id:", id_, ")"); }
+
   // Returns the node name.
   const string& name() const { return name_; }
 
@@ -212,12 +215,12 @@ class Node {
 
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
-      std::vector<std::shared_ptr<Parameter>>* parameters) const
+      std::map<string, std::shared_ptr<Parameter>>* parameters) const
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     for (auto& pair : parameters_) {
       if (pair.second->state->tunable) {
-        parameters->push_back(pair.second);
+        parameters->insert(std::make_pair(long_name(), pair.second));
       }
     }
     for (auto& input : inputs_) {
@@ -407,8 +410,9 @@ class Model {
   void RemoveNode(const string& name) LOCKS_EXCLUDED(mu_);
 
  private:
-  // Collects tunable parameters in the tree rooted in the given node.
-  std::vector<std::shared_ptr<Parameter>> CollectTunableParameters(
+  // Collects tunable parameters in the tree rooted in the given node, returning
+  // a mapping from a (unique) node name to a tunable parameter.
+  std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
       std::shared_ptr<Node> node);
 
   // Collects the output time for the given node.

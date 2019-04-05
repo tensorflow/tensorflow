@@ -18,6 +18,10 @@ $(MAKEFILE_DIR)/downloads/kissfft/kiss_fft.h \
 $(MAKEFILE_DIR)/downloads/kissfft/_kiss_fft_guts.h \
 $(MAKEFILE_DIR)/downloads/kissfft/tools/kiss_fftr.h
 
+KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
+KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
+$(eval $(call add_third_party_download,$(KISSFFT_URL),$(KISSFFT_MD5),kissfft,patch_kissfft))
+
 THIRD_PARTY_CC_HDRS += \
 third_party/kissfft/COPYING \
 third_party/kissfft/kiss_fft.h \

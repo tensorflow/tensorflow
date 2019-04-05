@@ -317,6 +317,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'adj_x\', \'adj_y\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "BatchMatMulV2"
+    argspec: "args=[\'x\', \'y\', \'adj_x\', \'adj_y\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "BatchMatrixBandPart"
     argspec: "args=[\'input\', \'num_lower\', \'num_upper\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2943,6 +2947,10 @@ tf_module {
   member_method {
     name: "ResourceGather"
     argspec: "args=[\'resource\', \'indices\', \'dtype\', \'batch_dims\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "ResourceGatherNd"
+    argspec: "args=[\'resource\', \'indices\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "ResourceScatterAdd"

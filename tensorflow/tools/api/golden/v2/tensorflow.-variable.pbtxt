@@ -80,6 +80,10 @@ tf_class {
     argspec: "args=[\'variable_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "gather_nd"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "get_shape"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

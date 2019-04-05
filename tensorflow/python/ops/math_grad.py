@@ -1473,6 +1473,44 @@ def _BatchMatMul(op, grad):
   return grad_x, grad_y
 
 
+@ops.RegisterGradient("BatchMatMulV2")
+def _BatchMatMulV2(op, grad):
+  """Returns the gradient of x and y given the gradient of x * y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  adj_x = op.get_attr("adj_x")
+  adj_y = op.get_attr("adj_y")
+
+  if not adj_x:
+    if not adj_y:
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=True, adjoint_b=False)
+    else:
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=False)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=False)
+  else:
+    if not adj_y:
+      grad_x = math_ops.matmul(y, grad, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=False, adjoint_b=False)
+    else:
+      grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
+
+  # Reduce along the broadcasted batch dimensions, if broadcasting is required.
+  shape_x_static = x.get_shape()
+  shape_y_static = y.get_shape()
+  if not (shape_x_static.is_fully_defined() and
+          shape_y_static.is_fully_defined() and
+          shape_x_static == shape_y_static):
+    sx = array_ops.shape(x)
+    sy = array_ops.shape(y)
+    rx, ry = gen_array_ops.broadcast_gradient_args(sx[:-2], sy[:-2])
+    grad_x = array_ops.reshape(math_ops.reduce_sum(grad_x, rx), sx)
+    grad_y = array_ops.reshape(math_ops.reduce_sum(grad_y, ry), sy)
+
+  return grad_x, grad_y
+
+
 ops.NotDifferentiable("Range")
 ops.NotDifferentiable("LinSpace")
 

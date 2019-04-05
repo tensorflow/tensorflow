@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace gpu {
@@ -237,7 +238,8 @@ class Delegate {
                                                 runtimeOptions:runtime_options]);
     std::map<::tflite::gpu::ValueId, BHWC> output_dimensions;
     RETURN_IF_ERROR([inference_context_ setInputDimensions:input_dimensions
-                                          outputDimensions:&output_dimensions]);
+                                          outputDimensions:&output_dimensions
+                                           taskDescriptors:optimized_model]);
     return OkStatus();
   }
 
@@ -426,6 +428,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace tflite
 
 TfLiteDelegate* NewGpuDelegate(const GpuDelegateOptions* options) {
+  TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                       "Created TensorFlow Lite delegate for Metal.");
   auto* metal_delegate = new ::tflite::gpu::metal::Delegate(options);
   return metal_delegate ? metal_delegate->tflite_delegate() : nullptr;
 }

@@ -3,6 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.device.DeviceSpec\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "device_index"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "device_type"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "job"
     mtype: "<type \'property\'>"
   }

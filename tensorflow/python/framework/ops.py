@@ -332,6 +332,7 @@ class Tensor(_TensorLike):
     # to easily navigate a computation graph.
     self._consumers = []
     self._id = uid()
+    self._name = None
 
   @property
   def op(self):
@@ -351,9 +352,11 @@ class Tensor(_TensorLike):
   @property
   def name(self):
     """The string name of this tensor."""
-    if not self._op.name:
-      raise ValueError("Operation was not named: %s" % self._op)
-    return "%s:%d" % (self._op.name, self._value_index)
+    if self._name is None:
+      if not self._op.name:
+        raise ValueError("Operation was not named: %s" % self._op)
+      self._name = "%s:%d" % (self._op.name, self._value_index)
+    return self._name
 
   @property
   def device(self):
@@ -1118,7 +1121,8 @@ def internal_convert_to_tensor(value,
                                as_ref=False,
                                preferred_dtype=None,
                                ctx=None,
-                               accept_symbolic_tensors=True):
+                               accept_symbolic_tensors=True,
+                               accept_composite_tensors=False):
   """Implementation of the public convert_to_tensor."""
   if ctx is None: ctx = context.context()
   if isinstance(value, EagerTensor):
@@ -1188,7 +1192,10 @@ def internal_convert_to_tensor(value,
     if ret is NotImplemented:
       continue
 
-    if not isinstance(ret, Tensor):
+    is_acceptable_type = (isinstance(ret, Tensor) or (
+        accept_composite_tensors and
+        isinstance(ret, composite_tensor.CompositeTensor)))
+    if not is_acceptable_type:
       raise RuntimeError(
           "%sConversion function %r for type %s returned non-Tensor: %r" %
           (_error_prefix(name), conversion_func, base_type, ret))
@@ -1472,7 +1479,8 @@ def internal_convert_to_tensor_or_composite(value,
     return value
   else:
     return internal_convert_to_tensor(
-        value, dtype=dtype, name=name, as_ref=as_ref)
+        value, dtype=dtype, name=name, as_ref=as_ref,
+        accept_composite_tensors=True)
 
 
 def internal_convert_n_to_tensor_or_composite(values,
@@ -2916,7 +2924,7 @@ def get_stats_for_node_def(graph, node, statistic_type):
   return result
 
 
-def _name_from_scope_name(name):
+def name_from_scope_name(name):
   """Returns the name of an op given the name of its scope.
 
   Args:
@@ -3515,7 +3523,7 @@ class Graph(object):
     # If a names ends with a '/' it is a "name scope" and we use it as-is,
     # after removing the trailing '/'.
     if name and name[-1] == "/":
-      name = _name_from_scope_name(name)
+      name = name_from_scope_name(name)
     else:
       name = self.unique_name(name)
 
@@ -4131,7 +4139,7 @@ class Graph(object):
   # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
   def name_scope(self, name):
-    r"""Returns a context manager that creates hierarchical names for operations.
+    """Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
     statement pushes a new name onto the stack for the lifetime of the context.
@@ -4233,7 +4241,7 @@ class Graph(object):
     if not name:  # Both for name=None and name="" we re-set to empty scope.
       new_stack = None
     elif name[-1] == "/":
-      new_stack = _name_from_scope_name(name)
+      new_stack = name_from_scope_name(name)
     else:
       new_stack = self.unique_name(name)
     self._name_stack = new_stack
@@ -4468,11 +4476,11 @@ class Graph(object):
       RuntimeError: If device scopes are not properly nested.
     """
     self._add_device_to_stack(device_name_or_function, offset=2)
-    old_top_of_stack = self._device_function_stack.peek_objs()[0]
+    old_top_of_stack = self._device_function_stack.peek_top_obj()
     try:
       yield
     finally:
-      new_top_of_stack = self._device_function_stack.peek_objs()[0]
+      new_top_of_stack = self._device_function_stack.peek_top_obj()
       if old_top_of_stack is not new_top_of_stack:
         raise RuntimeError("Exiting device scope without proper scope nesting.")
       self._device_function_stack.pop_obj()
@@ -5042,9 +5050,8 @@ class Graph(object):
       the filename and lineno members point to the code location where
       Graph.device was called directly or indirectly by the user.
     """
-    traceable_objects = self._device_function_stack.peek_traceable_objs()
     snapshot = []
-    for obj in traceable_objects:
+    for obj in self._device_function_stack.peek_traceable_objs():
       obj_copy = obj.copy_metadata()
       obj_copy.obj = obj.obj.display_name
       snapshot.append(obj_copy)
@@ -5076,8 +5083,10 @@ class Graph(object):
 
   def _snapshot_colocation_stack_metadata(self):
     """Return colocation stack metadata as a dictionary."""
-    traceable_objects = self._colocation_stack.peek_traceable_objs()
-    return {obj.obj.name: obj.copy_metadata() for obj in traceable_objects}
+    return {
+        traceable_obj.obj.name: traceable_obj.copy_metadata()
+        for traceable_obj in self._colocation_stack.peek_traceable_objs()
+    }
 
   @_colocation_stack.setter
   def _colocation_stack(self, colocation_stack):

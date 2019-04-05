@@ -73,6 +73,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -2547,9 +2548,20 @@ def matmul(a,
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
+
+    if fwd_compat.forward_compatible(2019, 4, 18):
+      output_may_have_non_empty_batch_shape = (
+          (a_shape is None or len(a_shape) > 2) or
+          (b_shape is None or len(b_shape) > 2))
+      batch_mat_mul_fn = gen_math_ops.batch_mat_mul_v2
+    else:
+      output_may_have_non_empty_batch_shape = (
+          (a_shape is None or len(a_shape) > 2) and
+          (b_shape is None or len(b_shape) > 2))
+      batch_mat_mul_fn = gen_math_ops.batch_mat_mul
+
     if (not a_is_sparse and
-        not b_is_sparse) and ((a_shape is None or len(a_shape) > 2) and
-                              (b_shape is None or len(b_shape) > 2)):
+        not b_is_sparse) and output_may_have_non_empty_batch_shape:
       # BatchMatmul does not support transpose, so we conjugate the matrix and
       # use adjoint instead. Conj() is a noop for real matrices.
       if transpose_a:
@@ -2558,8 +2570,7 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      return batch_mat_mul_fn(a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -2786,6 +2797,20 @@ def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
   Converts `IndexedSlices` objects into dense tensors prior to adding.
+
+  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n` but it
+  waits for all of its inputs to be ready before beginning to sum.This can
+  consume more memory when inputs are ready at different times, since
+  the minimum temporary storage required is proportional to the input
+  size rather than the output size.
+
+  For example:
+
+  ```python
+  a = tf.constant([[3, 5], [4, 8]])
+  b = tf.constant([[1, 6], [2, 9]])
+  tf.math.add_n([a, b, a])  # [[7, 16], [10, 25]]
+  ```
 
   Args:
     inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape

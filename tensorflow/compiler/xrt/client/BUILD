@@ -4,8 +4,8 @@ licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow/compiler/xrt:__subpackages__",
+        "//tensorflow:internal",
+        "//tensorflow/compiler:__subpackages__",
     ],
 )
 
@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:call_options",
+        "//tensorflow/core/distributed_runtime:request_id",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",

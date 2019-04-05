@@ -436,6 +436,89 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_best_only=save_best_only,
         mode='unknown')
 
+    # Case 6: `ModelCheckpoint` with a combination of `save_freq` and `period`.
+    # Though `period` is deprecated, we're testing it for
+    # backward-compatibility.
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath, monitor=monitor, mode=mode, save_freq='epoch', period=5)
+    ]
+    assert not os.path.exists(filepath.format(epoch=0))
+    assert not os.path.exists(filepath.format(epoch=5))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=10,
+        verbose=1)
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=2))
+    assert not os.path.exists(filepath.format(epoch=3))
+    assert not os.path.exists(filepath.format(epoch=4))
+    assert os.path.exists(filepath.format(epoch=5))
+    assert not os.path.exists(filepath.format(epoch=6))
+    assert os.path.exists(filepath.format(epoch=10))
+    os.remove(filepath.format(epoch=5))
+    os.remove(filepath.format(epoch=10))
+
+    # Case 7: `ModelCheckpoint` with an integer `save_freq`
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode,
+            save_freq=30,
+            period=100)  # The period should be ignored (this test tests this).
+    ]
+    assert not os.path.exists(filepath.format(epoch=3))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=10,
+        verbose=1)
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=2))
+    assert os.path.exists(filepath.format(epoch=3))
+    assert not os.path.exists(filepath.format(epoch=4))
+    assert not os.path.exists(filepath.format(epoch=5))
+    assert os.path.exists(filepath.format(epoch=6))
+    assert not os.path.exists(filepath.format(epoch=7))
+    assert not os.path.exists(filepath.format(epoch=8))
+    assert os.path.exists(filepath.format(epoch=9))
+    os.remove(filepath.format(epoch=3))
+    os.remove(filepath.format(epoch=6))
+    os.remove(filepath.format(epoch=9))
+
+    # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
+    with self.assertRaisesRegexp(ValueError, 'Unrecognized save_freq'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          mode=mode,
+          save_freq='invalid_save_freq')
+    # The following should not raise ValueError.
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode=mode,
+        save_freq='epoch')
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode=mode,
+        save_freq=3)
+
   def _run_load_weights_on_restart_test_common_iterations(self):
 
     def get_input_datasets():

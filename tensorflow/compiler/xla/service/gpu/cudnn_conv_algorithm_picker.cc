@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -122,6 +123,25 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
+void PrintPlatformInfo(const se::Stream* stream) {
+  auto* se = stream->parent();
+  const auto& desc = se->GetDeviceDescription();
+  LOG(ERROR) << "Device: " << desc.name();
+  LOG(ERROR) << "Platform: " << desc.platform_version();
+  LOG(ERROR) << "Driver: " << desc.driver_version();
+  LOG(ERROR) << "Runtime: " << desc.runtime_version();
+
+  auto* dnn = se->AsDnn();
+  if (dnn) {
+    auto dnn_version = dnn->GetVersion();
+    if (dnn_version.ok()) {
+      auto v = dnn_version.ValueOrDie();
+      LOG(ERROR) << "cudnn version: " << v.major_version() << "."
+                 << v.minor_version() << "." << v.patch();
+    }
+  }
+}
+
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -132,6 +152,9 @@ tensorflow::ComputeCapability GetComputeCapability(
 bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
                    absl::string_view name, const HloInstruction* instr,
                    AutotuneResult* result) {
+  XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
+                                 2);
+
   Status status = allocator.CheckRedzones(stream);
   if (status.ok()) {
     return true;
@@ -152,23 +175,7 @@ bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
       name);
   LOG(ERROR) << status.ToString();
   LOG(ERROR) << "HloInstruction " << instr->ToString();
-
-  auto* se = stream->parent();
-  const auto& desc = se->GetDeviceDescription();
-  LOG(ERROR) << "Device: " << desc.name();
-  LOG(ERROR) << "Platform: " << desc.platform_version();
-  LOG(ERROR) << "Driver: " << desc.driver_version();
-  LOG(ERROR) << "Runtime: " << desc.runtime_version();
-
-  auto* dnn = se->AsDnn();
-  if (dnn) {
-    auto dnn_version = dnn->GetVersion();
-    if (dnn_version.ok()) {
-      auto v = dnn_version.ValueOrDie();
-      LOG(ERROR) << "cudnn version: " << v.major_version() << "."
-                 << v.minor_version() << "." << v.patch();
-    }
-  }
+  PrintPlatformInfo(stream);
   return false;
 }
 
@@ -187,6 +194,9 @@ bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
 // caching would speed up compilation a lot.
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "CudnnConvAlgorithmPicker::PickBestAlgorithm for ", instr->ToString()));
+
   const Shape& result_shape = instr->shape().tuple_shapes(0);
 
   // Don't run this function concurrently on the same GPU.
@@ -286,13 +296,18 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
   std::vector<AutotuneResult> profile_results;
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
   const bool crash_on_checking_failure =
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_crash_on_verification_failures();
+      debug_options.xla_gpu_crash_on_verification_failures();
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL(
+        absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
+                     AlgorithmToString(alg)),
+        2);
+
     RedzoneAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
@@ -333,6 +348,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     }
 
     if (comparator.has_value()) {
+      XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
           &stream, allocator, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
@@ -352,6 +368,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
             << instr->ToString() << " for "
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
+        PrintPlatformInfo(&stream);
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         auto* reference_conv = fail->mutable_reference_conv();
@@ -360,6 +377,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
             first_algorithm.tensor_ops_enabled());
       }
     } else {
+      XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
       auto comp =
           BufferComparator::Create(result_shape, stream.parent(), compiler_);
       if (comp.ok()) {
@@ -512,6 +530,14 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnComputation(
 }
 
 StatusOr<bool> CudnnConvAlgorithmPicker::Run(HloModule* module) {
+  XLA_SCOPED_LOGGING_TIMER("CudnnConvAlgorithmPicker");
+
+  if (module->config().debug_options().xla_gpu_disable_autotune()) {
+    VLOG(2) << "Convolution auto-tuning disabled, CudnnConvAlgorithmPicker "
+               "returning early.";
+    return false;
+  }
+
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

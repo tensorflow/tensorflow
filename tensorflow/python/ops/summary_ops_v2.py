@@ -52,8 +52,9 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-# A global dictionary mapping graph keys to a list of summary writer init ops.
-_SUMMARY_WRITER_INIT_OP = {}
+# Name for graph collection of summary writer init ops, which is only exposed
+# as a legacy API for tf.contrib.summary in TF 1.x.
+_SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
 _EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
 _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
@@ -216,9 +217,7 @@ class ResourceSummaryWriter(SummaryWriter):
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
     else:
-      global _SUMMARY_WRITER_INIT_OP
-      key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-      _SUMMARY_WRITER_INIT_OP.setdefault(key, []).append(self._init_op)
+      ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
   def set_as_default(self):
     """Enables this summary writer for the current thread."""
@@ -379,7 +378,7 @@ def create_file_writer_v2(logdir,
       if context.executing_eagerly():
         shared_name = context.shared_name()
       else:
-        shared_name = ops._name_from_scope_name(scope)  # pylint: disable=protected-access
+        shared_name = ops.name_from_scope_name(scope)  # pylint: disable=protected-access
       return ResourceSummaryWriter(
           shared_name=shared_name,
           init_op_fn=functools.partial(
@@ -537,9 +536,7 @@ def summary_writer_initializer_op():
     raise RuntimeError(
         "tf.contrib.summary.summary_writer_initializer_op is only "
         "supported in graph mode.")
-  global _SUMMARY_WRITER_INIT_OP
-  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  return _SUMMARY_WRITER_INIT_OP.setdefault(key, [])
+  return ops.get_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME)
 
 
 _INVALID_SCOPE_CHARACTERS = re.compile(r"[^-_/.A-Za-z0-9]")

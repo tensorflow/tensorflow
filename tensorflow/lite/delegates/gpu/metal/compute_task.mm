@@ -81,6 +81,10 @@ using ::tflite::gpu::ValueId;
 #endif
   NSString* storageType;
   NSString* accumulatorType;
+  NSString* toAccumulatorType = @"";
+  NSString* toAccumulatorType2 = @"";
+  NSString* toAccumulatorType3 = @"";
+  NSString* toAccumulatorType4 = @"";
   if (options.storage_precision == RuntimeOptions::Precision::FP32) {
     storageType = @"float";
     accumulatorType = @"float";
@@ -89,6 +93,10 @@ using ::tflite::gpu::ValueId;
     storageType = @"half";
     if (options.accumulator_precision == RuntimeOptions::Precision::FP32) {
       accumulatorType = @"float";
+      toAccumulatorType = @"float";
+      toAccumulatorType2 = @"float2";
+      toAccumulatorType3 = @"float3";
+      toAccumulatorType4 = @"float4";
     } else {
       accumulatorType = @"half";
     }
@@ -102,6 +110,10 @@ using ::tflite::gpu::ValueId;
     @"ACCUM_FLT2" : [NSString stringWithFormat:@"%@2", accumulatorType],
     @"ACCUM_FLT3" : [NSString stringWithFormat:@"%@3", accumulatorType],
     @"ACCUM_FLT4" : [NSString stringWithFormat:@"%@4", accumulatorType],
+    @"TO_ACCUM_TYPE" : toAccumulatorType,
+    @"TO_ACCUM2_TYPE" : toAccumulatorType2,
+    @"TO_ACCUM3_TYPE" : toAccumulatorType3,
+    @"TO_ACCUM4_TYPE" : toAccumulatorType4,
     @"BARRIER" : barrier,
   };
 
@@ -138,61 +150,16 @@ using ::tflite::gpu::ValueId;
 }
 
 - (Status)setInputDimensionsWithDevice:(id<MTLDevice>)device
-                             outputIDs:(const std::vector<::tflite::gpu::ValueId>&)outputIDs
-                        runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options
                             dimensions:
-                                (std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions
-                               buffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers {
-  // Re-calculate output buffers dimensions and re-initialize intermediate output buffers.
+                                (std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions {
+  // Re-calculate output buffers dimensions
   for (auto& buffer : _outputBuffers) {
     auto outputDimensions = buffer.dimensionsFunction(*dimensions);
     for (ValueId duplicate : buffer.alias) {
       (*dimensions)[duplicate] = outputDimensions;
     }
-
     // Store buffer dimensions
     (*dimensions)[buffer.uid] = outputDimensions;
-    // If the buffer is intermediate - create it. Output buffers are created by user side.
-    if (std::find(outputIDs.begin(), outputIDs.end(), buffer.uid) == outputIDs.end()) {
-      size_t dataTypeSize = options.storage_precision == RuntimeOptions::Precision::FP32
-                                ? sizeof(float)
-                                : sizeof(HalfBits);
-      // Initialize metal buffer
-      NSUInteger bufferSize =
-          dataTypeSize * outputDimensions.w * outputDimensions.h * AlignByN(outputDimensions.c, 4);
-#if (defined(__MAC_10_14) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14) ||      \
-    (defined(__IPHONE_12_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0) || \
-    (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
-      if (bufferSize > [device maxBufferLength]) {
-        std::string error("Tensor id: ");
-        error += std::to_string(buffer.uid) + " with size: " + std::to_string(bufferSize) +
-                 " exceeds MTLDevice maxBufferLength: " + std::to_string([device maxBufferLength]);
-        return ::tflite::gpu::ResourceExhaustedError(error);
-      }
-#endif
-#if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
-      if ([device currentAllocatedSize] + bufferSize > [device recommendedMaxWorkingSetSize]) {
-        std::string error("Out of memory in MTLBuffer allocation. Currently allocated: ");
-        error += std::to_string([device currentAllocatedSize]);
-        return ::tflite::gpu::ResourceExhaustedError(error);
-      }
-#endif
-      buffer.metalHandle = [device newBufferWithLength:bufferSize
-                                               options:MTLResourceStorageModeShared];
-      if (buffer.metalHandle == nil) {
-        std::string error("Out of memory in MTLBuffer allocation. Currently allocated: ");
-#if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
-        error += std::to_string([device currentAllocatedSize]);
-#endif
-        return ::tflite::gpu::ResourceExhaustedError(error);
-      }
-      (*buffers)[buffer.uid] = buffer.metalHandle;
-    }
-  }
-
-  // Re-assign input buffers
-  for (auto& buffer : _inputBuffers) {
-    buffer.metalHandle = (*buffers)[buffer.uid];
   }
 
   for (auto& uniform : _uniformBuffers) {
@@ -214,6 +181,30 @@ using ::tflite::gpu::ValueId;
     return InvalidArgumentError(error);
   }
   _groupsCount = workGroups.second;
+  return OkStatus();
+}
+
+- (Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
+              outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
+         usageRecordIds:(const std::map<ValueId, size_t>&)usageRecordIds
+        sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
+          sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers {
+  for (auto& buffer : _outputBuffers) {
+    // If the buffer is intermediate: set its metalHandle from sharedBuffers
+    if (std::find(outputIds.begin(), outputIds.end(), buffer.uid) == outputIds.end()) {
+      auto usageRecordIt = usageRecordIds.find(buffer.uid);
+      if (usageRecordIt == usageRecordIds.end()) {
+        return InternalError("TensorUsageRecord for intermediate tensor is not found.");
+      }
+      buffer.metalHandle = sharedBuffers.at(sharedBufferIds.at(usageRecordIt->second));
+      (*buffers)[buffer.uid] = buffer.metalHandle;
+    }
+  }
+
+  // Re-assign input buffers
+  for (auto& buffer : _inputBuffers) {
+    buffer.metalHandle = (*buffers)[buffer.uid];
+  }
   return OkStatus();
 }
 

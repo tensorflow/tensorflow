@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/environment.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/abs.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
@@ -37,10 +37,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/sigmoid.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/sub.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
@@ -51,16 +49,15 @@ namespace metal {
 namespace {
 
 std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
-    int id, ValueId input_id, ValueId output_id,
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
+  const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
+  if (GetAppleSocVersion() >= 12 &&
+      GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+    return ConvolutionPrecise(id, input_id, output_id, attr, options);
+  }
   if (GetAppleSocVersion() >= 11) {
-    bool conv1x1 = attr.weights.shape.h == 1 && attr.weights.shape.w == 1 &&
-                   attr.strides.h == 1 && attr.strides.w == 1 &&
-                   attr.dilations.h == 1 && attr.dilations.w == 1 &&
-                   attr.padding.prepended.h == 0 &&
-                   attr.padding.prepended.w == 0 &&
-                   attr.padding.appended.h == 0 && attr.padding.appended.w == 0;
-    if (conv1x1) {
+    if (CheckConvolution1x1Support(attr)) {
       return Convolution1x1(id, input_id, output_id, attr, options);
     } else {
       return ConvolutionGeneric(id, input_id, output_id, attr, options);
@@ -76,8 +73,21 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     const metal::RuntimeOptions& options) {
   if (CheckDepthWiseConv3x3Stride1x1Support(attr)) {
     return DepthWiseConv3x3Stride1x1(id, input_id, output_id, attr, options);
+  } else if (CheckDepthWiseConv3x3Stride2Support(attr)) {
+    return DepthWiseConv3x3Stride2(id, input_id, output_id, attr, options);
   } else {
     return DepthWiseConvolution(id, input_id, output_id, attr, options);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectReshape(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const ReshapeAttributes& attr) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
+    return Reshapex4(id, input_id, output_id, attr);
+  } else {
+    return Reshape(id, input_id, output_id, attr);
   }
 }
 
@@ -97,10 +107,8 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
     }
 
     std::vector<ComputeTaskDescriptorPtr> tasks;
-    switch (OperationTypeFromString(node->operation.type)) {
-      case OperationType::ABS:
-        tasks = Abs(node_id, inputs[0], outputs[0]);
-        break;
+    auto op_type = OperationTypeFromString(node->operation.type);
+    switch (op_type) {
       case OperationType::ADD:
         tasks = AddTable(node_id, inputs, outputs[0]);
         break;
@@ -116,7 +124,7 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       } break;
       case OperationType::CONVOLUTION_2D:
         tasks = SelectConvolution(
-            node_id, inputs[0], outputs[0],
+            graph, node_id, inputs[0], outputs[0],
             absl::any_cast<Convolution2DAttributes>(node->operation.attributes),
             options);
         break;
@@ -173,13 +181,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
                  absl::any_cast<ReLUAttributes>(node->operation.attributes));
         break;
       case OperationType::RESHAPE:
-        tasks = Reshape(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<ReshapeAttributes>(node->operation.attributes)
-                .new_shape);
-        break;
-      case OperationType::SIGMOID:
-        tasks = Sigmoid(node_id, inputs[0], outputs[0]);
+        tasks = SelectReshape(
+            graph, node_id, inputs[0], outputs[0],
+            absl::any_cast<ReshapeAttributes>(node->operation.attributes));
         break;
       case OperationType::SLICE:
         tasks =
@@ -190,27 +194,38 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
         tasks = Softmax(node_id, inputs[0], outputs[0],
                         graph.FindInputs(node->id)[0]->tensor.shape.c, options);
         break;
-      case OperationType::SUB:
-        tasks = Sub(node_id, inputs, outputs[0]);
-        break;
       case OperationType::UPSAMPLE_2D:
         tasks = Upsample(
             node_id, inputs[0], outputs[0],
             absl::any_cast<Upsample2DAttributes>(node->operation.attributes));
         break;
-      case OperationType::APPLY_MASK:
-      case OperationType::BATCH_NORMALIZATION:
-      case OperationType::CONST:
+
+      case OperationType::ABS:
       case OperationType::COS:
       case OperationType::LOG:
-      case OperationType::LSTM:
-      case OperationType::MUL:
-      case OperationType::RESIZE:
       case OperationType::RSQRT:
+      case OperationType::SIGMOID:
       case OperationType::SIN:
       case OperationType::SQRT:
       case OperationType::SQUARE:
       case OperationType::TANH:
+        tasks =
+            ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
+        break;
+
+      case OperationType::SUB:
+      case OperationType::DIV:
+      case OperationType::POW:
+      case OperationType::SQUARED_DIFF:
+        tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
+        break;
+
+      case OperationType::APPLY_MASK:
+      case OperationType::BATCH_NORMALIZATION:
+      case OperationType::CONST:
+      case OperationType::LSTM:
+      case OperationType::MUL:
+      case OperationType::RESIZE:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

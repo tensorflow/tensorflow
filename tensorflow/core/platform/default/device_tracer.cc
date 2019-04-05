@@ -600,10 +600,8 @@ class CudaEventCollector {
     auto elapsed_us = GetElasedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
-    std::string node_name = record.kernel_name;
-    if (record.annotation) {
-      node_name = absl::StrCat(*record.annotation, "::", node_name);
-    }
+    std::string node_name =
+        record.annotation ? *record.annotation : record.kernel_name;
     stats->set_node_name(node_name);
     // TODO(csigg): Report grid size?
     std::string node_label;

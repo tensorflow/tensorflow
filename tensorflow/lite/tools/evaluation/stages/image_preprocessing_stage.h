@@ -18,9 +18,7 @@ limitations under the License.
 #include <stdint.h>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 
@@ -29,35 +27,31 @@ namespace evaluation {
 
 // EvaluationStage to read contents of an image and preprocess it for inference.
 // Currently only supports JPEGs.
-// Input TAGs (Object Class): IMAGE_PATH (std::string*)
-// Output TAGs (Object Class): PREPROCESSED_IMAGE (pointer to image based on
-//                                                 output_type)
-// For more information on TAGs, please see EvaluationStageConfig proto.
 class ImagePreprocessingStage : public EvaluationStage {
  public:
   explicit ImagePreprocessingStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
 
-  bool Run(absl::flat_hash_map<std::string, void*>& object_map) override;
+  TfLiteStatus Init() override;
+
+  TfLiteStatus Run() override;
 
   EvaluationStageMetrics LatestMetrics() override;
 
   ~ImagePreprocessingStage() {}
 
- protected:
-  bool DoInit(absl::flat_hash_map<std::string, void*>& object_map) override;
+  // Call before Run().
+  void SetImagePath(std::string* image_path) { image_path_ = image_path; }
 
-  std::vector<std::string> GetInitializerTags() override { return {}; }
-  std::vector<std::string> GetInputTags() override { return {kImagePathTag}; }
-  std::vector<std::string> GetOutputTags() override {
-    return {kPreprocessedImageTag};
-  }
+  // Provides preprocessing output.
+  void* GetPreprocessedImageData();
 
  private:
+  std::string* image_path_ = nullptr;
   float cropping_fraction_;
   float input_mean_value_;
   float scale_;
-  int image_height_, image_width_, total_size_;
+  int total_size_;
   TfLiteType output_type_;
   tensorflow::Stat<int64_t> latency_stats_;
 
@@ -65,12 +59,7 @@ class ImagePreprocessingStage : public EvaluationStage {
   std::vector<float> float_preprocessed_image_;
   std::vector<int8_t> int8_preprocessed_image_;
   std::vector<uint8_t> uint8_preprocessed_image_;
-
-  static const char kImagePathTag[];
-  static const char kPreprocessedImageTag[];
 };
-
-DECLARE_FACTORY(ImagePreprocessingStage);
 
 }  // namespace evaluation
 }  // namespace tflite

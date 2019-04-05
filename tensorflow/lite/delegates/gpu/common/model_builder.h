@@ -37,7 +37,7 @@ Status BuildModel(TfLiteContext* context,
                   GraphFloat32* graph);
 
 Status ConvertTfliteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
-                                      TensorRefFloat32* flow_tensor);
+                                      TensorRefFloat32* tensor_ref);
 
 }  // namespace gpu
 }  // namespace tflite

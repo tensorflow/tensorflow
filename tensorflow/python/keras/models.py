@@ -91,6 +91,10 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     raise ValueError('Expected `model` argument '
                      'to be a functional `Model` instance, '
                      'got a `Sequential` instance instead:', model)
+  if not model._is_graph_network:
+    raise ValueError('Expected `model` argument '
+                     'to be a functional `Model` instance, '
+                     'but got a subclass model instead.')
 
   layer_map = {}  # Cache for created layers.
   tensor_map = {}  # Map {reference_tensor: corresponding_tensor}
@@ -134,6 +138,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
+  new_nodes = set()
+
   # Iterated over every node in the reference model, in depth order.
   depth_keys = list(model._nodes_by_depth.keys())
   depth_keys.sort(reverse=True)
@@ -165,6 +171,11 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
         kwargs = node.arguments or {}
         output_tensors = layer(computed_tensors, **kwargs)
 
+        # Thread-safe way to keep track of what node was created.
+        first_output_tensor = nest.flatten(output_tensors)[0]
+        new_nodes.add(
+            layer._inbound_nodes[first_output_tensor._keras_history[1]])
+
         for x, y in zip(
             nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
           tensor_map[x] = y
@@ -178,7 +189,18 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   input_tensors = nest.pack_sequence_as(model._nested_inputs, input_tensors)
   output_tensors = nest.pack_sequence_as(model._nested_outputs, output_tensors)
-  return Model(input_tensors, output_tensors, name=model.name)
+  model = Model(input_tensors, output_tensors, name=model.name)
+  # Layers not directly tied to outputs of the Model, such as loss layers
+  # created in `add_loss`.
+  ancillary_layers = [
+      layer for layer in layer_map.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    nodes = set(
+        nest.flatten([layer._inbound_nodes for layer in ancillary_layers]))
+    relevant_nodes = list(nodes.intersection(new_nodes))
+    model._insert_layers(ancillary_layers, relevant_nodes=relevant_nodes)
+  return model
 
 
 def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):

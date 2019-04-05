@@ -209,11 +209,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
 
-// The limitation on not being able to simplify loops that contain infeeds (and
-// other non-removable instructions) isn't fundamental -- it just stems from the
-// fact that our infrastructure sees simplifying such a loop as tantamount to
-// removing the non-removable instruction.
-TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
+// We can simplify loops whose bodies contain infeed or other side-effecting
+// instructions other than send/recv.
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
   HloComputation* computation = m->entry_computation();
   auto* while_op = computation->root_instruction();
@@ -221,6 +219,22 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
   auto* while_body = while_op->while_body();
   auto token = while_body->AddInstruction(HloInstruction::CreateToken());
   while_body->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(), op::Tuple());
+}
+
+// We don't simplify trip-count-1 loops whose *conditions* contain infeed or
+// other side-effecting instructions, because simplifying such a loop always
+// removes its condition!
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedInCondNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloComputation* computation = m->entry_computation();
+  auto* while_op = computation->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  auto* while_cond = while_op->while_condition();
+  auto token = while_cond->AddInstruction(HloInstruction::CreateToken());
+  while_cond->AddInstruction(HloInstruction::CreateInfeed(
       ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }

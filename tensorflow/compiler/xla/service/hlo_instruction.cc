@@ -2213,9 +2213,15 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintName(name(), options), " = ");
   }
 
-  // Print opcode, operand(s) and shape.
-  StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ",
-            HloOpcodeString(opcode()), "(",
+  // Print shape.
+  if (options.include_layout_in_shapes()) {
+    StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
+  } else {
+    StrAppend(&result, ShapeUtil::HumanString(shape()));
+  }
+
+  // Print opcode, operand(s).
+  StrAppend(&result, " ", HloOpcodeString(opcode()), "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2259,7 +2265,11 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     }
     std::vector<string> str;
     if (options.print_operand_shape()) {
-      str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      if (options.include_layout_in_shapes()) {
+        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      } else {
+        str.push_back(ShapeUtil::HumanString(operand->shape()));
+      }
     }
 
     // In a top-level HloInstruction::ToString() call, the operand name is not
@@ -3205,7 +3215,12 @@ Status HloInstruction::set_backend_config(
 /* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
     const tensorflow::protobuf::Message& proto) {
   string ret;
-  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  // Pass ignore_accuracy_loss = true because estimated_cycles field can be
+  // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
+  // INT64_MAX, JsonFormat will return an error status, although there is no
+  // accuracy loss for int64.
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
+      proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
 }
 
@@ -3406,6 +3421,13 @@ int64 HloInstruction::parameter_number() const {
 
 void HloInstruction::set_parameter_replicated_at_leaf_buffers(
     absl::Span<const bool> parameter_replicated_at_leaf_buffers) {
+  return Cast<HloParameterInstruction>(this)
+      ->set_parameter_replicated_at_leaf_buffers(
+          parameter_replicated_at_leaf_buffers);
+}
+
+void HloInstruction::set_parameter_replicated_at_leaf_buffers(
+    const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
   return Cast<HloParameterInstruction>(this)
       ->set_parameter_replicated_at_leaf_buffers(
           parameter_replicated_at_leaf_buffers);

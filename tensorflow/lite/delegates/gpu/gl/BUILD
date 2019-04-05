@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])  # Apache 2.0
 
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 cc_library(
     name = "api",
@@ -180,6 +181,9 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
+        # TODO(b/129551923): Enable on Android after resolving GL context issue.
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":egl_environment",
@@ -394,6 +398,7 @@ cc_test(
         "local",
         "nobuilder",
         "notap",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":object",
@@ -431,3 +436,5 @@ flatbuffer_cc_library(
         "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
     ],
 )
+
+tflite_portable_test_suite()

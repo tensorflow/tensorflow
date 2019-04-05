@@ -125,8 +125,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
     if (ShapeUtil::IsScalar(return_shape)) {
       llvm::Value* ret_value = Load(root_value, "load_ret_value");
       Store(ret_value,
-            BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"),
-            "store_ret_value");
+            BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"));
     } else {
       CHECK(return_shape.IsTuple());
       llvm::Type* tuple_type = llvm_ir::ShapeToIrType(return_shape, module_);

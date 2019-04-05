@@ -98,14 +98,11 @@ namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
-inline Status ConvertDType(DataType tf_dtype, nvinfer1::DataType* trt_dtype) {
+inline Status TfDataTypeToTrt(DataType tf_dtype,
+                              nvinfer1::DataType* trt_dtype) {
   switch (tf_dtype) {
     case DataType::DT_FLOAT:
       *trt_dtype = nvinfer1::DataType::kFLOAT;
-      break;
-    // TODO(aaroey): this should be DT_QINT8 which is not a well supported type.
-    case DataType::DT_INT8:
-      *trt_dtype = nvinfer1::DataType::kINT8;
       break;
     case DataType::DT_HALF:
       *trt_dtype = nvinfer1::DataType::kHALF;
@@ -116,6 +113,25 @@ inline Status ConvertDType(DataType tf_dtype, nvinfer1::DataType* trt_dtype) {
     default:
       return errors::InvalidArgument("Unsupported data type ",
                                      DataTypeString(tf_dtype));
+  }
+  return Status::OK();
+}
+
+inline Status TrtDataTypeToTf(nvinfer1::DataType trt_dtype,
+                              DataType* tf_dtype) {
+  switch (trt_dtype) {
+    case nvinfer1::DataType::kFLOAT:
+      *tf_dtype = DataType::DT_FLOAT;
+      break;
+    case nvinfer1::DataType::kHALF:
+      *tf_dtype = DataType::DT_HALF;
+      break;
+    case nvinfer1::DataType::kINT32:
+      *tf_dtype = DataType::DT_INT32;
+      break;
+    default:
+      return errors::InvalidArgument("Unsupported data type ",
+                                     DebugString(trt_dtype));
   }
   return Status::OK();
 }
@@ -178,7 +194,7 @@ std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
 template <>
 nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
   nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
-  TF_CHECK_OK(ConvertDType(this->at(key)->type(), &trt_dtype));
+  TF_CHECK_OK(TfDataTypeToTrt(this->at(key)->type(), &trt_dtype));
   return trt_dtype;
 }
 
@@ -268,7 +284,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
                                 nvinfer1::DataType* trt_dtype,
                                 nvinfer1::Dims* trt_dims, int* batch_size) {
   // Convert data type.
-  TF_RETURN_IF_ERROR(ConvertDType(dtype, trt_dtype));
+  TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, trt_dtype));
 
   // Convert shape.
   if (shape.dims() < 0) {
@@ -472,12 +488,12 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
                                          const nvinfer1::Dims& dims,
                                          nvinfer1::ITensor** tensor,
                                          const char* dtype_attr_name = "T") {
+  nvinfer1::DataType trt_dtype =
+      nvinfer1::DataType::kFLOAT;  // Default to FP32.
   TFAttrs attrs(params->node_def);
-  DataType dtype;
   if (attrs.count(dtype_attr_name)) {
-    dtype = attrs.get<DataType>(dtype_attr_name);
-  } else {
-    dtype = DT_FLOAT;  // Default to FP32.
+    DataType dtype = attrs.get<DataType>(dtype_attr_name);
+    TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, &trt_dtype));
   }
 
   // In order to be broadcastable, the number of dims has to match.
@@ -486,18 +502,18 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
     broadcastable_dims.d[i] = 1;
   }
   TRT_ShapedWeights weights =
-      params->weight_store->GetTempWeights(dtype, broadcastable_dims);
+      params->weight_store->GetTempWeights(trt_dtype, broadcastable_dims);
   void* raw_ptr = weights.GetValues();
-  switch (dtype) {
-    case DataType::DT_FLOAT:
+  switch (trt_dtype) {
+    case nvinfer1::DataType::kFLOAT:
       static_cast<float*>(raw_ptr)[0] = value;
       break;
-    case DataType::DT_HALF:
+    case nvinfer1::DataType::kHALF:
       static_cast<Eigen::half*>(raw_ptr)[0] = Eigen::half(value);
       break;
     default:
       return errors::InvalidArgument("Unsupported data type ",
-                                     DataTypeString(dtype));
+                                     DebugString(trt_dtype));
   }
   *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
@@ -652,12 +668,36 @@ string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
   return op_name_a.substr(0, last_scope_separator);
 }
 
-TRT_ShapedWeights::TRT_ShapedWeights(DataType type) : type_(type) {
+// Verifies that shapes of the given inputs match after masking the specified
+// dimension.
+Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
+                         int masked_dim, absl::string_view node_name) {
+  size_t num_inputs = inputs.size();
+  if (num_inputs <= 1) return Status::OK();
+
+  const nvinfer1::Dims dims_0 = inputs.at(0).GetTrtDims();
+  for (size_t i = 1; i < num_inputs; ++i) {
+    const nvinfer1::Dims dim_i = inputs.at(i).GetTrtDims();
+    if (dim_i.nbDims != dims_0.nbDims) {
+      return errors::InvalidArgument(
+          "Received inputs with inconsistent rank, at ", node_name);
+    }
+    for (size_t j = 0; j < dims_0.nbDims; ++j) {
+      if (dim_i.d[j] != dims_0.d[j] && j != masked_dim) {
+        return errors::InvalidArgument(
+            "Received inputs with inconsistent shape, at ", node_name);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type) : type_(type) {
   shape_.nbDims = 0;
 }
 
-TRT_ShapedWeights::TRT_ShapedWeights(DataType type, nvinfer1::Dims dims,
-                                     Tensor tensor)
+TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type,
+                                     nvinfer1::Dims dims, Tensor tensor)
     : shape_(dims), type_(type), tensor_(tensor) {}
 
 TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
@@ -668,18 +708,29 @@ int64_t TRT_ShapedWeights::count() const {
 }
 
 nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
-  nvinfer1::DataType trt_type(nvinfer1::DataType::kFLOAT);
-  TF_CHECK_OK(ConvertDType(type_, &trt_type));
-  return nvinfer1::Weights{trt_type, GetValues(), count()};
+  return nvinfer1::Weights{type_, GetValues(), count()};
 }
 
 size_t TRT_ShapedWeights::size_bytes() const {
-  return this->count() * DataTypeSize(this->type_);
+  size_t data_type_size = -1;
+  switch (type_) {
+    case nvinfer1::DataType::kFLOAT:
+    case nvinfer1::DataType::kINT32:
+      data_type_size = 4;
+      break;
+    case nvinfer1::DataType::kHALF:
+      data_type_size = 2;
+      break;
+    case nvinfer1::DataType::kINT8:
+      data_type_size = 1;
+      break;
+  }
+  return this->count() * data_type_size;
 }
 
 string TRT_ShapedWeights::DebugString() const {
   return StrCat("TRT_ShapedWeights(shape=", convert::DebugString(shape_),
-                ", type=", DataTypeString(type_),
+                ", type=", convert::DebugString(type_),
                 ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
@@ -843,13 +894,13 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
   oweights->shape_.d[1] = c;
   const nvinfer1::DimsHW istrides = {1, k};
   const nvinfer1::DimsHW ostrides = {c, 1};
-  switch (iweights.type_) {
-    case DataType::DT_FLOAT: {
+  switch (iweights.TrtDType()) {
+    case nvinfer1::DataType::kFLOAT: {
       Reorder2({k, c}, static_cast<float const*>(iweights.GetValues()),
                istrides, static_cast<float*>(oweights->GetValues()), ostrides);
       break;
     }
-    case DataType::DT_HALF: {
+    case nvinfer1::DataType::kHALF: {
       Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
                istrides, static_cast<Eigen::half*>(oweights->GetValues()),
                ostrides);
@@ -857,13 +908,13 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
     }
     default:
       LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
-                 << DataTypeString(iweights.type_);
+                 << DebugString(iweights.TrtDType());
   }
 }
 
 void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
                        TRT_ShapedWeights* oweights, const int num_groups) {
-  CHECK_EQ(iweights.type_, oweights->type_);
+  CHECK(iweights.TrtDType() == oweights->TrtDType());
   CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
   // K indexes over output channels, C over input channels, and R and S over the
   // height and width of the convolution
@@ -882,13 +933,13 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   oweights->shape_.d[3] = s;
   const nvinfer1::DimsNCHW istrides = {1, k, s * k * c, c * k};
   const nvinfer1::DimsNCHW ostrides = {c * r * s, r * s, s, 1};
-  switch (iweights.type_) {
-    case DataType::DT_FLOAT: {
+  switch (iweights.TrtDType()) {
+    case nvinfer1::DataType::kFLOAT: {
       Reorder4({k, c, r, s}, static_cast<float const*>(iweights.GetValues()),
                istrides, static_cast<float*>(oweights->GetValues()), ostrides);
       break;
     }
-    case DataType::DT_HALF: {
+    case nvinfer1::DataType::kHALF: {
       Reorder4({k, c, r, s},
                static_cast<Eigen::half const*>(iweights.GetValues()), istrides,
                static_cast<Eigen::half*>(oweights->GetValues()), ostrides);
@@ -897,18 +948,20 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
 
     default:
       LOG(FATAL) << "Unsupported type, expected fp32 or fp16 but got "
-                 << DataTypeString(iweights.type_);
+                 << DebugString(iweights.TrtDType());
   }
 }
 
-TRT_ShapedWeights TrtWeightStore::GetTempWeights(DataType type,
+TRT_ShapedWeights TrtWeightStore::GetTempWeights(nvinfer1::DataType trt_dtype,
                                                  const nvinfer1::Dims& dims) {
   TensorShape shape;
+  DataType tf_dtype;
   // TODO(laigd): make it return a status.
   TF_CHECK_OK(TensorShapeUtils::MakeShape(dims.d, dims.nbDims, &shape));
+  TF_CHECK_OK(TrtDataTypeToTf(trt_dtype, &tf_dtype));
   // TODO(jie): check weights size_bytes. 0 means type error
-  Tensor tensor(type, shape);
-  TRT_ShapedWeights weights(type, dims, tensor);
+  Tensor tensor(tf_dtype, shape);
+  TRT_ShapedWeights weights(trt_dtype, dims, tensor);
   store_.emplace_back(std::move(tensor));
   return weights;
 }
@@ -1258,22 +1311,22 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
 
 Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
                                  float* out_min, float* out_max) const {
-  switch (weights.type_) {
-    case DataType::DT_FLOAT: {
+  switch (weights.TrtDType()) {
+    case nvinfer1::DataType::kFLOAT: {
       auto inp = static_cast<float const*>(weights.GetValues());
       auto result = std::minmax_element(inp, inp + weights.count());
       *out_min = *result.first;
       *out_max = *result.second;
       break;
     }
-    case DataType::DT_HALF: {
+    case nvinfer1::DataType::kHALF: {
       auto inp = static_cast<Eigen::half const*>(weights.GetValues());
       auto result = std::minmax_element(inp, inp + weights.count());
       *out_min = Eigen::half_impl::half_to_float(*result.first);
       *out_max = Eigen::half_impl::half_to_float(*result.second);
       break;
     }
-    case DataType::DT_INT32: {
+    case nvinfer1::DataType::kINT32: {
       auto inp = static_cast<int const*>(weights.GetValues());
       auto result = std::minmax_element(inp, inp + weights.count());
       *out_min = static_cast<float>(*result.first);
@@ -1283,7 +1336,7 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
     default:
       return errors::Unimplemented(
           "Data type not supported for GetWeightRange: ",
-          DataTypeString(weights.type_));
+          DebugString(weights.TrtDType()));
   }
   return Status::OK();
 }
@@ -1538,9 +1591,8 @@ Status AllowDataTypes(const OpConverterParams& params,
 
 TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
                                     const TRT_ShapedWeights& weights_src) {
-  auto dtype_new = DataType::DT_HALF;
   TRT_ShapedWeights weights =
-      store->GetTempWeights(dtype_new, weights_src.shape_);
+      store->GetTempWeights(nvinfer1::DataType::kHALF, weights_src.shape_);
   const float* src = static_cast<const float*>(weights_src.GetValues());
   Eigen::half* dst = static_cast<Eigen::half*>(weights.GetValues());
   for (int64_t i = 0; i < weights_src.count(); i++) {
@@ -1598,15 +1650,15 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
 
 Status UnaryCompute(const TRT_ShapedWeights& iweights,
                     TRT_ShapedWeights* oweights, LambdaFactory unary_op) {
-  CHECK_EQ(iweights.type_, oweights->type_);
-  switch (iweights.type_) {
-    case DataType::DT_FLOAT: {
+  CHECK(iweights.TrtDType() == oweights->TrtDType());
+  switch (iweights.TrtDType()) {
+    case nvinfer1::DataType::kFLOAT: {
       auto inp = static_cast<float const*>(iweights.GetValues());
       auto oup = static_cast<float*>(oweights->GetValues());
       std::transform(inp, inp + iweights.count(), oup, unary_op.unary<float>());
       break;
     }
-    case DataType::DT_HALF: {
+    case nvinfer1::DataType::kHALF: {
       auto inp = static_cast<Eigen::half const*>(iweights.GetValues());
       auto oup = static_cast<Eigen::half*>(oweights->GetValues());
       std::transform(inp, inp + iweights.count(), oup,
@@ -1614,8 +1666,8 @@ Status UnaryCompute(const TRT_ShapedWeights& iweights,
       break;
     }
     default:
-      return errors::Unimplemented("Data type not supported: " +
-                                   DataTypeString(iweights.type_));
+      return errors::Unimplemented("Data type not supported: ",
+                                   DebugString(iweights.TrtDType()));
   }
   return Status::OK();
 }
@@ -1635,10 +1687,6 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
     return errors::Unimplemented(node_def.op(), " is not supported, at ",
                                  node_def.name());
   }
-
-  // Check type consistency.
-  nvinfer1::DataType trt_dtype;
-  TF_RETURN_IF_ERROR(ConvertDType(weights.type_, &trt_dtype));
 
   // Check scale mode.
   auto dims_w = weights.shape_;
@@ -1729,9 +1777,9 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
   }
 
   // Prepare weights
-  TRT_ShapedWeights shift_weights(weights.type_);
-  TRT_ShapedWeights scale_weights(weights.type_);
-  TRT_ShapedWeights power_weights(weights.type_);
+  TRT_ShapedWeights shift_weights(weights.TrtDType());
+  TRT_ShapedWeights scale_weights(weights.TrtDType());
+  TRT_ShapedWeights power_weights(weights.TrtDType());
 
   if (node_def.op() == "Sub") {
     if (swapped_inputs) {
@@ -1898,7 +1946,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   TRT_ShapedWeights weights =
       params->weight_store->GetTempWeights(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
-  TRT_ShapedWeights biases(weights.type_);
+  TRT_ShapedWeights biases(weights.TrtDType());
   const int output_axis = is_conv2d_backprop_input ? 1 : 0;
   const int noutput = weights.shape_.d[output_axis] * num_groups;
   nvinfer1::DimsHW kernel_size;
@@ -2998,7 +3046,7 @@ Status ConvertBiasAdd(OpConverterParams* params) {
     mode = nvinfer1::ScaleMode::kUNIFORM;
   }
 
-  TRT_ShapedWeights empty_weights(weights.type_);
+  TRT_ShapedWeights empty_weights(weights.TrtDType());
   nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
       *tensor, mode, weights.GetTrtWeights(), empty_weights.GetTrtWeights(),
       empty_weights.GetTrtWeights());
@@ -3048,33 +3096,41 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   }
 }
 
+template <DataType dtype>
+void CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+  const CType* src = tensor.flat<CType>().data();
+  std::copy(src, src + tensor.NumElements(), dst);
+}
+
 Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
                             TRT_ShapedWeights* weights) {
   const DataType dtype = tensor.dtype();
 
-  // We always convert the integer constants to INT32, since TRT INT8 is for
-  // quantized inference.
+  // We always convert the integer constants to INT32.
   //
   // TODO(aaroey): FP16 will remain in half format and is not converted to
   // FP32, but the converter currently uses all float weights as FP32. Fix
   // this.
-  const DataType converted_dtype =
-      (dtype == DT_INT16 || dtype == DT_INT8 || dtype == DT_UINT8 ? DT_INT32
-                                                                  : dtype);
+  DataType converted_dtype = dtype;
+  if (dtype == DataType::DT_INT8 || dtype == DataType::DT_UINT8 ||
+      dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16) {
+    converted_dtype = DT_INT32;
+  }
 
   // Verify that the dtype is supported by TensorRT. Otherwise, return an error.
   nvinfer1::DataType trt_dtype;
-  TF_RETURN_IF_ERROR(ConvertDType(converted_dtype, &trt_dtype));
+  TF_RETURN_IF_ERROR(TfDataTypeToTrt(converted_dtype, &trt_dtype));
 
   if (tensor.NumElements() == 0) {
-    // Return empty weights having converted dtype.
-    *weights = TRT_ShapedWeights(converted_dtype);
+    // Return empty weights.
+    *weights = TRT_ShapedWeights(trt_dtype);
     return Status::OK();
   }
 
   nvinfer1::Dims weight_dims;
   GetTensorDimsWithProtoShape(tensor, &weight_dims);
-  *weights = weight_store->GetTempWeights(converted_dtype, weight_dims);
+  *weights = weight_store->GetTempWeights(trt_dtype, weight_dims);
 
   // Copy the tensor directly if the tensor does not require cast to the
   // supported type.
@@ -3086,17 +3142,21 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
 
   // Copy tensor elements after casting them to the converted DataType.
   int32* dst = static_cast<int32*>(weights->GetValues());
-  if (dtype == DT_INT16) {
-    const int16* src = tensor.flat<int16>().data();
-    std::copy(src, src + tensor.NumElements(), dst);
-  } else if (dtype == DT_INT8) {
-    const int8* src = tensor.flat<int8>().data();
-    std::copy(src, src + tensor.NumElements(), dst);
-  } else {
-    // dtype can only be DT_UINT8 at this point.
-    TFTRT_CHECK_EQ_TYPE(dtype, DT_UINT8);
-    const uint8* src = tensor.flat<uint8>().data();
-    std::copy(src, src + tensor.NumElements(), dst);
+  switch (dtype) {
+    case DT_INT8:
+      CopyToTrtInt32Array<DT_INT8>(tensor, dst);
+      break;
+    case DT_UINT8:
+      CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
+      break;
+    case DT_INT16:
+      CopyToTrtInt32Array<DT_INT16>(tensor, dst);
+      break;
+    case DT_UINT16:
+      CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      break;
+    default:
+      return errors::Internal("Unexpected DataType: ", DataTypeString(dtype));
   }
   return Status::OK();
 }
@@ -3388,6 +3448,80 @@ Status ConvertReduce(OpConverterParams* params) {
   return Status::OK();
 }
 
+// TensorRT does not support the Pack op natively. Therefore, Pack op is
+// converted by first expanding input tensors by adding a new dimension of size
+// one at the specified axis and then concatenating the tensors at the same
+// axis.
+Status ConvertPack(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  TFAttrs attrs(node_def);
+  const int num_inputs = attrs.get<int64>("N");
+  if (num_inputs != inputs.size()) {
+    return errors::InvalidArgument(
+        "Number of inputs for Pack is inconsistent with N attribute, at ",
+        node_def.name());
+  }
+
+  // Validate inputs. Values must be tensors for now.
+  std::vector<std::pair<string, bool>> inputs_is_weight;
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs_is_weight.push_back({StrCat("values_", i), false});
+  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
+
+  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  if (num_inputs > 1) {
+    // Verify that inputs are compatible for concatenation after the expansion.
+    TF_RETURN_IF_ERROR(
+        VerifyShapesMatch(inputs, /*masked_dim=*/-1, node_def.name()));
+  }
+
+  // Convert axis from the TensorFlow format to TensorRT format.
+  const nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  const int64 tf_axis = attrs.get<int64>("axis");
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(), &trt_axis));
+
+  // Compute expanded dimensions and then reshape input tensors.
+  std::vector<int> tensor_dims(dims.d, dims.d + dims.nbDims);
+  tensor_dims.insert(tensor_dims.begin() + trt_axis, 1);
+  nvinfer1::Dims expanded_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(tensor_dims, &expanded_dims));
+  std::vector<nvinfer1::ITensor*> expanded_tensors;
+  for (const TRT_TensorOrWeights& tensor : inputs) {
+    nvinfer1::ITensor* expanded_tensor = nullptr;
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        tensor, expanded_dims, params->validation_only, &expanded_tensor));
+    if (!params->validation_only) {
+      expanded_tensors.push_back(expanded_tensor);
+    }
+  }
+  if (params->validation_only) return Status::OK();
+
+  // If there is only one tensor in the input, return the expanded tensor.
+  if (num_inputs == 1) {
+    params->outputs->push_back(TRT_TensorOrWeights(expanded_tensors[0]));
+    return Status::OK();
+  }
+
+  // Otherwise, concatenate expanded tensors.
+  nvinfer1::IConcatenationLayer* layer =
+      params->converter->network()->addConcatenation(
+          const_cast<nvinfer1::ITensor**>(expanded_tensors.data()),
+          expanded_tensors.size());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  // Note that trt_axis stays the same even after expanding tensors at the axis.
+  layer->setAxis(trt_axis);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+}
+
 Status ConvertPad(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3492,6 +3626,113 @@ Status ConvertPad(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertSplitHelper(OpConverterParams* params,
+                          const TRT_TensorOrWeights& input, int tf_axis,
+                          int num_splits, bool squeeze_after) {
+  const auto& node_def = params->node_def;
+  const nvinfer1::Dims dims = input.GetTrtDims();
+  // Convert axis.
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+  // Dimension must equal num_splits for Unstack (when squeeze_after is true)
+  if (squeeze_after && dims.d[trt_axis] != num_splits) {
+    return errors::InvalidArgument(
+        "Dimension ", tf_axis, " has size ", dims.d[trt_axis],
+        " which is not equal to num of ", num_splits, ", at ", node_def.name());
+  }
+  // Dimension must be evenly divisible by num_splits.
+  if (dims.d[trt_axis] % num_splits != 0) {
+    return errors::InvalidArgument(
+        "Dimension ", tf_axis, " of size ", dims.d[trt_axis],
+        " is not evenly divisble by ", num_splits, ", at ", node_def.name());
+  }
+
+  // Create parameters for StridedSliceHelper.
+  // Slice will begin on zero for all dims, except the one being split which
+  // will change.
+  std::vector<int> begin(dims.nbDims, 0);
+  // Determine size of split. Slice will get the full length of all dims, except
+  // the one being split.
+  std::vector<int> size(dims.d, dims.d + dims.nbDims);
+  const int split_size_on_axis = dims.d[trt_axis] / num_splits;
+  size[trt_axis] = split_size_on_axis;
+  // Stride will always be 1
+  std::vector<int> stride(dims.nbDims, 1);
+  // Add dummy batch dimension
+  begin.insert(begin.begin(), 0);
+  size.insert(size.begin(), 1);
+  stride.insert(stride.begin(), 1);
+
+  // Slice the input. ConvertStridedSliceHelper will push the outputs onto
+  // params->outputs.
+  for (int i = 0; i < num_splits; ++i) {
+    begin[trt_axis + 1] = i * split_size_on_axis;
+    TF_RETURN_IF_ERROR(
+        ConvertStridedSliceHelper(params, input, begin, size, stride));
+  }
+  if (params->validation_only) return Status::OK();
+
+  // For Unpack/Unstack, remove axis that we split upon.
+  if (squeeze_after) {
+    // Create the new shape.
+    size.erase(size.begin() + trt_axis + 1);
+    nvinfer1::Dims new_dims;
+    TF_RETURN_IF_ERROR(
+        TensorShapeArrayToTrtDims(size, &new_dims, /*ignore_frst_dim=*/true));
+    // Reshape each slice.
+    for (int i = 0; i < params->outputs->size(); i++) {
+      nvinfer1::ITensor* output_tensor = nullptr;
+      TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+          params->outputs->at(i), new_dims, /*validation_only=*/false,
+          &output_tensor));
+      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
+    }
+  }
+  return Status::OK();
+}
+
+Status ConvertSplit(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"axis", true}, {"value", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {
+    DataType::DT_FLOAT, DataType::DT_HALF,
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+        DataType::DT_INT32,
+#endif
+  }));
+  int tf_axis = inputs.at(0).weights().GetSpan<int>()[0];
+  TFAttrs attrs(node_def);
+  const int num_split = attrs.get<int64>("num_split");
+
+  return ConvertSplitHelper(params, inputs.at(1), tf_axis, num_split, false);
+}
+
+Status ConvertUnpack(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"value", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {
+    DataType::DT_FLOAT, DataType::DT_HALF,
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+        DataType::DT_INT32,
+#endif
+  }));
+  // Input must be rank 1 or higher, since we can't unpack on axis 0.
+  if (inputs.at(0).GetTrtDims().nbDims == 0) {
+    return errors::Unimplemented(
+        "Input \"value\" for Unpack must be rank 2 or greater, at ",
+        node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const int tf_axis = attrs.get<int64>("axis");
+  const int num = attrs.get<int64>("num");
+
+  return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
+}
+
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3524,21 +3765,9 @@ Status ConvertConcat(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       ConvertAxis(axis[0], dim.nbDims, node_def.name(), &trt_axis));
   // Check that dimensions match on non-concatenate axis.
-  for (int i = 0; i < num_inputs; i++) {
-    auto dim_i = inputs.at(i).GetTrtDims();
-    if (dim_i.nbDims != dim.nbDims) {
-      return errors::InvalidArgument(
-          "ConcatV2 received inputs with inconsistent rank, at ",
-          node_def.name());
-    }
-    for (int j = 0; j < dim.nbDims; j++) {
-      if (j != trt_axis && dim_i.d[j] != dim.d[j]) {
-        return errors::InvalidArgument(
-            "ConcatV2 received inputs with inconsistent shape, at ",
-            node_def.name());
-      }
-    }
-  }
+  TF_RETURN_IF_ERROR(VerifyShapesMatch(
+      absl::Span<const TRT_TensorOrWeights>(inputs).first(num_inputs), trt_axis,
+      node_def.name()));
   if (params->validation_only) return Status::OK();
 
   // Gather inputs as tensors
@@ -3589,15 +3818,15 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   //  Check parameter types
-  auto parameter_type = inputs.at(1).weights().type_;
-  if ((parameter_type != DataType::DT_FLOAT) &&
-      (parameter_type != DataType::DT_HALF)) {
+  auto parameter_type = inputs.at(1).weights().TrtDType();
+  if ((parameter_type != nvinfer1::DataType::kFLOAT) &&
+      (parameter_type != nvinfer1::DataType::kHALF)) {
     return errors::Unimplemented(
-        "only float32 or float16 weight data type is supported, for node " +
-        node_def.name() + " got " + DataTypeString(parameter_type));
+        "Only float32 or float16 weight data type is supported, for node ",
+        node_def.name(), " got ", DebugString(parameter_type));
   }
   for (int i = 1; i < 5; i++) {
-    if (inputs.at(i).weights().type_ != parameter_type) {
+    if (inputs.at(i).weights().TrtDType() != parameter_type) {
       return errors::Unimplemented(
           "Inconsistent parameter type for batchnorm is not supported, at: " +
           node_def.name());
@@ -3648,16 +3877,16 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     float batchnorm_data[4];
     for (int j = 0; j < 4; j++) {
       if (inputs.at(j + 1).weights().count() != 1) {
-        if (parameter_type == DT_FLOAT) {
+        if (parameter_type == nvinfer1::DataType::kFLOAT) {
           batchnorm_data[j] = vals_array[j][i];
-        } else if (parameter_type == DT_HALF) {
+        } else if (parameter_type == nvinfer1::DataType::kHALF) {
           batchnorm_data[j] =
               Eigen::half_impl::half_to_float(cast_vals_array[j][i]);
         }
       } else {
-        if (parameter_type == DT_FLOAT) {
+        if (parameter_type == nvinfer1::DataType::kFLOAT) {
           batchnorm_data[j] = vals_array[j][0];
-        } else if (parameter_type == DT_HALF) {
+        } else if (parameter_type == nvinfer1::DataType::kHALF) {
           batchnorm_data[j] =
               Eigen::half_impl::half_to_float(cast_vals_array[j][0]);
         }
@@ -3669,10 +3898,10 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     float variance = batchnorm_data[3];
     float combined_scale_val = scale / sqrtf(variance + epsilon);
     float combined_offset_val = offset - mean * combined_scale_val;
-    if (parameter_type == DT_FLOAT) {
+    if (parameter_type == nvinfer1::DataType::kFLOAT) {
       combined_scale_vals[i] = combined_scale_val;
       combined_offset_vals[i] = combined_offset_val;
-    } else if (parameter_type == DT_HALF) {
+    } else if (parameter_type == nvinfer1::DataType::kHALF) {
       cast_combined_scale_vals[i] = Eigen::half(combined_scale_val);
       cast_combined_offset_vals[i] = Eigen::half(combined_offset_val);
     }
@@ -3769,14 +3998,14 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   }
   nvinfer1::ITensor* tensor = tensor_input.tensor();
 
-  TRT_ShapedWeights weights(weights_raw.type_);
+  TRT_ShapedWeights weights(weights_raw.TrtDType());
   if (transpose_weight) {
     weights = weights_raw;
   } else {
     weights = params->weight_store->GetTempWeights(weights_raw);
     ReorderCKtoKC(weights_raw, &weights);
   }
-  TRT_ShapedWeights biases(weights.type_);
+  TRT_ShapedWeights biases(weights.TrtDType());
 
   int noutput = weights.shape_.d[0];
 
@@ -3921,13 +4150,63 @@ Status ConvertSoftmax(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertArgMinMax(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", false}, {"dimension", true}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  // INT64 outputs are not supported by TRT.
+  TFAttrs attrs(node_def);
+  DataType output_dtype = attrs.get<DataType>("output_type");
+  if (output_dtype != DataType::DT_INT32) {
+    return errors::Unimplemented("Output type ", DataTypeString(output_dtype),
+                                 " is not supported, at ", node_def.name());
+  }
+  int tf_axis = inputs.at(1).weights().GetSpan<int>()[0];
+  int trt_axis;
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+  nvinfer1::TopKOperation topk_op;
+  if (node_def.op() == "ArgMin") {
+    topk_op = nvinfer1::TopKOperation::kMIN;
+  } else if (node_def.op() == "ArgMax") {
+    topk_op = nvinfer1::TopKOperation::kMAX;
+  } else {
+    return errors::InvalidArgument("Unsupported ArgMin/Max operation");
+  }
+  if (params->validation_only) return Status::OK();
+
+  // Use TopK with k = 1. Only indices output is needed (output 1).
+  const uint32_t reduce_axes = 1 << trt_axis;
+  nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
+      *inputs.at(0).tensor(), topk_op, 1, reduce_axes);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
+
+  // Squeeze on axis.
+  std::vector<int> size(dims.d, dims.d + dims.nbDims);
+  size.erase(size.begin() + trt_axis);
+  nvinfer1::Dims new_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(size, &new_dims));
+  nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      TRT_TensorOrWeights(output_indices_tensor), new_dims,
+      /*validation_only=*/false, &output_tensor));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
 Status ConvertTopK(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {
@@ -4128,6 +4407,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
+  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
   (*registration)["BiasAdd"] = ConvertBiasAdd;
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
@@ -4139,30 +4419,24 @@ static void RegisterValidatableOpConverters(
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
+  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
+  (*registration)["Pack"] = ConvertPack;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
+  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
+  (*registration)["Softmax"] = ConvertSoftmax;
+  (*registration)["Split"] = ConvertSplit;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
-  (*registration)["Transpose"] = ConvertTranspose;
   (*registration)["TopKV2"] = ConvertTopK;
-
-  // TODO(ben,jie): this is a temp hack.
-  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
-  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
-
-  (*registration)["Sum"] = ConvertReduce;
-  (*registration)["Prod"] = ConvertReduce;
-  (*registration)["Max"] = ConvertReduce;
-  (*registration)["Min"] = ConvertReduce;
-  (*registration)["Mean"] = ConvertReduce;
-  (*registration)["Softmax"] = ConvertSoftmax;
-  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
+  (*registration)["Transpose"] = ConvertTranspose;
+  (*registration)["Unpack"] = ConvertUnpack;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
@@ -4184,6 +4458,12 @@ static void RegisterValidatableOpConverters(
   }
   for (auto unary_op_pair : *UnaryOperationMap()) {
     (*registration)[unary_op_pair.first] = ConvertUnary;
+  }
+  for (auto reduce_op_type : {"Sum", "Prod", "Max", "Min", "Mean"}) {
+    (*registration)[reduce_op_type] = ConvertReduce;
+  }
+  for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
+    (*registration)[arg_minmax_type] = ConvertArgMinMax;
   }
 }
 
@@ -4281,7 +4561,7 @@ Status ConvertGraphDefToEngine(
       TFAttrs attrs(node_def);
       DataType tf_dtype = attrs.get<DataType>("T");
       nvinfer1::DataType trt_dtype;
-      TF_RETURN_IF_ERROR(ConvertDType(tf_dtype, &trt_dtype));
+      TF_RETURN_IF_ERROR(TfDataTypeToTrt(tf_dtype, &trt_dtype));
       if (output_tensors.size() <= slot_number) {
         output_tensors.resize(slot_number + 1);
       }

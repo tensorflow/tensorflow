@@ -347,9 +347,11 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
               << DataTypeString(type);
       if (type == DT_RESOURCE) {
-        TF_RET_CHECK(kernel->outputs[i].input_index >= 0)
-            << "Invalid input for outputs " << i;
-        ctx->set_output(i, ctx->input(kernel->outputs[i].input_index));
+        int input_index =
+            kernel->outputs[i].input_index - missing_ctx_input_prefix;
+        TF_RET_CHECK(input_index >= 0 && input_index < ctx->num_inputs())
+            << "Invalid input for outputs " << i << ": " << input_index;
+        ctx->set_output(i, ctx->input(input_index));
       } else {
         se::DeviceMemoryBase buffer = output.buffer({output_num});
         if (allocate_xla_tensors_) {
