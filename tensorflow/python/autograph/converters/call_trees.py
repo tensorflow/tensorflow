@@ -116,7 +116,10 @@ class CallTreeTransformer(converter.Base):
         k = self.visit(k)
         normal_keywords.append(k)
     if kwargs_arg is None:
-      kwargs = ast_util.keywords_to_dict(normal_keywords)
+      if not normal_keywords:
+        kwargs = parser.parse_expression('None')
+      else:
+        kwargs = ast_util.keywords_to_dict(normal_keywords)
     else:
       kwargs = templates.replace_as_expression(
           'dict(kwargs, **keywords)',

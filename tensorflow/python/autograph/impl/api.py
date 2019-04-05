@@ -172,7 +172,10 @@ def _call_unconverted(f, args, kwargs):
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
-  return f(*args, **kwargs)
+  if kwargs is not None:
+    return f(*args, **kwargs)
+  else:
+    return f(*args)
 
 
 def _is_known_loaded_type(f, module_name, entity_name):
@@ -224,7 +227,10 @@ def converted_call(f, owner, options, args, kwargs):
     f = getattr(owner, f)
 
   if inspect_utils.isbuiltin(f):
-    return py_builtins.overload_of(f)(*args, **kwargs)
+    if kwargs:
+      return py_builtins.overload_of(f)(*args, **kwargs)
+    else:
+      return py_builtins.overload_of(f)(*args)
 
   if _is_known_loaded_type(f, 'weakref', 'ref'):
     logging.log(2, 'Permanently whitelisted: %s: weakref', f)
@@ -275,7 +281,8 @@ def converted_call(f, owner, options, args, kwargs):
       new_kwargs = {}
       if f.keywords is not None:
         new_kwargs.update(f.keywords)
-      new_kwargs.update(kwargs)
+      if kwargs is not None:
+        new_kwargs.update(kwargs)
       kwargs = new_kwargs
       f = f.func
 
@@ -317,7 +324,11 @@ def converted_call(f, owner, options, args, kwargs):
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
-      callargs = tf_inspect.getcallargs(converted_f, *effective_args, **kwargs)
+      if kwargs is not None:
+        callargs = tf_inspect.getcallargs(
+            converted_f, *effective_args, **kwargs)
+      else:
+        callargs = tf_inspect.getcallargs(converted_f, *effective_args)
       formatted_callargs = '\n'.join(
           '    {}: {}'.format(k, v) for k, v in callargs.items())
       logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
@@ -342,7 +353,10 @@ def converted_call(f, owner, options, args, kwargs):
 
     return _call_unconverted(f, args, kwargs)
 
-  result = converted_f(*effective_args, **kwargs)
+  if kwargs is not None:
+    result = converted_f(*effective_args, **kwargs)
+  else:
+    result = converted_f(*effective_args)
 
   return result
 
