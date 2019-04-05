@@ -1023,6 +1023,8 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
       case LstmCellOperator::KERNEL_BASIC:
         // KERNEL_BASIC was added in version 2.
         return 2;
+      default:
+        return -1;
     }
   }
 
