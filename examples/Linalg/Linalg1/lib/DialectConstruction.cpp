@@ -1,4 +1,4 @@
-//===- DialectRegistration.cpp - Registration of the Linalg dialect -------===//
+//===- DialectConstruction.cpp - Construction of the Linalg dialect -------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,9 +15,9 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file registers the Linalg dialect and should live in a standalone
-// library. Linking with this library will create a static global object that
-// performs dialect registration.
+// This file implements the constructor for the Linalg Dialect. This is
+// explicitly separated from the core library to allow incremental buildup of
+// the codebase for the tutorial.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +33,3 @@ LinalgDialect::LinalgDialect(MLIRContext *context)
   addTypes<RangeType, ViewType>();
   addOperations<RangeOp, SliceOp, ViewOp>();
 }
-
-// Dialect registration triggers the creation of a `LinalgDialect` object which
-// adds the proper types and operations to the dialect.
-static mlir::DialectRegistration<LinalgDialect> LinalgOps;

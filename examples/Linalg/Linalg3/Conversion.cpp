@@ -22,6 +22,7 @@
 #include "linalg3/ConvertToLLVMDialect.h"
 
 #include "linalg1/Common.h"
+#include "linalg1/Dialect.h"
 #include "linalg2/Intrinsics.h"
 #include "linalg3/Ops.h"
 #include "linalg3/Transforms.h"
@@ -106,6 +107,7 @@ TEST_FUNC(foo) {
 }
 
 int main() {
+  mlir::registerDialect<linalg::LinalgDialect>();
   RUN_TESTS();
   return 0;
 }

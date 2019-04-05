@@ -19,6 +19,7 @@
 
 #include "TestHarness.h"
 #include "linalg1/Common.h"
+#include "linalg1/Dialect.h"
 #include "linalg2/Intrinsics.h"
 #include "linalg3/Ops.h"
 #include "linalg4/Transforms.h"
@@ -113,13 +114,13 @@ TEST_FUNC(matmul_tiled_views) {
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%i0)
   //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg<"range">
   //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
-  //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : !linalg<"view<f32xf32>">
+  //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : !linalg<"view<?x?xf32>">
   //       CHECK:     %[[i1min:.*]] = affine.apply (d0) -> (d0)(%i1)
   //  CHECK-NEXT:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
   //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg<"range">
-  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : !linalg<"view<f32xf32>">
-  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : !linalg<"view<f32xf32>">
-  //  CHECK-NEXT:     linalg.matmul {%[[vA]], %[[vB]]} -> {%[[vC]]}
+  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : !linalg<"view<?x?xf32>">
+  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : !linalg<"view<?x?xf32>">
+  //  CHECK-NEXT:     linalg.matmul(%[[vA]], %[[vB]], %[[vC]]) : !linalg<"view<?x?xf32>">
   // clang-format on
   cleanupAndPrintFunction(f);
 }
@@ -149,28 +150,29 @@ TEST_FUNC(matmul_tiled_views_as_loops) {
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%i0)
   //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg<"range">
   //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
-  //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : !linalg<"view<f32xf32>">
+  //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : !linalg<"view<?x?xf32>">
   //       CHECK:     %[[i1min:.*]] = affine.apply (d0) -> (d0)(%i1)
   //  CHECK-NEXT:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
   //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg<"range">
-  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : !linalg<"view<f32xf32>">
-  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : !linalg<"view<f32xf32>">
+  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : !linalg<"view<?x?xf32>">
+  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:     affine.for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0)(%[[i0max]]) {
   //  CHECK-NEXT:       affine.for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0)(%[[i1max]]) {
   //  CHECK-NEXT:         affine.for %i4 = 0 to (d0) -> (d0)(%[[K]]) {
   //  CHECK-NEXT:           %{{.*}} = cmpi "eq", %i4, %c0 : index
-  //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vC]][%i2, %i3] : !linalg<"view<f32xf32>">
+  //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vC]][%i2, %i3] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:           %{{.*}} = select %{{.*}}, %cst, %{{.*}} : f32
-  //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vB]][%i4, %i3] : !linalg<"view<f32xf32>">
-  //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vA]][%i2, %i4] : !linalg<"view<f32xf32>">
+  //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vB]][%i4, %i3] : !linalg<"view<?x?xf32>">
+  //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vA]][%i2, %i4] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:           %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
   //  CHECK-NEXT:           %{{.*}} = addf %{{.*}}, %{{.*}} : f32
-  //  CHECK-NEXT:           linalg.store %{{.*}}, %[[vC]][%i2, %i3] : !linalg<"view<f32xf32>">
+  //  CHECK-NEXT:           linalg.store %{{.*}}, %[[vC]][%i2, %i3] : !linalg<"view<?x?xf32>">
   // clang-format on
   cleanupAndPrintFunction(f);
 }
 
 int main() {
+  mlir::registerDialect<linalg::LinalgDialect>();
   RUN_TESTS();
   return 0;
 }

@@ -49,8 +49,8 @@ namespace common {
 /// A 2-D abstraction over a flat contiguous memory region of f32 with symbolic
 /// sizes.
 template <int N>
-inline mlir::MemRefType floatMemRefType(
-    mlir::MLIRContext *context, unsigned memorySpace = 0) {
+inline mlir::MemRefType floatMemRefType(mlir::MLIRContext *context,
+                                        unsigned memorySpace = 0) {
   llvm::SmallVector<int64_t, 4> shape(N, -1);
   auto f32 = mlir::FloatType::getF32(context);
   return mlir::MemRefType::get(shape, f32, {}, memorySpace);
@@ -70,16 +70,12 @@ inline mlir::Function *makeFunction(mlir::Module &module, llvm::StringRef name,
 }
 
 /// A basic pass manager pre-populated with cleanup passes.
-inline mlir::PassManager &cleanupPassManager() {
-  static bool inited = false;
-  static mlir::PassManager pm;
-  if (!inited) {
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createSimplifyAffineStructuresPass());
-    pm.addPass(mlir::createCSEPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    inited = true;
-  }
+inline std::unique_ptr<mlir::PassManager> cleanupPassManager() {
+  std::unique_ptr<mlir::PassManager> pm(new mlir::PassManager());
+  pm->addPass(mlir::createCanonicalizerPass());
+  pm->addPass(mlir::createSimplifyAffineStructuresPass());
+  pm->addPass(mlir::createCSEPass());
+  pm->addPass(mlir::createCanonicalizerPass());
   return pm;
 }
 
@@ -91,13 +87,14 @@ inline void cleanupAndPrintFunction(mlir::Function *f) {
   bool printToOuts = true;
   auto check = [f, &printToOuts](mlir::LogicalResult result) {
     if (failed(result)) {
-      f->dump();
-      llvm::errs() << "Failure!\n";
+      f->getContext()->emitError(f->getLoc(),
+                                 "Verification and cleanup passes failed");
       printToOuts = false;
     }
   };
+  auto pm = cleanupPassManager();
   check(f->getModule()->verify());
-  check(cleanupPassManager().run(f->getModule()));
+  check(pm->run(f->getModule()));
   if (printToOuts)
     f->print(llvm::outs());
 }

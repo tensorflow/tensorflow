@@ -23,9 +23,14 @@ class Value;
 } // namespace mlir
 
 namespace linalg {
+class ViewOp;
 
 /// Asserts `view` is of ViewType and returns its rank.
 unsigned getViewRank(mlir::Value *view);
+
+/// Helper function to emit and return a new ViewOp from `memRef` that is
+/// assumed to be of MemRefType. This needs to be called under a ScopedContext.
+ViewOp emitAndReturnViewOpFromMemRef(mlir::Value *memRef);
 
 } // namespace linalg
 

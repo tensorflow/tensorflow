@@ -57,8 +57,8 @@ makeGenericLoopRanges(mlir::AffineMap operandRangesToLoopMaps,
 /// to only use linalg.view operations.
 void composeSliceOps(mlir::Function *f);
 
-/// Traverses `f` and rewrites linalg.matmul (resp. linalg.matvec)
-/// as linalg.matvec (resp. linalg.dot).
+/// Traverses `f` and rewrites linalg.matmul(resp. linalg.matvec)
+/// as linalg.matvec(resp. linalg.dot).
 void lowerToFinerGrainedTensorContraction(mlir::Function *f);
 
 /// Operation-wise writing of linalg operations to loop form.

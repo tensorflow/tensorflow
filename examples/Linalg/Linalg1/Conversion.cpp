@@ -21,6 +21,7 @@
 
 #include "linalg1/Common.h"
 #include "linalg1/ConvertToLLVMDialect.h"
+#include "linalg1/Dialect.h"
 #include "linalg1/Intrinsics.h"
 #include "linalg1/Ops.h"
 #include "linalg1/Types.h"
@@ -302,6 +303,7 @@ TEST_FUNC(sliceNonRangeConversion) {
 }
 
 int main() {
+  mlir::registerDialect<linalg::LinalgDialect>();
   RUN_TESTS();
   return 0;
 }

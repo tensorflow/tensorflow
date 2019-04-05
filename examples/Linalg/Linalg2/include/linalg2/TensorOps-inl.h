@@ -45,6 +45,12 @@ linalg::TensorContractionBase<ConcreteOp>::getOutputs() {
 }
 
 template <class ConcreteOp>
+mlir::Operation::operand_range
+linalg::TensorContractionBase<ConcreteOp>::getInputsAndOutputs() {
+  return {getInputs().begin(), getOutputs().end()};
+}
+
+template <class ConcreteOp>
 mlir::LogicalResult linalg::TensorContractionBase<ConcreteOp>::verify() {
   auto *concreteOp = static_cast<ConcreteOp *>(this)->getOperation();
   if (getNumInputs() <= 0)
@@ -85,21 +91,27 @@ bool linalg::TensorContractionBase<ConcreteOp>::parse(
 // A TensorContraction prints as:
 //
 // ```{.mlir}
-//   concrete_op_name {%0, %1} -> {%2}
+//   concrete_op_name (ssa-inputs, ssa-outputs) : output-view-types
 // ```
 //
-// Where %0, %1 is an ssa-value holding a View, %2 is an ssa-value holding a
-// view.
+// for example:
+//
+// ```
+//   linalg.matmul(%0, %1, %2) : view<?x?xf32>
+// ```
+//
+// Where %0, %1 and %2 are ssa-values of type ViewType.
 template <class ConcreteOp>
 void linalg::TensorContractionBase<ConcreteOp>::print(mlir::OpAsmPrinter *p) {
-  *p << static_cast<ConcreteOp *>(this)->getOperationName() << " {";
-  auto *lastInput = *std::prev(getInputs().end());
-  for (auto *i : getInputs()) {
-    *p << *i << ((i == lastInput) ? "} -> {" : ", ");
+  *p << static_cast<ConcreteOp *>(this)->getOperationName() << "(";
+  auto *last = *std::prev(getInputsAndOutputs().end());
+  for (auto *i : getInputsAndOutputs()) {
+    *p << *i << ((i == last) ? "" : ", ");
   }
+  *p << ") : ";
   auto *lastOutput = *std::prev(getOutputs().end());
   for (auto *o : getOutputs()) {
-    *p << *o << ((o == lastOutput) ? "}" : ",");
+    *p << o->getType() << ((o == lastOutput) ? "" : ",");
   }
 }
 

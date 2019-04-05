@@ -20,15 +20,32 @@
 //===----------------------------------------------------------------------===//
 
 #include "linalg1/Utils.h"
+#include "linalg1/Intrinsics.h"
 #include "linalg1/Ops.h"
+#include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/StandardTypes.h"
 
 using namespace mlir;
+using namespace mlir::edsc;
+using namespace mlir::edsc::intrinsics;
 using namespace linalg;
+using namespace linalg::intrinsics;
 
 unsigned linalg::getViewRank(Value *view) {
   assert(view->getType().isa<ViewType>() && "expected a ViewType");
   if (auto viewOp = view->getDefiningOp()->dyn_cast<ViewOp>())
     return viewOp.getRank();
   return view->getDefiningOp()->cast<SliceOp>().getRank();
+}
+
+ViewOp linalg::emitAndReturnViewOpFromMemRef(Value *memRef) {
+  // Syntactic sugar helper to extract and emit view-like information from an
+  // mlir::MemRef without boilerplate.
+  mlir::edsc::MemRefView v(memRef);
+  SmallVector<Value *, 8> indices(v.rank());
+  for (unsigned i = 0; i < v.rank(); ++i) {
+    indices[i] = range(v.lb(i), v.ub(i), constant_index(v.step(i)));
+  }
+  return ScopedContext::getBuilder()->create<ViewOp>(
+      ScopedContext::getLocation(), memRef, indices);
 }

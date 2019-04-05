@@ -80,10 +80,10 @@ bool linalg::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
 // A SliceOp prints as:
 //
 // ```{.mlir}
-//   linalg.slice %0[*, %i0] { dim : 1 } : !linalg<"view<f32>">
+//   linalg.slice %0[*, %i0]  : !linalg<"view<?xf32>">
 // ```
 //
-// Where %0 is an ssa-value holding a `view<f32xf32>`, %i0 is an ssa-value
+// Where %0 is an ssa-value holding a `view<?x?xf32>`, %i0 is an ssa-value
 // holding an index.
 void linalg::SliceOp::print(OpAsmPrinter *p) {
   unsigned dim = getSlicingDim();
@@ -101,8 +101,7 @@ void linalg::SliceOp::print(OpAsmPrinter *p) {
     }
     *p << ((idx == rank - 1) ? "" : ", ");
   }
-  *p << "] { " << getSlicingDimAttrName() << " : " << dim << " }"
-     << " : " << getViewType();
+  *p << "] : " << getViewType();
 }
 
 ViewType linalg::SliceOp::getViewType() { return getType().cast<ViewType>(); }

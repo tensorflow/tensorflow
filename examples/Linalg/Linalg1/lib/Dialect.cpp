@@ -44,13 +44,13 @@ static void print(RangeType rt, raw_ostream &os) { os << "range"; }
 /// ViewType prints as:
 ///
 /// ```{.mlir}
-///   view<i8xf32xi1>
+///   view<?x?xf32>
 /// ```
 ///
 /// or
 ///
 /// ```{.mlir}
-///   view<0xf32>
+///   view<?xf32>
 /// ```
 ///
 /// for 0-D views (a.k.a pointer to a scalar value).
@@ -58,11 +58,10 @@ static void print(linalg::ViewType rt, raw_ostream &os) {
   os << "view<";
   if (rt.getRank() > 0) {
     for (unsigned i = 0, e = rt.getRank(); i < e; ++i) {
-      os << rt.getElementType() << ((i == e - 1) ? "" : "x");
+      os << "?x";
     }
-  } else {
-    os << "0x" << rt.getElementType();
   }
+  os << rt.getElementType();
   os << ">";
 }
 

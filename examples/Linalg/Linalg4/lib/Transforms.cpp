@@ -51,16 +51,6 @@ void linalg::lowerToTiledLoops(mlir::Function *f,
   });
 }
 
-template <class ConcreteOp>
-static Operation::operand_range
-getInputsAndOutputs(TensorContractionBase<ConcreteOp> &contraction) {
-  auto *inst = static_cast<ConcreteOp *>(&contraction)->getOperation();
-  auto begin = inst->operand_begin();
-  auto end = inst->operand_begin() + contraction.getNumInputs() +
-             contraction.getNumOutputs();
-  return {begin, end};
-}
-
 static bool isZeroIndex(Value *v) {
   return v->getDefiningOp() && v->getDefiningOp()->isa<ConstantIndexOp>() &&
          v->getDefiningOp()->dyn_cast<ConstantIndexOp>().getValue() == 0;
@@ -138,7 +128,7 @@ makeTiledViews(linalg::TensorContractionBase<ConcreteOp> &contraction,
       makeTiledRanges(contraction, getRanges(contraction), ivs, tileSizes);
   SmallVector<Value *, 4> res;
   unsigned currentRange = 0;
-  for (auto *in : getInputsAndOutputs(contraction)) {
+  for (auto *in : contraction.getInputsAndOutputs()) {
     unsigned runningSliceDim = 0;
     auto *runningSlice = in;
     assert(runningSlice->getType().template isa<ViewType>());

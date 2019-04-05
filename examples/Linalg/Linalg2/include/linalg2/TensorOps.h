@@ -48,6 +48,7 @@ public:
   TensorContractionBase() = default;
   mlir::Operation::operand_range getInputs();
   mlir::Operation::operand_range getOutputs();
+  mlir::Operation::operand_range getInputsAndOutputs();
 
   /// These are better as methods calling into the ConcreteOp instead of
   /// template parameters because methods allow more generic behavior and avoid

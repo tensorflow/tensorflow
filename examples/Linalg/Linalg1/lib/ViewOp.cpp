@@ -97,7 +97,7 @@ bool linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
 // A ViewOp prints as:
 //
 // ```{.mlir}
-//   linalg.view %0[%1, %2] : !linalg<"view<f32xf32>">
+//   linalg.view %0[%1, %2] : !linalg<"view<?x?xf32>">
 // ```
 //
 // Where %0 is an ssa-value holding a MemRef, %1 and %2 are ssa-value each

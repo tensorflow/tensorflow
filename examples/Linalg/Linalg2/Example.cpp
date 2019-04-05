@@ -19,6 +19,7 @@
 
 #include "TestHarness.h"
 #include "linalg1/Common.h"
+#include "linalg1/Dialect.h"
 #include "linalg2/Intrinsics.h"
 #include "linalg2/Ops.h"
 #include "linalg2/Transforms.h"
@@ -57,13 +58,13 @@ TEST_FUNC(linalg_ops) {
   dot(sA, sB, ssC);
   ret();
   // CHECK-LABEL: func @linalg_ops(%arg0: index, %arg1: index, %arg2: index) {
-  //       CHECK: {{.*}} = linalg.slice {{.*}}[*, {{.*}}] { dim : 1 } : !linalg<"view<f32>">
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[*, {{.*}}] { dim : 1 } : !linalg<"view<f32>">
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}, *] { dim : 0 } : !linalg<"view<f32>">
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] { dim : 0 } : !linalg<"view<0xf32>">
-  //  CHECK-NEXT: linalg.matmul {{{.*}}, {{.*}}} -> {{{.*}}}
-  //  CHECK-NEXT: linalg.matvec {{{.*}}, {{.*}}} -> {{{.*}}}
-  //  CHECK-NEXT: linalg.dot {{{.*}}, {{.*}}} -> {{{.*}}}
+  //       CHECK: {{.*}} = linalg.slice {{.*}}[*, {{.*}}] : !linalg<"view<?xf32>">
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[*, {{.*}}] : !linalg<"view<?xf32>">
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}, *] : !linalg<"view<?xf32>">
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}]  : !linalg<"view<f32>">
+  //       CHECK: linalg.matmul({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?x?xf32>">
+  //  CHECK-NEXT: linalg.matvec({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?xf32>">
+  //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<f32>">
   // clang-format on
 
   cleanupAndPrintFunction(f);
@@ -96,9 +97,9 @@ TEST_FUNC(linalg_ops_folded_slices) {
   ret();
   // CHECK-LABEL: func @linalg_ops_folded_slices(%arg0: index, %arg1: index, %arg2: index) {
   //   CHECK-NOT: linalg.slice
-  //       CHECK: linalg.matmul {{{.*}}, {{.*}}} -> {{{.*}}}
-  //  CHECK-NEXT: linalg.matvec {{{.*}}, {{.*}}} -> {{{.*}}}
-  //  CHECK-NEXT: linalg.dot {{{.*}}, {{.*}}} -> {{{.*}}}
+  //       CHECK: linalg.matmul({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?x?xf32>">
+  //  CHECK-NEXT: linalg.matvec({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?xf32>">
+  //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<f32>">
   // clang-format on
 
   f->walk<SliceOp>([](SliceOp slice) {
@@ -111,6 +112,7 @@ TEST_FUNC(linalg_ops_folded_slices) {
   cleanupAndPrintFunction(f);
 }
 int main() {
+  mlir::registerDialect<linalg::LinalgDialect>();
   RUN_TESTS();
   return 0;
 }
