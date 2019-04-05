@@ -457,6 +457,7 @@ class Network(base_layer.Layer):
     weights = []
     for layer in self.layers:
       weights += layer.weights
+    weights += (self._trainable_weights + self._non_trainable_weights)
     return backend.batch_get_value(weights)
 
   def set_weights(self, weights):
@@ -473,6 +474,9 @@ class Network(base_layer.Layer):
       for sw, w in zip(layer.weights, layer_weights):
         tuples.append((sw, w))
       weights = weights[num_param:]
+    for sw, w in zip(self._trainable_weights + self._non_trainable_weights,
+                     weights):
+      tuples.append((sw, w))
     backend.batch_set_value(tuples)
 
   def compute_mask(self, inputs, mask):
