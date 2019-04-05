@@ -2403,7 +2403,8 @@ class TPUEstimator(estimator_lib.Estimator):
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
-                               check_variables=True):
+                               check_variables=True,
+                               strip_default_attrs=True):
     if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
       logging.warning('TPUEstimator only handles mode PREDICT for exporting '
                       'when `export_to_tpu` is `True`; Mode {} will be ignored '
@@ -2420,7 +2421,8 @@ class TPUEstimator(estimator_lib.Estimator):
           save_variables,
           mode=mode,
           export_tags=export_tags,
-          check_variables=check_variables))
+          check_variables=check_variables,
+          strip_default_attrs=strip_default_attrs))
 
     if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
@@ -2441,7 +2443,8 @@ class TPUEstimator(estimator_lib.Estimator):
           save_variables=save_variables,
           mode=mode,
           export_tags=export_tags,
-          check_variables=check_variables))
+          check_variables=check_variables,
+          strip_default_attrs=strip_default_attrs))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
