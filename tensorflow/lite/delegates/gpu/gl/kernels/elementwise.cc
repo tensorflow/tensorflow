@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/elementwise.h"
 
 #include <string>
-#include <iostream>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -117,7 +116,6 @@ class ElementwiseTwoArguments : public NodeShader {
 
     // Implementation supports concatenation of 2 tensors only.
     if (inputs.size() != 2) {
-      std::cerr << "ElementwiseTwoArguments3\n";
       return false;
     }
 
