@@ -2176,19 +2176,6 @@ inline void Slice(tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   const int slice_dimensions = input_shape.DimensionsCount();
-  int start_i;
-  int stop_i;
-
-  // Both begin and size should have equal num of elements
-  TFLITE_DCHECK_EQ(op_params.size_count, op_params.begin_count);
-
-  for (int i = 0; i < op_params.begin_count; i++) {
-    start_i = op_params.begin[i];
-    stop_i = op_params.size[i] == -1 ? input_shape.Dims(i) - start_i
-                                     : start_i + op_params.size[i];
-    op_params.begin[i] = start_i;
-    op_params.size[i] = stop_i;
-  }
 
   // Store as std::function to allow recursion.
   std::function<void(int, int)> compute_slice =

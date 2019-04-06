@@ -5310,35 +5310,22 @@ inline void Slice(tflite::SliceParams& op_params,
                   SequentialTensorWriter<T>* writer) {
   ruy::profiler::ScopeLabel label("Slice");
   const int slice_dimensions = input_shape.DimensionsCount();
-  int start_i;
-  int stop_i;
-
-  // Both begin and size should have equal num of elements
-  TFLITE_DCHECK_EQ(op_params.size_count, op_params.begin_count);
-
-  for (int i = 0; i < op_params.begin_count; i++) {
-    start_i = op_params.begin[i];
-    stop_i = op_params.size[i] == -1 ? input_shape.Dims(i) - start_i
-                                     : start_i + op_params.size[i];
-    op_params.begin[i] = start_i;
-    op_params.size[i] = stop_i;
-  }
 
   // Below values are under condition if the input is 1-D, as it is a special
   // case, where we will not have next axis to fetch the copy length which is
   // input for memcpy operation below, so we are alligning the variables to the
   // required in the case where input is 1-D. NOTE: This is done only to attain
   // code reuse of compute_slice() defined below.
-  bool isInput_1D = slice_dimensions == 1;
-  int final_axis = isInput_1D ? 0 : slice_dimensions - 2;
+  bool is_input_1d = slice_dimensions == 1;
+  int final_axis = is_input_1d ? 0 : slice_dimensions - 2;
   int copy_len =
-      isInput_1D
+      is_input_1d
           ? op_params.size[final_axis] - op_params.begin[final_axis]
           : op_params.size[final_axis + 1] - op_params.begin[final_axis + 1];
-  int dim_mul = isInput_1D ? 1 : input_shape.Dims(final_axis + 1);
-  int start_fin = isInput_1D ? 0 : op_params.begin[final_axis + 1];
+  int dim_mul = is_input_1d ? 1 : input_shape.Dims(final_axis + 1);
+  int start_fin = is_input_1d ? 0 : op_params.begin[final_axis + 1];
 
-  if (isInput_1D) {
+  if (is_input_1d) {
     // (This is very important): Set size so that the final loop will run only
     // once to accommodate complete memcpy operation
     op_params.size[final_axis] = op_params.begin[final_axis] + 1;

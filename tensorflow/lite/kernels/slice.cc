@@ -79,6 +79,28 @@ void GetBeginAndSizeVectors(int dimensions, const TfLiteTensor* begin,
   }
 }
 
+inline tflite::SliceParams BuildSliceParams(const std::vector<int>& begins,
+                                            const std::vector<int>& sizes,
+                                            const TfLiteTensor* input) {
+  tflite::SliceParams op_params;
+  const int dims_count = begins.size();
+
+  op_params.begin_count = dims_count;
+  op_params.size_count = dims_count;
+  int start_i;
+  int stop_i;
+  for (int i = 0; i < dims_count; ++i) {
+    start_i = begins[dims_count - 1 - i];
+    stop_i = sizes[dims_count - 1 - i] == -1
+                 ? SizeOfDimension(input, i) - start_i
+                 : start_i + sizes[dims_count - 1 - i];
+    op_params.begin[i] = start_i;
+    op_params.size[i] = stop_i;
+  }
+
+  return op_params;
+}
+
 TfLiteStatus ResizeOutputShape(TfLiteContext* context,
                                const TfLiteTensor* input,
                                const TfLiteTensor* begin,
@@ -175,15 +197,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // the needed reversing.
 #define TF_LITE_SLICE(data_type, kernel_type)                                  \
   {                                                                            \
-    tflite::SliceParams op_params;                                             \
-    int begin_size = begins.size();                                            \
-    op_params.begin_count = begin_size;                                        \
-    op_params.size_count = begin_size;                                         \
-    for (int i = 0; i < begin_size; ++i) {                                     \
-      op_params.begin[i] = begins[begin_size - 1 - i];                         \
-      op_params.size[i] = sizes[begin_size - 1 - i];                           \
-    }                                                                          \
-                                                                               \
+    tflite::SliceParams op_params = BuildSliceParams(begins, sizes, input);    \
     if (kernel_type == kGenericOptimized) {                                    \
       optimized_ops::Slice<data_type>(op_params, GetTensorShape(input), input, \
                                       GetTensorShape(output), output);         \
