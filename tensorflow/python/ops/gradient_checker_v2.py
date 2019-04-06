@@ -301,7 +301,7 @@ def compute_gradient(f, x, delta=1e-3):
 
   Args:
     f: the function.
-    x: a list of tensors.
+    x: a list arguments for the function
     delta: (optional) perturbation used to compute numeric Jacobian.
 
   Returns:
