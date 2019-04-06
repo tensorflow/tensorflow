@@ -230,7 +230,7 @@ def _get_or_create_global_step_read(graph=None):
     return None
   # add 'zero' so that it will create a copy of variable as Tensor.
   with graph.as_default() as g, g.name_scope(None):
-    with g.name_scope(global_step_tensor.op.name + '/'):
+    with g.name_scope(global_step_tensor._shared_name + '/'):  # pylint: disable=protected-access
       # using initialized_value to ensure that global_step is initialized before
       # this run. This is needed for example Estimator makes all model_fn build
       # under global_step_read_tensor dependency.
@@ -242,6 +242,7 @@ def _get_or_create_global_step_read(graph=None):
 
 
 def _increment_global_step(increment, graph=None):
+  """Increments the global step variable."""
   graph = graph or ops.get_default_graph()
   global_step_tensor = get_global_step(graph)
   if global_step_tensor is None:
@@ -250,6 +251,6 @@ def _increment_global_step(increment, graph=None):
         'tf.train.get_or_create_global_step before calling increment.')
   global_step_read_tensor = _get_or_create_global_step_read(graph)
   with graph.as_default() as g, g.name_scope(None):
-    with g.name_scope(global_step_tensor.op.name + '/'):
+    with g.name_scope(global_step_tensor._shared_name + '/'):  # pylint: disable=protected-access
       with ops.control_dependencies([global_step_read_tensor]):
         return state_ops.assign_add(global_step_tensor, increment)
