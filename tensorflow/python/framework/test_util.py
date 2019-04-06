@@ -1332,7 +1332,8 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
   Warning: if not GPU version of the package is installed, the function would
-  also, return False.
+  also, return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
+  was build with CUDA support.
 
   Args:
     cuda_only: limit the search to CUDA GPUs.
