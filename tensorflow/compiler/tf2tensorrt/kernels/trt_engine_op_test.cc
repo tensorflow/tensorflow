@@ -87,6 +87,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("workspace_size_bytes", 1 << 20)
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
+                     .Attr("use_implicit_batch", true)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());
