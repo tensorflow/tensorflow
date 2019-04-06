@@ -41,11 +41,12 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
             sparse_tensor.SparseTensorValue([[0, 0]], [1], [1, 1])))
     self.assertTrue(
         composite_tensor_utils.is_composite_or_composite_value(
-            ragged_tensor.RaggedTensor.from_row_splits([0, 1, 2], [0, 1, 3])))
+            ragged_tensor.RaggedTensor.from_row_splits(
+                np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))))
     self.assertTrue(
         composite_tensor_utils.is_composite_or_composite_value(
             ragged_tensor_value.RaggedTensorValue(
-                np.array([0, 1, 2]), np.array([0, 1, 3]))))
+                np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))))
 
     # Test that numpy arrays and tensors return false.
     self.assertFalse(
@@ -76,9 +77,9 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
 
   def test_ragged_concatenation(self):
     tensor_1 = ragged_tensor.RaggedTensor.from_row_splits(
-        np.array([0, 1, 2]), np.array([0, 1, 3]))
+        np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))
     tensor_2 = ragged_tensor.RaggedTensor.from_row_splits(
-        np.array([3, 4, 5]), np.array([0, 2, 3]))
+        np.array([3, 4, 5]), np.array([0, 2, 3], dtype=np.int64))
     concatenated_tensor = composite_tensor_utils.append_composite_tensor(
         tensor_1, tensor_2)
     evaluated_tensor = self.evaluate(concatenated_tensor)
@@ -88,9 +89,9 @@ class CompositeTensorTest(test_util.TensorFlowTestCase):
 
   def test_ragged_value_concatenation(self):
     tensor_1 = ragged_tensor_value.RaggedTensorValue(
-        np.array([0, 1, 2]), np.array([0, 1, 3]))
+        np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))
     tensor_2 = ragged_tensor_value.RaggedTensorValue(
-        np.array([3, 4, 5]), np.array([0, 2, 3]))
+        np.array([3, 4, 5]), np.array([0, 2, 3], dtype=np.int64))
     concatenated_tensor = composite_tensor_utils.append_composite_tensor(
         tensor_1, tensor_2)
 

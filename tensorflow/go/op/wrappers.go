@@ -8547,6 +8547,26 @@ func MakeIterator(scope *Scope, dataset tf.Output, iterator tf.Output) (o *tf.Op
 	return scope.AddOperation(opspec)
 }
 
+// A container for an iterator resource.
+//
+// Returns A handle to the iterator that can be passed to a "MakeIterator" or
+// "IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
+// resource sharing by name, and does not keep a reference to the resource
+// container.
+func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AnonymousIterator",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Deserialize bucket boundaries and ready flag into current QuantileAccumulator.
 //
 // An op that deserializes bucket boundaries and are boundaries ready flag into current QuantileAccumulator.
@@ -19998,6 +20018,42 @@ func Max(scope *Scope, input tf.Output, axis tf.Output, optional ...MaxAttr) (ou
 			input, axis,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Draw bounding boxes on a batch of images.
+//
+// Outputs a copy of `images` but draws on top of the pixels zero or more bounding
+// boxes specified by the locations in `boxes`. The coordinates of the each
+// bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
+// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+// height of the underlying image.
+//
+// For example, if an image is 100 x 200 pixels (height x width) and the bounding
+// box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+// the bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).
+//
+// Parts of the bounding box may fall outside the image.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
+//	boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
+// boxes.
+//	colors: 2-D. A list of RGBA colors to cycle through for the boxes.
+//
+// Returns 4-D with the same shape as `images`. The batch of input images with
+// bounding boxes drawn on the images.
+func DrawBoundingBoxesV2(scope *Scope, images tf.Output, boxes tf.Output, colors tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DrawBoundingBoxesV2",
+		Input: []tf.Input{
+			images, boxes, colors,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -39558,26 +39614,6 @@ func Iterator(scope *Scope, shared_name string, container string, output_types [
 	attrs := map[string]interface{}{"shared_name": shared_name, "container": container, "output_types": output_types, "output_shapes": output_shapes}
 	opspec := tf.OpSpec{
 		Type: "Iterator",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// A container for an iterator resource.
-//
-// Returns A handle to the iterator that can be passed to a "MakeIterator" or
-// "IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
-// resource sharing by name, and does not keep a reference to the resource
-// container.
-func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "AnonymousIterator",
 
 		Attrs: attrs,
 	}

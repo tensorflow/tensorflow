@@ -1304,7 +1304,7 @@ class TensorBoard(Callback):
         with self._get_writer(self._train_run_name).as_default():
           with summary_ops_v2.always_record_summaries():
             if not model.run_eagerly:
-              summary_ops_v2.graph(K.get_graph())
+              summary_ops_v2.graph(K.get_graph(), step=0)
 
             summary_writable = (
                 self.model._is_graph_network or  # pylint: disable=protected-access

@@ -314,7 +314,7 @@ class ObjectReader {
       }
       Value<TensorRefFloat32>* value = graph_->NewValue();
       RETURN_IF_ERROR(
-          ConvertTfliteTensorToTensorRef(tflite_tensor, &value->tensor));
+          ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
       value->tensor.ref = tensor_idx;
       (*tensor_to_value_)[tensor_idx] = value;
     }
@@ -1848,7 +1848,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 
 }  // namespace
 
-Status ConvertTfliteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
+Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
                                       TensorRefFloat32* tensor_ref) {
   tensor_ref->type = ToDataType(tflite_tensor.type);
   const TfLiteIntArray* dims = tflite_tensor.dims;

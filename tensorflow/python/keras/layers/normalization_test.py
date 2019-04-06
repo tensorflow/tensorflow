@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -459,7 +458,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
       with self.session(use_gpu=True):
         model = keras.models.Sequential()
         norm = keras.layers.LayerNormalization(
-            input_shape=(3, 4, 4), params_axis=1)
+            input_shape=(3, 4, 4))
         model.add(norm)
         model.compile(loss='mse',
                       optimizer=gradient_descent.GradientDescentOptimizer(0.01),
@@ -504,113 +503,23 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     _run_layernorm_correctness_test(
         normalization.LayerNormalization, dtype='float16')
 
-  def doOutputTest(self,
-                   input_shape,
-                   tol=1e-5,
-                   norm_axis=None,
-                   params_axis=-1,
-                   dtype=None):
-    ndim = len(input_shape)
-    if norm_axis is None:
-      moments_axis = range(1, ndim)
-    elif isinstance(norm_axis, int):
-      if norm_axis < 0:
-        moments_axis = [norm_axis + ndim]
-      else:
-        moments_axis = [norm_axis]
-    else:
-      moments_axis = []
-      for dim in norm_axis:
-        if dim < 0:
-          dim = dim + ndim
-        moments_axis.append(dim)
-
-    moments_axis = tuple(moments_axis)
-    expected_shape = []
-    for i in range(ndim):
-      if i not in moments_axis:
-        expected_shape.append(input_shape[i])
-
-    expected_mean = np.zeros(expected_shape)
-    expected_var = np.ones(expected_shape)
-    for mu in [0.0, 1e2]:
-      for sigma in [1.0, 0.1]:
-        inputs = np.random.randn(*input_shape) * sigma + mu
-        inputs_t = constant_op.constant(inputs, shape=input_shape)
-        layer = normalization.LayerNormalization(
-            norm_axis=norm_axis, params_axis=params_axis, dtype=dtype)
-        outputs = layer(inputs_t)
-        beta = layer.beta
-        gamma = layer.gamma
-        for weight in layer.weights:
-          self.evaluate(weight.initializer)
-        outputs = self.evaluate(outputs)
-        beta = self.evaluate(beta)
-        gamma = self.evaluate(gamma)
-
-        # The mean and variance of the output should be close to 0 and 1
-        # respectively.
-
-        # Make sure that there are no NaNs
-        self.assertFalse(np.isnan(outputs).any())
-        mean = np.mean(outputs, axis=moments_axis)
-        var = np.var(outputs, axis=moments_axis)
-        # Layer-norm implemented in numpy
-        eps = 1e-12
-        expected_out = (
-            (gamma * (inputs - np.mean(
-                inputs, axis=moments_axis, keepdims=True)) /
-             np.sqrt(eps + np.var(
-                 inputs, axis=moments_axis, keepdims=True))) + beta)
-        self.assertAllClose(expected_mean, mean, atol=tol, rtol=tol)
-        self.assertAllClose(expected_var, var, atol=tol)
-        # The full computation gets a bigger tolerance
-        self.assertAllClose(expected_out, outputs, atol=5 * tol)
+  @tf_test_util.run_in_graph_and_eager_modes
+  def testIncorrectAxisType(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'Expected an int or a list/tuple of ints'):
+      _ = normalization.LayerNormalization(axis={'axis': -1})
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput2DInput(self):
-    self.doOutputTest((10, 300))
-    self.doOutputTest((10, 300), norm_axis=[0])
-    self.doOutputTest((10, 300), params_axis=[0, 1])
+  def testInvalidAxis(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid axis: 3'):
+      layer_norm = normalization.LayerNormalization(axis=3)
+      layer_norm.build(input_shape=(2, 2, 2))
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput2DInputDegenerateNormAxis(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid axis: 2'):
-      self.doOutputTest((10, 300), norm_axis=2)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput4DInput(self):
-    self.doOutputTest((100, 10, 10, 3))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput4DInputNormOnInnermostAxis(self):
-    # Equivalent tests
-    shape = (100, 10, 10, 3)
-    self.doOutputTest(
-        shape, norm_axis=list(range(3, len(shape))), tol=1e-4, dtype='float64')
-    self.doOutputTest(shape, norm_axis=-1, tol=1e-4, dtype='float64')
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputSmallInput(self):
-    self.doOutputTest((10, 10, 10, 30))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputSmallInputNormOnInnermostAxis(self):
-    self.doOutputTest((10, 10, 10, 30), norm_axis=3)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputSmallInputNormOnMixedAxes(self):
-    self.doOutputTest((10, 10, 10, 30), norm_axis=[0, 3])
-    self.doOutputTest((10, 10, 10, 30), params_axis=[-2, -1])
-    self.doOutputTest((10, 10, 10, 30), norm_axis=[0, 3],
-                      params_axis=[-3, -2, -1])
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputBigInput(self):
-    self.doOutputTest((1, 100, 100, 1))
-    self.doOutputTest((1, 100, 100, 1), norm_axis=[1, 2])
-    self.doOutputTest((1, 100, 100, 1), norm_axis=[1, 2],
-                      params_axis=[-2, -1])
+  def testDuplicateAxis(self):
+    with self.assertRaisesRegexp(ValueError, r'Duplicate axis:'):
+      layer_norm = normalization.LayerNormalization(axis=[-1, -1])
+      layer_norm.build(input_shape=(2, 2, 2))
 
 
 if __name__ == '__main__':

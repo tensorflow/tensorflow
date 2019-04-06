@@ -599,6 +599,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction->AppendOperand(instruction_map.at(operand_id));
       }
       if (instruction->opcode() != HloOpcode::kFusion) {
+        if (instruction->opcode() == HloOpcode::kCall) {
+          TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+              << "Call should have 1 called computation but has "
+              << proto.called_computation_ids_size();
+        }
         for (const int64 computation_id : proto.called_computation_ids()) {
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));

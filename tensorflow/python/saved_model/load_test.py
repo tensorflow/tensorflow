@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
@@ -88,16 +89,30 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(imported.v2.numpy(), 2.0)
     self.assertFalse(imported.v2.trainable)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
     root = tracking.AutoTrackable()
     root.weights = variables.Variable(2.)
+    self.evaluate(root.weights.initializer)
     root.f = def_function.function(
         lambda x: root.weights * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    for _ in range(cycles):
+      imported = self.cycle(root, 1)
+      self.evaluate(imported.weights.initializer)
+    self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
+    self.evaluate(imported.weights.assign(4.0))
+    self.assertEqual(8., self.evaluate(imported.f(constant_op.constant(2.))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_capture_constant(self, cycles):
+    root = tracking.AutoTrackable()
+    captured_constant = constant_op.constant(2.)
+    root.f = def_function.function(
+        lambda x: captured_constant * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     imported = self.cycle(root, cycles)
-    self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
-    imported.weights.assign(4.0)
-    self.assertEqual(8., imported.f(constant_op.constant(2.)).numpy())
+    self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
 
   def test_control_outputs(self, cycles):
     exported = tracking.AutoTrackable()
@@ -125,6 +140,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       f.write(contents)
     return filename
 
+  @test_util.run_in_graph_and_eager_modes
   def test_assets(self, cycles):
     file1 = self._make_asset("contents 1")
     file2 = self._make_asset("contents 2")
@@ -142,9 +158,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     file_io.rename(save_dir, load_dir)
 
     imported = load.load(load_dir)
-    with open(imported.asset1.asset_path.numpy(), "r") as f:
+    with open(self.evaluate(imported.asset1.asset_path), "r") as f:
       self.assertEqual("contents 1", f.read())
-    with open(imported.asset2.asset_path.numpy(), "r") as f:
+    with open(self.evaluate(imported.asset2.asset_path), "r") as f:
       self.assertEqual("contents 2", f.read())
 
   def test_capture_assets(self, cycles):

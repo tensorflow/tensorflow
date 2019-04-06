@@ -588,13 +588,14 @@ def map_structure_with_tuple_paths(func, *structure, **kwargs):
                                               **kwargs)
 
 
-def _yield_flat_up_to(shallow_tree, input_tree, path=()):
+def _yield_flat_up_to(shallow_tree, input_tree, is_seq, path=()):
   """Yields (path, value) pairs of input_tree flattened up to shallow_tree.
 
   Args:
     shallow_tree: Nested structure. Traverse no further than its leaf nodes.
     input_tree: Nested structure. Return the paths and values from this tree.
       Must have the same upper structure as shallow_tree.
+    is_seq: Function used to test if a value should be treated as a sequence.
     path: Tuple. Optional argument, only used when recursing. The path from the
       root of the original shallow_tree, down to the root of the shallow_tree
       arg of this recursive call.
@@ -604,11 +605,7 @@ def _yield_flat_up_to(shallow_tree, input_tree, path=()):
     shallow_tree, and value is the value of the corresponding node in
     input_tree.
   """
-  if (isinstance(shallow_tree, _six.string_types) or
-      not any([isinstance(shallow_tree, _collections.Sequence),
-               isinstance(shallow_tree, _collections.Mapping),
-               _is_namedtuple(shallow_tree),
-               _is_attrs(shallow_tree)])):
+  if not is_seq(shallow_tree):
     yield (path, input_tree)
   else:
     input_tree = dict(_yield_sorted_items(input_tree))
@@ -616,12 +613,13 @@ def _yield_flat_up_to(shallow_tree, input_tree, path=()):
       subpath = path + (shallow_key,)
       input_subtree = input_tree[shallow_key]
       for leaf_path, leaf_value in _yield_flat_up_to(shallow_subtree,
-                                                     input_subtree,
+                                                     input_subtree, is_seq,
                                                      path=subpath):
         yield (leaf_path, leaf_value)
 
 
-def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
+def assert_shallow_structure(shallow_tree, input_tree, check_types=True,
+                             expand_composites=False):
   """Asserts that `shallow_tree` is a shallow structure of `input_tree`.
 
   That is, this function tests if the `input_tree` structure can be created from
@@ -651,6 +649,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
       `input_tree` have to be the same. Note that even with check_types==True,
       this function will consider two different namedtuple classes with the same
       name and _fields attribute to be the same class.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
@@ -659,8 +659,9 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  if is_sequence(shallow_tree):
-    if not is_sequence(input_tree):
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  if is_seq(shallow_tree):
+    if not is_seq(input_tree):
       raise TypeError(
           "If shallow structure is a sequence, input must also be a sequence. "
           "Input has type: %s." % type(input_tree))
@@ -682,6 +683,11 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             input_type=type(input_tree),
             shallow_type=type(shallow_tree)))
 
+    while _is_composite_tensor(shallow_tree):
+      shallow_tree = shallow_tree._to_components()  # pylint: disable=protected-access
+    while _is_composite_tensor(input_tree):
+      input_tree = input_tree._to_components()  # pylint: disable=protected-access
+
     if len(input_tree) < len(shallow_tree):
       raise ValueError(_INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
           input_size=len(input_tree),
@@ -696,10 +702,12 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
                                             _yield_value(input_tree)):
       assert_shallow_structure(shallow_branch, input_branch,
-                               check_types=check_types)
+                               check_types=check_types,
+                               expand_composites=expand_composites)
 
 
-def flatten_up_to(shallow_tree, input_tree, check_types=True):
+def flatten_up_to(shallow_tree, input_tree, check_types=True,
+                  expand_composites=False):
   """Flattens `input_tree` up to `shallow_tree`.
 
   Any further depth in structure in `input_tree` is retained as elements in the
@@ -758,6 +766,8 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True):
       Note, numpy arrays are considered scalars.
     check_types: bool. If True, check that each node in shallow_tree has the
       same type as the corresponding node in input_tree.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Returns:
     A Python list, the partially flattened version of `input_tree` according to
@@ -770,12 +780,15 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True):
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  assert_shallow_structure(shallow_tree, input_tree, check_types)
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  assert_shallow_structure(shallow_tree, input_tree, check_types=check_types,
+                           expand_composites=expand_composites)
   # Discard paths returned by _yield_flat_up_to.
-  return list(v for _, v in _yield_flat_up_to(shallow_tree, input_tree))
+  return list(v for _, v in _yield_flat_up_to(shallow_tree, input_tree, is_seq))
 
 
-def flatten_with_tuple_paths_up_to(shallow_tree, input_tree, check_types=True):
+def flatten_with_tuple_paths_up_to(shallow_tree, input_tree, check_types=True,
+                                   expand_composites=False):
   """Flattens `input_tree` up to `shallow_tree`.
 
   Any further depth in structure in `input_tree` is retained as elements in the
@@ -853,6 +866,8 @@ def flatten_with_tuple_paths_up_to(shallow_tree, input_tree, check_types=True):
       Note, numpy arrays are considered scalars.
     check_types: bool. If True, check that each node in shallow_tree has the
       same type as the corresponding node in input_tree.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Returns:
     A Python list, the partially flattened version of `input_tree` according to
@@ -865,8 +880,10 @@ def flatten_with_tuple_paths_up_to(shallow_tree, input_tree, check_types=True):
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  assert_shallow_structure(shallow_tree, input_tree, check_types=check_types)
-  return list(_yield_flat_up_to(shallow_tree, input_tree))
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  assert_shallow_structure(shallow_tree, input_tree, check_types=check_types,
+                           expand_composites=expand_composites)
+  return list(_yield_flat_up_to(shallow_tree, input_tree, is_seq))
 
 
 def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
@@ -1019,22 +1036,28 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
     raise ValueError("Cannot map over no sequences")
 
   check_types = kwargs.pop("check_types", True)
+  expand_composites = kwargs.pop("expand_composites", False)
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
 
   for input_tree in inputs:
-    assert_shallow_structure(shallow_tree, input_tree, check_types=check_types)
+    assert_shallow_structure(shallow_tree, input_tree, check_types=check_types,
+                             expand_composites=expand_composites)
 
   # Flatten each input separately, apply the function to corresponding elements,
   # then repack based on the structure of the first input.
-  flat_value_lists = [flatten_up_to(shallow_tree, input_tree, check_types)
+  flat_value_lists = [flatten_up_to(shallow_tree, input_tree, check_types,
+                                    expand_composites=expand_composites)
                       for input_tree in inputs]
   flat_path_list = [path for path, _
-                    in _yield_flat_up_to(shallow_tree, inputs[0])]
+                    in _yield_flat_up_to(shallow_tree, inputs[0], is_seq)]
   results = [func(*args, **kwargs) for args in zip(flat_path_list,
                                                    *flat_value_lists)]
-  return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
+  return pack_sequence_as(structure=shallow_tree, flat_sequence=results,
+                          expand_composites=expand_composites)
 
 
-def get_traverse_shallow_structure(traverse_fn, structure):
+def get_traverse_shallow_structure(traverse_fn, structure,
+                                   expand_composites=False):
   """Generates a shallow structure from a `traverse_fn` and `structure`.
 
   `traverse_fn` must accept any possible subtree of `structure` and return
@@ -1050,6 +1073,8 @@ def get_traverse_shallow_structure(traverse_fn, structure):
       shallow structure of the same type, describing which parts of the
       substructure to traverse.
     structure: The structure to traverse.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Returns:
     A shallow structure containing python bools, which can be passed to
@@ -1061,8 +1086,9 @@ def get_traverse_shallow_structure(traverse_fn, structure):
       or if any leaf values in the returned structure or scalar are not type
       `bool`.
   """
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
   to_traverse = traverse_fn(structure)
-  if not is_sequence(structure):
+  if not is_seq(structure):
     if not isinstance(to_traverse, bool):
       raise TypeError("traverse_fn returned structure: %s for non-structure: %s"
                       % (to_traverse, structure))
@@ -1076,14 +1102,17 @@ def get_traverse_shallow_structure(traverse_fn, structure):
       # Traverse the entire substructure.
       for branch in _yield_value(structure):
         level_traverse.append(
-            get_traverse_shallow_structure(traverse_fn, branch))
-  elif not is_sequence(to_traverse):
+            get_traverse_shallow_structure(traverse_fn, branch,
+                                           expand_composites=expand_composites))
+  elif not is_seq(to_traverse):
     raise TypeError("traverse_fn returned a non-bool scalar: %s for input: %s"
                     % (to_traverse, structure))
   else:
     # Traverse some subset of this substructure.
-    assert_shallow_structure(to_traverse, structure)
-    for t, branch in zip(_yield_value(to_traverse), _yield_value(structure)):
+    assert_shallow_structure(to_traverse, structure,
+                             expand_composites=expand_composites)
+    for t, branch in zip(_yield_value(to_traverse),
+                         _yield_value(structure)):
       if not isinstance(t, bool):
         raise TypeError(
             "traverse_fn didn't return a depth=1 structure of bools.  saw: %s "
@@ -1096,7 +1125,7 @@ def get_traverse_shallow_structure(traverse_fn, structure):
   return _sequence_like(structure, level_traverse)
 
 
-def yield_flat_paths(nest):
+def yield_flat_paths(nest, expand_composites=False):
   """Yields paths for some nested structure.
 
   Paths are lists of objects which can be str-converted, which may include
@@ -1124,16 +1153,20 @@ def yield_flat_paths(nest):
 
   Args:
     nest: the value to produce a flattened paths list for.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Yields:
     Tuples containing index or key values which form the path to a specific
       leaf value in the nested structure.
   """
-  for k, _ in _yield_flat_up_to(nest, nest):
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  for k, _ in _yield_flat_up_to(nest, nest, is_seq):
     yield k
 
 
-def flatten_with_joined_string_paths(structure, separator="/"):
+def flatten_with_joined_string_paths(structure, separator="/",
+                                     expand_composites=False):
   """Returns a list of (string path, data element) tuples.
 
   The order of tuples produced matches that of `nest.flatten`. This allows you
@@ -1145,18 +1178,21 @@ def flatten_with_joined_string_paths(structure, separator="/"):
     structure: the nested structure to flatten.
     separator: string to separate levels of hierarchy in the results, defaults
       to '/'.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Returns:
     A list of (string, data element) tuples.
   """
-  flat_paths = yield_flat_paths(structure)
+  flat_paths = yield_flat_paths(structure, expand_composites=expand_composites)
   def stringify_and_join(path_elements):
     return separator.join(str(path_element) for path_element in path_elements)
   flat_string_paths = [stringify_and_join(path) for path in flat_paths]
-  return list(zip(flat_string_paths, flatten(structure)))
+  return list(zip(flat_string_paths,
+                  flatten(structure, expand_composites=expand_composites)))
 
 
-def flatten_with_tuple_paths(structure):
+def flatten_with_tuple_paths(structure, expand_composites=False):
   """Returns a list of `(tuple_path, leaf_element)` tuples.
 
   The order of pairs produced matches that of `nest.flatten`. This allows you
@@ -1166,13 +1202,17 @@ def flatten_with_tuple_paths(structure):
 
   Args:
     structure: the nested structure to flatten.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
 
   Returns:
     A list of `(tuple_path, leaf_element)` tuples. Each `tuple_path` is a tuple
     of indices and/or dictionary keys that uniquely specify the path to
     `leaf_element` within `structure`.
   """
-  return list(zip(yield_flat_paths(structure), flatten(structure)))
+  return list(zip(yield_flat_paths(structure,
+                                   expand_composites=expand_composites),
+                  flatten(structure, expand_composites=expand_composites)))
 
 
 _pywrap_tensorflow.RegisterType("Mapping", _collections.Mapping)

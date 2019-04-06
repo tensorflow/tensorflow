@@ -58,7 +58,6 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
   return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(&options),
                                         &TfLiteGpuDelegateDelete);
 }
-#endif  // defined(__ANDROID__)
 
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
   return Interpreter::TfLiteDelegatePtr(
@@ -66,6 +65,8 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 }
+
+#endif  // defined(__ANDROID__)
 
 }  // namespace
 
@@ -475,7 +476,11 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 #endif
   }
   if (params_.Get<bool>("use_nnapi")) {
+#if defined(__ANDROID__)
     delegates.emplace("NNAPI", CreateNNAPIDelegate());
+#else
+    TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
+#endif
   }
   return delegates;
 }
