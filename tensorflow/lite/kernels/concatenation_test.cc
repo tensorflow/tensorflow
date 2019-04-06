@@ -26,9 +26,24 @@ using ::testing::ElementsAreArray;
 
 class BaseConcatenationOpModel : public SingleOpModel {
  public:
-  // TODO(ahentz): Also test different activation types, axis, input
-  // dimensions.
   BaseConcatenationOpModel() {}
+  BaseConcatenationOpModel(
+      const TensorData& input_template, int axis, int num_inputs,
+      const ActivationFunctionType& fused_activation_function) {
+    std::vector<std::vector<int>> all_input_shapes;
+    for (int i = 0; i < num_inputs; ++i) {
+      all_input_shapes.push_back(input_template.shape);
+      AddInput(input_template);
+    }
+    output_ = AddOutput({input_template.type, /*shape=*/{}, input_template.min,
+                         input_template.max});
+    SetBuiltinOp(
+        BuiltinOperator_CONCATENATION, BuiltinOptions_ConcatenationOptions,
+        CreateConcatenationOptions(builder_, axis, fused_activation_function)
+            .Union());
+    BuildInterpreter(all_input_shapes);
+  }
+
   BaseConcatenationOpModel(const TensorData& input_template, int axis,
                            int num_inputs) {
     std::vector<std::vector<int>> all_input_shapes;
@@ -263,6 +278,48 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
                   255, 0, 255, 255, 255, 0, 255, 255,  //
                   0, 0, 255, 255, 0, 255, 255, 255,    //
               }));
+}
+
+TEST(ConcatenationOpTest, AxesTest) {
+  // Concatenating two tensors of different dimensions.
+  auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+
+  // Negative axes feeding.
+  ConcatenationOpModel m0(
+      {TensorType_FLOAT32, {2, 3}}, /*axis=*/-1,
+      /*num_inputs=*/2,
+      /*ActivationFunctionType*/ ActivationFunctionType_NONE);
+  m0.SetInput(0, tensor0);
+  m0.SetInput(1, tensor1);
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+
+  // Fails when we give wrong value of the axes.
+  EXPECT_DEATH(ConcatenationOpModel(
+                   {TensorType_FLOAT32, {2, 3}}, /*axis=*/-3,
+                   /*num_inputs=*/2,
+                   /*ActivationFunctionType*/ ActivationFunctionType_NONE),
+               "Cannot allocate tensors");
+}
+
+TEST(ConcatenationOpTest, ActivationTest) {
+  // Fails when we give Activation other than None.
+  EXPECT_DEATH(ConcatenationOpModel(
+                   {TensorType_FLOAT32, {2, 3}}, /*axis=*/0,
+                   /*num_inputs=*/2,
+                   /*ActivationFunctionType*/ ActivationFunctionType_RELU),
+               "Cannot allocate tensors");
+}
+
+TEST(ConcatenationOpTest, InvalidDimTest) {
+  // Fails when we give more than four dimensions.
+  EXPECT_DEATH(ConcatenationOpModel(
+                   {TensorType_FLOAT32, {2, 3, 3, 2, 1}}, /*axis=*/0,
+                   /*num_inputs=*/2,
+                   /*ActivationFunctionType*/ ActivationFunctionType_NONE),
+               "Cannot allocate tensors");
 }
 
 }  // namespace
