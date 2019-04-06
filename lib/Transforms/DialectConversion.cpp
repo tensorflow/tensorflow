@@ -179,6 +179,11 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
     // Find the first matching conversion and apply it.
     bool converted = false;
     for (auto *conversion : conversions) {
+      // Ignore patterns that are for the wrong root or are impossible to match.
+      if (conversion->getRootKind() != op.getName() ||
+          conversion->getBenefit().isImpossibleToMatch())
+        continue;
+
       if (!conversion->match(&op))
         continue;
 
