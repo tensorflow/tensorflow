@@ -1257,7 +1257,7 @@ def fused_batch_norm(
     name=None):
   r"""Batch normalization.
 
-  See Source [Batch Normalization: Accelerating Deep Network Training by Reducing 
+  See Source: [Batch Normalization: Accelerating Deep Network Training by Reducing 
   Internal Covariate Shift, S. Ioffe, C. Szegedy](http://arxiv.org/abs/1502.03167).
 
   Args:
