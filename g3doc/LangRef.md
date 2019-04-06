@@ -728,7 +728,7 @@ no memory space is specified, then the default memory space (0) is used. The
 default space is target specific but always at index 0.
 
 TODO: MLIR will eventually have target-dialects which allow symbolic use of
-memory hierarchy names (e.g. HBM, VMEM, ...) but we have not spec'd the details
+memory hierarchy names (e.g. L3, L2, L1, ...) but we have not spec'd the details
 of that mechanism yet. Until then, this document pretends that it is valid to
 refer to these memories by `bare_id`.
 
@@ -749,14 +749,14 @@ Examples of memref static type
 //
 //   { (i, j) : 0 <= i < 16, 0 <= j < 32 }
 //
-memref<16x32xf32, #imapA, hbm>
+memref<16x32xf32, #imapA, memspace0>
 // The dimension list "16x4x?" defines the following 3D index space:
 //
 //   { (i, j, k) : 0 <= i < 16, 0 <= j < 4, 0 <= k < N }
 //
 // where N is a symbol which represents the runtime value of the size of
 // the third dimension.
-memref<16x4x?xf32, #imapB, hbm>
+memref<16x4x?xf32, #imapB, memspace0>
 ```
 
 Symbol capture example:
@@ -787,10 +787,10 @@ Examples
 ```mlir {.mlir}
 // Allocates a memref with 2D index space:
 //   { (i, j) : 0 <= i < 16, 0 <= j < 32 }
-%A = alloc() : memref<16x32xf32, #imapA, hbm>
+%A = alloc() : memref<16x32xf32, #imapA, memspace0>
 
 // Loads data from memref '%A' using a 2D index: (%i, %j)
-%v = load %A[%i, %j] : memref<16x32xf32, #imapA, hbm>
+%v = load %A[%i, %j] : memref<16x32xf32, #imapA, memspace0>
 ```
 
 ##### Index Map
@@ -1304,10 +1304,6 @@ Example:
 // and an attribute "fruit".
 %2 = "tf.scramble"(%result#0, %bar){fruit: "banana"} : (f32, i32) -> f32
 
-// Invoke the TPU specific add instruction that takes two vector register
-// as input and produces a vector register.
-%7 = "tpu.add"(%42, %12)
-             : (vector<8x128xf32>, vector<8x128xf32>) -> vector<8x128xf32>
 ```
 
 [Terminator operations](#terminator-operations) may also have a list of
@@ -1479,77 +1475,6 @@ Examples:
 %y = "std.dim"(%A){index: 1} : (tensor<4 x ? x f32>) -> index
 ```
 
-#### 'reshape' operation
-
-Syntax:
-
-``` {.ebnf}
-operation ::= ssa_id `=` `reshape` ssa-use `:` memref-type
-    dim-and-symbol-use-list `:` memref-type
-```
-
-Reshapes the input to the requested shape. The reshape operation creates a new
-memref, but changes how the total dimension size is factored into individual
-dimensions sizes as long as the products of the dimension sizes of both shapes
-are the same. For example, a `16x16xf32` memref can be reshaped into a
-`16x8x2xf32` one, but not to a `16x4xf32` one.
-
-Example:
-
-```mlir {.mlir}
-// Allocate base memref with dynamic 16x?xf32.
-#lmapD = (i, j)[S0] -> (i, j) size (16, S0)
-%D = alloc(%N)[%N] <16x?xf32, #lmapD, hbm>
-
-// Create memref which reshapes from 16x?xf32 to 16x4x?xf32.
-#imapDR = (i, j, k)[S0] -> (i, j * S0 + k) size (16, 4 * S0)
-%N4 = affine.apply (S -> floordiv(S,4)) (%N)
-%DR = reshape %D : memref<16x?xf32, #lmapD, hbm> (%N4)[%N4] to
-      (memref<16x?xf32, #lmapD, hbm> -> memref<16x4x?xf32, #imapDR, hbm>)
-
-```
-
-#### 'view' operation
-
-Syntax:
-
-``` {.ebnf}
-operation ::=
-  `view` memref-type dim-use-list symbol-use-list? ssa-id `:` memref-type
-```
-
-Creates a view of a base memref with a potentially different index space. A view
-is only defined when its index map maps to a range that is contained in the base
-memref's index space. The element type and memory space of a view matches those
-of the operand memref.
-
-The view operation defines a new memref which aliases the buffer of its operand
-memref, but in a new index system, specified by the index map in its type (and
-any captured symbols). See the figure below for an example.
-
-![2x2 view of 3x3 base MemRef](includes/img/view-operation.svg "Illustration of a 2x2 view of a 3x3 base memref")
-
-Example:
-
-```mlir {.mlir}
-#map_b = (i,j)[s0, s1] -> (i + s0, j) size (16, s1)
-
-// %B is a view of %A with a window of size 4 with offset %0 along the
-// first dimension. The SSA value %0 is bound to the offset symbol of
-// its index map (#map_b)
-%n1 = dim %A, 1 : memref<16x?xf32, #map_a, hbm>
-%B = view memref<16x?xf32, #map_a, hbm> -> memref<4x?xf32, #map_b, hbm>
-          (%n1) [%0, %n1] %A : memref<16x?xf32, #map_a, hbm>
-
-// A view memref that is a dynamic sized slice along an already dynamic
-// sized base memref with the slice size being half the base memref's
-// dynamic size and with an offset of %0
-#map_c = (i, j)[s0, s1]->(i + s0, j) size(4, s1)
-%s1 = "std.divi"(%n1, 2) : (i32, i32) -> i32
-%C = view memref<16x?xf32, #map_a, hbm> -> memref<4x?xf32, #map_c, hbm>
-          (%s1) [%0, %n1] %A : memref<16x?xf32, #map_a, hbm>
-```
-
 ### Memory Operations
 
 #### 'alloc' operation
@@ -1573,12 +1498,12 @@ Example:
 
 ```mlir {.mlir}
 // Allocating memref for a fully static shape.
-%A = alloc() : memref<1024x64xf32, #layout_map0, hbm>
+%A = alloc() : memref<1024x64xf32, #layout_map0, memspace0>
 
 // %M, %N, %x, %y are SSA values of integer type.  M and N are bound to the
 // two unknown dimensions of the type and x/y are bound to symbols in
 // #layout_map1.
-%B = alloc(%M, %N)[%x, %y] : memref<?x?xf32, #layout_map1, vmem>
+%B = alloc(%M, %N)[%x, %y] : memref<?x?xf32, #layout_map1, memspace1>
 ```
 
 #### 'alloc_static' operation
@@ -1598,7 +1523,7 @@ require dynamic symbols in their layout function (use the
 Example:
 
 ```mlir {.mlir}
-%A = alloc_static(0x1232a00) : memref<1024 x 64 x f32, #layout_map0, hbm>
+%A = alloc_static(0x1232a00) : memref<1024 x 64 x f32, #layout_map0, memspace0>
 ```
 
 The `alloc_static` operation is used to represent code after buffer allocation
@@ -1619,7 +1544,7 @@ allocation. It is paired with an [`alloc`](#alloc-operation) or
 Example:
 
 ```mlir {.mlir}
-dealloc %A : memref<128 x f32, #layout, hbm>
+dealloc %A : memref<128 x f32, #layout, memspace0>
 ```
 
 #### 'dma_start' operation
@@ -1735,11 +1660,11 @@ Example:
 ```mlir {.mlir}
 %1 = affine.apply (d0, d1) -> (3*d0) (%i, %j)
 %2 = affine.apply (d0, d1) -> (d1+1) (%i, %j)
-%12 = load %A[%1, %2] : memref<8x?xi32, #layout, hbm>
+%12 = load %A[%1, %2] : memref<8x?xi32, #layout, memspace0>
 
 // Example of an indirect load (treated as non-affine)
 %3 = affine.apply (d0) -> (2*d0 + 1)(%12)
-%13 = load %A[%3, %2] : memref<4x?xi32, #layout, hbm>
+%13 = load %A[%3, %2] : memref<4x?xi32, #layout, memspace0>
 ```
 
 **Context:** The `load` and `store` operations are specifically crafted to fully
@@ -1775,7 +1700,7 @@ result of such an `affine.apply` operation.
 Example:
 
 ```mlir {.mlir}
-store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
+store %100, %A[%1, 1023] : memref<4x?xf32, #layout, memspace0>
 ```
 
 **Context:** The `load` and `store` operations are specifically crafted to fully
@@ -1803,7 +1728,7 @@ Example:
 
 ```mlir {.mlir}
 // Produces a value of tensor<4x?xf32> type.
-%12 = tensor_load %10 : memref<4x?xf32, #layout, hbm>
+%12 = tensor_load %10 : memref<4x?xf32, #layout, memspace0>
 ```
 
 #### 'tensor_store' operation
@@ -1822,8 +1747,8 @@ Example:
 
 ```mlir {.mlir}
 %9 = dim %8, 1 : tensor<4x?xf32>
-%10 = alloc(%9) : memref<4x?xf32, #layout, hbm>
-tensor_store %8, %10 : memref<4x?xf32, #layout, hbm>
+%10 = alloc(%9) : memref<4x?xf32, #layout, memspace0>
+tensor_store %8, %10 : memref<4x?xf32, #layout, memspace0>
 ```
 
 ### Arithmetic Operations
@@ -2268,15 +2193,7 @@ Examples:
 We expect to expose many target-specific (such as TPU-specific) operations
 directly through to MLIR.
 
-Example:
-
-```mlir {.mlir}
-// TPU vector add operation
-%f = "tpu.vaddf32"(%a, %b)
-             : (vector<8x128xf32>, vector<8x128xf32>) -> vector<8x128xf32>
-```
-
-In addition to the LLO backend, some targets go through LLVM. LLVM has a rich
+In addition to the TPU backend, some targets go through LLVM. LLVM has a rich
 set of intrinsics for certain target-independent operations (e.g. addition with
 overflow check) as well as providing access to target-specific operations for
 the targets it supports (e.g. vector permutation operations). LLVM intrinsics
