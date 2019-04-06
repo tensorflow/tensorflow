@@ -976,7 +976,7 @@ class DeprecatedEndpointsTest(test.TestCase):
     self.assertEqual(("foo1", "foo2"), foo._tf_deprecated_api_names)
 
   def testCannotSetDeprecatedEndpointsTwice(self):
-    with self.assertRaises(deprecation.DeprecatedNamesAlreadySetError):
+    with self.assertRaises(deprecation.DeprecatedNamesAlreadySet):
       @deprecation.deprecated_endpoints("foo1")
       @deprecation.deprecated_endpoints("foo2")
       def foo():  # pylint: disable=unused-variable
