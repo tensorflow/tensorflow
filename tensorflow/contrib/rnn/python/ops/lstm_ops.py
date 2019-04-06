@@ -589,7 +589,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
   for the entire LSTM. It should be both faster and more memory-efficient than
   LSTMBlockCell defined above.
 
-  The implementation is based on: http://arxiv.org/abs/1409.2329.
+  The implementation is based upon [this paper](http://arxiv.org/abs/1409.2329).
 
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
