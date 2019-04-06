@@ -487,7 +487,7 @@ Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
 ///
 ///   pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
 ///   pretty-dialect-type-contents ::= pretty-dialect-type-body
-///                                  | '[0-9a-zA-Z.-]+'
+///                                  | '[0-9a-zA-Z.,-]+'
 ///
 ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
   consumeToken(Token::less);
@@ -512,7 +512,8 @@ ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
     // Check to see if the token contains simple characters.
     bool isSimple = true;
     for (auto c : getTokenSpelling())
-      isSimple &= (isalpha(c) || isdigit(c) || c == '.' || c == '-');
+      isSimple &=
+          (isalpha(c) || isdigit(c) || c == '.' || c == '-' || c == ',');
 
     if (!isSimple || getToken().is(Token::eof))
       return emitError("expected simple name in pretty dialect type");

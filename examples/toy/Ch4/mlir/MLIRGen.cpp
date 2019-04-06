@@ -456,7 +456,7 @@ private:
   /// Build a type from a list of shape dimensions. Types are `array` followed
   /// by an optional dimension list, example: array<2, 2>
   /// They are wrapped in a `toy` dialect (see next chapter) and get printed:
-  ///   !toy<"array<2, 2>">
+  ///   !toy.array<2, 2>
   template <typename T> mlir::Type getType(T shape) {
     SmallVector<int64_t, 8> shape64(shape.begin(), shape.end());
     return ToyArrayType::get(&context, shape64);

@@ -51,7 +51,7 @@ using llvm::Twine;
 /// shape of the arguments to the function name. For example, calling
 ///
 ///   "toy.generic_call"(%1, %3) {callee: "foo"}
-///       : (!toy<"array<2, 3>">, !toy<"array<2, 3>">) -> !toy<"array">
+///       : (!toy.array<2, 3>, !toy.array<2, 3>) -> !toy<"array">
 ///
 /// would be mangled foo_2x3_2x3. This mangling isn't robust as the user could
 /// have provided a function with a similar name, but we will claim this as a

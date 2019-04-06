@@ -92,8 +92,8 @@ private:
   // Convert an integer type `i*` to `!llvm<"i*">`.
   Type convertIntegerType(IntegerType type);
 
-  // Convert a floating point type: `f16` to `!llvm<"half">`, `f32` to
-  // `!llvm<"float">` and `f64` to `!llvm<"double">`.  `bf16` is not supported
+  // Convert a floating point type: `f16` to `!llvm.half`, `f32` to
+  // `!llvm.float` and `f64` to `!llvm.double`.  `bf16` is not supported
   // by LLVM.
   Type convertFloatType(FloatType type);
 

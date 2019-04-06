@@ -764,7 +764,7 @@ func @unknown_dialect_type() -> !bar<""> {
   // CHECK: "foo"() : () -> !bar<"">
   %0 = "foo"() : () -> !bar<"">
 
-  // CHECK: "foo"() : () -> !bar<"baz">
+  // CHECK: "foo"() : () -> !bar.baz
   %1 = "foo"() : () -> !bar<"baz">
 
   return %0 : !bar<"">
@@ -854,13 +854,13 @@ func @pretty_form_multi_result() -> (i16, i16) {
 // CHECK-LABEL: func @pretty_dialect_type()
 func @pretty_dialect_type() {
 
-  // CHECK: %0 = "foo.unknown_op"() : () -> !foo<"simpletype">
+  // CHECK: %0 = "foo.unknown_op"() : () -> !foo.simpletype
   %0 = "foo.unknown_op"() : () -> !foo.simpletype
 
-  // CHECK: %1 = "foo.unknown_op"() : () -> !foo<"complextype<abcd>">
+  // CHECK: %1 = "foo.unknown_op"() : () -> !foo.complextype<abcd>
   %1 = "foo.unknown_op"() : () -> !foo.complextype<abcd>
 
-  // CHECK: %2 = "foo.unknown_op"() : () -> !foo<"complextype<abcd<f32>>">
+  // CHECK: %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
   %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
   return
 }

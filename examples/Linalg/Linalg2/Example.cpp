@@ -61,10 +61,10 @@ TEST_FUNC(linalg_ops) {
   //       CHECK: {{.*}} = linalg.slice {{.*}}[*, {{.*}}] : !linalg<"view<?xf32>">
   //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[*, {{.*}}] : !linalg<"view<?xf32>">
   //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}, *] : !linalg<"view<?xf32>">
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}]  : !linalg<"view<f32>">
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}]  : !linalg.view<f32>
   //       CHECK: linalg.matmul({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT: linalg.matvec({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?xf32>">
-  //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<f32>">
+  //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg.view<f32>
   // clang-format on
 
   cleanupAndPrintFunction(f);
@@ -99,7 +99,7 @@ TEST_FUNC(linalg_ops_folded_slices) {
   //   CHECK-NOT: linalg.slice
   //       CHECK: linalg.matmul({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT: linalg.matvec({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<?xf32>">
-  //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg<"view<f32>">
+  //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg.view<f32>
   // clang-format on
 
   f->walk<SliceOp>([](SliceOp slice) {

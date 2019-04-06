@@ -2233,7 +2233,7 @@ Dialect types can be specified in a verbose form, e.g. like this:
 !llvm<"i32*">
 
 // Tensor flow string type.
-!tf<"string">
+!tf.string
 
 // Complex type
 !foo<"something<abcd>">

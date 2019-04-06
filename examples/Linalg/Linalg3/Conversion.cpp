@@ -74,33 +74,33 @@ TEST_FUNC(foo) {
   // clang-format off
   // CHECK:      {{.*}} = llvm.extractvalue {{.*}}[1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[3, 0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm<"i64">
-  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm<"i64">
+  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm.i64
+  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[3, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm<"i64">
-  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm<"i64">
+  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm.i64
+  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
   // CHECK-NEXT: {{.*}} = llvm.load {{.*}} : !llvm<"float*">
   // CHECK:      {{.*}} = llvm.extractvalue {{.*}}[1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[3, 0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm<"i64">
-  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm<"i64">
+  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm.i64
+  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[3, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm<"i64">
-  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm<"i64">
+  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm.i64
+  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
   // CHECK-NEXT: {{.*}} = llvm.load {{.*}} : !llvm<"float*">
   // CHECK:      %159 = llvm.extractvalue {{.*}}[1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[3, 0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm<"i64">
-  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm<"i64">
+  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm.i64
+  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[3, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm<"i64">
-  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm<"i64">
+  // CHECK-NEXT: {{.*}} = llvm.mul {{.*}}, {{.*}} : !llvm.i64
+  // CHECK-NEXT: {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
   // CHECK-NEXT: {{.*}} = llvm.extractvalue {{.*}}[0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-  // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  // CHECK-NEXT: {{.*}} = llvm.getelementptr {{.*}}[{{.*}}] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
   // CHECK-NEXT: llvm.store {{.*}}, {{.*}} : !llvm<"float*">
   // clang-format on
   module.print(llvm::outs());

@@ -703,6 +703,59 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
     os << ']';
 }
 
+static bool isDialectTypeSimpleEnoughForPrettyForm(StringRef typeName) {
+  // The type name must start with an identifier.
+  if (typeName.empty() || !isalpha(typeName.front()))
+    return false;
+
+  // Ignore all the characters that are valid in an identifier in the type
+  // name.
+  while (isalpha(typeName.front()) || isdigit(typeName.front()) ||
+         typeName.front() == '.') {
+    typeName = typeName.drop_front();
+    if (typeName.empty())
+      return true;
+  }
+
+  // If we got to an unexpected character, then it must be a <>.  Check those
+  // recursively.
+  if (typeName.front() != '<' || typeName.back() != '>')
+    return false;
+
+  unsigned bracketDepth = 0;
+  while (!typeName.empty()) {
+    auto c = typeName.front();
+    switch (c) {
+    case '<':
+      ++bracketDepth;
+      break;
+    case '>':
+      // Reject types with mismatched brackets.
+      if (bracketDepth == 0)
+        return false;
+      --bracketDepth;
+      break;
+
+    case '.':
+    case '-':
+    case ' ':
+    case ',':
+      // These are all ok.
+      break;
+
+    default:
+      if (isalpha(c) || isdigit(c))
+        break;
+      // Unknown character abort.
+      return false;
+    }
+
+    typeName = typeName.drop_front();
+  }
+
+  return bracketDepth == 0;
+}
+
 void ModulePrinter::printType(Type type) {
   // Check for an alias for this type.
   StringRef alias = state.getTypeAlias(type);
@@ -711,18 +764,37 @@ void ModulePrinter::printType(Type type) {
     return;
   }
 
+  auto printDialectType = [&](StringRef dialectName, StringRef typeString) {
+    os << '!' << dialectName;
+
+    // If this type name is simple enough, print it directly in pretty form,
+    // otherwise, we print it as an escaped string.
+    if (isDialectTypeSimpleEnoughForPrettyForm(typeString)) {
+      os << '.' << typeString;
+      return;
+    }
+
+    // TODO: escape the type name, it could contain " characters.
+    os << "<\"" << typeString << "\">";
+  };
+
   switch (type.getKind()) {
   default: {
     auto &dialect = type.getDialect();
-    os << '!' << dialect.getNamespace() << "<\"";
-    dialect.printType(type, os);
-    os << "\">";
+
+    // Ask the dialect to serialize the type to a string.
+    std::string typeName;
+    {
+      llvm::raw_string_ostream typeNameStr(typeName);
+      dialect.printType(type, typeNameStr);
+    }
+
+    printDialectType(dialect.getNamespace(), typeName);
     return;
   }
   case Type::Kind::Opaque: {
     auto opaqueTy = type.cast<OpaqueType>();
-    os << '!' << opaqueTy.getDialectNamespace() << "<\""
-       << opaqueTy.getTypeData() << "\">";
+    printDialectType(opaqueTy.getDialectNamespace(), opaqueTy.getTypeData());
     return;
   }
   case StandardTypes::Index:

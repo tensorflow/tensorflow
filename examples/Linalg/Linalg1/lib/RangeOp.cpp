@@ -59,7 +59,7 @@ bool linalg::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
 // A RangeOp prints as:
 //
 // ```{.mlir}
-//   linalg.range %arg0:%arg1:%c42 : !linalg<"range">
+//   linalg.range %arg0:%arg1:%c42 : !linalg.range
 // ```
 void linalg::RangeOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " " << *getMin() << ":" << *getMax() << ":"

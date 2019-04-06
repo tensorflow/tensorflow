@@ -7,5 +7,5 @@
 // - There should be a block terminator.
 // This all round-trip since this is opaque for MLIR.
 func @main() {
-  %0 = "toy.print"()  : () -> !toy<"array<2, 3>">
+  %0 = "toy.print"()  : () -> !toy.array<2, 3>
 }

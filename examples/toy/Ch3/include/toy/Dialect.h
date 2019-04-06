@@ -113,7 +113,7 @@ public:
 ///
 ///   %0 = "toy.constant"()
 ///       {value: dense<tensor<2x3xf64>, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]>}
-///     : () -> !toy<"array<2, 3>">
+///     : () -> !toy.array<2, 3>
 ///
 /// An operation inherits from `class Op` and specifies optional traits. Here we
 /// indicate that `toy.constant` does not have any operands and returns a single
@@ -140,7 +140,7 @@ public:
                     mlir::DenseElementsAttr value);
 
   /// Similar to the one above, but takes a single float and returns a
-  /// !toy<"array<1>">.
+  /// !toy.array<1>.
   static void build(mlir::Builder *builder, mlir::OperationState *state,
                     mlir::FloatAttr value);
 
@@ -154,7 +154,7 @@ public:
 /// arguments expected by the callee. For example:
 ///
 ///   %4 = "toy.generic_call"(%1, %3) {callee: "my_func"}
-///         : (!toy<"array<2, 3>">, !toy<"array<2, 3>">) -> !toy<"array">
+///         : (!toy.array<2, 3>, !toy.array<2, 3>) -> !toy<"array">
 ///
 /// This is only valid if a function named "my_func" exists and takes two
 /// arguments.
@@ -255,7 +255,7 @@ public:
 /// Reshape operation is transforming its input array into a new array with the
 /// same number of elements but different shapes. For example:
 ///
-///    %0 = "toy.transpose"(%arg1) : (!toy<"array<10>">) -> !toy<"array<5, 2>">
+///    %0 = "toy.transpose"(%arg1) : (!toy.array<10>) -> !toy.array<5, 2>
 ///
 class ReshapeOp : public mlir::Op<ReshapeOp, mlir::OpTrait::OneOperand,
                                   mlir::OpTrait::OneResult> {

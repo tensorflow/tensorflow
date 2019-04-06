@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -split-input-file -verify
 
 // expected-error@+1{{llvm.noalias argument attribute of non boolean type}}
-func @invalid_noalias(%arg0: !llvm<"i32"> {llvm.noalias: 3}) {
+func @invalid_noalias(%arg0: !llvm.i32 {llvm.noalias: 3}) {
   "llvm.return"() : () -> ()
 }
 
@@ -11,72 +11,72 @@ func @invalid_noalias(%arg0: !llvm<"i32"> {llvm.noalias: 3}) {
 
 // -----
 
-func @icmp_non_string(%arg0 : !llvm<"i32">, %arg1 : !llvm<"i16">) {
+func @icmp_non_string(%arg0 : !llvm.i32, %arg1 : !llvm<"i16">) {
   // expected-error@+1 {{expected 'predicate' attribute of string type}}
-  llvm.icmp 42 %arg0, %arg0 : !llvm<"i32">
+  llvm.icmp 42 %arg0, %arg0 : !llvm.i32
   return
 }
 
 // -----
 
-func @icmp_wrong_string(%arg0 : !llvm<"i32">, %arg1 : !llvm<"i16">) {
+func @icmp_wrong_string(%arg0 : !llvm.i32, %arg1 : !llvm<"i16">) {
   // expected-error@+1 {{'foo' is an incorrect value of the 'predicate' attribute}}
-  llvm.icmp "foo" %arg0, %arg0 : !llvm<"i32">
+  llvm.icmp "foo" %arg0, %arg0 : !llvm.i32
   return
 }
 
 // -----
 
-func @alloca_missing_input_result_type(%size : !llvm<"i64">) {
+func @alloca_missing_input_result_type(%size : !llvm.i64) {
   // expected-error@+1 {{expected trailing function type with one argument and one result}}
-  llvm.alloca %size x !llvm<"i32"> : () -> ()
+  llvm.alloca %size x !llvm.i32 : () -> ()
 }
 
 // -----
 
 func @alloca_missing_input_type() {
   // expected-error@+1 {{expected trailing function type with one argument and one result}}
-  llvm.alloca %size x !llvm<"i32"> : () -> (!llvm<"i32*">)
+  llvm.alloca %size x !llvm.i32 : () -> (!llvm<"i32*">)
 }
 
 // -----
 
 func @alloca_mising_result_type() {
   // expected-error@+1 {{expected trailing function type with one argument and one result}}
-  llvm.alloca %size x !llvm<"i32"> : (!llvm<"i64">) -> ()
+  llvm.alloca %size x !llvm.i32 : (!llvm.i64) -> ()
 }
 
 // -----
 
 func @alloca_non_function_type() {
   // expected-error@+1 {{expected trailing function type with one argument and one result}}
-  llvm.alloca %size x !llvm<"i32"> : !llvm<"i32*">
+  llvm.alloca %size x !llvm.i32 : !llvm<"i32*">
 }
 
 // -----
 
-func @gep_missing_input_result_type(%pos : !llvm<"i64">, %base : !llvm<"float*">) {
+func @gep_missing_input_result_type(%pos : !llvm.i64, %base : !llvm<"float*">) {
   // expected-error@+1 {{expected trailing function type with at least one argument and one result}}
   llvm.getelementptr %base[%pos] : () -> ()
 }
 
 // -----
 
-func @gep_missing_input_type(%pos : !llvm<"i64">, %base : !llvm<"float*">) {
+func @gep_missing_input_type(%pos : !llvm.i64, %base : !llvm<"float*">) {
   // expected-error@+1 {{expected trailing function type with at least one argument and one result}}
   llvm.getelementptr %base[%pos] : () -> (!llvm<"float*">)
 }
 
 // -----
 
-func @gep_missing_result_type(%pos : !llvm<"i64">, %base : !llvm<"float*">) {
+func @gep_missing_result_type(%pos : !llvm.i64, %base : !llvm<"float*">) {
   // expected-error@+1 {{expected trailing function type with at least one argument and one result}}
-  llvm.getelementptr %base[%pos] : (!llvm<"float *">, !llvm<"i64">) -> ()
+  llvm.getelementptr %base[%pos] : (!llvm<"float *">, !llvm.i64) -> ()
 }
 
 // -----
 
-func @gep_non_function_type(%pos : !llvm<"i64">, %base : !llvm<"float*">) {
+func @gep_non_function_type(%pos : !llvm.i64, %base : !llvm<"float*">) {
   // expected-error@+1 {{expected trailing function type with at least one argument and one result}}
   llvm.getelementptr %base[%pos] : !llvm<"float*">
 }
@@ -90,23 +90,23 @@ func @load_non_llvm_type(%foo : memref<f32>) {
 
 // -----
 
-func @load_non_ptr_type(%foo : !llvm<"float">) {
+func @load_non_ptr_type(%foo : !llvm.float) {
   // expected-error@+1 {{expected LLVM pointer type}}
-  llvm.load %foo : !llvm<"float">
+  llvm.load %foo : !llvm.float
 }
 
 // -----
 
-func @store_non_llvm_type(%foo : memref<f32>, %bar : !llvm<"float">) {
+func @store_non_llvm_type(%foo : memref<f32>, %bar : !llvm.float) {
   // expected-error@+1 {{expected LLVM IR dialect type}}
   llvm.store %bar, %foo : memref<f32>
 }
 
 // -----
 
-func @store_non_ptr_type(%foo : !llvm<"float">, %bar : !llvm<"float">) {
+func @store_non_ptr_type(%foo : !llvm.float, %bar : !llvm.float) {
   // expected-error@+1 {{expected LLVM pointer type}}
-  llvm.store %bar, %foo : !llvm<"float">
+  llvm.store %bar, %foo : !llvm.float
 }
 
 // -----

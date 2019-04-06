@@ -39,7 +39,7 @@ and can have application-specific semantics.
 Here is the MLIR assembly for the Toy 'transpose' operations:
 
 ```MLIR(.mlir)
-%t_array = "toy.transpose"(%array) { inplace: true } : (!toy<"array<2, 3>">) -> !toy<"array<3, 2>">
+%t_array = "toy.transpose"(%array) { inplace: true } : (!toy.array<2, 3>) -> !toy.array<3, 2>
 ```
 
 Let's look at the anatomy of this MLIR operation:
@@ -127,7 +127,7 @@ mlir::Operation *createTransposeOp(FuncBuilder *builder,
                                    mlir::Value *input_array) {
   // We bundle our custom type in a `toy` dialect.
   auto toyDialect = mlir::Identifier::get("toy", builder->getContext());
-  // Create a custom type, in the MLIR assembly it is:  !toy<"array<2, 2>">
+  // Create a custom type, in the MLIR assembly it is:  !toy.array<2, 2>
   auto type = mlir::OpaqueType::get(toyDialect, "array<2, 2>", builder->getContext());
 
   // Fill the `OperationState` with the required fields
@@ -174,12 +174,12 @@ func @multiply_transpose(%arg0: !toy<"array">, %arg1: !toy<"array">)
 }
 
 func @main() loc("test/codegen.toy":6:1) {
-  %0 = "toy.constant"() {value: dense<tensor<2x3xf64>, [[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]>} : () -> !toy<"array<2, 3>"> loc("test/codegen.toy":7:17)
-  %1 = "toy.reshape"(%0) : (!toy<"array<2, 3>">) -> !toy<"array<2, 3>"> loc("test/codegen.toy":7:3)
-  %2 = "toy.constant"() {value: dense<tensor<6xf64>, [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00]>} : () -> !toy<"array<6>"> loc("test/codegen.toy":8:17)
-  %3 = "toy.reshape"(%2) : (!toy<"array<6>">) -> !toy<"array<2, 3>"> loc("test/codegen.toy":8:3)
-  %4 = "toy.generic_call"(%1, %3, %1, %3) {callee: "multiply_transpose"} : (!toy<"array<2, 3>">, !toy<"array<2, 3>">, !toy<"array<2, 3>">, !toy<"array<2, 3>">) -> !toy<"array"> loc("test/codegen.toy":9:11)
-  %5 = "toy.generic_call"(%3, %1, %3, %1) {callee: "multiply_transpose"} : (!toy<"array<2, 3>">, !toy<"array<2, 3>">, !toy<"array<2, 3>">, !toy<"array<2, 3>">) -> !toy<"array"> loc("test/codegen.toy":10:11)
+  %0 = "toy.constant"() {value: dense<tensor<2x3xf64>, [[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]>} : () -> !toy.array<2, 3> loc("test/codegen.toy":7:17)
+  %1 = "toy.reshape"(%0) : (!toy.array<2, 3>) -> !toy.array<2, 3> loc("test/codegen.toy":7:3)
+  %2 = "toy.constant"() {value: dense<tensor<6xf64>, [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00]>} : () -> !toy.array<6> loc("test/codegen.toy":8:17)
+  %3 = "toy.reshape"(%2) : (!toy.array<6>) -> !toy.array<2, 3> loc("test/codegen.toy":8:3)
+  %4 = "toy.generic_call"(%1, %3, %1, %3) {callee: "multiply_transpose"} : (!toy.array<2, 3>, !toy.array<2, 3>, !toy.array<2, 3>, !toy.array<2, 3>) -> !toy<"array"> loc("test/codegen.toy":9:11)
+  %5 = "toy.generic_call"(%3, %1, %3, %1) {callee: "multiply_transpose"} : (!toy.array<2, 3>, !toy.array<2, 3>, !toy.array<2, 3>, !toy.array<2, 3>) -> !toy<"array"> loc("test/codegen.toy":10:11)
   "toy.print"(%5) : (!toy<"array">) -> () loc("test/codegen.toy":11:3)
   "toy.return"() : () -> () loc("test/codegen.toy":6:1)
 }
@@ -205,7 +205,7 @@ round-trip without tripping the verifier:
 ```MLIR(.mlir)
 // RUN: toyc %s -emit=mlir
 func @main() {
-  %0 = "toy.print"() : () -> !toy<"array<2, 3>">
+  %0 = "toy.print"() : () -> !toy.array<2, 3>
 }
 ```
 

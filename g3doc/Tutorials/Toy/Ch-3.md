@@ -46,9 +46,9 @@ arrays.
 
 As you may have noticed in the previous chapter, dialect specific types in MLIR
 are serialized as strings. In the case of Toy, an example would be
-`!toy<"array<2, 3>">`. MLIR will find the ToyDialect from the `!toy` prefix but
-it is up to the dialect itself to translate the content of the string into a
-proper type.
+`!toy.array<2, 3>`. MLIR will find the ToyDialect from the `!toy` prefix but it
+is up to the dialect itself to translate the content of the string into a proper
+type.
 
 First we need to define the class representing our type. In MLIR, types are
 references to immutable and uniqued objects owned by the MLIRContext. As such,
@@ -181,7 +181,7 @@ language. Let's walk through the creation of the `toy.generic_call` operation:
 
 ```MLIR(.mlir)
  %4 = "toy.generic_call"(%1, %3) {callee: "my_func"}
-         : (!toy<"array<2, 3>">, !toy<"array<2, 3>">) -> !toy<"array">
+         : (!toy.array<2, 3>, !toy.array<2, 3>) -> !toy<"array">
 ```
 
 This operation takes a variable number of operands, all of which are expected to
@@ -284,7 +284,7 @@ verifier, we try again the same example of invalid IR from the previous chapter:
 ```bash(.sh)
 $ cat test/invalid.mlir
 func @main() {
-  %0 = "toy.print"()  : () -> !toy<"array<2, 3>">
+  %0 = "toy.print"()  : () -> !toy.array<2, 3>
 }
 $ toyc test/invalid.mlir -emit=mlir
 loc("test/invalid.mlir":2:8): error: 'toy.print' op requires a single operand

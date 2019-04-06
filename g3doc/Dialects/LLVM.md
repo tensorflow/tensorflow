@@ -30,7 +30,7 @@ type ::= `!llvm<"` llvm-canonical-type `">
 llvm-canonical-type ::= <canonical textual representation defined by LLVM>
 ```
 
-For example, one can use primitive types `!llvm<"i32">`, pointer types
+For example, one can use primitive types `!llvm.i32`, pointer types
 `!llvm<"i8*">`, vector types `!llvm<"<4 x float>">` or structure types
 `!llvm<"{i32, float}">`. The parsing and printing of the canonical form is
 delegated to the LLVM assembly parser and printer.
@@ -73,10 +73,10 @@ Examples:
 
 ```mlir {.mlir}
 // Integer addition.
-%0 = llvm.add %a, %b : !llvm<"i32">
+%0 = llvm.add %a, %b : !llvm.i32
 
 // Unsigned integer division.
-%1 = llvm.udiv %a, %b : !llvm<"i32">
+%1 = llvm.udiv %a, %b : !llvm.i32
 ```
 
 #### Floating point binary arithmetic operations
@@ -94,10 +94,10 @@ Examples:
 
 ```mlir {.mlir}
 // Float addition.
-%0 = llvm.fadd %a, %b : !llvm<"float">
+%0 = llvm.fadd %a, %b : !llvm.float
 
 // Float division.
-%1 = llvm.fdiv %a, %b : !llvm<"float">
+%1 = llvm.fdiv %a, %b : !llvm.float
 ```
 
 #### Memory-related operations
@@ -119,16 +119,16 @@ Examples:
 
 ```mlir {.mlir}
 // Allocate an array of 4 floats on stack
-%c4 = llvm.constant(4) : !llvm<"i64">
-%0 = llvm.alloca %c4 x !llvm<"float"> : (!llvm<"i64">) -> !llvm<"float*">
+%c4 = llvm.constant(4) : !llvm.i64
+%0 = llvm.alloca %c4 x !llvm.float : (!llvm.i64) -> !llvm<"float*">
 
 // Get the second element of the array (note 0-based indexing).
-%c1 = llvm.constant(1) : !llvm<"i64">
-%1 = llvm.getelementptr %0[%c1] : (!llvm<"float*">, !llvm<"i64">)
+%c1 = llvm.constant(1) : !llvm.i64
+%1 = llvm.getelementptr %0[%c1] : (!llvm<"float*">, !llvm.i64)
                                    -> !llvm<"float*">
 
 // Store a constant into this element.
-%cf = llvm.constant(42.0 : f32) : !llvm<"float">
+%cf = llvm.constant(42.0 : f32) : !llvm.float
 llvm.store %cf, %1 : !llvm<"float*">
 
 // Load the value from this element.
@@ -186,17 +186,17 @@ Examples:
   llvm.br ^bb0
 
 // Branch and pass arguments.
-^bb1(%arg: !llvm<"i32">):
-  llvm.br ^bb1(%arg : !llvm<"i32">)
+^bb1(%arg: !llvm.i32):
+  llvm.br ^bb1(%arg : !llvm.i32)
 
 // Conditionally branch and pass arguments to one of the blocks.
-llvm.cond_br %cond, ^bb0, %bb1(%arg : !llvm<"i32">)
+llvm.cond_br %cond, ^bb0, %bb1(%arg : !llvm.i32)
 
 // It's okay to use the same block without arguments, but probably useless.
 llvm.cond_br %cond, ^bb0, ^bb0
 
 // ERROR: Passing different arguments to the same block in a conditional branch.
-llvm.cond_br %cond, ^bb1(%0 : !llvm<"i32">), ^bb1(%1 : !llvm<"i32">)
+llvm.cond_br %cond, ^bb1(%0 : !llvm.i32), ^bb1(%1 : !llvm.i32)
 
 ```
 
@@ -221,13 +221,13 @@ Examples:
 
 ```mlir {.mlir}
 // Direct call without arguments and with one result.
-%0 = llvm.call @foo() : () -> (!llvm<"float">)
+%0 = llvm.call @foo() : () -> (!llvm.float)
 
 // Direct call with arguments and without a result.
-llvm.call @bar(%0) : (!llvm<"float">) -> ()
+llvm.call @bar(%0) : (!llvm.float) -> ()
 
 // Indirect call with an argument and without a result.
-llvm.call %1(%0) : (!llvm<"float">) -> ()
+llvm.call %1(%0) : (!llvm.float) -> ()
 ```
 
 #### Miscellaneous operations.
@@ -271,13 +271,13 @@ Examples:
 
 ```mlir {.mlir}
 // Integer constant, internal i32 is mandatory
-%0 = llvm.constant(42 : i32) : !llvm<"i32">
+%0 = llvm.constant(42 : i32) : !llvm.i32
 
 // It's okay to omit i64.
-%1 = llvm.constant(42) : !llvm<"i64">
+%1 = llvm.constant(42) : !llvm.i64
 
 // Floating point constant.
-%2 = llvm.constant(42.0 : f32) : !llvm<"float">
+%2 = llvm.constant(42.0 : f32) : !llvm.float
 
 // Splat vector constant,.
 %3 = llvm.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">

@@ -58,8 +58,8 @@ TEST_FUNC(view_op) {
   some_consumer({v0, v1, v2});
   ret();
   // CHECK-LABEL: func @view_op
-  //       CHECK:   %[[R:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
-  //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[] : !linalg<"view<f32>">
+  //       CHECK:   %[[R:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
+  //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[] : !linalg.view<f32>
   //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[%[[R]]] : !linalg<"view<?xf32>">
   //  CHECK-NEXT:  {{.*}} = linalg.view {{.*}}[%[[R]], %[[R]]] : !linalg<"view<?x?xf32>">
   // clang-format on
@@ -93,16 +93,16 @@ TEST_FUNC(slice_op) {
   //       CHECK: %[[ALLOC:.*]] = alloc(%arg0, %arg1) : memref<?x?xf32>
   //  CHECK-NEXT: %[[M:.*]] = dim %0, 0 : memref<?x?xf32>
   //  CHECK-NEXT: %[[N:.*]] = dim %0, 1 : memref<?x?xf32>
-  //  CHECK-NEXT: %[[R1:.*]] = linalg.range {{.*}}:%[[M]]:{{.*}} : !linalg<"range">
-  //  CHECK-NEXT: %[[R2:.*]] = linalg.range {{.*}}:%[[N]]:{{.*}} : !linalg<"range">
+  //  CHECK-NEXT: %[[R1:.*]] = linalg.range {{.*}}:%[[M]]:{{.*}} : !linalg.range
+  //  CHECK-NEXT: %[[R2:.*]] = linalg.range {{.*}}:%[[N]]:{{.*}} : !linalg.range
   //  CHECK-NEXT: %[[V:.*]] = linalg.view %0[%[[R1]], %[[R2]]] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT: for %i0 = 0 to (d0) -> (d0)(%[[M]]) {
   //  CHECK-NEXT:   for %i1 = 0 to (d0) -> (d0)(%[[N]]) {
   //  CHECK-NEXT:     %[[S1:.*]] = linalg.slice %[[V]][*, %i0]  : !linalg<"view<?xf32>">
   //  CHECK-NEXT:     "some_consumer"(%[[S1]]) : (!linalg<"view<?xf32>">) -> ()
   //  CHECK-NEXT:     %[[S2:.*]] = linalg.slice %[[V]][%i1, *]  : !linalg<"view<?xf32>">
-  //  CHECK-NEXT:     %[[S3:.*]] = linalg.slice %[[S2]][%i0]  : !linalg<"view<f32>">
-  //  CHECK-NEXT:     "some_consumer"(%[[S3]]) : (!linalg<"view<f32>">) -> ()
+  //  CHECK-NEXT:     %[[S3:.*]] = linalg.slice %[[S2]][%i0]  : !linalg.view<f32>
+  //  CHECK-NEXT:     "some_consumer"(%[[S3]]) : (!linalg.view<f32>) -> ()
   // clang-format on
 
   cleanupAndPrintFunction(f);

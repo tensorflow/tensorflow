@@ -112,12 +112,12 @@ TEST_FUNC(matmul_tiled_views) {
   //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 9 {
   //  CHECK-NEXT:     %[[i0min:.*]] = affine.apply (d0) -> (d0)(%i0)
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%i0)
-  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg<"range">
-  //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
+  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg.range
+  //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
   //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : !linalg<"view<?x?xf32>">
   //       CHECK:     %[[i1min:.*]] = affine.apply (d0) -> (d0)(%i1)
   //  CHECK-NEXT:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
-  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg<"range">
+  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg.range
   //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:     linalg.matmul(%[[vA]], %[[vB]], %[[vC]]) : !linalg<"view<?x?xf32>">
@@ -148,12 +148,12 @@ TEST_FUNC(matmul_tiled_views_as_loops) {
   //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 9 {
   //  CHECK-NEXT:     %[[i0min:.*]] = affine.apply (d0) -> (d0)(%i0)
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%i0)
-  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg<"range">
-  //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg<"range">
+  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg.range
+  //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
   //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : !linalg<"view<?x?xf32>">
   //       CHECK:     %[[i1min:.*]] = affine.apply (d0) -> (d0)(%i1)
   //  CHECK-NEXT:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
-  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg<"range">
+  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg.range
   //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : !linalg<"view<?x?xf32>">
   //  CHECK-NEXT:     affine.for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0)(%[[i0max]]) {
