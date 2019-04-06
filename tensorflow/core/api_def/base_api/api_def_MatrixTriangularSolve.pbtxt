@@ -36,9 +36,8 @@ Equivalent to scipy.linalg.solve_triangular
 @end_compatibility
 END
   }
-  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by backsubstitution."
   description: <<END
-backsubstitution.
 
 `matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
 square matrices. If `lower` is `True` then the strictly upper triangular part
