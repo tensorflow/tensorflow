@@ -1,4 +1,4 @@
-path: "tensorflow.keras.layers.experimental.LayerNormalization"
+path: "tensorflow.keras.layers.LayerNormalization"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.normalization.LayerNormalization\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
@@ -90,7 +90,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'norm_axis\', \'params_axis\', \'epsilon\', \'center\', \'scale\', \'beta_initializer\', \'gamma_initializer\', \'beta_regularizer\', \'gamma_regularizer\', \'beta_constraint\', \'gamma_constraint\', \'trainable\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'-1\', \'1e-12\', \'True\', \'True\', \'zeros\', \'ones\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'axis\', \'epsilon\', \'center\', \'scale\', \'beta_initializer\', \'gamma_initializer\', \'beta_regularizer\', \'gamma_regularizer\', \'beta_constraint\', \'gamma_constraint\', \'trainable\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'-1\', \'0.001\', \'True\', \'True\', \'zeros\', \'ones\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "add_loss"

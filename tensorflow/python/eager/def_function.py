@@ -316,12 +316,16 @@ class Function(object):
         return weak_wrapped_fn().__wrapped__(*args, **kwds)
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
+    return self._defun(tf_decorator.make_decorator(
+        self._python_function,
+        wrapped_fn,
+        decorator_argspec=self._function_spec.fullargspec))
+
+  def _defun(self, fn):
+    """Returns a defun generated from the input function."""
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(
-            self._python_function,
-            wrapped_fn,
-            decorator_argspec=self._function_spec.fullargspec),
+        fn,
         input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)

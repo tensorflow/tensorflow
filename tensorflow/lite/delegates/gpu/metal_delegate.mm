@@ -23,7 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/absl/types/span.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"

@@ -420,7 +420,7 @@ class BatchNormalizationBase(Layer):
         self._scope.set_partitioner(partitioner)
     self.built = True
 
-  def _assign_moving_average(self, variable, value, momentum, inputs_size):
+  def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
       with ops.colocate_with(variable):
@@ -429,23 +429,12 @@ class BatchNormalizationBase(Layer):
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (
             variable - math_ops.cast(value, variable.dtype)) * decay
-        if inputs_size is not None:
-          update_delta = array_ops.where(inputs_size > 0, update_delta,
-                                         K.zeros_like(update_delta))
         return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
-
-    # TODO(b/129279393): Support zero batch input in non DistributionStrategy
-    # code as well.
-    if distribution_strategy_context.has_strategy(
-    ) and not inputs.shape.is_fully_defined():
-      inputs_size = array_ops.size(inputs)
-    else:
-      inputs_size = None
 
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
@@ -489,23 +478,21 @@ class BatchNormalizationBase(Layer):
         strategy = distribution_strategy_context.get_strategy()
         mean_update = strategy.extended.update(
             self.moving_mean, self._assign_moving_average,
-            (mean, self.momentum, inputs_size))
+            (mean, self.momentum))
         variance_update = strategy.extended.update(
             self.moving_variance, self._assign_moving_average,
-            (variance, self.momentum, inputs_size))
+            (variance, self.momentum))
       else:
         mean_update = self._assign_moving_average(self.moving_mean, mean,
-                                                  momentum, inputs_size)
+                                                  momentum)
         variance_update = self._assign_moving_average(self.moving_variance,
-                                                      variance, momentum,
-                                                      inputs_size)
+                                                      variance, momentum)
       self.add_update(mean_update, inputs=True)
       self.add_update(variance_update, inputs=True)
 
     return output
 
-  def _renorm_correction_and_moments(self, mean, variance, training,
-                                     inputs_size):
+  def _renorm_correction_and_moments(self, mean, variance, training):
     """Returns the correction and update values for renorm."""
     stddev = math_ops.sqrt(variance + self.epsilon)
     # Compute the average mean and standard deviation, as if they were
@@ -536,7 +523,7 @@ class BatchNormalizationBase(Layer):
                             lambda: d,
                             lambda: array_ops.zeros_like(d))
 
-    def _update_renorm_variable(var, weight, value, inputs_size):
+    def _update_renorm_variable(var, weight, value):
       """Updates a moving average and weight, returns the unbiased value."""
       value = array_ops.identity(value)
       def _do_update():
@@ -549,11 +536,9 @@ class BatchNormalizationBase(Layer):
         # Make sure the weight is not updated until before r and d computation.
         with ops.control_dependencies([value]):
           weight_value = array_ops.constant(1., dtype=weight.dtype)
-        new_var = self._assign_moving_average(var, value, self.renorm_momentum,
-                                              inputs_size)
+        new_var = self._assign_moving_average(var, value, self.renorm_momentum)
         new_weight = self._assign_moving_average(weight, weight_value,
-                                                 self.renorm_momentum,
-                                                 inputs_size)
+                                                 self.renorm_momentum)
         # TODO(yuefengz): the updates to var and weighted can not be batched
         # together if we fetch their updated values here. Consider calculating
         # new values and delaying the updates.
@@ -565,27 +550,16 @@ class BatchNormalizationBase(Layer):
 
     # TODO(yuefengz): colocate the operations
     new_mean = _update_renorm_variable(self.renorm_mean,
-                                       self.renorm_mean_weight, mean,
-                                       inputs_size)
+                                       self.renorm_mean_weight, mean)
     new_stddev = _update_renorm_variable(self.renorm_stddev,
-                                         self.renorm_stddev_weight, stddev,
-                                         inputs_size)
+                                         self.renorm_stddev_weight, stddev)
     # Make sqrt(moving_variance + epsilon) = new_stddev.
     new_variance = math_ops.square(new_stddev) - self.epsilon
 
     return (r, d, new_mean, new_variance)
 
   def _moments(self, inputs, reduction_axes, keep_dims):
-    mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
-    # TODO(b/129279393): Support zero batch input in non DistributionStrategy
-    # code as well.
-    if distribution_strategy_context.has_strategy(
-    ) and not inputs.shape.is_fully_defined():
-      inputs_size = array_ops.size(inputs)
-      mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
-      variance = array_ops.where(inputs_size > 0, variance,
-                                 K.zeros_like(variance))
-    return mean, variance
+    return nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -683,14 +657,9 @@ class BatchNormalizationBase(Layer):
       else:
         new_mean, new_variance = mean, variance
 
-      if distribution_strategy_context.has_strategy(
-      ) and not inputs.shape.is_fully_defined():
-        inputs_size = array_ops.size(inputs)
-      else:
-        inputs_size = None
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
-            new_mean, new_variance, training, inputs_size)
+            new_mean, new_variance, training)
         # When training, the normalized values (say, x) will be transformed as
         # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
         # = x * (r * gamma) + (d * gamma + beta) with renorm.
@@ -706,8 +675,7 @@ class BatchNormalizationBase(Layer):
           if in_eager_mode and not self.trainable:
             return
           return strategy.extended.update(
-              var,
-              self._assign_moving_average, (value, self.momentum, inputs_size),
+              var, self._assign_moving_average, (value, self.momentum),
               group=False)
         # We need to unwrap the moving_mean or moving_variance in the case of
         # training being false to match the output of true_fn and false_fn
@@ -725,9 +693,7 @@ class BatchNormalizationBase(Layer):
           """Compute the updates for mean and variance."""
           if in_eager_mode and not self.trainable:
             return
-          return self._assign_moving_average(var, value, self.momentum,
-                                             inputs_size)
-
+          return self._assign_moving_average(var, value, self.momentum)
         mean_update = tf_utils.smart_cond(
             training,
             lambda: _do_update(self.moving_mean, new_mean),
@@ -828,7 +794,7 @@ class BatchNormalization(BatchNormalizationBase):
   _USE_V2_BEHAVIOR = False
 
 
-@keras_export('keras.layers.experimental.LayerNormalization')
+@keras_export('keras.layers.LayerNormalization')
 class LayerNormalization(Layer):
   """Layer normalization layer (Ba et al., 2016).
 
@@ -837,28 +803,9 @@ class LayerNormalization(Layer):
   i.e. applies a transformation that maintains the mean activation within each
   example close to 0 and the activation standard deviation close to 1.
 
-  Given a tensor `inputs` of rank `R`, moments are calculated and normalization
-  is performed over all axes in norm_axis.  Scaling and centering,
-  if requested, is performed over all axes in params_axis.
-
-  By default, normalization is performed over all but the first axis
-  (the `HWC` if `inputs` is `NHWC`), while the `beta` and `gamma` trainable
-  parameters are calculated for the rightmost axis (the `C` if `inputs` is
-  `NHWC`).  Scaling and recentering is performed via broadcast of the
-  `beta` and `gamma` parameters with the normalized tensor.
-
-  The shapes of `beta` and `gamma` are
-  `[inputs.shape[i] for i in (param axes)]`,
-  and this part of the inputs' shape must be fully defined.
-
   Arguments:
-    norm_axis: Integer or List. normalization will be
-      performed along these dimensions. If unspecified (None), it will default
-      to the dimensions `begin_norm_axis : rank(inputs)`
-    params_axis: Integer or List. The (beta, gamma) dimensions: scale
-      and centering parameters will have take their shapes from these axes and
-      will be broadcast with the normalized inputs accordingly. If unspecified
-      (None), it will default to the last dimension
+    axis: Integer or List/Tuple. The axis that should be normalized
+      (typically the features axis).
     epsilon: Small float added to variance to avoid dividing by zero.
     center: If True, add offset of `beta` to normalized tensor.
         If False, `beta` is ignored.
@@ -888,9 +835,8 @@ class LayerNormalization(Layer):
   """
 
   def __init__(self,
-               norm_axis=None,
-               params_axis=-1,
-               epsilon=1e-12,
+               axis=-1,
+               epsilon=1e-3,
                center=True,
                scale=True,
                beta_initializer='zeros',
@@ -904,23 +850,13 @@ class LayerNormalization(Layer):
                **kwargs):
     super(LayerNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
-    if isinstance(norm_axis, list):
-      self.norm_axis = norm_axis[:]
-    elif isinstance(norm_axis, int):
-      self.norm_axis = norm_axis
-    elif norm_axis is None:
-      self.norm_axis = None
+    if isinstance(axis, (list, tuple)):
+      self.axis = axis[:]
+    elif isinstance(axis, int):
+      self.axis = axis
     else:
-      raise TypeError('norm_axis must be int or list or None, type given: %s'
-                      % type(norm_axis))
-
-    if isinstance(params_axis, list):
-      self.params_axis = params_axis[:]
-    elif isinstance(params_axis, int):
-      self.params_axis = params_axis
-    else:
-      raise TypeError('params_axis must be int or list, type given: %s'
-                      % type(params_axis))
+      raise ValueError('Expected an int or a list/tuple of ints for the '
+                       'argument \'axis\', but received instead: %s' % axis)
 
     self.epsilon = epsilon
     self.center = center
@@ -939,38 +875,21 @@ class LayerNormalization(Layer):
     if ndims is None:
       raise ValueError('Input shape %s has undefined rank.' % input_shape)
 
-    # Handle an unspecified norm_axis
-    if self.norm_axis is None:
-      self.norm_axis = list(range(1, ndims))
-
-    # Convert axes to lists and resolve negatives
-    if isinstance(self.norm_axis, int):
-      self.norm_axis = [self.norm_axis]
-    for idx, x in enumerate(self.norm_axis):
+    # Convert axis to list and resolve negatives
+    if isinstance(self.axis, int):
+      self.axis = [self.axis]
+    for idx, x in enumerate(self.axis):
       if x < 0:
-        self.norm_axis[idx] = ndims + x
-
-    if isinstance(self.params_axis, int):
-      self.params_axis = [self.params_axis]
-    for idx, x in enumerate(self.params_axis):
-      if x < 0:
-        self.params_axis[idx] = ndims + x
+        self.axis[idx] = ndims + x
 
     # Validate axes
-    for x in self.norm_axis:
+    for x in self.axis:
       if x < 0 or x >= ndims:
         raise ValueError('Invalid axis: %d' % x)
-    if len(self.norm_axis) != len(set(self.norm_axis)):
-      raise ValueError('Duplicate axis: %s' % self.norm_axis)
+    if len(self.axis) != len(set(self.axis)):
+      raise ValueError('Duplicate axis: {}'.format(tuple(self.axis)))
 
-    for x in self.params_axis:
-      if x < 0 or x >= ndims:
-        raise ValueError('Invalid axis: %d' % x)
-    if len(self.params_axis) != len(set(self.params_axis)):
-      raise ValueError('Duplicate axis: %s' % self.params_axis)
-
-    param_shape = [input_shape[dim] for dim in self.params_axis]
-
+    param_shape = [input_shape[dim] for dim in self.axis]
     if self.scale:
       self.gamma = self.add_weight(
           name='gamma',
@@ -1001,16 +920,16 @@ class LayerNormalization(Layer):
     ndims = len(input_shape)
 
     # Calculate the moments on the last axis (layer activations).
-    mean, variance = nn.moments(inputs, self.norm_axis, keep_dims=True)
+    mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
-    # Broadcasting only necessary for norm where the params axes aren't just
+    # Broadcasting only necessary for norm where the axis is not just
     # the last dimension
     broadcast_shape = [1] * ndims
-    for dim in self.params_axis:
+    for dim in self.axis:
       broadcast_shape[dim] = input_shape.dims[dim].value
     def _broadcast(v):
       if (v is not None and len(v.shape) != ndims and
-          self.params_axis != [ndims - 1]):
+          self.axis != [ndims - 1]):
         return array_ops.reshape(v, broadcast_shape)
       return v
     scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
@@ -1034,8 +953,7 @@ class LayerNormalization(Layer):
 
   def get_config(self):
     config = {
-        'norm_axis': self.norm_axis,
-        'params_axis': self.params_axis,
+        'axis': self.axis,
         'epsilon': self.epsilon,
         'center': self.center,
         'scale': self.scale,

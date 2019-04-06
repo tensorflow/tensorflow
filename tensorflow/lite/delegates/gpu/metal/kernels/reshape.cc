@@ -27,31 +27,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-
-uint GetBestSize(int grid_size) {
-  if (grid_size % 8 == 0 || grid_size % 8 >= 4 || grid_size >= 16) {
-    return 8;
-  } else if (grid_size % 4 == 0 || grid_size % 4 >= 2 || grid_size >= 8) {
-    return 4;
-  } else if (grid_size % 2 == 0 || grid_size >= 4) {
-    return 2;
-  } else {
-    return 1;
-  }
-}
-
-uint3 GetWorkGroupSize(const BHWC& dst_shape) {
-  uint x_size = GetBestSize(dst_shape.w);
-  uint y_size = GetBestSize(dst_shape.h);
-  uint z_size = std::max(1u, 32u / (x_size * y_size));
-  return {x_size, y_size, z_size};
-}
-
 std::string GetReshapeCode() {
   std::string code = R"(
 #include <metal_stdlib>
@@ -177,11 +158,12 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
   };
 
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
-    const uint3 groups_size = GetWorkGroupSize(attr.new_shape);
-    int groups_x = IntegralDivideRoundUp(attr.new_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(attr.new_shape.h, groups_size.y);
-    const int dst_layers = IntegralDivideRoundUp(attr.new_shape.c, 4);
-    int groups_z = IntegralDivideRoundUp(dst_layers, groups_size.z);
+    const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
+                             IntegralDivideRoundUp(attr.new_shape.c, 4));
+    const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
+    int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
+    int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
+    int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
@@ -235,11 +217,12 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
   };
 
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
-    const uint3 groups_size = GetWorkGroupSize(attr.new_shape);
-    int groups_x = IntegralDivideRoundUp(attr.new_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(attr.new_shape.h, groups_size.y);
-    const int dst_layers = IntegralDivideRoundUp(attr.new_shape.c, 4);
-    int groups_z = IntegralDivideRoundUp(dst_layers, groups_size.z);
+    const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
+                             IntegralDivideRoundUp(attr.new_shape.c, 4));
+    const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
+    int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
+    int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
+    int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

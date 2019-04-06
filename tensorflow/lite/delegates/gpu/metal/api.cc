@@ -91,6 +91,17 @@ std::vector<ComputeTaskDescriptorPtr> SelectReshape(
   }
 }
 
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
+                                                    int id, ValueId input_id,
+                                                    ValueId output_id) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.w == 1 && src_shape.h == 1) {
+    return Softmax1x1(id, input_id, output_id, src_shape.c);
+  } else {
+    return Softmax(id, input_id, output_id, src_shape.c);
+  }
+}
+
 }  // namespace
 
 Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
@@ -121,7 +132,8 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             Concat(node_id, inputs, outputs[0],
                    absl::any_cast<ConcatAttributes>(node->operation.attributes),
                    input_shapes);
-      } break;
+        break;
+      }
       case OperationType::CONVOLUTION_2D:
         tasks = SelectConvolution(
             graph, node_id, inputs[0], outputs[0],
@@ -190,10 +202,15 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             Slice(node_id, inputs[0], outputs[0],
                   absl::any_cast<SliceAttributes>(node->operation.attributes));
         break;
-      case OperationType::SOFT_MAX:
-        tasks = Softmax(node_id, inputs[0], outputs[0],
-                        graph.FindInputs(node->id)[0]->tensor.shape.c, options);
+      case OperationType::SOFT_MAX: {
+        auto attr =
+            absl::any_cast<SoftMaxAttributes>(node->operation.attributes);
+        if (attr.axis != Axis::CHANNELS) {
+          return UnimplementedError("Softmax supports only CHANNELS dimension");
+        }
+        tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
         break;
+      }
       case OperationType::UPSAMPLE_2D:
         tasks = Upsample(
             node_id, inputs[0], outputs[0],
