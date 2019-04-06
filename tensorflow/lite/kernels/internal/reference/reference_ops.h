@@ -1258,17 +1258,30 @@ inline void Div(const ArithmeticParams& params,
 inline void DivElementwise(int size, const ArithmeticParams& params,
                            const uint8* input1_data, const uint8* input2_data,
                            uint8* output_data) {
-  const float scale = static_cast<float>(
-      static_cast<double>(params.output_multiplier) /
-      (1 << (31 - params.output_shift)));
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
 
   for (int i = 0; i < size; ++i) {
     const int32 input1_val = params.input1_offset + input1_data[i];
     const int32 input2_val = params.input2_offset + input2_data[i];
-    const float quotient = static_cast<float>(input1_val) / input2_val;
+    TFLITE_DCHECK_NE(input2_val, 0);
+    int recip_shift;
+    const int32 input2_inv = (input2_val > 0)
+        ?  GetReciprocal( input2_val, 31, &recip_shift)
+        : -GetReciprocal(-input2_val, 31, &recip_shift);
+    const int headroom = CountLeadingSignBits(input1_val);
+    const int32 unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(
+            input1_val, input2_inv, headroom);
+    const int total_shift = params.output_shift - recip_shift - headroom;
     const int32 unclamped_result =
         params.output_offset +
-        static_cast<int32>(std::round(scale * quotient));
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            unscaled_quotient, params.output_multiplier, total_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -1307,10 +1320,13 @@ inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
   NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
                                       unextended_input2_shape, &desc1, &desc2);
   
-  const float scale = static_cast<float>(
-      static_cast<double>(params.output_multiplier) /
-      (1 << (31 - params.output_shift)));
-
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+  
   for (int b = 0; b < output_shape.Dims(0); ++b) {
     for (int y = 0; y < output_shape.Dims(1); ++y) {
       for (int x = 0; x < output_shape.Dims(2); ++x) {
@@ -1321,16 +1337,25 @@ inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
           const int32 input2_val =
               params.input2_offset +
               input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const float quotient =
-              static_cast<float>(input1_val) / input2_val;
+          TFLITE_DCHECK_NE(input2_val, 0);
+          int recip_shift;
+          const int32 input2_inv = (input2_val > 0)
+              ?  GetReciprocal( input2_val, 31, &recip_shift)
+              : -GetReciprocal(-input2_val, 31, &recip_shift);
+          const int headroom = CountLeadingSignBits(input1_val);
+          const int32 unscaled_quotient =
+              MultiplyByQuantizedMultiplierGreaterThanOne(
+                  input1_val, input2_inv, headroom);
+          const int total_shift = params.output_shift - recip_shift - headroom;
           const int32 unclamped_result =
               params.output_offset +
-              static_cast<int32>(std::round(scale * quotient));
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  unscaled_quotient, params.output_multiplier, total_shift);
           const int32 clamped_output = std::min(
               params.quantized_activation_max,
               std::max(params.quantized_activation_min, unclamped_result));
           output_data[Offset(output_shape, b, y, x, c)] =
-            static_cast<uint8>(clamped_output);
+              static_cast<uint8>(clamped_output);
         }
       }
     }

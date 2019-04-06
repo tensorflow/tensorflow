@@ -131,6 +131,22 @@ int CountLeadingZeros(T integer_input) {
 #endif
 }
 
+template <typename T>
+inline int CountLeadingSignBits(T integer_input) {
+  static_assert(std::is_signed<T>::value,
+                "Only signed integer types handled.");
+#if defined(__GNUC__) && !defined(__clang__)
+  return integer_input ? __builtin_clrsb(integer_input) : 0;
+#else
+  using U = typename std::make_unsigned<T>::type;
+  return integer_input > 0 
+      ? CountLeadingZeros(static_cast<U>(integer_input)) - 1
+      : integer_input != std::numeric_limits<T>::min()
+          ? CountLeadingZeros(static_cast<U>(std::abs(integer_input)))
+          : 0;
+#endif
+}
+
 // TODO(b/77858996): Add these to gemmlowp.
 template <typename IntegerType>
 IntegerType SaturatingAddNonGemmlowp(IntegerType a, IntegerType b) {
