@@ -990,8 +990,8 @@ class GradientTape(object):
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
-    definition of a Jacobian.
+    See <a href="http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant"> for the
+    definition of a Jacobian.</a>
 
     Example usage:
 
@@ -1091,8 +1091,8 @@ class GradientTape(object):
                      experimental_use_pfor=True):
     """Computes and stacks per-example jacobians.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
-    definition of a Jacobian.  This function is essentially an efficient
+    See <a href="http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant"> for the
+    definition of a Jacobian.</a>  This function is essentially an efficient
     implementation of the following:
     `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
 
