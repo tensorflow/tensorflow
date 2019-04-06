@@ -126,7 +126,7 @@ def path_to_str(path):
   Examples:
   ```python3
   >>> tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
-  >>>'C:\\XYZ\\tensorflow\\./.././tensorflow' # Windows OS
+  >>> 'C:\\XYZ\\tensorflow\\./.././tensorflow' # Windows OS
   >>> tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
   >>> 'C:\\XYZ\\tensorflow\\..\\tensorflow' # Windows OS
   >>> tf.compat.path_to_str(Path('./corpus'))
