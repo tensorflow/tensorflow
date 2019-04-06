@@ -91,6 +91,12 @@ public:
                                  FuncBuilder &rewriter) const {
     llvm_unreachable("unimplemented rewriteTerminator, did you mean rewrite?");
   }
+
+  /// Provide a default implementation for matching: most DialectOpConversion
+  /// implementations are unconditionally matching.
+  PatternMatchResult match(Operation *op) const override {
+    return matchSuccess();
+  }
 };
 
 // Helper class to create a list of dialect conversion patterns given a list of
