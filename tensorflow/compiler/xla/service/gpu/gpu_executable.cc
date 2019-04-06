@@ -136,6 +136,7 @@ Status GpuExecutable::ExecuteThunks(
     // thunks to finish.  This reduces noise and thus the probability of
     // choosing a suboptimal algorithm.
     if (thunk->WillAutotuneKernel(stream)) {
+      main_stream->ThenWaitFor(&sub_streams);
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
