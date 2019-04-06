@@ -2635,6 +2635,17 @@ def batch_flatten(x):
 
   Returns:
       A tensor.
+
+  Examples:
+    Flatteinng a 3D tensor to 2D by collapsing the last dimension. 
+
+  ```python
+      >>> from tensorflow.keras import backend as K
+      >>> x_batch = K.ones(shape=(2, 3, 4, 5))
+      >>> x_batch_flatten = K.batch_flatten(x_batch)
+      >>> K.int_shape(x_batch_flatten)
+      (2, 60)
+  ```
   """
   x = array_ops.reshape(x, array_ops.stack([-1, prod(shape(x)[1:])]))
   return x
