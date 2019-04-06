@@ -193,10 +193,10 @@ used in an MLIR text file but are not persisted as part of the IR - the printer
 will give them anonymous names like `%42`.
 
 MLIR guarantees identifiers never collide with keywords by prefixing identifiers
-with a sigil (e.g. `%`, `#`, `@`, `^`). In certain unambiguous contexts (e.g.
-affine expressions), identifiers are not prefixed, for brevity. New keywords may
-be added to future versions of MLIR without danger of collision with existing
-identifiers.
+with a sigil (e.g. `%`, `#`, `@`, `^`, `!`). In certain unambiguous contexts
+(e.g. affine expressions), identifiers are not prefixed, for brevity. New
+keywords may be added to future versions of MLIR without danger of collision
+with existing identifiers.
 
 The scope of SSA values is defined based on the standard definition of
 [dominance](https://en.wikipedia.org/wiki/Dominator_\(graph_theory\)). Argument
@@ -534,7 +534,8 @@ type-alias ::= '!' alias-name
 
 MLIR supports defining named aliases for types. A type alias is an identifier
 that can be used in the place of the type that it defines. These aliases *must*
-be defined before their uses.
+be defined before their uses. Alias names may not contain a '.', since those
+names are reserved for [dialect-specific types](#dialect-specific-types).
 
 Example:
 
@@ -2217,9 +2218,15 @@ system. These extensions fit within the same type system as described in the
 
 ``` {.ebnf}
 dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
+dialect-type ::= '!' alias-name pretty-dialect-type-body?
+
+pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
+pretty-dialect-type-contents ::= pretty-dialect-type-body
+                               | '[0-9a-zA-Z.-]+'
+
 ```
 
-Example:
+Dialect types can be specified in a verbose form, e.g. like this:
 
 ```mlir {.mlir}
 // LLVM type that wraps around llvm IR types.
@@ -2227,7 +2234,30 @@ Example:
 
 // Tensor flow string type.
 !tf<"string">
+
+// Complex type
+!foo<"something<abcd>">
+
+// Even more complex type
+!foo<"something<a%%123^^^>>>">
 ```
+
+Dialect types that are simple enough can use the pretty format, which is a
+lighter weight syntax that is equivalent to the above forms:
+
+```mlir {.mlir}
+// Tensor flow string type.
+!tf.string
+
+// Complex type
+!foo.something<abcd>
+```
+
+Sufficiently complex dialect types are required to use the verbose form for
+generality. For example, the more complex type shown above wouldn't be valid in
+the lighter syntax: `!foo.something<a%%123^^^>>>` because it contains characters
+that are not allowed in the lighter syntax, as well as unbalanced `<>`
+characters.
 
 ### TensorFlow types
 

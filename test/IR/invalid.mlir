@@ -787,6 +787,11 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined t
 
 // -----
 
+// expected-error @+1 {{type names with a '.' are reserved for dialect-defined names}}
+!foo.bar = i32
+
+// -----
+
 !missing_eq_alias type i32 // expected-error {{expected '=' in type alias definition}}
 
 // -----
@@ -922,8 +927,8 @@ func @invalid_nested_dominance() {
 
 // -----
 
-// expected-error @+1 {{invalid dialect namespace 'invalid.dialect'}}
-func @invalid_unknown_type_dialect_name() -> !invalid.dialect<"">
+// expected-error @+1 {{expected simple name in pretty dialect type}}
+func @invalid_unknown_type_dialect_name() -> !invalid.dialect<!x@#!@#>
 
 // -----
 

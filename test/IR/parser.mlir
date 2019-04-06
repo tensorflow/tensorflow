@@ -850,3 +850,17 @@ func @pretty_form_multi_result() -> (i16, i16) {
   %quot, %rem = "foo_div"() : () -> (i16, i16)
   return %quot, %rem : i16, i16
 }
+
+// CHECK-LABEL: func @pretty_dialect_type()
+func @pretty_dialect_type() {
+
+  // CHECK: %0 = "foo.unknown_op"() : () -> !foo<"simpletype">
+  %0 = "foo.unknown_op"() : () -> !foo.simpletype
+
+  // CHECK: %1 = "foo.unknown_op"() : () -> !foo<"complextype<abcd>">
+  %1 = "foo.unknown_op"() : () -> !foo.complextype<abcd>
+
+  // CHECK: %2 = "foo.unknown_op"() : () -> !foo<"complextype<abcd<f32>>">
+  %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
+  return
+}

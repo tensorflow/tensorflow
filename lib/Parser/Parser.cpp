@@ -184,6 +184,7 @@ public:
   ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
                                        bool allowDynamic);
   Type parseExtendedType();
+  ParseResult parsePrettyDialectTypeName(StringRef &prettyName);
   Type parseTensorType();
   Type parseComplexType();
   Type parseTupleType();
@@ -480,10 +481,51 @@ Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
   return ParseSuccess;
 }
 
+/// Parse the body of a pretty dialect type, which starts and ends with <>'s,
+/// and may be recursive.  Return with the 'prettyName' StringRef encompasing
+/// the entire pretty name.
+///
+///   pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
+///   pretty-dialect-type-contents ::= pretty-dialect-type-body
+///                                  | '[0-9a-zA-Z.-]+'
+///
+ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
+  consumeToken(Token::less);
+
+  while (1) {
+    if (getToken().is(Token::greater)) {
+      auto *start = prettyName.begin();
+      // Update the size of the covered range to include all the tokens we have
+      // skipped over.
+      unsigned length = getTokenSpelling().end() - start;
+      prettyName = StringRef(start, length);
+      consumeToken(Token::greater);
+      return ParseSuccess;
+    }
+
+    if (getToken().is(Token::less)) {
+      if (parsePrettyDialectTypeName(prettyName))
+        return ParseFailure;
+      continue;
+    }
+
+    // Check to see if the token contains simple characters.
+    bool isSimple = true;
+    for (auto c : getTokenSpelling())
+      isSimple &= (isalpha(c) || isdigit(c) || c == '.' || c == '-');
+
+    if (!isSimple || getToken().is(Token::eof))
+      return emitError("expected simple name in pretty dialect type");
+
+    consumeToken();
+  }
+}
+
 /// Parse an extended type.
 ///
 ///   extended-type ::= (dialect-type | type-alias)
 ///   dialect-type  ::= `!` dialect-namespace `<` '"' type-data '"' `>`
+///   dialect-type  ::= `!` alias-name pretty-dialect-type-body?
 ///   type-alias    ::= `!` alias-name
 ///
 Type Parser::parseExtendedType() {
@@ -491,10 +533,12 @@ Type Parser::parseExtendedType() {
 
   // Parse the dialect namespace.
   StringRef identifier = getTokenSpelling().drop_front();
+  auto loc = getToken().getLoc();
   consumeToken(Token::exclamation_identifier);
 
-  // If there is not a '<' token, we are parsing a type alias.
-  if (getToken().isNot(Token::less)) {
+  // If there is no '<' token following this, and if the typename contains no
+  // dot, then we are parsing a type alias.
+  if (getToken().isNot(Token::less) && !identifier.contains('.')) {
     // Check for an alias for this type.
     auto aliasIt = state.typeAliasDefinitions.find(identifier);
     if (aliasIt == state.typeAliasDefinitions.end())
@@ -503,38 +547,56 @@ Type Parser::parseExtendedType() {
     return aliasIt->second;
   }
 
-  // Otherwise, we are parsing a dialect-specific type.
+  // Otherwise, we are parsing a dialect-specific type.  If the name contains a
+  // dot, then this is the "pretty" form.  If not, it is the verbose form that
+  // looks like <"...">.
+  std::string typeData;
+  auto dialectName = identifier;
 
-  // Consume the '<'.
-  if (parseToken(Token::less, "expected '<' in dialect type"))
-    return nullptr;
+  // Handle the verbose form, where "identifier" is a simple dialect name.
+  if (!identifier.contains('.')) {
+    // Consume the '<'.
+    if (parseToken(Token::less, "expected '<' in dialect type"))
+      return nullptr;
 
-  // Parse the type specific data.
-  if (getToken().isNot(Token::string))
-    return (emitError("expected string literal type data in dialect type"),
-            nullptr);
+    // Parse the type specific data.
+    if (getToken().isNot(Token::string))
+      return (emitError("expected string literal type data in dialect type"),
+              nullptr);
+    typeData = getToken().getStringValue();
+    loc = getToken().getLoc();
+    consumeToken(Token::string);
 
-  auto typeData = getToken().getStringValue();
-  auto loc = getEncodedSourceLocation(getToken().getLoc());
-  consumeToken(Token::string);
-
-  Type result;
-
-  // If we found a registered dialect, then ask it to parse the type.
-  if (auto *dialect = state.context->getRegisteredDialect(identifier)) {
-    result = dialect->parseType(typeData, loc);
-    if (!result)
+    // Consume the '>'.
+    if (parseToken(Token::greater, "expected '>' in dialect type"))
       return nullptr;
   } else {
-    // Otherwise, form a new opaque type.
-    result = OpaqueType::getChecked(Identifier::get(identifier, state.context),
-                                    typeData, state.context, loc);
+    // Ok, the dialect name is the part of the identifier before the dot, the
+    // part after the dot is the dialect's type, or the start thereof.
+    auto dotHalves = identifier.split('.');
+    dialectName = dotHalves.first;
+    auto prettyName = dotHalves.second;
+
+    // If the dialect's type is followed immediately by a <, then lex the body
+    // of it into prettyName.
+    if (getToken().is(Token::less) &&
+        prettyName.bytes_end() == getTokenSpelling().bytes_begin()) {
+      if (parsePrettyDialectTypeName(prettyName) == ParseFailure)
+        return nullptr;
+    }
+
+    typeData = prettyName.str();
   }
 
-  // Consume the '>'.
-  if (parseToken(Token::greater, "expected '>' in dialect type"))
-    return nullptr;
-  return result;
+  auto encodedLoc = getEncodedSourceLocation(loc);
+
+  // If we found a registered dialect, then ask it to parse the type.
+  if (auto *dialect = state.context->getRegisteredDialect(dialectName))
+    return dialect->parseType(typeData, encodedLoc);
+
+  // Otherwise, form a new opaque type.
+  return OpaqueType::getChecked(Identifier::get(dialectName, state.context),
+                                typeData, state.context, encodedLoc);
 }
 
 /// Parse a tensor type.
@@ -3547,6 +3609,11 @@ ParseResult ModuleParser::parseTypeAliasDef() {
   // Check for redefinitions.
   if (getState().typeAliasDefinitions.count(aliasName) > 0)
     return emitError("redefinition of type alias id '" + aliasName + "'");
+
+  // Make sure this isn't invading the dialect type namespace.
+  if (aliasName.contains('.'))
+    return emitError("type names with a '.' are reserved for "
+                     "dialect-defined names");
 
   consumeToken(Token::exclamation_identifier);
 
