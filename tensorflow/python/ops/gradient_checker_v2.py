@@ -315,6 +315,7 @@ def compute_gradient(f, x, delta=1e-3):
     ValueError: If result is empty but the gradient is nonzero.
     ValueError: If x is not list, but any other type.
 
+  Example:
   ```python
   @tf.function
   def test_func(x):
