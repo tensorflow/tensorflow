@@ -1330,7 +1330,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
-  Sparse gradients are represented by IndexedSlices.
+  Sparse gradients are represented by `IndexedSlices`.
 
   Up-to-date gradients (i.e., time step at which gradient was computed is
   equal to the accumulator's time step) are added to the accumulator.
@@ -1365,11 +1365,11 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   def apply_indexed_slices_grad(self, grad, local_step=0, name=None):
     """Attempts to apply a gradient to the accumulator.
 
-    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    The attempt is silently dropped if the gradient is stale, i.e., `local_step`
     is less than the accumulator's global time step.
 
     Args:
-      grad: The gradient IndexedSlices to be applied.
+      grad: The gradient `IndexedSlices` to be applied.
       local_step: Time step at which the gradient was computed.
       name: Optional name for the operation.
 
@@ -1394,7 +1394,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
                  name=None):
     """Attempts to apply a sparse gradient to the accumulator.
 
-    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    The attempt is silently dropped if the gradient is stale, i.e., `local_step`
     is less than the accumulator's global time step.
 
     A sparse gradient is represented by its indices, values and possibly empty
@@ -1453,7 +1453,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       A tuple of indices, values, and shape representing the average gradient.
 
     Raises:
-      InvalidArgumentError: If num_required < 1
+      InvalidArgumentError: If `num_required` < 1
     """
     return gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
@@ -1474,10 +1474,10 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       name: Optional name for the operation
 
     Returns:
-      An IndexedSlices holding the value of the average gradient.
+      An `IndexedSlices` holding the value of the average gradient.
 
     Raises:
-      InvalidArgumentError: If num_required < 1
+      InvalidArgumentError: If `num_required` < 1
     """
     return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
