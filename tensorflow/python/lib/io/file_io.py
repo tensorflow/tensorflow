@@ -255,7 +255,7 @@ def file_exists(filename):
     filename: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:
@@ -272,7 +272,7 @@ def file_exists_v2(path):
     path: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:

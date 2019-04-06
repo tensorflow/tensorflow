@@ -474,6 +474,13 @@ TEST_F(UtilsTest, TensorIdToString) {
   EXPECT_EQ(TensorIdToString({"foo", 2}), "foo:2");
 }
 
+TEST_F(UtilsTest, SafeTensorIdToString) {
+  EXPECT_EQ(SafeTensorIdToString({"foo", -1}), "^foo");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 0}), "foo");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 1}), "foo:1");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 2}), "foo:2");
+}
+
 template <typename T>
 void TestSetTensorValue(DataType type, int val, bool success,
                         absl::string_view error_msg) {

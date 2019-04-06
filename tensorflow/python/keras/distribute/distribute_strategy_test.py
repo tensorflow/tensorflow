@@ -1359,6 +1359,64 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
       model.fit(x, y, epochs=1, steps_per_epoch=2)
 
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def test_distribution_strategy_with_symbolic_add_loss(self, distribution):
+
+    def _make_model_with_add_loss():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      model.add_loss(math_ops.reduce_mean(x1))
+      model.add_loss(math_ops.reduce_mean(outputs))
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+
+    model = _make_model_with_add_loss()
+    model.compile('sgd')
+    history = model.fit(x, steps_per_epoch=2, epochs=1)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_loss()
+      ds_model.compile('sgd')
+      ds_history = ds_model.fit(x, steps_per_epoch=2, epochs=1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  # TODO(omalleyt): Investigate flakiness and re-enable.
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def DISABLED_test_distribution_strategy_with_callable_add_loss(
+      self, distribution):
+
+    def _make_model():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      d = keras.layers.Dense(1, kernel_initializer='zeros')
+      outputs = d(x2)
+      model = keras.Model(inputs, outputs)
+      model.add_loss(lambda: 100. * math_ops.reduce_mean(d.kernel))
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model()
+    self.assertLen(model.losses, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(x, y, steps_per_epoch=2, epochs=1)
+
+    with distribution.scope():
+      ds_model = _make_model()
+      self.assertLen(ds_model.losses, 1)
+      ds_model.compile('sgd', 'mse')
+      ds_history = ds_model.fit(x, y, steps_per_epoch=2, epochs=1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
 
 if __name__ == '__main__':
   test.main()

@@ -1571,9 +1571,11 @@ class MklQuantizedConv2DOp
         output_max->flat<float>()(0) = max_output_value;
       } else {
         size_t depth = min_filter.NumElements();
-        AllocateOutputSetMklShape(context, 1, &output_min, {depth},
+        AllocateOutputSetMklShape(context, 1, &output_min,
+                                  {static_cast<ptrdiff_t>(depth)},
                                   output_min_mkl_shape);
-        AllocateOutputSetMklShape(context, 2, &output_max, {depth},
+        AllocateOutputSetMklShape(context, 2, &output_max,
+                                  {static_cast<ptrdiff_t>(depth)},
                                   output_max_mkl_shape);
         MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
             min_input, max_input, min_filter, max_filter, &output_min,
@@ -1667,9 +1669,11 @@ class MklQuantizedConv2DOp
       } else {
         bias_attr.set_output_scales(1, scales);
       }
-      auto bias_pd = memory::primitive_desc(
-          {{bias_tensor.NumElements()}, MklDnnType<Tbias>(), memory::format::x},
-          this->cpu_engine_);
+      auto bias_pd =
+          memory::primitive_desc({{static_cast<int>(bias_tensor.NumElements())},
+                                  MklDnnType<Tbias>(),
+                                  memory::format::x},
+                                 this->cpu_engine_);
 
       void* bias_buf = static_cast<void*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));

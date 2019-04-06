@@ -208,21 +208,53 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset = distribute._AutoShardDataset(dataset, 500, 499)
     self.assertDatasetProduces(dataset, [])
 
+  def testTFRecordReaderWithDirectFileNames(self):
+    # Using `_TFRecordDataset` creates a raw op rather than wrapping it around
+    # a flat_map automatically.
+    dataset = core_readers._TFRecordDataset(self.test_filenames)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in (0, 5)
+    ]
+    self.assertDatasetProduces(dataset, expected)
+
+  def testTFRecordReaderWithDirectFileNamesAndShapes(self):
+    # Using `_TFRecordDataset` creates a raw op rather than wrapping it around
+    # a flat_map automatically.
+    dataset = core_readers._TFRecordDataset(self.test_filenames)
+
+    # BatchDataset contains `output_types` and `output_shapes`
+    dataset = dataset.batch(5)
+    dataset = distribute._AutoShardDataset(dataset, 2, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 5)
+    ]
+    self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
+
   def testNoReaderPipelines(self):
     dataset = dataset_ops.Dataset.range(1024)
-    with self.assertRaises(errors.NotFoundError):
-      dataset = distribute._AutoShardDataset(dataset, 2, 0)
-      self.evaluate(self.getNext(dataset)())
+    dataset = distribute._AutoShardDataset(dataset, 2, 0)
+    self.assertDatasetProduces(dataset, [i for i in range(1024) if i % 2 == 0])
 
-  def testUnsupportedOpInPipeline(self):
-    dataset = dataset_ops.Dataset.list_files(self.test_filenames)
+  def testUnknownOpInPipelineStillShardsAtTheEnd(self):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
-    dataset = dataset.batch(5)
     dataset = dataset.apply(unique.unique())
 
-    with self.assertRaises(errors.NotFoundError):
-      dataset = distribute._AutoShardDataset(dataset, 2, 0)
-      self.evaluate(self.getNext(dataset)())
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in (0, 5)
+    ]
+    self.assertDatasetProduces(dataset, expected)
 
   def testInvalidWorkerIndex(self):
     dataset = dataset_ops.Dataset.list_files(self.test_filenames)

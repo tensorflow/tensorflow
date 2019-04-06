@@ -41,6 +41,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
@@ -1817,7 +1818,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 1. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -4156,6 +4157,10 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   scaled up by `1 / (1 - rate)`, otherwise outputs `0`.  The scaling is so that
   the expected sum is unchanged.
 
+  **Note:** The behavior of dropout has changed between TensorFlow 1.x and 2.x.
+  When converting 1.x code, please use named arguments to ensure behavior stays
+  consistent.
+
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
   [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -4172,25 +4177,30 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
-      point tensor.
+    ValueError: If `rate` is not in `(0, 1]` or if `x` is not a floating point
+      tensor.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if not x.dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going to"
                        " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(rate, numbers.Real) and not (rate >= 0 and rate < 1):
-      raise ValueError("rate must be a scalar tensor or a float in the "
-                       "range [0, 1), got %g" % rate)
+    if isinstance(rate, numbers.Real):
+      if not (rate >= 0 and rate < 1):
+        raise ValueError("rate must be a scalar tensor or a float in the "
+                         "range [0, 1), got %g" % rate)
+      if rate > 0.5:
+        logging.log_first_n(
+            logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
+            "2.x, dropout() uses dropout rate instead of keep_prob. "
+            "Please ensure that this is intended.", 5, rate)
 
     # Early return if nothing needs to be dropped.
     if isinstance(rate, numbers.Real) and rate == 0:

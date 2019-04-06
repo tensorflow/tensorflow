@@ -4,6 +4,7 @@ package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 
 SOURCES = glob([
@@ -15,8 +16,6 @@ SOURCES = glob([
 API_HEADERS = glob([
     "apis/*.h",
 ])
-
-MINIMUM_OS_VERSION = "9.0"
 
 # Compiler flags for building regular non-test libraries.
 RELEASE_COPTS = [
@@ -54,18 +53,13 @@ TEST_COPTS = RELEASE_COPTS + [
     "-Wno-shadow",
 ]
 
-# Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
-DEFAULT_TAGS = [
-    "apple",
-]
-
 objc_library(
     name = "TensorFlowLite",
     srcs = SOURCES,
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
     module_map = "apis/module.modulemap",
-    tags = DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS,
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
     ],
@@ -75,14 +69,8 @@ objc_library(
 ios_unit_test(
     name = "TensorFlowLiteTests",
     size = "small",
-    minimum_os_version = MINIMUM_OS_VERSION,
-    tags = DEFAULT_TAGS + [
-        # These sanitizer tests are not supported by iOS build toolchain (b/74292221).
-        # Disabled these for iOS test targets.
-        "noasan",
-        "notsan",
-        "nomsan",
-    ],
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
     deps = [
         ":TestsLib",
     ],
@@ -104,7 +92,7 @@ objc_library(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],
-    tags = DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS,
     deps = [
         ":TensorFlowLite",
     ],

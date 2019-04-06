@@ -162,6 +162,10 @@ string TensorIdToString(const TensorId& tensor_id) {
                                 : tensor_id.ToString();
 }
 
+string SafeTensorIdToString(const SafeTensorId& tensor_id) {
+  return tensor_id.index() == 0 ? tensor_id.node() : tensor_id.ToString();
+}
+
 bool IsSameInput(const string& name1, const string& name2) {
   if (name1 == name2) return true;
   TensorId tensor1 = ParseTensorName(name1);

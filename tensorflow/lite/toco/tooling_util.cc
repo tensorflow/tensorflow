@@ -1333,7 +1333,9 @@ namespace {
 void CopyArrayAttribs(const Array& source_array, Array* target_array) {
   target_array->data_type = source_array.data_type;
   target_array->final_data_type = source_array.final_data_type;
-  target_array->copy_shape(source_array.shape());
+  if (source_array.has_shape()) {
+    target_array->copy_shape(source_array.shape());
+  }
 
   if (source_array.minmax) {
     target_array->GetOrCreateMinMax() = source_array.GetMinMax();
@@ -1383,23 +1385,9 @@ void CloneArray(Model* model, const string& source_array_name,
   Array& target_array = model->GetOrCreateArray(target_array_name);
   CopyArrayAttribs(source_array, &target_array);
 
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
+  if (!source_array.buffer) {
+    return;
   }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:

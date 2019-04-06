@@ -3741,5 +3741,4 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
     ],
-    xla_enable_strict_auto_jit = True,
 )

@@ -3,7 +3,6 @@ tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.boosted_trees.BoostedTreesEstimator\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.boosted_trees._BoostedTreesBase\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
-  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"

@@ -17,6 +17,11 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 
@@ -91,4 +96,82 @@ bool TFE_ProfilerClientStartTracing(const char* service_addr,
       service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
       num_tracing_attempts);
   return s.ok();
+}
+
+static tensorflow::mutex gauges_map_lock(tensorflow::LINKER_INITIALIZED);
+
+static std::unordered_map<string,
+                          tensorflow::monitoring::Gauge<tensorflow::int64, 1>*>*
+get_gauges_map() EXCLUSIVE_LOCKS_REQUIRED(gauges_map_lock) {
+  static std::unordered_map<
+      string, tensorflow::monitoring::Gauge<tensorflow::int64, 1>*>*
+      gauges_map = new std::unordered_map<
+          string, tensorflow::monitoring::Gauge<tensorflow::int64, 1>*>;
+  return gauges_map;
+}
+
+static tensorflow::mutex counters_map_lock(tensorflow::LINKER_INITIALIZED);
+
+static std::unordered_map<string, tensorflow::monitoring::Counter<1>*>*
+get_counters_map() EXCLUSIVE_LOCKS_REQUIRED(counters_map_lock) {
+  static std::unordered_map<string, tensorflow::monitoring::Counter<1>*>*
+      counters_map =
+          new std::unordered_map<string, tensorflow::monitoring::Counter<1>*>;
+  return counters_map;
+}
+
+static tensorflow::mutex samplers_map_lock(tensorflow::LINKER_INITIALIZED);
+
+static std::unordered_map<string, tensorflow::monitoring::Sampler<1>*>*
+get_samplers_map() EXCLUSIVE_LOCKS_REQUIRED(samplers_map_lock) {
+  static std::unordered_map<string, tensorflow::monitoring::Sampler<1>*>*
+      samplers_map =
+          new std::unordered_map<string, tensorflow::monitoring::Sampler<1>*>;
+  return samplers_map;
+}
+
+void TFE_MonitoringSetGauge(const char* name, const char* label,
+                            int64_t value) {
+  tensorflow::mutex_lock l(gauges_map_lock);
+  auto gauges_map = get_gauges_map();
+  if (gauges_map->find(name) == gauges_map->end()) {
+    gauges_map->emplace(
+        name, tensorflow::monitoring::Gauge<tensorflow::int64, 1>::New(
+                  name,
+                  tensorflow::strings::StrCat(
+                      name, " :Gauge metric collected from Python API."),
+                  "metric_descriptor"));
+  }
+  gauges_map->at(name)->GetCell(label)->Set(value);
+}
+
+void TFE_MonitoringAddCounter(const char* name, const char* label,
+                              int64_t value) {
+  tensorflow::mutex_lock l(counters_map_lock);
+  auto counters_map = get_counters_map();
+  if (counters_map->find(name) == counters_map->end()) {
+    counters_map->emplace(
+        name, tensorflow::monitoring::Counter<1>::New(
+                  name,
+                  tensorflow::strings::StrCat(
+                      name, " :Counter metric collected from Python API."),
+                  "metric_descriptor"));
+  }
+  counters_map->at(name)->GetCell(label)->IncrementBy(value);
+}
+
+void TFE_MonitoringAddSampler(const char* name, const char* label,
+                              double value) {
+  tensorflow::mutex_lock l(samplers_map_lock);
+  auto samplers_map = get_samplers_map();
+  if (samplers_map->find(name) == samplers_map->end()) {
+    samplers_map->emplace(
+        name, tensorflow::monitoring::Sampler<1>::New(
+                  {name,
+                   tensorflow::strings::StrCat(
+                       name, " :Counter metric collected from Python API."),
+                   "metric_descriptor"},
+                  {tensorflow::monitoring::Buckets::Exponential(1, 2, 30)}));
+  }
+  samplers_map->at(name)->GetCell(label)->Add(value);
 }

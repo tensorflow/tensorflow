@@ -165,6 +165,7 @@ py_library(
         ":optimizers",
         ":regularizers",
         ":saving",
+        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -975,6 +976,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -1278,6 +1280,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
     tags = [
         "no-internal-py3",
     ],
@@ -1295,6 +1298,19 @@ tf_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+)
+
+tf_py_test(
+    name = "control_flow_test",
+    size = "medium",
+    srcs = ["engine/control_flow_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 8,
 )
 
 tf_py_test(

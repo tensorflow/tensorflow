@@ -25,6 +25,7 @@ from tensorflow.python import keras
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -91,6 +92,18 @@ class KerasRegularizersTest(keras_parameterized.TestCase):
         input_shape=(10,))
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, batch_size=5, epochs=1)
+
+  def test_custom_regularizer_saving(self):
+
+    def my_regularizer(weights):
+      return math_ops.reduce_sum(math_ops.abs(weights))
+
+    inputs = keras.Input((10,))
+    outputs = keras.layers.Dense(1, kernel_regularizer=my_regularizer)(inputs)
+    model = keras.Model(inputs, outputs)
+    model2 = model.from_config(
+        model.get_config(), custom_objects={'my_regularizer': my_regularizer})
+    self.assertEqual(model2.layers[1].kernel_regularizer, my_regularizer)
 
 
 if __name__ == '__main__':

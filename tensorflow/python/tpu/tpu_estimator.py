@@ -891,7 +891,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     """Generates the per_host enqueue ops."""
     control_deps = []
     per_host_sharded_inputs = []
-    sparse_features_list = []
+    enqueue_datas_list = []
     num_replicas_per_host = ctx.num_of_replicas_per_host
     cached_signals = None
     with ops.device(device):
@@ -910,9 +910,9 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
           else:
             cached_signals = signals
 
-        features, labels, sparse_features = (
+        features, labels, enqueue_data = (
             _tpu_estimator_embedding.split_inputs(ctx, features, labels))
-        sparse_features_list.append(sparse_features)
+        enqueue_datas_list.append(enqueue_data)
 
         inputs_structure_recorder.validate_and_record_structure(
             features, labels)
@@ -945,7 +945,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     if ctx.embedding_config:
       per_host_enqueue_ops.extend(
           ctx.embedding_config.tpu_embedding.generate_enqueue_ops(
-              sparse_features_list))
+              enqueue_datas_list))
 
     if signals is None:
       return per_host_enqueue_ops
@@ -2403,7 +2403,8 @@ class TPUEstimator(estimator_lib.Estimator):
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
-                               check_variables=True):
+                               check_variables=True,
+                               strip_default_attrs=True):
     if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
       logging.warning('TPUEstimator only handles mode PREDICT for exporting '
                       'when `export_to_tpu` is `True`; Mode {} will be ignored '
@@ -2420,7 +2421,8 @@ class TPUEstimator(estimator_lib.Estimator):
           save_variables,
           mode=mode,
           export_tags=export_tags,
-          check_variables=check_variables))
+          check_variables=check_variables,
+          strip_default_attrs=strip_default_attrs))
 
     if self._export_to_tpu and mode == model_fn_lib.ModeKeys.PREDICT:
       input_receiver_fn_map = {
@@ -2441,7 +2443,8 @@ class TPUEstimator(estimator_lib.Estimator):
           save_variables=save_variables,
           mode=mode,
           export_tags=export_tags,
-          check_variables=check_variables))
+          check_variables=check_variables,
+          strip_default_attrs=strip_default_attrs))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
@@ -2892,24 +2895,31 @@ class TPUEstimator(estimator_lib.Estimator):
 
           shutdown_hooks = []
           shutdown_mode = os.environ.get('TF_TPU_GRACEFUL_SHUTDOWN_MODE',
-                                         'shutdown_worker')
+                                         'reset_computation')
           if shutdown_mode:
             if shutdown_mode == 'shutdown_worker':
               finalizer_hooks = [
-                  session_support.ShutdownLameWorkers(timeout_ms=60 * 1000),
+                  session_support.ShutdownLameWorkers(),
               ]
-            elif shutdown_mode == 'shutdown_computation':
+            elif shutdown_mode == 'shutdown_all_workers':
               finalizer_hooks = [
-                  session_support.RestartComputation(timeout_ms=60 * 1000),
+                  session_support.ShutdownAllWorkers(),
               ]
+            elif shutdown_mode == 'reset_computation':
+              finalizer_hooks = [
+                  session_support.ResetComputation(),
+              ]
+            elif not shutdown_mode:
+              finalizer_hooks = []
             else:
               raise ValueError(
                   'Unknown TF_TPU_GRACEFUL_SHUTDOWN_MODE "%s"' % shutdown_mode)
 
-            shutdown_hooks.append(
-                session_support.GracefulShutdownHook(
-                    checkpoint_prefix=self.model_dir + '/model.ckpt',
-                    on_shutdown_hooks=finalizer_hooks))
+            if finalizer_hooks:
+              shutdown_hooks.append(
+                  session_support.GracefulShutdownHook(
+                      checkpoint_prefix=self.model_dir + '/model.ckpt',
+                      on_shutdown_hooks=finalizer_hooks))
 
           with ops.control_dependencies([loss]):
             global_step = array_ops.identity(training.get_global_step())

@@ -37,16 +37,8 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryDefinition* lib_def,
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
-      DistributedFunctionLibraryRuntime* parent = nullptr);
-
-  // With `custom_kernel_creator`.
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                CustomKernelCreator custom_kernel_creator,
-                                thread::ThreadPool* thread_pool,
-                                DistributedFunctionLibraryRuntime* parent);
+      DistributedFunctionLibraryRuntime* parent = nullptr,
+      const CustomKernelCreator* custom_kernel_creator = nullptr);
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -223,7 +215,7 @@ class ProcessFunctionLibraryRuntime {
 
   Status Clone(Env* env, int graph_def_version,
                const OptimizerOptions& optimizer_options,
-               CustomKernelCreator custom_kernel_creator,
+               const CustomKernelCreator* custom_kernel_creator,
                std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const;
 

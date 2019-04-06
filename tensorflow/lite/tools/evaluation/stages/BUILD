@@ -127,3 +127,19 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "image_classification_stage",
+    srcs = ["image_classification_stage.cc"],
+    hdrs = ["image_classification_stage.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":image_preprocessing_stage",
+        ":tflite_inference_stage",
+        ":topk_accuracy_eval_stage",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+    ],
+)

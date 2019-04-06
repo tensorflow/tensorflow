@@ -3698,6 +3698,8 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
   if batch_dims == 0:
+    # TODO(lespeholt): Use ResourceVariable.gather_nd when params is a
+    # ResourceVariable (faster and more memory efficient.)
     return gen_array_ops.gather_nd(params, indices, name=name)
   else:
     return batch_gather_nd(

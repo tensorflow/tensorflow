@@ -530,7 +530,7 @@ class ResourceVariable(variables.VariableV1):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
           unique_id = shared_name
@@ -905,6 +905,16 @@ class ResourceVariable(variables.VariableV1):
               cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
                   is_set=True,
                   shape_and_type=handle_data.shape_and_type[1:]))
+
+    return array_ops.identity(value)
+
+  def gather_nd(self, indices, name=None):
+    """Reads the value of this variable sparsely, using `gather_nd`."""
+    with ops.name_scope("GatherNd" if name is None else name) as name:
+      if self.trainable:
+        variable_accessed(self)
+      value = gen_resource_variable_ops.resource_gather_nd(
+          self._handle, indices, dtype=self._dtype, name=name)
 
     return array_ops.identity(value)
 
