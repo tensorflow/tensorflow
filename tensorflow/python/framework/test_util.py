@@ -2717,7 +2717,7 @@ def create_local_cluster(num_workers,
 
   TODO: image from https://www.tensorflow.org/images/diag1.svg
 
-  Figure 2 illustrates the interaction of these components.
+  Figure illustrates the interaction of these components.
   "/job:worker/task:0" and "/job:ps/task:0" are both tasks with worker services.
 
 
@@ -2744,9 +2744,9 @@ def create_local_cluster(num_workers,
     num_ps: Number of PS servers to start.
     protocol: Communication protocol.  Allowed values are documented in the
       documentation of `tf.train.Server`.
-    worker_config: (optional) ConfigProto to initialize workers. Can be used to
+    worker_config: (optional) `tf.ConfigProto` to initialize workers. Can be used to
       instantiate multiple devices etc.
-    ps_config: (optional) ConfigProto to initialize PS servers.
+    ps_config: (optional) `tf.ConfigProto` to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
