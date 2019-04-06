@@ -2708,6 +2708,19 @@ def create_local_cluster(num_workers,
                          ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
+  "PS" stands for "parameter server": a task responsible for storing and
+  updating the model's parameters. Other tasks send updates to these parameters
+  as they work on optimizing the parameters. This particular division of labor
+  between tasks is not required, but is common for distributed training.
+
+  Read more at https://www.tensorflow.org/guide/extend/architecture
+
+  TODO: image from https://www.tensorflow.org/images/diag1.svg
+
+  Figure 2 illustrates the interaction of these components.
+  "/job:worker/task:0" and "/job:ps/task:0" are both tasks with worker services.
+
+
   Example:
   ```python
   workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
