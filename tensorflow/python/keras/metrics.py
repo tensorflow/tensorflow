@@ -2193,7 +2193,7 @@ class Poisson(MeanMetricWrapper):
 
 @keras_export('keras.metrics.KLDivergence')
 class KLDivergence(MeanMetricWrapper):
-  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence metric between `y_true` and `y_pred`.
 
   `metric = y_true * log(y_true / y_pred)`
 
