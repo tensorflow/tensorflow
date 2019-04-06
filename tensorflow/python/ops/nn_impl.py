@@ -1258,7 +1258,7 @@ def fused_batch_norm(
   r"""Batch normalization.
 
   See Source: [Batch Normalization: Accelerating Deep Network Training by Reducing 
-  Internal Covariate Shift, S. Ioffe, C. Szegedy](http://arxiv.org/abs/1502.03167).
+  Internal Covariate Shift; S. Ioffe, C. Szegedy](http://arxiv.org/abs/1502.03167).
 
   Args:
     x: Input `Tensor` of 4 dimensions.
