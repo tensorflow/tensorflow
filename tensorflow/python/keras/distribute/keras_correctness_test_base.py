@@ -373,13 +373,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def skip_unsupported_test_configuration(self, distribution):
     if should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
-
-    if context.executing_eagerly() and self.use_numpy:
-      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
-
-    if context.executing_eagerly() and self.use_validation_data:
-      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
-                    'data for eager execution.')
     return
 
   def run_correctness_test(self,
