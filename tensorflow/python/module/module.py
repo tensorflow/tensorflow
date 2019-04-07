@@ -21,7 +21,6 @@ from __future__ import print_function
 import re
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
@@ -137,7 +136,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_variable_like))
+    return tuple(self._flatten(predicate=_is_variable))
 
   @property
   def trainable_variables(self):
@@ -270,13 +269,12 @@ class Module(tracking.AutoTrackable):
     return tf_decorator.make_decorator(method, method_with_name_scope)
 
 
-def _is_variable_like(obj):
-  return (isinstance(obj, variables.Variable) or
-          resource_variable_ops.is_resource_variable(obj))
+def _is_variable(obj):
+  return isinstance(obj, variables.Variable)
 
 
 def _is_trainable_variable(obj):
-  return _is_variable_like(obj) and getattr(obj, "trainable", False)
+  return _is_variable(obj) and getattr(obj, "trainable", False)
 
 
 def _is_module(obj):
