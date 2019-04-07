@@ -2742,10 +2742,10 @@ def create_local_cluster(num_workers,
   Args:
     num_workers: Number of worker servers to start.
     num_ps: Number of PS servers to start.
-    protocol: Communication protocol.  Allowed values are documented in the
+    protocol: Communication protocol. Allowed values are documented in the
       documentation of `tf.train.Server`.
-    worker_config: (optional) `tf.ConfigProto` to initialize workers. Can be used to
-      instantiate multiple devices etc.
+    worker_config: (optional) `tf.ConfigProto` to initialize workers. Can be
+      used to instantiate multiple devices etc.
     ps_config: (optional) `tf.ConfigProto` to initialize PS servers.
 
   Returns:
