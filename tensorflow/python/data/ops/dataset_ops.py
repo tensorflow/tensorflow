@@ -455,8 +455,7 @@ class DatasetV2(object):
         for ret, dtype in zip(flattened_values, flattened_types):
           try:
             if isinstance(ret, ragged_tensor.RaggedTensor):
-              ret_arrays.append(math_ops.cast(ret, dtype))
-              continue
+              ret = ret.to_tensor()
             ret_arrays.append(script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
                 ret, dtype=dtype.as_numpy_dtype))
           except (TypeError, ValueError):
