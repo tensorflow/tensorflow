@@ -2715,7 +2715,8 @@ def create_local_cluster(num_workers,
 
   Read more at https://www.tensorflow.org/guide/extend/architecture
 
-  TODO: image from https://www.tensorflow.org/images/diag1.svg
+  ![components](https://www.tensorflow.org/images/diag1.svg "components")
+
 
   Figure illustrates the interaction of these components.
   "/job:worker/task:0" and "/job:ps/task:0" are both tasks with worker services.
