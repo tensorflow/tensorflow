@@ -249,11 +249,11 @@ def LLVM_SelectOp
 }
 
 // Terminators.
-def LLVM_BrOp : LLVM_TerminatorOp<"br", [NoSideEffect]> {
+def LLVM_BrOp : LLVM_TerminatorOp<"br", []> {
   let parser = [{ return parseBrOp(parser, result); }];
   let printer = [{ printBrOp(p, *this); }];
 }
-def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
+def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", []> {
   let verifier = [{
     if (getNumSuccessors() != 2)
       return emitOpError("expected exactly two successors");
@@ -262,7 +262,7 @@ def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
   let parser = [{ return parseCondBrOp(parser, result); }];
   let printer = [{ printCondBrOp(p, *this); }];
 }
-def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]> {
+def LLVM_ReturnOp : LLVM_TerminatorOp<"return", []> {
   string llvmBuilder = [{
     if ($_numOperands != 0)
       builder.CreateRet($args[0]);
