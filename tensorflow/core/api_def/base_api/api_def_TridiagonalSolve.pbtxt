@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "TridiagonalSolve"
+  visibility: HIDDEN
+  in_arg {
+    name: "diagonals"
+    description: <<END
+Shape is `[..., 3, M]`.
+END
+  }
+  in_arg {
+    name: "rhs"
+    description: <<END
+Shape is `[..., M, K]`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Shape is `[..., M, K]`.
+END
+  }
+
+  summary: "Solves tridiagonal systems of equations."
+  description: <<END
+`diagonals` is a tensor of shape `[..., 3, M]` whose inner-most 2 dimensions
+represent matrices with three rows being the superdiagonal, diagonals, and
+subdiagonals, in order. The last element of the superdiagonal and the first
+element of the subdiagonal is ignored.
+`rhs` is a tensor of shape `[..., M, K]`, representing K right-hand sides per
+each left-hand side.
+The output is a tensor of shape `[..., M, K]` containing the solutions.
+END
+}

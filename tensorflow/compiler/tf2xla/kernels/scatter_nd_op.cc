@@ -110,9 +110,15 @@ class ScatterNdOp : public XlaOpKernel {
     auto updates = context->Input(1);
     auto result =
         XlaScatter(buffer, updates, indices,
-                   /*indices_are_vectors=*/true, /*combiner=*/{}, builder);
+                   /*indices_are_vectors=*/true, /*combiner=*/Combine, builder);
     OP_REQUIRES_OK(context, result.status());
     context->SetOutput(0, result.ValueOrDie());
+  }
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Add(x, y);
   }
 };
 

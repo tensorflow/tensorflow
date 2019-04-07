@@ -1,4 +1,4 @@
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -202,8 +202,9 @@ py_test(
 
 py_test(
     name = "quantize_parameterized_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/quantize_parameterized_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     # TODO(b/118839526): Re-enable msan test.
     tags = [

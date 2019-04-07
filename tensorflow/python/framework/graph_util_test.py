@@ -18,9 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,12 +35,14 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops as math_ops_lib
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.saver import export_meta_graph
 
 
 # Utility device function to use for testing
@@ -198,7 +205,9 @@ class DeviceFunctionsTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must be a list"):
       graph_util.extract_sub_graph(graph_def, "n1")
 
-  def testConvertVariablesToConstsWithFunctions(self):
+  def _test_convert_variables_with_functions(self, inline_functions):
+    """Freezes a graph with functions."""
+
     @function.Defun(dtypes.float32)
     def plus_one(x):
       return x + 1.0
@@ -207,26 +216,93 @@ class DeviceFunctionsTest(test.TestCase):
       variable_node = variables.Variable(1.0, name="variable_node")
       _ = variables.Variable(1.0, name="unused_variable_node")
       defun_node = plus_one(variable_node)
-      output_node = math_ops_lib.multiply(
-          defun_node, 2.0, name="output_node")
+      _ = math_ops_lib.multiply(defun_node, 2.0, name="output_node")
 
       with session.Session() as sess:
-        init = variables.variables_initializer([variable_node])
-        self.evaluate(init)
-        output = self.evaluate(output_node)
-        self.assertNear(4.0, output, 0.00001)
+        self.evaluate(variables.variables_initializer([variable_node]))
         variable_graph_def = sess.graph.as_graph_def()
 
-        # First get the constant_graph_def when variable_names_whitelist is set,
-        # note that if variable_names_whitelist is not set an error will be
-        # thrown because unused_variable_node is not initialized.
-        constant_graph_def = graph_util.convert_variables_to_constants(
-            sess,
-            variable_graph_def, ["output_node"],
-            variable_names_whitelist=set(["variable_node"]))
+        if inline_functions:
+          # Run Grappler to create the VarOpHandle --> Placeholder -->
+          # ResourceVariable pattern.
+          meta_graph = export_meta_graph(graph_def=variable_graph_def)
+          fetch_collection = meta_graph_pb2.CollectionDef()
+          for name in ["variable_node", "output_node"]:
+            fetch_collection.node_list.value.append(name)
+          meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
 
-        self.assertEqual(variable_graph_def.library,
-                         constant_graph_def.library)
+          # Initialize RewriterConfig with everything disabled except function
+          # inlining.
+          config = config_pb2.ConfigProto()
+          rewrite_options = config.graph_options.rewrite_options
+          rewrite_options.optimizers.append("function")
+          variable_graph_def = tf_optimizer.OptimizeGraph(config, meta_graph)
+
+        constant_graph_def = graph_util.convert_variables_to_constants(
+            sess, variable_graph_def, ["output_node"])
+
+    # Ensure there are no variables after freezing.
+    for node in constant_graph_def.node:
+      self.assertNotIn(
+          node.op, ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
+
+  def testConvertVariablesToConstsWithFunctions(self):
+    """Freezes a graph with functions."""
+    self._test_convert_variables_with_functions(inline_functions=False)
+
+  def testConvertVariableToConstsWithFunctionsInlined(self):
+    """Freezes a graph with functions that have been inlined using Grappler."""
+    self._test_convert_variables_with_functions(inline_functions=True)
+
+  def _get_tensors(self, sess, tensor_list):
+    """Returns a list of Tensor objects from the Session."""
+    return [
+        sess.graph.get_tensor_by_name(tensor.name) for tensor in tensor_list
+    ]
+
+  def _evaluate_graph_def(self, graph_def, inputs, outputs, input_data):
+    """Evaluates the GraphDef using Sessions."""
+    with ops.Graph().as_default() as graph:
+      importer.import_graph_def(graph_def, name="")
+      sess = session.Session(graph=graph)
+
+    input_tensors = self._get_tensors(sess, inputs)
+    output_tensors = self._get_tensors(sess, outputs)
+    return sess.run(
+        output_tensors, feed_dict=dict(zip(input_tensors, input_data)))
+
+  @test_util.run_v1_only("Incompatible with TF 2.0")
+  def testConvertVariablesToConstsWithEmbeddings(self):
+    """Freezes a graph with embeddings."""
+    input_data = np.array(np.random.random_sample([1, 1]), dtype=np.int32)
+
+    # Make model.
+    state_input = keras.layers.Input(
+        shape=(1,), name="state_input", dtype="int32")
+    output = keras.layers.Embedding(
+        output_dim=16, input_dim=100, input_length=1, name="state")(
+            state_input)
+    model = keras.models.Model(inputs=[state_input], outputs=[output])
+    model.compile(
+        loss={"state": "sparse_categorical_crossentropy"}, optimizer="adam")
+
+    # Get associated session.
+    sess = keras.backend.get_session()
+    variable_graph_def = sess.graph_def
+    output_tensor = [tensor.name.split(":")[0] for tensor in model.outputs]
+    constant_graph_def = graph_util.convert_variables_to_constants(
+        sess, variable_graph_def, output_tensor)
+
+    # Ensure graph has no variables.
+    for node in constant_graph_def.node:
+      self.assertNotIn(
+          node.op, ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
+
+    # Compare the value of the graphs.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluate_graph_def(constant_graph_def, model.inputs,
+                                            model.outputs, [input_data])
+    np.testing.assert_almost_equal(np.array([expected_value]), actual_value, 5)
 
   def testConvertVariablesToConsts(self):
     self._test_variable_to_const_conversion(use_resource=False)
@@ -308,8 +384,9 @@ class DeviceFunctionsTest(test.TestCase):
       new_node.input.extend([input_name])
     return new_node
 
-  def create_constant_node_def(self, name, value, dtype, shape=None):
-    node = self.create_node_def("Const", name, [])
+  def create_constant_node_def(self, name, value, dtype,
+                               shape=None, inputs=None):
+    node = self.create_node_def("Const", name, inputs or [])
     self.set_attr_dtype(node, "dtype", dtype)
     self.set_attr_tensor(node, "value", value, dtype, shape)
     return node
@@ -391,6 +468,18 @@ class DeviceFunctionsTest(test.TestCase):
     ])
 
     self.assertProtoEquals(expected_graph_def,
+                           graph_util.remove_training_nodes(graph_def))
+
+  def testRemoveIdentityUsedAsControlInputInConst(self):
+    """Check that Identity nodes used as control inputs are not removed."""
+    graph_def = graph_pb2.GraphDef()
+    graph_def.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    self.assertProtoEquals(graph_def,
                            graph_util.remove_training_nodes(graph_def))
 
 

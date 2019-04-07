@@ -29,12 +29,13 @@ in the Dockerfile itself.
 After building the image with the tag `tf` (for example), use `docker run` to
 run the images.
 
-Note for new Docker users: the `-v` and `-u` flags share directories between
-the Docker container and your machine, and very important. Without
-`-v`, your work will be wiped once the container quits, and without `-u`, files
-created by the container will have the wrong file permissions on your host
-machine. If you are confused, check out the [Docker run
-documentation](https://docs.docker.com/engine/reference/run/).
+Note for new Docker users: the `-v` and `-u` flags share directories and
+permissions between the Docker container and your machine. Without `-v`, your
+work will be wiped once the container quits, and without `-u`, files created by
+the container will have the wrong file permissions on your host machine. Check
+out the
+[Docker run documentation](https://docs.docker.com/engine/reference/run/) for
+more info.
 
 ```bash
 # Volume mount (-v) is optional but highly recommended, especially for Jupyter.
@@ -83,15 +84,21 @@ $ alias asm_images="docker run --rm -v $(pwd):/tf -v /var/run/docker.sock:/var/r
 # If you're REBUILDING OR ADDING DOCKERFILES, remove docker.sock and add -u:
 $ alias asm_dockerfiles="docker run --rm -u $(id -u):$(id -g) -v $(pwd):/tf tf-tools python3 assembler.py "
 
-# Check flags
+# Check assembler flags
 $ asm_dockerfiles --help
 
 # Assemble all of the Dockerfiles
-$ asm_dockerfiles --release ubuntu-dockerfiles --construct_dockerfiles
+$ asm_dockerfiles --release dockerfiles --construct_dockerfiles
 
 # Build all of the "nightly" images on your local machine:
 $ asm_images --release nightly --build_images
 
+# Save the list of built images to a file:
+$ asm_images --release nightly --build_images > tf-built.txt
+
 # Build version release for version 99.0, except "gpu" tags:
-$ asm_images --release versioned --arg _TAG_PREFIX=99.0 --build_images --exclude_tags_matching '*.gpu.*'
+$ asm_images --release versioned --arg _TAG_PREFIX=99.0 --build_images --exclude_tags_matching '.*gpu.*'
+
+# Test your changes to the devel images:
+$ asm_images --release nightly --build_images --run_tests_path=$(realpath tests) --only_tags_matching="^devel-gpu-py3$"
 ```

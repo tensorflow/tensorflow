@@ -94,6 +94,9 @@ class StepperTest(test_util.TensorFlowTestCase):
       self.assertAllClose(6.0, stepper.cont("c"))
 
   def testUsingNamesNotUsingIntermediateTensors(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
+
     with NodeStepper(self.sess, "e:0") as stepper:
       # The first cont() call should have used no feeds.
       result = stepper.cont("c:0")
@@ -119,6 +122,9 @@ class StepperTest(test_util.TensorFlowTestCase):
       }, stepper.last_feed_types())
 
   def testUsingNodesNotUsingIntermediateTensors(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
+
     with NodeStepper(self.sess, self.e) as stepper:
       # There should be no handles before any cont() calls.
       self.assertEqual([], stepper.handle_names())
@@ -493,6 +499,9 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
       self.assertSetEqual({"ph0", "ph1"}, set(stepper.placeholders()))
 
   def testContWithPlaceholders(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
+
     with NodeStepper(
         self.sess,
         self.y,
@@ -739,6 +748,9 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
 
   def testContToUpdateA(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
+
     with NodeStepper(self.sess, "optim") as stepper:
       result = stepper.cont("a:0")
       self.assertAllClose(1.0, result)
@@ -887,6 +899,8 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
     "clean" means no Variables have been updated by preceding cont() calls.
     """
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
 
     with NodeStepper(self.sess, "optim") as stepper:
       # First, call cont() on the two tensors on the intermediate level: e and
@@ -979,6 +993,8 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
   def testOverrideThenContToUpdateThenRemoveOverrideThenUpdateAgain(self):
     """Test cont() to update nodes after overriding tensor values."""
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
 
     with NodeStepper(self.sess, "optim") as stepper:
       result = stepper.cont("d:0")

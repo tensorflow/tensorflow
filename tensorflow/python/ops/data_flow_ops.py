@@ -113,8 +113,9 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("io.QueueBase", v1=["io.QueueBase", "QueueBase"])
-@deprecation.deprecated_endpoints("QueueBase")
+@tf_export("queue.QueueBase",
+           v1=["queue.QueueBase", "io.QueueBase", "QueueBase"])
+@deprecation.deprecated_endpoints(["io.QueueBase", "QueueBase"])
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -616,8 +617,11 @@ def _shared_name(shared_name):
 
 
 @tf_export(
-    "io.RandomShuffleQueue", v1=["io.RandomShuffleQueue", "RandomShuffleQueue"])
-@deprecation.deprecated_endpoints("RandomShuffleQueue")
+    "queue.RandomShuffleQueue",
+    v1=["queue.RandomShuffleQueue",
+        "io.RandomShuffleQueue", "RandomShuffleQueue"])
+@deprecation.deprecated_endpoints(
+    ["io.RandomShuffleQueue", "RandomShuffleQueue"])
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -702,7 +706,8 @@ class RandomShuffleQueue(QueueBase):
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("FIFOQueue")
+@tf_export("queue.FIFOQueue", v1=["queue.FIFOQueue", "FIFOQueue"])
+@deprecation.deprecated_endpoints("FIFOQueue")
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
@@ -760,8 +765,9 @@ class FIFOQueue(QueueBase):
 
 
 @tf_export(
-    "io.PaddingFIFOQueue", v1=["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
-@deprecation.deprecated_endpoints("PaddingFIFOQueue")
+    "queue.PaddingFIFOQueue",
+    v1=["queue.PaddingFIFOQueue", "io.PaddingFIFOQueue", "PaddingFIFOQueue"])
+@deprecation.deprecated_endpoints(["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -835,8 +841,9 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("io.PriorityQueue", v1=["io.PriorityQueue", "PriorityQueue"])
-@deprecation.deprecated_endpoints("PriorityQueue")
+@tf_export("queue.PriorityQueue",
+           v1=["queue.PriorityQueue", "io.PriorityQueue", "PriorityQueue"])
+@deprecation.deprecated_endpoints(["io.PriorityQueue", "PriorityQueue"])
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
@@ -1226,7 +1233,7 @@ class ConditionalAccumulatorBase(object):
     """
     return gen_data_flow_ops.accumulator_set_global_step(
         self._accumulator_ref,
-        math_ops.to_int64(ops.convert_to_tensor(new_global_step)),
+        math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
         name=name)
 
 
@@ -1284,7 +1291,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     """
     grad = ops.convert_to_tensor(grad, self._dtype)
     grad.get_shape().assert_is_compatible_with(self._shape)
-    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
     return gen_data_flow_ops.accumulator_apply_gradient(
         self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
@@ -1416,14 +1423,14 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If grad is of the wrong shape
     """
-    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
     return gen_data_flow_ops.sparse_accumulator_apply_gradient(
         self._accumulator_ref,
         local_step=local_step,
-        gradient_indices=math_ops.to_int64(grad_indices),
+        gradient_indices=math_ops.cast(grad_indices, _dtypes.int64),
         gradient_values=grad_values,
-        gradient_shape=math_ops.to_int64([]
-                                         if grad_shape is None else grad_shape),
+        gradient_shape=math_ops.cast(
+            [] if grad_shape is None else grad_shape, _dtypes.int64),
         has_known_shape=(grad_shape is not None),
         name=name)
 

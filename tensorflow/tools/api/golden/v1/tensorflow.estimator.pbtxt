@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BoostedTreesEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "BoostedTreesRegressor"
     mtype: "<type \'type\'>"
   }
@@ -130,6 +134,22 @@ tf_module {
   }
   member {
     name: "SecondOrStepTimer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunArgs"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionRunValues"
     mtype: "<type \'type\'>"
   }
   member {

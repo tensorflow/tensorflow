@@ -39,7 +39,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("FIFOQueue removed from v2")
 class FIFOQueueTest(test.TestCase):
 
   def testConstructor(self):
@@ -152,6 +152,9 @@ class FIFOQueueTest(test.TestCase):
         q.enqueue_many({"a": [12.0, 13.0]})
 
   def testParallelEnqueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
@@ -178,6 +181,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
@@ -230,6 +236,9 @@ class FIFOQueueTest(test.TestCase):
         self.assertEqual([elems[i]], vals)
 
   def testEnqueueAndBlockingDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(3, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
@@ -522,6 +531,9 @@ class FIFOQueueTest(test.TestCase):
         self.evaluate(dequeued_t)
 
   def testParallelEnqueueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(100)]
@@ -541,6 +553,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(dequeued_t.eval(), elems * 10)
 
   def testParallelDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
@@ -563,6 +578,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelDequeueUpTo(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(1000, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
@@ -587,6 +605,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelEnqueueAndDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(50, dtypes_lib.float32, shapes=())
       initial_elements = [10.0] * 49
@@ -690,6 +711,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingDequeueMany(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -717,6 +741,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertAllEqual(elems, dequeued_elems)
 
   def testBlockingDequeueUpTo(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -787,6 +814,9 @@ class FIFOQueueTest(test.TestCase):
         self.evaluate(dequeued_t)
 
   def testBlockingDequeueFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -813,6 +843,9 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       close_op = q.close()
@@ -833,6 +866,9 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueManyFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -858,6 +894,9 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueManyButNotAllFromClosedQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -905,7 +944,7 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testEnqueueManyLargerThanCapacityWithConcurrentDequeueMany(self):
-    with self.cached_session() as sess:
+    with ops.Graph().as_default(), self.session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32, ())
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -914,16 +953,16 @@ class FIFOQueueTest(test.TestCase):
       cleanup_dequeue_t = q.dequeue()
 
       def enqueue():
-        self.evaluate(enqueue_op)
+        sess.run(enqueue_op)
 
       def dequeue():
-        self.assertAllEqual(elems[0:3], self.evaluate(dequeued_t))
+        self.assertAllEqual(elems[0:3], sess.run(dequeued_t))
         with self.assertRaises(errors_impl.OutOfRangeError):
-          self.evaluate(dequeued_t)
-        self.assertEqual(elems[3], self.evaluate(cleanup_dequeue_t))
+          sess.run(dequeued_t)
+        self.assertEqual(elems[3], sess.run(cleanup_dequeue_t))
 
       def close():
-        self.evaluate(close_op)
+        sess.run(close_op)
 
       enqueue_thread = self.checkedThread(target=enqueue)
       enqueue_thread.start()
@@ -975,6 +1014,9 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingDequeueManyFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       close_op = q.close()
@@ -995,6 +1037,9 @@ class FIFOQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueUpToFromClosedEmptyQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, ())
       close_op = q.close()
@@ -1042,6 +1087,9 @@ class FIFOQueueTest(test.TestCase):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1065,6 +1113,9 @@ class FIFOQueueTest(test.TestCase):
       thread.join()
 
   def testBlockingEnqueueManyToFullQueue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1092,6 +1143,9 @@ class FIFOQueueTest(test.TestCase):
       thread.join()
 
   def testBlockingEnqueueBeforeClose(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -1111,7 +1165,7 @@ class FIFOQueueTest(test.TestCase):
 
       # The close_op should run after the blocking_enqueue_op has blocked.
       # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
+      time.sleep(0.2)
 
       def close():
         self.evaluate(close_op)
@@ -1129,7 +1183,10 @@ class FIFOQueueTest(test.TestCase):
       self.assertEqual(0, q.size().eval())
 
   def testBlockingEnqueueManyBeforeClose(self):
-    with self.cached_session() as sess:
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.session() as sess:
       q = data_flow_ops.FIFOQueue(4, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1139,7 +1196,7 @@ class FIFOQueueTest(test.TestCase):
       enqueue_op.run()
 
       def blocking_enqueue():
-        self.evaluate(blocking_enqueue_op)
+        sess.run(blocking_enqueue_op)
 
       enqueue_thread = self.checkedThread(target=blocking_enqueue)
       enqueue_thread.start()
@@ -1149,7 +1206,7 @@ class FIFOQueueTest(test.TestCase):
       time.sleep(0.1)
 
       def close():
-        self.evaluate(close_op)
+        sess.run(close_op)
 
       close_thread = self.checkedThread(target=close)
       close_thread.start()
@@ -1247,7 +1304,7 @@ class FIFOQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(data_flow_ops.FIFOQueue(10, dtypes_lib.float32))
       # Enqueue/Dequeue into a dynamically selected queue
@@ -1267,22 +1324,22 @@ class FIFOQueueTest(test.TestCase):
 
   def _blockingDequeue(self, sess, dequeue_op):
     with self.assertRaisesOpError("was cancelled"):
-      self.evaluate(dequeue_op)
+      sess.run(dequeue_op)
 
   def _blockingDequeueMany(self, sess, dequeue_many_op):
     with self.assertRaisesOpError("was cancelled"):
-      self.evaluate(dequeue_many_op)
+      sess.run(dequeue_many_op)
 
   def _blockingEnqueue(self, sess, enqueue_op):
     with self.assertRaisesOpError("was cancelled"):
-      self.evaluate(enqueue_op)
+      sess.run(enqueue_op)
 
   def _blockingEnqueueMany(self, sess, enqueue_many_op):
     with self.assertRaisesOpError("was cancelled"):
-      self.evaluate(enqueue_many_op)
+      sess.run(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       q_empty = data_flow_ops.FIFOQueue(5, dtypes_lib.float32, ())
       dequeue_op = q_empty.dequeue()
       dequeue_many_op = q_empty.dequeue_many(1)
@@ -1308,6 +1365,11 @@ class FIFOQueueTest(test.TestCase):
       sess.close()  # Will cancel the blocked operations.
       for t in threads:
         t.join()
+
+    # Create a new session that hasn't been closed, so cached_session
+    # isn't messed up.
+    with self.session() as sess:
+      pass
 
   def testBigEnqueueMany(self):
     with self.cached_session() as sess:
@@ -1424,7 +1486,7 @@ class FIFOQueueTest(test.TestCase):
         session.run([a, c])
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("FIFOQueue removed from v2")
 class FIFOQueueDictTest(test.TestCase):
 
   def testConstructor(self):
@@ -1585,7 +1647,7 @@ class FIFOQueueDictTest(test.TestCase):
       self.assertTrue([compat.as_bytes("dd"), compat.as_bytes("ee")], list(s))
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("FIFOQueue removed from v2")
 class FIFOQueueWithTimeoutTest(test.TestCase):
 
   def testDequeueWithTimeout(self):
@@ -1620,7 +1682,7 @@ class FIFOQueueWithTimeoutTest(test.TestCase):
       self.assertEqual(37, self.evaluate(dequeued_t))
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("FIFOQueue removed from v2")
 class QueueContainerTest(test.TestCase):
 
   def testContainer(self):
@@ -1631,6 +1693,7 @@ class QueueContainerTest(test.TestCase):
         compat.as_bytes("test"), q.queue_ref.op.get_attr("container"))
 
 
+@test_util.run_v1_only("FIFOQueue removed from v2")
 class FIFOQueueBenchmark(test.Benchmark):
   """Benchmark FIFOQueue operations."""
 

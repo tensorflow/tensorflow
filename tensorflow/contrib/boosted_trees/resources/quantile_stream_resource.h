@@ -43,7 +43,7 @@ class QuantileStreamResource : public StampedResource {
     set_stamp(stamp_token);
   }
 
-  string DebugString() override { return "QuantileStreamResource"; }
+  string DebugString() const override { return "QuantileStreamResource"; }
 
   tensorflow::mutex* mutex() { return &mu_; }
 

@@ -112,6 +112,11 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     }
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
@@ -186,6 +191,11 @@ class WindowsWritableFile : public WritableFile {
       return IOErrorFromWindowsError(
           "FlushFileBuffers failed for: " + filename_, ::GetLastError());
     }
+    return Status::OK();
+  }
+
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
     return Status::OK();
   }
 

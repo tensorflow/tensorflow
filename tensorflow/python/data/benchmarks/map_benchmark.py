@@ -17,119 +17,51 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-import numpy as np
-
-from tensorflow.python.client import session
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
 
 
 # TODO(b/119837791): Add eager benchmarks.
-class MapBenchmark(test.Benchmark):
-  """Bechmarks for `tf.data.Dataset.map()`."""
+class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
+  """Benchmarks for `tf.data.Dataset.map()`."""
 
-  def benchmarkChainOfMaps(self):
+  def benchmark_chain_of_maps(self):
+
+    def benchmark_helper(chain_length, map_fn, use_inter_op_parallelism, label):
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+      for _ in range(chain_length):
+        dataset = dataset_ops.MapDataset(
+            dataset, map_fn, use_inter_op_parallelism=use_inter_op_parallelism)
+      self.run_and_report_benchmark(
+          dataset,
+          num_elements=10000,
+          name="chain_length_%d%s" % (chain_length, label))
+
     chain_lengths = [0, 1, 2, 5, 10, 20, 50]
     for chain_length in chain_lengths:
-      for mode in ["general", "single-threaded", "short-circuit"]:
-        if mode == "general":
-          map_fn = lambda x: x + 1
-          use_inter_op_parallelism = True
-          print_label = ""
-          benchmark_label = ""
-        if mode == "single-threaded":
-          map_fn = lambda x: x + 1
-          use_inter_op_parallelism = False
-          print_label = " (single threaded mode)"
-          benchmark_label = "_single_threaded"
-        if mode == "short-circuit":
-          map_fn = lambda x: x
-          use_inter_op_parallelism = True  # should not have any significance
-          print_label = " (short circuit mode)"
-          benchmark_label = "_short_circuit"
+      benchmark_helper(chain_length, lambda x: x + 1, True, "")
+      benchmark_helper(chain_length, lambda x: x + 1, False, "_single_threaded")
+      benchmark_helper(chain_length, lambda x: x, True, "_short_circuit")
 
-        with ops.Graph().as_default():
-          dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
-          for _ in range(chain_length):
-            dataset = dataset_ops.MapDataset(
-                dataset,
-                map_fn,
-                use_inter_op_parallelism=use_inter_op_parallelism)
-          iterator = dataset_ops.make_one_shot_iterator(dataset)
-          next_element = iterator.get_next()
-
-          with session.Session() as sess:
-            for _ in range(5):
-              sess.run(next_element.op)
-            deltas = []
-            for _ in range(100):
-              start = time.time()
-              for _ in range(100):
-                sess.run(next_element.op)
-              end = time.time()
-              deltas.append(end - start)
-
-            median_wall_time = np.median(deltas) / 100
-            print("Map dataset chain length%s: %d Median wall time: %f" %
-                  (print_label, chain_length, median_wall_time))
-            self.report_benchmark(
-                iters=1000,
-                wall_time=median_wall_time,
-                name="map_dataset_chain_length_%d%s" % (chain_length,
-                                                        benchmark_label))
-
-  def benchmarkMapFanOut(self):
+  def benchmark_map_fan_out(self):
     fan_outs = [1, 2, 5, 10, 20, 50, 100]
+
+    def benchmark_helper(fan_out, map_fn, use_inter_op_parallelism, label):
+      dataset = dataset_ops.Dataset.from_tensors(
+          tuple(0 for _ in range(fan_out))).repeat(None)
+      dataset = dataset_ops.MapDataset(
+          dataset, map_fn, use_inter_op_parallelism=use_inter_op_parallelism)
+      self.run_and_report_benchmark(
+          dataset,
+          num_elements=10000,
+          name="fan_out_%d%s" % (fan_out, label))
+
     for fan_out in fan_outs:
-      for mode in ["general", "single-threaded", "short-circuit"]:
-        if mode == "general":
-          map_fn = lambda *xs: [x + 1 for x in xs]
-          use_inter_op_parallelism = True
-          print_label = ""
-          benchmark_label = ""
-        if mode == "single-threaded":
-          map_fn = lambda *xs: [x + 1 for x in xs]
-          use_inter_op_parallelism = False
-          print_label = " (single threaded mode)"
-          benchmark_label = "_single_threaded"
-        if mode == "short-circuit":
-          map_fn = lambda *xs: xs
-          use_inter_op_parallelism = True  # should not have any significance
-          print_label = " (short circuit mode)"
-          benchmark_label = "_short_circuit"
-
-        with ops.Graph().as_default():
-          dataset = dataset_ops.Dataset.from_tensors(
-              tuple(0 for _ in range(fan_out))).repeat(None)
-          dataset = dataset_ops.MapDataset(
-              dataset,
-              map_fn,
-              use_inter_op_parallelism=use_inter_op_parallelism)
-          iterator = dataset_ops.make_one_shot_iterator(dataset)
-          next_element = iterator.get_next()
-
-          with session.Session() as sess:
-            for _ in range(5):
-              sess.run(next_element[0].op)
-            deltas = []
-            for _ in range(100):
-              start = time.time()
-              for _ in range(100):
-                sess.run(next_element[0].op)
-              end = time.time()
-              deltas.append(end - start)
-
-            median_wall_time = np.median(deltas) / 100
-            print("Map dataset fan out%s: %d Median wall time: %f" %
-                  (print_label, fan_out, median_wall_time))
-            self.report_benchmark(
-                iters=1000,
-                wall_time=median_wall_time,
-                name="map_dataset_fan_out_%d%s" % (fan_out, benchmark_label))
+      benchmark_helper(fan_out, lambda *xs: [x + 1 for x in xs], True, "")
+      benchmark_helper(fan_out, lambda *xs: [x + 1 for x in xs], False,
+                       "_single_threaded")
+      benchmark_helper(fan_out, lambda *xs: xs, True, "_short_circuit")
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

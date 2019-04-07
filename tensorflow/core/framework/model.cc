@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/time/clock.h"
+
 namespace tensorflow {
 namespace data {
 namespace model {
@@ -28,6 +30,32 @@ std::shared_ptr<Parameter> MakeParameter(const string& name,
 }
 
 namespace {
+
+// Given the average time between output events (`output_time`), the average
+// time between input events (`input_time`) and the buffer size, the method
+// computes the expected time an input event will have to wait.
+//
+// The wait time is approximated as the product of the probability the buffer
+// will be empty and the time it takes to produce an element into the buffer.
+//
+// The formula used for computing the probability is derived by modeling the
+// problem as an M/M/1/K queue
+// (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
+int64 ComputeWaitTime(int64 output_time, int64 input_time, int64 buffer_size) {
+  if (output_time == 0 || input_time == 0) {
+    return output_time;
+  }
+  if (input_time == output_time) {
+    const double p_buffer_empty = 1.0L / static_cast<double>(buffer_size + 1);
+    return p_buffer_empty * output_time;
+  }
+  const double alpha = 1.0L / static_cast<double>(input_time);
+  const double beta = 1.0L / static_cast<double>(output_time);
+  const double p_buffer_empty =
+      (1.0L - beta / alpha) /
+      (1.0L - std::pow((beta / alpha), static_cast<double>(buffer_size + 1)));
+  return p_buffer_empty * output_time;
+}
 
 // The first input of InterleaveMany corresponds to the input dataset whose
 // elements are used to create the (derived) input datasets whose elements are
@@ -119,8 +147,8 @@ class AsyncInterleaveMany : public Node {
         static_cast<double>(OutputTimeForInputs(input_times) -
                             inputs_.front()->OutputTime(input_times)) /
         static_cast<double>(inputs_.size() - 1) / parallelism;
-    return std::max(0LL,
-                    NanosPerElementLocked() + output_time - old_input_time);
+    return ComputeWaitTime(NanosPerElementLocked() + output_time,
+                           old_input_time, parallelism);
   }
 
   int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
@@ -202,7 +230,7 @@ class AsyncKnownRatio : public Node {
     if (ratio_ == 0.0) {
       int64 output_time =
           static_cast<double>(NanosPerElementLocked()) / parallelism;
-      return std::max(0LL, output_time - input_times->back());
+      return ComputeWaitTime(output_time, input_times->back(), parallelism);
     }
     int64 old_input_time = input_times->back();
     int64 new_input_time = static_cast<int64>(
@@ -213,7 +241,7 @@ class AsyncKnownRatio : public Node {
     int64 output_time = static_cast<int64>(
         static_cast<double>(NanosPerElementLocked()) / parallelism +
         ratio_ * OutputTimeForInputs(input_times));
-    return std::max(0LL, output_time - old_input_time);
+    return ComputeWaitTime(output_time, old_input_time, parallelism);
   }
 
   int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
@@ -354,8 +382,14 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
     output_ = node;
   }
   if (output) {
+    VLOG(3) << "Adding " << node->long_name() << " as input for "
+            << output->long_name();
     output->add_input(node);
+  } else {
+    VLOG(3) << "Adding " << node->long_name();
   }
+  collect_resource_usage_ =
+      collect_resource_usage_ || node->has_tunable_parameters();
   lookup_table_.insert(std::make_pair(name, node));
   return node;
 }
@@ -380,16 +414,17 @@ void Model::Optimize(int64 cpu_budget) {
     tf_shared_lock lock(mu_);
     snapshot = output_->Snapshot(nullptr);
   }
+  VLOG(2) << "Starting optimization of tunable parameters";
   const int64 processing_time = ProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  for (auto& parameter : parameters) {
-    parameter->value = 1;
+  for (auto& pair : parameters) {
+    pair.second->value = 1;
   }
   while (true) {
     const int64 output_time = OutputTime(snapshot);
     bool all_max = true;
-    for (auto& parameter : parameters) {
-      if (parameter->value < parameter->max) {
+    for (auto& pair : parameters) {
+      if (pair.second->value < pair.second->max) {
         all_max = false;
         break;
       }
@@ -399,17 +434,17 @@ void Model::Optimize(int64 cpu_budget) {
     }
     int64 best_delta = -1;
     Parameter* best_parameter = nullptr;
-    for (auto& parameter : parameters) {
-      if (parameter->value == parameter->max) {
+    for (auto& pair : parameters) {
+      if (pair.second->value == pair.second->max) {
         continue;
       }
-      parameter->value++;
+      pair.second->value++;
       int64 delta = output_time - OutputTime(snapshot);
       if (delta > best_delta) {
         best_delta = delta;
-        best_parameter = parameter.get();
+        best_parameter = pair.second.get();
       }
-      parameter->value--;
+      pair.second->value--;
     }
     if (!best_parameter) {
       // This should never happen because we are using a model snapshot and
@@ -422,8 +457,10 @@ void Model::Optimize(int64 cpu_budget) {
     best_parameter->value++;
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& parameter : parameters) {
-    VLOG(2) << "Setting tunable parameter: " << parameter->value;
+  for (auto& pair : parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
     mutex_lock l(*parameter->state->mu);
     parameter->state->value = parameter->value;
     parameter->state->cond_var->notify_all();
@@ -438,11 +475,20 @@ void Model::RecordElement(const string& name) {
   }
 }
 
-void Model::RecordStart(const string& name, bool stop_output) {
+int64 Model::NumElements(const string& name) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (node) {
-    int64 now_nanos = Env::Default()->NowNanos();
+    return (*node)->num_elements();
+  }
+  return 0;
+}
+
+void Model::RecordStart(const string& name, bool stop_output) {
+  tf_shared_lock l(mu_);
+  auto node = gtl::FindOrNull(lookup_table_, name);
+  if (collect_resource_usage_ && node) {
+    int64 now_nanos = absl::GetCurrentTimeNanos();
     if (stop_output && (*node)->output()) {
       (*node)->output()->record_stop(now_nanos);
     }
@@ -453,8 +499,8 @@ void Model::RecordStart(const string& name, bool stop_output) {
 void Model::RecordStop(const string& name, bool start_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
-    int64 now_nanos = Env::Default()->NowNanos();
+  if (collect_resource_usage_ && node) {
+    int64 now_nanos = absl::GetCurrentTimeNanos();
     (*node)->record_stop(now_nanos);
     if (start_output && (*node)->output()) {
       (*node)->output()->record_start(now_nanos);
@@ -465,15 +511,19 @@ void Model::RecordStop(const string& name, bool start_output) {
 void Model::RemoveNode(const string& name) {
   mutex_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node && (*node)->output()) {
-    (*node)->output()->remove_input(*node);
+  if (node) {
+    if ((*node)->output()) {
+      (*node)->output()->remove_input(*node);
+    }
+    VLOG(3) << "Removing " << (*node)->long_name();
+    remove_node_hook_(*node);
   }
   lookup_table_.erase(name);
 }
 
-std::vector<std::shared_ptr<Parameter>> Model::CollectTunableParameters(
+std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
     std::shared_ptr<Node> node) {
-  std::vector<std::shared_ptr<Parameter>> parameters;
+  std::map<string, std::shared_ptr<Parameter>> parameters;
   node->CollectTunableParameters(&parameters);
   return parameters;
 }

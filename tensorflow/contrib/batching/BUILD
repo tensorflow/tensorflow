@@ -37,6 +37,7 @@ py_library(
 cc_library(
     name = "batch_ops_kernels",
     deps = [
+        "//tensorflow/core:batch_ops_op_lib",
         "//tensorflow/core/kernels:batch_kernels",
     ],
     alwayslink = 1,

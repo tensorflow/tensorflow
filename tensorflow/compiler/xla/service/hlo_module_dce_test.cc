@@ -38,9 +38,7 @@ class HloModuleDceTest : public HloTestBase {
   // Returns whether the given instruction exists in the given computation.
   bool HasInstruction(const HloComputation& computation,
                       const HloInstruction* instruction) {
-    return std::find(computation.instructions().begin(),
-                     computation.instructions().end(),
-                     instruction) != computation.instructions().end();
+    return absl::c_linear_search(computation.instructions(), instruction);
   }
 
   // Returns whether the while instruction with name 'while_name' in
@@ -88,7 +86,7 @@ TEST_F(HloModuleDceTest, WhileWithLiveOutputs) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -127,7 +125,7 @@ TEST_F(HloModuleDceTest, WhileWithUnusedSideEffectingTupleElement) {
     loop_var.2 = (s32[], f32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.3 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.3)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.3), direction=LT
   }
   ENTRY SimpleLoop {
     constant.4 = s32[] constant(0)
@@ -165,7 +163,7 @@ TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElement) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -208,7 +206,7 @@ TEST_F(HloModuleDceTest, OneWhileWithTupleElementUsedByCond) {
     loop_var.2 = (s32[], s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=1
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -250,7 +248,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   SimpleLoop.body1 {
     loop_var.3 = (s32[], s32[3]{0}) parameter(0)
@@ -265,7 +263,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
     constant.4 = s32[] constant(5)
-    ROOT less-than.1 = pred[] less-than(get-tuple-element.6, constant.4)
+    ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {
     constant.5 = s32[] constant(0)
@@ -318,7 +316,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
     loop_var.2 = (s32[3]{0}, s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=1
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   SimpleLoop.body1 {
     loop_var.3 = (s32[], s32[3]{0}) parameter(0)
@@ -333,7 +331,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
     constant.4 = s32[] constant(5)
-    ROOT less-than.1 = pred[] less-than(get-tuple-element.6, constant.4)
+    ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {
     constant.5 = s32[] constant(0)
@@ -373,9 +371,9 @@ TEST_F(HloModuleDceTest, WhileWithOutfeed) {
   HloModule OutfeedLoop
   WhileBody {
     body_param = (s32[]) parameter(0)
-    token = token[] after-all()
+    token0 = token[] after-all()
     constant.2 = s32[] constant(2)
-    outfeed_tuple = (s32[]) outfeed(constant.2, token)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token0)
     get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
     constant.1 = s32[] constant(1)
     add = s32[] add(get-tuple-element.1, constant.1)
@@ -385,7 +383,7 @@ TEST_F(HloModuleDceTest, WhileWithOutfeed) {
     cond_param = (s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
     constant.2 = s32[] constant(10)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -420,7 +418,7 @@ TEST_F(HloModuleDceTest, WhileWithOnlyLoopVariableBumping) {
     cond_param = (s32[], s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
     constant.2 = s32[] constant(10)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     p0 = (s32[]) parameter(0)

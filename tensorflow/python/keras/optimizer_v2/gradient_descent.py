@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export("keras.optimizers.SGD")
 class SGD(optimizer_v2.OptimizerV2):
   """Stochastic gradient descent and momentum optimizer.
 
@@ -32,7 +34,7 @@ class SGD(optimizer_v2.OptimizerV2):
   gradient is evaluated at theta(t).
   ```
 
-  or Computes (if `use_nesterov = False`):
+  or Computes (if `nesterov = False`):
   ```
   v(t+1) = momentum * v(t) - learning_rate * gradient
   theta(t+1) = theta(t) + v(t+1)
@@ -72,10 +74,14 @@ class SGD(optimizer_v2.OptimizerV2):
       nesterov: boolean. Whether to apply Nesterov momentum.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to 'SGD'.
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
     """
     super(SGD, self).__init__(name, **kwargs)
-    self._set_hyper("learning_rate", learning_rate)
+    self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
     self._set_hyper("decay", self._initial_decay)
 
     self._momentum = False
@@ -85,7 +91,7 @@ class SGD(optimizer_v2.OptimizerV2):
       raise ValueError("`momentum` must be between [0, 1].")
     self._set_hyper("momentum", momentum)
 
-    self._nesterov = nesterov
+    self.nesterov = nesterov
 
   def _create_slots(self, var_list):
     if self._momentum:
@@ -104,7 +110,7 @@ class SGD(optimizer_v2.OptimizerV2):
           grad,
           self._get_hyper("momentum", var_dtype),
           use_locking=self._use_locking,
-          use_nesterov=self._nesterov)
+          use_nesterov=self.nesterov)
     else:
       return training_ops.resource_apply_gradient_descent(
           var.handle, lr_t, grad, use_locking=self._use_locking)
@@ -132,7 +138,7 @@ class SGD(optimizer_v2.OptimizerV2):
         indices,
         self._get_hyper("momentum", var_dtype),
         use_locking=self._use_locking,
-        use_nesterov=self._nesterov)
+        use_nesterov=self.nesterov)
 
   def get_config(self):
     config = super(SGD, self).get_config()
@@ -140,6 +146,6 @@ class SGD(optimizer_v2.OptimizerV2):
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
         "decay": self._serialize_hyperparameter("decay"),
         "momentum": self._serialize_hyperparameter("momentum"),
-        "nesterov": self._nesterov,
+        "nesterov": self.nesterov,
     })
     return config

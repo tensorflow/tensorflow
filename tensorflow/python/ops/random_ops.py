@@ -329,7 +329,7 @@ def random_crop(value, size, seed=None, name=None):
 
 @tf_export(v1=["random.multinomial", "multinomial"])
 @deprecation.deprecated(
-    date=None, instructions="Use tf.random.categorical instead.")
+    date=None, instructions="Use `tf.random.categorical` instead.")
 def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   """Draws samples from a multinomial distribution.
 

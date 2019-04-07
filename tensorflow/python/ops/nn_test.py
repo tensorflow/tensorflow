@@ -24,9 +24,11 @@ from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -461,6 +463,12 @@ class DropoutTest(test_lib.TestCase):
       nn_ops.dropout_v2(t, 1.1)
     with self.assertRaises(ValueError):
       nn_ops.dropout_v2(t, [0.0, 1.0])
+
+  def testLargeRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    _ = nn_ops.dropout_v2(t, 0.9)
 
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
@@ -1019,8 +1027,8 @@ class SwishTest(test_lib.TestCase):
   @test_util.run_deprecated_v1
   def testValues(self):
     np_values = np.array(
-        [np.linspace(-10.0, 0.0, 100),
-         np.linspace(0.0, 10.0, 100)],
+        [np.linspace(-7.0, 0.0, 100),
+         np.linspace(0.0, 7.0, 100)],
         dtype=np.float32)
     tf_values = constant_op.constant(np_values)
     actual_tf_outputs = nn_impl.swish(tf_values)
@@ -1237,6 +1245,241 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class AvgPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    x = np.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    x = np.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MaxPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    x = np.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    x = np.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def testIncorrectSizeInputSmall(self):
+    x = array_ops.ones([3, 4])
+    with self.assertRaisesRegex(
+        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 2."):
+      nn_ops.max_pool_v2(x, 2, 2, "SAME")
+
+  def testIncorrectSizeInput(self):
+    x = array_ops.ones([3, 4, 1, 2, 1, 2])
+    with self.assertRaisesRegex(
+        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 6."):
+      nn_ops.max_pool_v2(x, 2, 2, "SAME")
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ConvolutionTest(test_lib.TestCase):
+
+  def testUnknownSize(self):
+    x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
+    k = np.ones([3, 6, 6, 5])
+
+    @def_function.function
+    def F(value):
+      return nn_ops.convolution(value, k, "SAME")
+
+    F.get_concrete_function(x)
+
+
+class ConvTransposeTest(test_lib.TestCase):
+
+  def test1D(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, [2, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DTensor(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 5]), strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2D(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, [2, 8, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 5]),
+                               strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3D(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, [2, 8, 8, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 8, 5]),
+                               strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def testIncorrectSizeInputSmall(self):
+    with self.assertRaisesRegex(
+        ValueError, "output_shape must be of length 3, 4 or 5 but was 2."):
+      nn_ops.conv_transpose(None, 2, [2, 3], "SAME")
+
+  def testIncorrectSizeInput(self):
+    with self.assertRaisesRegex(
+        ValueError, "output_shape must be of length 3, 4 or 5 but was 6."):
+      nn_ops.conv_transpose(None, 2, [2, 3, 4, 2, 5, 1], "SAME")
+
+  def testTensorsNoShape(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "output_shape must be a tensor or sized collection."):
+      nn_ops.conv_transpose(None, None, None, None)
 
 
 if __name__ == "__main__":

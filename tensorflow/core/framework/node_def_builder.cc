@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -37,7 +38,8 @@ void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
-                               const OpRegistryInterface* op_registry) {
+                               const OpRegistryInterface* op_registry,
+                               const NodeDebugInfo* debug) {
   node_def_.set_name(string(name));
   const Status status = op_registry->LookUpOpDef(string(op_name), &op_def_);
   if (status.ok()) {
@@ -46,6 +48,13 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
     errors_.push_back(status.error_message());
     inputs_specified_ = 0;
   }
+  if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
+}
+
+NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
+                               const NodeDebugInfo& debug)
+    : NodeDefBuilder(name, op_name) {
+  MergeDebugInfo(debug, &node_def_);
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, const OpDef* op_def)

@@ -95,15 +95,8 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* exponent = add_instruction(HloInstruction::CreateBroadcast(
-        operand->shape(),
-        add_instruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-            add_instruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<float>(-0.5f))))),
-        {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kPower,
-                                        operand, exponent);
+    return HloInstruction::CreateUnary(operand->shape(), HloOpcode::kRsqrt,
+                                       operand);
   }
 
   std::unique_ptr<HloInstruction> Mean(
@@ -123,7 +116,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
     auto elements_per_feature_u32 = add_instruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
 
-    for (int64 i = 0; i < ShapeUtil::Rank(operand->shape()); ++i) {
+    for (int64 i = 0; i < operand->shape().rank(); ++i) {
       if (i == feature_index) {
         continue;
       }
@@ -229,7 +222,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -357,7 +350,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -494,7 +487,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(activation_shape); ++i) {
+  for (int64 i = 0; i < activation_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -524,7 +517,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       activation_shape, HloOpcode::kSubtract, activation, mean_broadcasted);
 
   // Grad[Y] * (X - E[X]).
-  auto grad_output_times_activiation_minus_mean =
+  auto grad_output_times_activation_minus_mean =
       add_binary(activation_shape, HloOpcode::kMultiply, grad_output,
                  activation_minus_mean);
 
@@ -532,9 +525,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       GetOrCreateScalarAddComputation(ptype);
 
   // sum(Grad[Y] * (X - E[X])).
-  auto sum_grad_output_times_activiation_minus_mean =
+  auto sum_grad_output_times_activation_minus_mean =
       add(HloInstruction::CreateReduce(
-          feature_shape, grad_output_times_activiation_minus_mean, zero,
+          feature_shape, grad_output_times_activation_minus_mean, zero,
           dimensions_without_feature, add_reduce_computation));
 
   // Grad[beta] = Sum(Grad[Y]).
@@ -544,7 +537,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * rsqrt[Var[X] + epsilon]).
   auto grad_scale = add_binary(feature_shape, HloOpcode::kMultiply,
-                               sum_grad_output_times_activiation_minus_mean,
+                               sum_grad_output_times_activation_minus_mean,
                                rsqrt_var_add_epsilon);
 
   // I2 = Sum(Grad[Y])
@@ -553,7 +546,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   // I3 = Sum(Grad[Y] * (X - E[X]))
   auto i3 = add(HloInstruction::CreateBroadcast(
-      activation_shape, sum_grad_output_times_activiation_minus_mean,
+      activation_shape, sum_grad_output_times_activation_minus_mean,
       {feature_index}));
 
   // I4 = (X - E[X]) * I3

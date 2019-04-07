@@ -565,7 +565,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
                                         strict=strict)
 
     with self.cached_session() as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       true_feed_dict = {condition: True}
       true_feed_dict.update(feed_dict)
       result_cond, result_case = sess.run([output_cond, output_case],

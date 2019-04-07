@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
+using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -540,7 +545,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // If all inputs have the same shape, rewrite whole group with a single AddN
     if (shapes.size() == 1) {
-      string node_name = OptimizedNodeName(root_scope_and_name);
+      string node_name = UniqueOptimizedNodeName(root_scope_and_name);
       AddInputsOfSymbolicallyEqualShape(*group.root_node, node_name,
                                         group.inputs);
       return node_name;
@@ -556,13 +561,13 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // optimized name for leaf AddN nodes
     auto leaf_node_name = [&root_scope_and_name, this](int i) {
-      return OptimizedNodeName(root_scope_and_name,
-                               strings::StrCat("Leaf_", i));
+      return UniqueOptimizedNodeName(root_scope_and_name,
+                                     strings::StrCat("Leaf_", i));
     };
     // optimized name for internal nodes of a tree built up from AddN leaves
     auto internal_node_name = [&root_scope_and_name, this](int i) {
-      return OptimizedNodeName(root_scope_and_name,
-                               strings::StrCat("Internal_", i));
+      return UniqueOptimizedNodeName(root_scope_and_name,
+                                     strings::StrCat("Internal_", i));
     };
 
     // Add/AddN nodes that must be added to the tree
@@ -583,8 +588,9 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
       add_ops.pop_front();
       const InputAndShape rhs = add_ops.front();
       add_ops.pop_front();
-      string name = add_ops.empty() ? OptimizedNodeName(root_scope_and_name)
-                                    : internal_node_name(internal_nodes++);
+      string name = add_ops.empty()
+                        ? UniqueOptimizedNodeName(root_scope_and_name)
+                        : internal_node_name(internal_nodes++);
       InputAndShape add = AddAggregatedInputs(*group.root_node, name, lhs, rhs);
       add_ops.push_front(add);
     } while (add_ops.size() > 1);
@@ -1750,7 +1756,9 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   ~SqrtDivToRsqrtMulStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyDiv(*node);
+    // Note: div_no_nan(a, sqrt(b)) => mul_no_nan(a, rsqrt(b))
+    // for b == 0 would result in a / Inf instead of 0.
+    return IsAnyDiv(*node) && !IsDivNoNan(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1760,11 +1768,74 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     // elsewhere.
     if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
         (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
-      // a / sqrt(b) = a * rsqrt(b)
-      node->set_op("Mul");
+      if (IsXdivy(*node)) {
+        // xdivy(a, sqrt(b)) => mul_no_nan(rsqrt(b), a)
+        node->set_op("MulNoNan");
+        node->mutable_input()->SwapElements(0, 1);
+      } else {
+        // div(a, sqrt(b)) => mul(a, rsqrt(b))
+        node->set_op("Mul");
+      }
       y->set_op("Rsqrt");
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
+ public:
+  explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FuseSquaredDiffStage", ctx, ctx_ext) {}
+  ~FuseSquaredDiffStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsSquare(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &b));
+    // Optimize only if base is a Sub whose output is not being consumed
+    // elsewhere.
+    if (IsSub(*b) && !IsInPreserveSet(*b) &&
+        (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      node->set_op("Identity");
+      b->set_op("SquaredDifference");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(b);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Log(Softmax(x)) => LogSoftmax(x)
+class LogSoftmaxStage : public ArithmeticOptimizerStage {
+ public:
+  explicit LogSoftmaxStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("LogSoftmaxStage", ctx, ctx_ext) {}
+  ~LogSoftmaxStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override { return IsLog(*node); }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* x;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    // Optimize only if arg is a Softmax whose output is not being consumed
+    // elsewhere.
+    if (IsSoftmax(*x) && !IsInPreserveSet(*x) &&
+        (NumNonControlOutputs(*x, *ctx().node_map) == 1)) {
+      // Log(Softmax(x)) => LogSoftmax(Identity(x))
+      node->set_op("LogSoftmax");
+      x->set_op("Identity");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
     }
     return Status::OK();
   }
@@ -2039,7 +2110,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
 
     // Check that value preserving chain is the only consumer of the Mul output.
-    TF_RETURN_IF_TRUE(!IsMul(*source));
+    TF_RETURN_IF_TRUE(!IsAnyMul(*source));
     TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
 
     const NodeDef* mul = source;
@@ -2069,7 +2140,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     // Create new node `scaled_weights`.
     NodeDef* scaled_weights = AddEmptyNode(scaled_weights_node_name);
-    scaled_weights->set_op("Mul");
+    scaled_weights->set_op(source->op());
     scaled_weights->set_device(weights->device());
     (*scaled_weights->mutable_attr())["T"] = weights->attr().at("dtype");
     AddToOptimizationQueue(scaled_weights);
@@ -2254,7 +2325,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   ~ReplaceMulWithSquare() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMul(*node) && node->input(0) == node->input(1);
+    return IsAnyMul(*node) && node->input(0) == node->input(1);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -2717,21 +2788,28 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMax(*node) || IsMin(*node);
+    return IsAnyMax(*node) || IsAnyMin(*node) || IsAnyMaxPool(*node) ||
+           IsArgMax(*node) || IsArgMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
                      string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) {
+      return Status::OK();
+    }
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
     // Optimize only if:
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
+    // 3. is monotonic increasing if reduction_node is a pooling operation
+    //    since we don't have MinPool operations.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
-        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -2745,9 +2823,15 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        const string opposite = FlipMinMax(*reduction_node);
         reduction_node->set_op(opposite);
       }
+
+      if (IsArgMax(*reduction_node) || IsArgMin(*reduction_node)) {
+        // ArgMax(Sqrt(x)) = ArgMax(x)
+        inner_function->set_op("Identity");
+      }
+
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);
@@ -2766,6 +2850,16 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
+    }
+  }
+
+ private:
+  string FlipMinMax(const NodeDef& node) {
+    const string& op = node.op();
+    if (IsAnyMax(node) || IsArgMax(node)) {
+      return str_util::StringReplace(op, "Max", "Min", false);
+    } else {
+      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };
@@ -3232,13 +3326,17 @@ class UniqueNodes {
   }
 
  private:
-  uint64 ComputeSignature(const NodeDef& node) const;
+  uint64 ComputeSignature(const NodeDef& node);
   bool SameNode(const NodeDef& node1, const NodeDef& node2) const;
 
-  std::unordered_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<const NodeDef*, uint64> memoized_signatures_;
 };
 
-uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
+uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
+  auto it = memoized_signatures_.find(&node);
+  if (it != memoized_signatures_.end()) return it->second;
+
   uint64 h = Hash64(node.op());
   h = Hash64Combine(Hash64(node.device()), h);
 
@@ -3252,6 +3350,7 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
     h = Hash64CombineUnordered(Hash64(attr.first), h);
     h = Hash64CombineUnordered(FastAttrValueHash(attr.second), h);
   }
+  memoized_signatures_.emplace(&node, h);
   return h;
 }
 
@@ -3272,31 +3371,29 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   // Compare inputs.
   if (IsCommutative(node1)) {
     std::vector<string> inputs1(node1.input().begin(), node1.input().end());
-    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs1.begin(), inputs1.end());
+    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs2.begin(), inputs2.end());
     return inputs1 == inputs2;
   } else {
-    std::vector<string> regular_inputs1;
-    std::vector<string> regular_inputs2;
-    std::vector<string> ctrl_inputs1;
-    std::vector<string> ctrl_inputs2;
-    for (int index = 0; index < node1.input_size(); ++index) {
+    // The order or ordinary inputs matters.
+    int index = 0;
+    for (; index < node1.input_size(); ++index) {
       if (IsControlInput(node1.input(index))) {
-        ctrl_inputs1.push_back(node1.input(index));
-        ctrl_inputs2.push_back(node2.input(index));
-      } else {
-        regular_inputs1.push_back(node1.input(index));
-        regular_inputs2.push_back(node2.input(index));
+        break;
+      } else if (node1.input(index) != node2.input(index)) {
+        return false;
       }
     }
-    if (regular_inputs1 != regular_inputs2) {
-      return false;
-    }
-    std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
-    std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
-    if (ctrl_inputs1 != ctrl_inputs2) {
-      return false;
+    // The order of control inputs does not matter.
+    if (index < node1.input_size()) {
+      std::vector<string> ctrl_inputs1(node1.input().begin() + index,
+                                       node1.input().end());
+      std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
+      std::vector<string> ctrl_inputs2(node2.input().begin() + index,
+                                       node2.input().end());
+      std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
+      return ctrl_inputs1 != ctrl_inputs2;
     }
   }
 
@@ -3313,25 +3410,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-namespace {
-
-bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
-  const std::unordered_set<string> op_types_to_traverse = {
-      node.op(),    "Identity", "IdentityN", "Reshape",
-      "ExpandDims", "Enter",    "Switch",    "Merge"};
-  int node_idx = graph_view.index(node.name());
-  std::set<int> node_fanout;
-  graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);
-  for (int fanout : node_fanout) {
-    if (ModifiesInputsInPlace(graph_view.graph()->node(fanout))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
 bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -3342,31 +3420,43 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  // Workaround for Assert mistakenly being labeled as stateful.
-  if (IsAssert(node)) {
+  // Workaround for Assert and Print mistakenly being labeled as stateful.
+  if (IsAssert(node) || IsPrint(node)) {
     return true;
   }
   return IsFreeOfSideEffect(node);
 }
 
 void ArithmeticOptimizer::DedupComputations() {
-  bool stop = true;
-  SimpleGraphView graph_view;
-  if (!graph_view.Initialize(*optimized_graph_).ok()) {
-    LOG(WARNING) << "Failed to build SimpleGraphView.";
+  GraphTopologyView graph_view;
+  if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to initialize GraphTopologyView.";
     return;
   }
-  std::set<int> duplicates;
+
   // Populate feed_inplace_op;
-  std::unordered_set<NodeDef*> feeds_inplace_op;
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    if (FeedsInPlaceOp(graph_view, optimized_graph_->node(i))) {
-      feeds_inplace_op.insert(optimized_graph_->mutable_node(i));
+  absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
+  for (const NodeDef& root : optimized_graph_->node()) {
+    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
+
+    if (ModifiesInputsInPlace(root)) {
+      const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
+        return node->op() == root.op() || !NeverForwardsInputs(*node);
+      };
+
+      DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
+                   DfsPredicates::Advance(is_continue_traversal),
+                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                     feeds_inplace_op.insert(node);
+                   }));
     }
   }
+
+  bool stop = true;
+  std::set<int> duplicates;
+  UniqueNodes nodes;
   do {
     stop = true;
-    UniqueNodes nodes;
     for (int i = 0; i < optimized_graph_->node_size(); ++i) {
       if (duplicates.find(i) != duplicates.end()) {
         continue;
@@ -3494,6 +3584,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.convert_log_softmax)
+    pipeline.AddStage<LogSoftmaxStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
   if (options_.convert_expm1)
@@ -3502,6 +3594,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
   if (options_.remove_stack_strided_slice_same_axis)
     pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.fuse_squared_diff)
+    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");
@@ -3571,16 +3665,18 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Disable restricted graph rewrites.
   options_.unary_ops_composition &=
-      item.allowed_optimizations().non_differentiable_rewrites;
+      item.optimization_options().allow_non_differentiable_rewrites;
+
+  // Perform topological sort on the graph in order to help DedupComputations
+  // and AddOpsRewrite to optimize larger subgraphs starting from the roots with
+  // more inputs.
+  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   if (options_.dedup_computations) {
     DedupComputations();
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
-  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
-
-  // Perform topological sort on the graph in order to help AddOpsRewrite to
-  // optimize larger subgraphs starting from the roots with more inputs.
-  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
 
   graph_properties_.reset(new GraphProperties(optimized_item));
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;

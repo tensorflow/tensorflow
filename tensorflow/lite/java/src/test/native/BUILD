@@ -16,6 +16,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/java/jni",
+        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 

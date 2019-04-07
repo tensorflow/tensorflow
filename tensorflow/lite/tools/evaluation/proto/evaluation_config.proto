@@ -1,0 +1,42 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package tflite.evaluation;
+
+import "tensorflow/lite/tools/evaluation/proto/evaluation_stages.proto";
+
+// Contains parameters that define how an EvaluationStage will be executed.
+// This would typically be validated only once during initialization, so should
+// not contain any variables that change with each run.
+//
+// Next ID: 3
+message EvaluationStageConfig {
+  optional string name = 1;
+
+  // Specification defining what this stage does, and any required parameters.
+  optional ProcessSpecification specification = 2;
+}
+
+// Metrics returned from EvaluationStage.LatestMetrics() need not have all
+// fields set.
+message EvaluationStageMetrics {
+  // Total number of times the EvaluationStage is run.
+  optional int32 num_runs = 1;
+
+  // Process-specific numbers such as latencies, accuracy, etc.
+  optional ProcessMetrics process_metrics = 2;
+}

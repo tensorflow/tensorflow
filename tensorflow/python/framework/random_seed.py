@@ -64,6 +64,8 @@ def get_seed(op_seed):
   if global_seed is not None:
     if op_seed is None:
       # pylint: disable=protected-access
+      if hasattr(ops.get_default_graph(), '_seed_used'):
+        ops.get_default_graph()._seed_used = True
       if eager:
         op_seed = context.internal_operation_seed()
       else:
@@ -84,7 +86,7 @@ def get_seed(op_seed):
 
 @tf_export(v1=['random.set_random_seed', 'set_random_seed'])
 def set_random_seed(seed):
-  """Sets the graph-level random seed.
+  """Sets the graph-level random seed for the default graph.
 
   Operations that rely on a random seed actually derive it from two seeds:
   the graph-level and operation-level seeds. This sets the graph-level seed.

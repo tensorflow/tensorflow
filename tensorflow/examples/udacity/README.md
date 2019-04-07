@@ -121,7 +121,7 @@ History
 * 0.1.0: Initial release.
 * 0.2.0: Many fixes, including lower memory footprint and support for Python 3.
 * 0.3.0: Use 0.7.1 release.
-* 0.4.0: Move notMMNIST data for Google Cloud.
+* 0.4.0: Move notMNIST data for Google Cloud.
 * 0.5.0: Actually use 0.7.1 release.
 * 0.6.0: Update to TF 0.10.0, add libjpeg (for Pillow).
 * 1.0.0: Update to TF 1.0.0 release.

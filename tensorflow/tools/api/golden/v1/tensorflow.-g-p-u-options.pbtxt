@@ -84,6 +84,18 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_STRING
       }
+      field {
+        name: "timestamped_allocator"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "pending_cap"
+        number: 6
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
       nested_type {
         name: "VirtualDevices"
         field {

@@ -242,8 +242,8 @@ TEST(PatternMatcherTest, ConstantScalar) {
     HloModule test_module
     ENTRY test {
       a = s32[] constant(1)
-      b = s32[1,1] constant(s32[1,1]{{2}})
-      c = s32[1,2] constant(s32[1,2]{{2,2}})
+      b = s32[1,1] constant({{2}})
+      c = s32[1,2] constant({{2,2}})
       d = f32[] constant(1)
       e = f32[] constant(1.25)
       ROOT tuple = (s32[], s32[1,1], s32[1,2], f32[], f32[]) tuple(a,b,c,d,e)
@@ -929,6 +929,49 @@ TEST(PatternMatcherTest, OneUseAndOneUser) {
             "HloInstruction is used 2 times by its user, but is expected to be "
             "used just once: add = f32[] add(f32[] p0, f32[] p0)\n"
             "in p0 = f32[] parameter(0)");
+}
+
+TEST(HloMatchersTest, Comparison) {
+  auto shape = ShapeUtil::MakeShape(F32, {1});
+  auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
+  auto p1 = HloInstruction::CreateParameter(1, shape, "param.1");
+  auto eq = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
+                                          ComparisonDirection::kEq);
+  auto ne = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
+                                          ComparisonDirection::kNe);
+  auto add =
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0.get(), p1.get());
+  auto le = HloInstruction::CreateCompare(shape, p0.get(), add.get(),
+                                          ComparisonDirection::kLe);
+
+  EXPECT_TRUE(Match(eq.get(), m::Compare()));
+  EXPECT_TRUE(Match(eq.get(), m::Eq()));
+  EXPECT_TRUE(Match(eq.get(), m::Eq(m::Parameter(0), m::Parameter(1))));
+  EXPECT_TRUE(Match(eq.get(), m::EqAnyOrder(m::Parameter(1), m::Parameter(0))));
+  EXPECT_TRUE(Match(ne.get(), m::Compare()));
+  EXPECT_TRUE(Match(ne.get(), m::Ne()));
+  EXPECT_TRUE(Match(
+      le.get(),
+      m::Compare(m::Parameter(0), m::Add(m::Parameter(0), m::Parameter(1)))));
+  EXPECT_TRUE(Match(le.get(), m::Le(m::Parameter(0),
+                                    m::Add(m::Parameter(0), m::Parameter(1)))));
+
+  EXPECT_FALSE(Match(eq.get(), m::Add()));
+  EXPECT_FALSE(Match(eq.get(), m::Ne()));
+  EXPECT_FALSE(
+      Match(le.get(),
+            m::Eq(m::Parameter(0), m::Add(m::Parameter(0), m::Parameter(1)))));
+  EXPECT_FALSE(Match(eq.get(), m::Eq(m::Parameter(1), m::Parameter(0))));
+  EXPECT_DESC_AND_EXPLANATION(
+      eq, m::Ne().WithOneUser(),
+      "an HloInstruction:\n"
+      " * with opcode compare AND\n"
+      " * which has comparison direction NE AND\n"
+      " * which has exactly one user (but possibly is used "
+      "multiple times by that instruction)",
+      "HloInstruction is not comparison NE\n"
+      "in compare = f32[1]{0} compare(f32[1]{0} param.0, f32[1]{0} param.1), "
+      "direction=EQ");
 }
 
 }  // namespace

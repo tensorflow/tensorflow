@@ -101,7 +101,7 @@ void printDims(char* buffer, int max_size, int* dims, int num_dims) {
 
 // Checks whether there is any difference between dimensions of a tensor and a
 // given dimensions. Returns true if there is difference, else false.
-bool areDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
+bool AreDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
   int num_dims = static_cast<int>(env->GetArrayLength(dims));
   jint* ptr = env->GetIntArrayElements(dims, nullptr);
   if (ptr == nullptr) {
@@ -109,16 +109,19 @@ bool areDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
                    "Empty dimensions of input array.");
     return true;
   }
+  bool is_different = false;
   if (tensor->dims->size != num_dims) {
-    return true;
-  }
-  for (int i = 0; i < num_dims; ++i) {
-    if (ptr[i] != tensor->dims->data[i]) {
-      return true;
+    is_different = true;
+  } else {
+    for (int i = 0; i < num_dims; ++i) {
+      if (ptr[i] != tensor->dims->data[i]) {
+        is_different = true;
+        break;
+      }
     }
   }
   env->ReleaseIntArrayElements(dims, ptr, JNI_ABORT);
-  return false;
+  return is_different;
 }
 
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
@@ -243,6 +246,14 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
   interpreter->SetAllowFp16PrecisionForFp32(static_cast<bool>(allow));
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
+    JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetAllowBufferHandleOutput(allow);
 }
 
 JNIEXPORT void JNICALL
@@ -438,7 +449,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   }
   // check whether it is resizing with the same dimensions.
   TfLiteTensor* target = interpreter->tensor(input_idx);
-  bool is_changed = areDimsDifferent(env, target, dims);
+  bool is_changed = AreDimsDifferent(env, target, dims);
   if (is_changed) {
     TfLiteStatus status = interpreter->ResizeInputTensor(
         interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));

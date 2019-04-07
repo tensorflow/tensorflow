@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -36,6 +37,11 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
     case Padding::VALID:
       *output_size = (input_size - effective_filter_size + stride) / stride;
       *padding_before = *padding_after = 0;
+      break;
+    case Padding::EXPLICIT:
+      *output_size = (input_size + *padding_before + *padding_after -
+                      effective_filter_size + stride) /
+                     stride;
       break;
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
@@ -71,6 +77,11 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
 Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
                              Padding padding_type, int64* output_size,
                              int64* padding_size) {
+  if (padding_type == Padding::EXPLICIT) {
+    return errors::Internal(
+        "GetWindowedOutputSize does not handle EXPLICIT padding; call "
+        "GetWindowedOutputSizeVerbose instead");
+  }
   int64 padding_after_unused;
   return GetWindowedOutputSizeVerbose(input_size, filter_size, stride,
                                       padding_type, output_size, padding_size,
@@ -81,6 +92,11 @@ Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
                                int64 dilation_rate, int64 stride,
                                Padding padding_type, int64* output_size,
                                int64* padding_size) {
+  if (padding_type == Padding::EXPLICIT) {
+    return errors::Internal(
+        "GetWindowedOutputSizeV2 does not handle EXPLICIT padding; call "
+        "GetWindowedOutputSizeVerboseV2 instead");
+  }
   int64 padding_after_unused;
   return GetWindowedOutputSizeVerboseV2(input_size, filter_size, dilation_rate,
                                         stride, padding_type, output_size,
@@ -123,8 +139,8 @@ Status GetWindowedOutputSizeFromDimsV2(
     shape_inference::InferenceContext* c,
     shape_inference::DimensionHandle input_size,
     shape_inference::DimensionOrConstant filter_size, int64 dilation_rate,
-    int64 stride, Padding padding_type,
-    shape_inference::DimensionHandle* output_size) {
+    int64 stride, Padding padding_type, int64 padding_before,
+    int64 padding_after, shape_inference::DimensionHandle* output_size) {
   if (stride <= 0) {
     return errors::InvalidArgument("Stride must be > 0, but got ", stride);
   }
@@ -137,6 +153,11 @@ Status GetWindowedOutputSizeFromDimsV2(
   // See also the parallel implementation in GetWindowedOutputSizeVerbose.
   switch (padding_type) {
     case Padding::VALID:
+      padding_before = padding_after = 0;
+      TF_FALLTHROUGH_INTENDED;
+    case Padding::EXPLICIT:
+      TF_RETURN_IF_ERROR(
+          c->Add(input_size, padding_before + padding_after, &input_size));
       if (dilation_rate > 1) {
         DimensionHandle window_size;
         TF_RETURN_IF_ERROR(
@@ -166,13 +187,26 @@ Status GetWindowedOutputSizeFromDims(
     shape_inference::DimensionHandle input_size,
     shape_inference::DimensionOrConstant filter_size, int64 stride,
     Padding padding_type, shape_inference::DimensionHandle* output_size) {
+  if (padding_type == Padding::EXPLICIT) {
+    return errors::Internal(
+        "GetWindowedOutputSizeFromDims does not handle EXPLICIT padding; call "
+        "GetWindowedOutputSizeFromDimsV2 instead");
+  }
   return GetWindowedOutputSizeFromDimsV2(c, input_size, filter_size,
                                          /*dilation_rate=*/1, stride,
-                                         padding_type, output_size);
+                                         padding_type,
+                                         // Give dummy values of -1 to
+                                         // padding_before and padding_after,
+                                         // since explicit padding is not used.
+                                         -1, -1, output_size);
 }
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->input(0));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+  }
   return Status::OK();
 }
 
@@ -196,6 +230,43 @@ Status MatMulShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Merge(inner_a, inner_b, &merged));
 
   c->set_output(0, c->Matrix(output_rows, output_cols));
+  return Status::OK();
+}
+
+Status BatchMatMulV2Shape(shape_inference::InferenceContext* c) {
+  ShapeHandle a_shape;
+  ShapeHandle b_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &a_shape));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &b_shape));
+
+  // Determine output rows and columns.
+  bool adj_x;
+  bool adj_y;
+  TF_RETURN_IF_ERROR(c->GetAttr("adj_x", &adj_x));
+  TF_RETURN_IF_ERROR(c->GetAttr("adj_y", &adj_y));
+  DimensionHandle output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
+  DimensionHandle output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
+
+  // Inner dimensions should be compatible.
+  DimensionHandle inner_merged;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
+                              c->Dim(b_shape, adj_y ? -1 : -2), &inner_merged));
+
+  // Batch dimensions should broadcast with each other.
+  ShapeHandle a_batch_shape;
+  ShapeHandle b_batch_shape;
+  ShapeHandle output_batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_shape));
+
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, a_batch_shape, b_batch_shape, &output_batch_shape));
+
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(
+      output_batch_shape, c->Matrix(output_rows, output_cols), &output_shape));
+
+  c->set_output(0, output_shape);
   return Status::OK();
 }
 
@@ -371,7 +442,10 @@ Status ShapeFromDimensions(DimensionHandle batch_dim,
   return tensorflow::Status::OK();
 }
 
-Status Conv2DShape(shape_inference::InferenceContext* c) {
+namespace {
+
+Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
+                       bool supports_explicit_padding) {
   string data_format_str, filter_format_str;
   if (!c->GetAttr("data_format", &data_format_str).ok()) {
     data_format_str = "NHWC";
@@ -455,22 +529,60 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
         filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'I'));
   }
 
-  // Check that the input tensor and the filter tensor agree on the input
-  // channel count.
-  DimensionHandle unused;
-  TF_RETURN_IF_ERROR(
-      c->Merge(input_depth_dim, filter_input_depth_dim, &unused));
+  // Check that the input tensor and the filter tensor agree on the channel
+  // count.
+  if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
+    int64 input_depth_value = c->Value(input_depth_dim),
+          filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (input_depth_value % filter_input_depth_value != 0)
+      return errors::InvalidArgument(
+          "Depth of input (", input_depth_value,
+          ") is not a multiple of input depth of filter (",
+          filter_input_depth_value, ")");
+    if (input_depth_value != filter_input_depth_value) {
+      int64 num_groups = input_depth_value / filter_input_depth_value;
+      if (c->ValueKnown(output_depth_dim)) {
+        int64 output_depth_value = c->Value(output_depth_dim);
+        if (output_depth_value % num_groups != 0)
+          return errors::InvalidArgument(
+              "Depth of output (", output_depth_value,
+              ") is not a multiple of the number of groups (", num_groups, ")");
+      }
+    }
+  }
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
+  std::vector<int64> explicit_paddings;
+  if (supports_explicit_padding) {
+    Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
+    // Use the default value, which is an empty list, if the attribute is not
+    // found. Otherwise return the error to the caller.
+    if (!s.ok() && !errors::IsNotFound(s)) {
+      return s;
+    }
+    TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                         /*num_dims=*/4, data_format));
+  } else {
+    DCHECK(padding != Padding::EXPLICIT);
+  }
+
   DimensionHandle output_rows, output_cols;
+  int64 pad_rows_before = -1, pad_rows_after = -1;
+  int64 pad_cols_before = -1, pad_cols_after = -1;
+  if (padding == Padding::EXPLICIT) {
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
+                             &pad_rows_before, &pad_rows_after);
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
+                             &pad_cols_before, &pad_cols_after);
+  }
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
       c, input_spatial_dims[0], filter_rows_dim, dilation_rows, stride_rows,
-      padding, &output_rows));
+      padding, pad_rows_before, pad_rows_after, &output_rows));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
       c, input_spatial_dims[1], filter_cols_dim, dilation_cols, stride_cols,
-      padding, &output_cols));
+      padding, pad_cols_before, pad_cols_after, &output_cols));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(
@@ -478,6 +590,19 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
                           output_depth_dim, data_format, c, &output_shape));
   c->set_output(0, output_shape);
   return Status::OK();
+}
+
+}  // namespace
+
+// Shape function for Conv2D-like operations that support explicit padding.
+Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c) {
+  return Conv2DShapeImpl(c, true);
+}
+
+// Shape function for Conv2D-like operations that do not support explicit
+// padding.
+Status Conv2DShape(shape_inference::InferenceContext* c) {
+  return Conv2DShapeImpl(c, false);
 }
 
 // TODO(mjanusz): Unify all conv/pooling shape functions.
@@ -551,13 +676,13 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
 
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
       c, in_planes_dim, filter_planes_dim, dilation_planes, stride_planes,
-      padding, &output_planes));
+      padding, -1, -1, &output_planes));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
-      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding,
-      &output_rows));
+      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding, -1,
+      -1, &output_rows));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
-      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding,
-      &output_cols));
+      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding, -1,
+      -1, &output_cols));
 
   ShapeHandle output_shape;
   if (data_format == "NCDHW") {
@@ -1231,6 +1356,12 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
+Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat) {
+  return ConcatShapeHelper(c, 0 /* start_value_index */,
+                           num_inputs_to_concat /* end_value_index */,
+                           num_inputs_to_concat /* dim_index */);
+}
+
 Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
                                             ShapeHandle shape_x,
                                             ShapeHandle shape_y,
@@ -1451,6 +1582,62 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
     }
   }
 
+  return Status::OK();
+}
+
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type) {
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data == nullptr || handle_data->empty()) {
+    shape_and_type->emplace_back(c->UnknownShape(), DT_INVALID);
+  } else {
+    *shape_and_type = *handle_data;
+    DataType value_dtype;
+    TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
+    if (shape_and_type->at(0).dtype != value_dtype) {
+      return errors::InvalidArgument(
+          "Trying to read variable with wrong dtype. "
+          "Expected ",
+          DataTypeString(shape_and_type->at(0).dtype), " got ",
+          DataTypeString(value_dtype));
+    }
+  }
+  return Status::OK();
+}
+
+Status GatherNdShape(InferenceContext* c) {
+  ShapeHandle params;
+  std::vector<ShapeAndType> handle_shape_and_type;
+  if (c->input_handle_shapes_and_types(0) != nullptr) {
+    TF_RETURN_IF_ERROR(
+        ValidateVariableResourceHandle(c, &handle_shape_and_type));
+    params = handle_shape_and_type[0].shape;
+  } else {
+    params = c->input(0);
+  }
+  ShapeHandle indices;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices));
+  DimensionHandle r_dim = c->Dim(indices, -1);
+
+  if (!c->RankKnown(params) || !c->ValueKnown(r_dim)) {
+    c->set_output(0, c->UnknownShape());
+    return Status::OK();
+  }
+
+  if (c->Value(r_dim) > c->Rank(params)) {
+    return errors::InvalidArgument(
+        "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
+        c->DebugString(indices), " and params shape: ", c->DebugString(params));
+  }
+
+  // Remove r_dim from indices to get output.
+  ShapeHandle indices_slice;
+  ShapeHandle params_slice;
+  TF_RETURN_IF_ERROR(c->Subshape(indices, 0, -1, &indices_slice));
+  TF_RETURN_IF_ERROR(c->Subshape(params, c->Value(r_dim), &params_slice));
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->Concatenate(indices_slice, params_slice, &out));
+  c->set_output(0, out);
   return Status::OK();
 }
 

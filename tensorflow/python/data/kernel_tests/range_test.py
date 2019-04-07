@@ -43,9 +43,9 @@ class RangeTest(test_base.DatasetTestBase):
 
   def testZeroStep(self):
     start, stop, step = 2, 10, 0
-    dataset = dataset_ops.Dataset.range(start, stop, step)
-    self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, ""))
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(start, stop, step)
+      self.evaluate(dataset._variant_tensor)
 
   def testNegativeStep(self):
     start, stop, step = 2, 10, -1

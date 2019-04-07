@@ -34,6 +34,7 @@ class MakeNumaAwareTest(test_base.DatasetTestBase):
             batching.map_and_batch(lambda x: x * x, 10))
     options = dataset_ops.Options()
     options.experimental_numa_aware = True
+    options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset, expected_output=[[x * x for x in range(10)]])

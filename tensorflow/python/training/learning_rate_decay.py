@@ -17,8 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.python.eager import context
-from tensorflow.python.training import learning_rate_decay_v2
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -88,15 +91,15 @@ def exponential_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.exponential_decay(learning_rate,
-                                                        global_step,
-                                                        decay_steps,
-                                                        decay_rate,
-                                                        staircase=staircase,
-                                                        name=name)
+  decayed_lr = learning_rate_schedule.ExponentialDecay(learning_rate,
+                                                       decay_steps,
+                                                       decay_rate,
+                                                       staircase=staircase,
+                                                       name=name)
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -143,11 +146,12 @@ def piecewise_constant(x, boundaries, values, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.piecewise_constant(x, boundaries, values,
-                                                         name=name)
+  decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
+      boundaries, values, name=name)
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(x)
+  else:
+    decayed_lr = functools.partial(decayed_lr, x)
   return decayed_lr
 
 
@@ -236,9 +240,8 @@ def polynomial_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.polynomial_decay(
+  decayed_lr = learning_rate_schedule.PolynomialDecay(
       learning_rate,
-      global_step,
       decay_steps,
       end_learning_rate=end_learning_rate,
       power=power,
@@ -246,8 +249,9 @@ def polynomial_decay(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -323,13 +327,15 @@ def natural_exp_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.natural_exp_decay(
-      learning_rate, global_step, decay_steps, decay_rate, staircase=staircase,
+  natural_exp_rate = math_ops.exp(math_ops.negative(decay_rate))
+  decayed_lr = learning_rate_schedule.ExponentialDecay(
+      learning_rate, decay_steps, natural_exp_rate, staircase=staircase,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -405,17 +411,17 @@ def inverse_time_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.inverse_time_decay(
+  decayed_lr = learning_rate_schedule.InverseTimeDecay(
       learning_rate,
-      global_step,
       decay_steps,
       decay_rate,
       staircase=staircase,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -468,12 +474,13 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.cosine_decay(
-      learning_rate, global_step, decay_steps, alpha=alpha, name=name)
+  decayed_lr = learning_rate_schedule.CosineDecay(
+      learning_rate, decay_steps, alpha=alpha, name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -535,9 +542,8 @@ def cosine_decay_restarts(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.cosine_decay_restarts(
+  decayed_lr = learning_rate_schedule.CosineDecayRestarts(
       learning_rate,
-      global_step,
       first_decay_steps,
       t_mul=t_mul,
       m_mul=m_mul,
@@ -545,8 +551,9 @@ def cosine_decay_restarts(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -617,9 +624,8 @@ def linear_cosine_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.linear_cosine_decay(
+  decayed_lr = learning_rate_schedule.LinearCosineDecay(
       learning_rate,
-      global_step,
       decay_steps,
       num_periods=num_periods,
       alpha=alpha,
@@ -627,8 +633,9 @@ def linear_cosine_decay(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr
 
 
@@ -707,8 +714,8 @@ def noisy_linear_cosine_decay(learning_rate,
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  decayed_lr = learning_rate_decay_v2.noisy_linear_cosine_decay(
-      learning_rate, global_step,
+  decayed_lr = learning_rate_schedule.NoisyLinearCosineDecay(
+      learning_rate,
       decay_steps,
       initial_variance=initial_variance,
       variance_decay=variance_decay,
@@ -718,6 +725,7 @@ def noisy_linear_cosine_decay(learning_rate,
       name=name)
 
   if not context.executing_eagerly():
-    decayed_lr = decayed_lr()
-
+    decayed_lr = decayed_lr(global_step)
+  else:
+    decayed_lr = functools.partial(decayed_lr, global_step)
   return decayed_lr

@@ -58,6 +58,7 @@ class LogarithmOpTest(test.TestCase):
     matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
     return matrix_batch
 
+  @test_util.run_v1_only("b/120545219")
   def testNonsymmetric(self):
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
@@ -71,6 +72,7 @@ class LogarithmOpTest(test.TestCase):
     # Complex batch
     self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_v1_only("b/120545219")
   def testSymmetricPositiveDefinite(self):
     # 2x2 matrices
     matrix1 = np.array([[2., 1.], [1., 2.]])
@@ -99,10 +101,12 @@ class LogarithmOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       gen_linalg_ops.matrix_logarithm(tensor3)
 
+  @test_util.run_v1_only("b/120545219")
   def testEmpty(self):
     self._verifyLogarithmComplex(np.empty([0, 2, 2], dtype=np.complex64))
     self._verifyLogarithmComplex(np.empty([2, 0, 0], dtype=np.complex64))
 
+  @test_util.run_v1_only("b/120545219")
   def testRandomSmallAndLargeComplex64(self):
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
@@ -113,6 +117,7 @@ class LogarithmOpTest(test.TestCase):
             size=np.prod(shape)).reshape(shape).astype(np.complex64)
         self._verifyLogarithmComplex(matrix)
 
+  @test_util.run_v1_only("b/120545219")
   def testRandomSmallAndLargeComplex128(self):
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:

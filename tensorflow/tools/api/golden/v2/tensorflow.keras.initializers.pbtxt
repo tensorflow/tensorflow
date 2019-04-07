@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "GlorotNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GlorotUniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Identity"
     mtype: "<type \'type\'>"
   }
@@ -57,31 +65,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "normal"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ones"
     mtype: "<type \'type\'>"
   }
   member {
     name: "orthogonal"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "random_normal"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "random_uniform"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "truncated_normal"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "uniform"
     mtype: "<type \'type\'>"
   }
   member {

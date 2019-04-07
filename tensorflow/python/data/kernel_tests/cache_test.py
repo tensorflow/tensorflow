@@ -59,7 +59,7 @@ class FileCacheTest(test_base.DatasetTestBase):
 
     self.assertEqual(
         tuple([c.shape[1:] for c in components]),
-        dataset_fn().output_shapes)
+        dataset_ops.get_legacy_output_shapes(dataset_fn()))
 
     get_next = self.getNext(dataset_fn())
 
@@ -139,8 +139,8 @@ class FileCacheTest(test_base.DatasetTestBase):
       self.evaluate(get_next1())
 
     # Re-initialize
-    get_next1 = self.getNext(cache_dataset1)
-    get_next2 = self.getNext(cache_dataset2)
+    get_next1 = self.getNext(cache_dataset1, requires_initialization=True)
+    get_next2 = self.getNext(cache_dataset2, requires_initialization=True)
 
     # Reading concurrently should succeed.
     elements_itr1 = []

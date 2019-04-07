@@ -41,10 +41,15 @@ class XlaArgOp : public XlaOpKernel {
     if (frame != nullptr) {
       Tensor val;
       OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-      OP_REQUIRES(ctx, val.dtype() == dtype_,
-                  errors::InvalidArgument(
-                      "Type mismatch: actual ", DataTypeString(val.dtype()),
-                      " vs. expect ", DataTypeString(dtype_)));
+      // Types that cannot be copied using memcpy (like DT_STRING) are wrapped
+      // in a DT_UINT8 and hence the type mismatches. Skip the test in such
+      // cases. See XlaOpKernelContext::SetOutputExpression for details.
+      if (DataTypeCanUseMemcpy(dtype_)) {
+        OP_REQUIRES(ctx, val.dtype() == dtype_,
+                    errors::InvalidArgument(
+                        "Type mismatch: actual ", DataTypeString(val.dtype()),
+                        " vs. expect ", DataTypeString(dtype_)));
+      }
       // Forwards the argument from the frame.
       ctx->op_kernel_context()->set_output(0, val);
       return;
@@ -53,7 +58,11 @@ class XlaArgOp : public XlaOpKernel {
     const XlaExpression& arg = ctx->xla_context()->args()[index_];
     OP_REQUIRES(ctx, arg.kind() != XlaExpression::Kind::kInvalid,
                 errors::InvalidArgument("Invalid/missing argument expression"));
-    ctx->SetOutputExpression(0, arg);
+    if (ctx->expected_output_dtype(0) == DT_VARIANT) {
+      ctx->SetTensorListOutput(0, arg.handle());
+    } else {
+      ctx->SetOutputExpression(0, arg);
+    }
   }
 
  private:
@@ -63,6 +72,8 @@ class XlaArgOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaArgOp);
 };
 
-REGISTER_XLA_OP(Name("_Arg").AllowResourceTypes().CompilationOnly(), XlaArgOp);
+REGISTER_XLA_OP(
+    Name("_Arg").AllowResourceTypes().AllowVariantTypes().CompilationOnly(),
+    XlaArgOp);
 
 }  // namespace tensorflow

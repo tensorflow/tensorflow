@@ -67,30 +67,45 @@ py_library(
 # Tests
 cuda_py_test(
     name = "ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["ops_test.py"],
     additional_deps = [
         ":ops",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
+    tags = [
+        "oss_serial",
+    ],
 )
 
 cuda_py_test(
     name = "blocks_test",
-    size = "large",
+    size = "medium",
     srcs = ["blocks_test.py"],
-    additional_deps = [
-        ":blocks",
-        "//tensorflow:tensorflow_py",
-    ],
+    additional_deps = [":blocks_test_main_lib"],
+    shard_count = 4,
     tags = [
         "optonly",
     ],
 )
 
+py_library(
+    name = "blocks_test_main_lib",
+    testonly = True,
+    srcs = ["blocks_test.py"],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":blocks",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 cuda_py_test(
     name = "revnet_test",
-    size = "large",
+    size = "medium",
     srcs = ["revnet_test.py"],
     additional_deps = [
         ":blocks_test",
@@ -98,9 +113,11 @@ cuda_py_test(
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 4,
     tags = [
         "no_pip",  # depends on blocks_test, which is not available in pip package
         "optonly",
+        "oss_serial",
     ],
 )
 
@@ -127,6 +144,13 @@ py_binary(
     name = "main",
     srcs = ["main.py"],
     srcs_version = "PY2AND3",
+    deps = [":main_lib"],
+)
+
+py_library(
+    name = "main_lib",
+    srcs = ["main.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
         ":config",
@@ -141,7 +165,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
-        ":main",
+        ":main_lib",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
@@ -153,7 +177,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
-        ":main",
+        ":main_lib",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
@@ -165,7 +189,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",
-        ":main",
+        ":main_lib",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],

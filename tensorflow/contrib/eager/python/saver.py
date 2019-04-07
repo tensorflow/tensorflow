@@ -85,7 +85,7 @@ def restore_variables_on_create(save_path, map_func=None):
         raise ValueError("map_func must be callable.")
       map_func_wrapper = lambda self, x: map_func(x)
 
-    ckpt_var_cache = dict()
+    ckpt_var_cache = {}
     reader = checkpoint_utils.load_checkpoint(save_path)
     for k, _ in checkpoint_utils.list_variables(save_path):
       ckpt_var_cache[k] = reader.get_tensor(k)

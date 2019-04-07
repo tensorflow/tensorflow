@@ -21,7 +21,10 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -32,7 +35,7 @@ namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-using ::tensorflow::cpu_function_runtime::BufferInfo;
+using ::xla::cpu_function_runtime::BufferInfo;
 
 void ExpectErrorContains(const Status& status, absl::string_view str) {
   EXPECT_NE(Status::OK(), status);
@@ -172,6 +175,20 @@ TEST(CodegenTest, Golden) {
   tf2xla::Fetch* fetch = config.add_fetch();
   fetch->mutable_id()->set_node_name("fetch0");
   fetch->set_name("myfetch");
+  tf2xla::Variable* variable = config.add_variable();
+  variable->set_node_name("myvar_readonly");
+  variable->mutable_shape()->add_dim()->set_size(1);
+  variable->set_type(DT_FLOAT);
+  variable->set_readonly(true);
+  tf2xla::Variable* variable2 = config.add_variable();
+  variable2->set_node_name("myvar");
+  variable2->mutable_shape()->add_dim()->set_size(1);
+  variable2->set_type(DT_FLOAT);
+  tf2xla::Variable* variable3 = config.add_variable();
+  variable3->set_node_name("my/var");
+  variable3->set_name("myvar2");
+  variable3->mutable_shape()->add_dim()->set_size(5);
+  variable3->set_type(DT_INT32);
   CompileResult compile_result;
   compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
       {},
@@ -186,9 +203,15 @@ TEST(CodegenTest, Golden) {
           {
               xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
               xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
+              xla::ShapeUtil::MakeShape(xla::S32, {5}),
           },
-          xla::ShapeUtil::MakeTupleShape(
-              {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}))
+          xla::ShapeUtil::MakeTupleShape({
+              xla::ShapeUtil::MakeShape(xla::U32, {5, 6}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
+              xla::ShapeUtil::MakeShape(xla::S32, {5}),
+          }))
           .ToProto();
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;

@@ -51,7 +51,7 @@ class StringToNumberOp : public OpKernel {
     for (int i = 0; i < input_flat.size(); ++i) {
       OP_REQUIRES(
           context,
-          strings::SafeStringToNumeric<OutputType>(input_flat(i).c_str(),
+          strings::SafeStringToNumeric<OutputType>(input_flat(i),
                                                    &output_flat(i)),
           errors::InvalidArgument(kErrorMessage, input_flat(i).c_str()));
     }

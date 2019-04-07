@@ -85,6 +85,15 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
+        {"PartitionedCall", NC_PARTITIONED_CALL},
+        {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
+        // Not using the constants defined in FunctionLibraryDefinition for the
+        // 4 ops below because android inference library does not link
+        // tf.function related files.
+        {"_Arg", NC_ARG},
+        {"_DeviceArg", NC_ARG},
+        {"_Retval", NC_RETVAL},
+        {"_DeviceRetval", NC_RETVAL},
     });
 
 #undef REF_CLASS
@@ -216,6 +225,16 @@ void Node::set_requested_device(const string& device) {
   props_->node_def.set_device(device);
 }
 
+void Node::set_original_node_names(const std::vector<string>& names) {
+  MaybeCopyOnWrite();
+  props_->node_def.mutable_experimental_debug_info()
+      ->clear_original_node_names();
+  if (!names.empty()) {
+    *props_->node_def.mutable_experimental_debug_info()
+         ->mutable_original_node_names() = {names.begin(), names.end()};
+  }
+}
+
 Status Node::input_edge(int idx, const Edge** e) const {
   if (idx < 0 || idx >= num_inputs()) {
     return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
@@ -291,6 +310,16 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
   DCHECK(e != nullptr);
   *t = OutputTensor(e->src(), e->src_output());
   return Status::OK();
+}
+
+// NodeDebugInfo
+
+NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
+  if (ndef.has_experimental_debug_info()) {
+    const auto& names = ndef.experimental_debug_info().original_node_names();
+    original_node_names.assign(names.begin(), names.end());
+  }
 }
 
 // InputTensor
@@ -418,12 +447,22 @@ void Graph::RemoveNode(Node* node) {
   DCHECK(!node->IsSink());
 
   // Remove any edges involving this node.
-  while (!node->in_edges_.empty()) {
-    RemoveEdge(*node->in_edges_.begin());
+  free_edges_.reserve(free_edges_.size() + node->in_edges_.size() +
+                      node->out_edges_.size());
+  for (const Edge* e : node->in_edges_) {
+    CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
+    edges_[e->id_] = nullptr;
+    RecycleEdge(e);
+    --num_edges_;
   }
-  while (!node->out_edges_.empty()) {
-    RemoveEdge(*node->out_edges_.begin());
+  node->in_edges_.clear();
+  for (const Edge* e : node->out_edges_) {
+    CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
+    edges_[e->id_] = nullptr;
+    RecycleEdge(e);
+    --num_edges_;
   }
+  node->out_edges_.clear();
   ReleaseNode(node);
 }
 
@@ -467,7 +506,11 @@ void Graph::RemoveEdge(const Edge* e) {
   CHECK_GT(num_edges_, 0);
 
   edges_[e->id_] = nullptr;
+  RecycleEdge(e);
+  --num_edges_;
+}
 
+void Graph::RecycleEdge(const Edge* e) {
   Edge* del = const_cast<Edge*>(e);
   del->src_ = nullptr;
   del->dst_ = nullptr;
@@ -475,7 +518,6 @@ void Graph::RemoveEdge(const Edge* e) {
   del->src_output_ = kControlSlot - 1;
   del->dst_input_ = kControlSlot - 1;
   free_edges_.push_back(del);
-  --num_edges_;
 }
 
 const Edge* Graph::AddControlEdge(Node* source, Node* dest,
@@ -555,7 +597,13 @@ Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
         dst->DebugString());
   }
   TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
-  int dst_index = dst->in_edges().size();
+  // Find the current number of data inputs. We'll add the new edge to the next
+  // missing data input.
+  int dst_index = 0;
+  for (const Edge* edge : dst->in_edges()) {
+    if (edge->IsControlEdge()) continue;
+    ++dst_index;
+  }
   TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();

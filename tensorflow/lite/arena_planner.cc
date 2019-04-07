@@ -55,12 +55,17 @@ TfLiteStatus ArenaPlanner::ResetAllocations() {
   TF_LITE_ENSURE_STATUS(persistent_arena_.Clear());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
+  // Note that we only clear the alloc_queue_ when re-planning allocations, as
+  // it should only change when the graph topology itself changes.
   return kTfLiteOk;
 }
 
 TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Invalidate any existing data.
   TF_LITE_ENSURE_STATUS(ResetAllocations());
+  // The alloc_queue_ is specific to the graph topology, and will be
+  // completely reconstructed from graph data here.
+  alloc_queue_.clear();
 
   // Keeps track of references to each tensor.
   std::vector<int> refcounts(graph_info_->num_tensors(), 0);
@@ -103,8 +108,8 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     refcounts[tensor_index]++;
   }
 
-  // Variable tensors should are also never overwritten and need to be alive all
-  // the time.
+  // Variable tensors also should be ensured to be never overwritten and need to
+  // be alive all the time.
   for (int tensor_index : graph_info_->variables()) {
     refcounts[tensor_index]++;
   }
@@ -130,7 +135,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   }
 
   // Count references to node input tensors.
-  for (int i = 0; i < graph_info_->num_nodes(); ++i) {
+  for (size_t i = 0; i < graph_info_->num_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {

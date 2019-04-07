@@ -31,6 +31,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -625,8 +626,37 @@ class DecodeProtoOp : public OpKernel {
     // Gather the field descriptors and check that requested output types match.
     int field_index = 0;
     std::vector<const FieldDescriptor*> field_descs;
+    std::vector<const FieldDescriptor*> exts;
+    absl::flat_hash_map<string, const FieldDescriptor*> ext_name_to_field;
+    std::vector<const FieldDescriptor*>::iterator ext_it = exts.begin();
     for (const string& name : field_names) {
       auto fd = message_desc->FindFieldByName(name);
+      if (fd == nullptr) {
+        // If field can't be found in original message, try to find a matching
+        // extension (by its full_name). First check a hashmap for a matching
+        // extension, and if not found, then iterate through available
+        // extensions to find a match (updating the hashmap while iterating.)
+        auto lookup_result = ext_name_to_field.find(name);
+        if (lookup_result != ext_name_to_field.end()) {
+          fd = lookup_result->second;
+        } else {
+          if (ext_it == exts.begin()) {
+            desc_pool->FindAllExtensions(message_desc, &exts);
+            ext_it = exts.begin();
+          }
+          while (ext_it != exts.end()) {
+            auto ext_name = (*ext_it)->full_name();
+            auto ext_field = *ext_it;
+            ++ext_it;
+
+            ext_name_to_field.insert({ext_name, ext_field});
+            if (ext_name == name) {
+              fd = ext_field;
+              break;
+            }
+          }
+        }
+      }
       OP_REQUIRES(context, fd != nullptr,
                   errors::InvalidArgument("Unknown field: ", name,
                                           " in message type ", message_type));

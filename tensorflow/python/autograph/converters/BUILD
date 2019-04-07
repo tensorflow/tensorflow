@@ -20,12 +20,10 @@ py_library(
         "arg_defaults.py",
         "asserts.py",
         "break_statements.py",
-        "builtin_functions.py",
         "call_trees.py",
         "conditional_expressions.py",
         "continue_statements.py",
         "control_flow.py",
-        "decorators.py",
         "directives.py",
         "error_handlers.py",
         "function_scopes.py",
@@ -82,18 +80,6 @@ py_test(
 )
 
 py_test(
-    name = "builtin_functions_test",
-    srcs = ["builtin_functions_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
@@ -132,21 +118,6 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
-    name = "decorators_test",
-    srcs = ["decorators_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

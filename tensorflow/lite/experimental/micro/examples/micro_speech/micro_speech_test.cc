@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
@@ -32,7 +32,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_tiny_conv_model_data);
+  const tflite::Model* model =
+      ::tflite::GetModel(g_tiny_conv_micro_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
@@ -61,12 +62,12 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(4, input->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(49, input->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(43, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(40, input->dims->data[2]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
 
   // Copy a spectrogram created from a .wav audio file of someone saying "Yes",
   // into the memory area used for the input.
-  const uint8_t* yes_features_data = g_yes_f2e59fea_nohash_1_data;
+  const uint8_t* yes_features_data = g_yes_micro_f2e59fea_nohash_1_data;
   for (int i = 0; i < input->bytes; ++i) {
     input->data.uint8[i] = yes_features_data[i];
   }
@@ -102,7 +103,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_GT(yes_score, no_score);
 
   // Now test with a different input, from a recording of "No".
-  const uint8_t* no_features_data = g_no_f9643d42_nohash_4_data;
+  const uint8_t* no_features_data = g_no_micro_f9643d42_nohash_4_data;
   for (int i = 0; i < input->bytes; ++i) {
     input->data.uint8[i] = no_features_data[i];
   }

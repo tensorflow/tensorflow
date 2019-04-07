@@ -66,7 +66,6 @@ Examples
 =========
 
 Suppose that
-
 ```
   indices = [0, 2, -1, 1]
   depth = 3
@@ -76,16 +75,15 @@ Suppose that
 ```
 
 Then output is `[4 x 3]`:
-
-    ```output =
-      [5.0 0.0 0.0]  // one_hot(0)
-      [0.0 0.0 5.0]  // one_hot(2)
-      [0.0 0.0 0.0]  // one_hot(-1)
-      [0.0 5.0 0.0]  // one_hot(1)
-    ```
+```
+output =
+  [5.0 0.0 0.0]  // one_hot(0)
+  [0.0 0.0 5.0]  // one_hot(2)
+  [0.0 0.0 0.0]  // one_hot(-1)
+  [0.0 5.0 0.0]  // one_hot(1)
+```
 
 Suppose that
-
 ```
   indices = [0, 2, -1, 1]
   depth = 3
@@ -95,19 +93,19 @@ Suppose that
 ```
 
 Then output is `[3 x 4]`:
+```
+output =
+  [0.0 3.0 3.0 3.0]
+  [3.0 3.0 3.0 0.0]
+  [3.0 3.0 3.0 3.0]
+  [3.0 0.0 3.0 3.0]
+//  ^                one_hot(0)
+//      ^            one_hot(2)
+//          ^        one_hot(-1)
+//              ^    one_hot(1)
+```
 
-    ```output =
-      [0.0 3.0 3.0 3.0]
-      [3.0 3.0 3.0 0.0]
-      [3.0 3.0 3.0 3.0]
-      [3.0 0.0 3.0 3.0]
-    //  ^                one_hot(0)
-    //      ^            one_hot(2)
-    //          ^        one_hot(-1)
-    //              ^    one_hot(1)
-    ```
 Suppose that
-
 ```
   indices = [[0, 2], [1, -1]]
   depth = 3
@@ -117,14 +115,15 @@ Suppose that
 ```
 
 Then output is `[2 x 2 x 3]`:
-
-    ```output =
-      [
-        [1.0, 0.0, 0.0]  // one_hot(0)
-        [0.0, 0.0, 1.0]  // one_hot(2)
-      ][
-        [0.0, 1.0, 0.0]  // one_hot(1)
-        [0.0, 0.0, 0.0]  // one_hot(-1)
-      ]```
+```
+output =
+  [
+    [1.0, 0.0, 0.0]  // one_hot(0)
+    [0.0, 0.0, 1.0]  // one_hot(2)
+  ][
+    [0.0, 1.0, 0.0]  // one_hot(1)
+    [0.0, 0.0, 0.0]  // one_hot(-1)
+  ]
+```
 END
 }

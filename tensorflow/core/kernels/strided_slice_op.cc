@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -123,11 +123,8 @@ class StridedSliceOp : public OpKernel {
                       "Input must have rank at least 1, got: ", input.dims()));
       // Otherwise, is_identity should be true.
       VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
-      OP_REQUIRES(
-          context, begin[0] <= end[0],
-          errors::InvalidArgument("begin[0] (", begin[0],
-                                  ") must less or equal to end[0] (", end[0]));
-      Tensor slice = input.Slice(begin[0], end[0]);
+      // To tolerate begin[0] > end[0] (a 0-output slice), we min(begin, end).
+      Tensor slice = input.Slice(std::min(begin[0], end[0]), end[0]);
       Tensor tmp;
       OP_REQUIRES(context, tmp.CopyFrom(slice, final_shape),
                   errors::Internal("Copy failed"));

@@ -24,28 +24,23 @@ import sqlite3
 
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class SqlDatasetTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing SqlDataset."""
 
-  def _createSqlDataset(self, output_types, num_repeats=1):
-    dataset = readers.SqlDataset(self.driver_name, self.data_source_name,
-                                 self.query, output_types).repeat(num_repeats)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-    return init_op, get_next
+  def _createSqlDataset(self,
+                        query,
+                        output_types,
+                        driver_name="sqlite",
+                        num_repeats=1):
+    dataset = readers.SqlDataset(driver_name, self.data_source_name, query,
+                                 output_types).repeat(num_repeats)
+    return dataset
 
   def setUp(self):
     self.data_source_name = os.path.join(test.get_temp_dir(), "tftest.sqlite")
-    self.driver_name = array_ops.placeholder_with_default(
-        array_ops.constant("sqlite", dtypes.string), shape=[])
-    self.query = array_ops.placeholder(dtypes.string, shape=[])
 
     conn = sqlite3.connect(self.data_source_name)
     c = conn.cursor()

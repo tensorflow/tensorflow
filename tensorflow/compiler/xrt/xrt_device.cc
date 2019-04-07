@@ -43,4 +43,12 @@ namespace tensorflow {
   return Status::OK();
 }
 
+/*static*/ Status XRTGenericDeviceAccessor::InitScopedRef(
+    OpKernelContext* ctx, ScopedRef* scoped_ref) {
+  const XlaDevice::Metadata* metadata;
+  TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
+  scoped_ref->Acquire(metadata->client());
+  return Status::OK();
+}
+
 }  // namespace tensorflow

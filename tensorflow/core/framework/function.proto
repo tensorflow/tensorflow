@@ -76,6 +76,10 @@ message FunctionDef {
   // A mapping from the output arg names from `signature` to the
   // outputs from `node_def` that should be returned by the function.
   map<string, string> ret = 4;
+
+  // A mapping from control output names from `signature` to node names in
+  // `node_def` which should be control outputs of this function.
+  map<string, string> control_ret = 6;
 }
 
 // GradientDef defines the gradient function of a function defined in

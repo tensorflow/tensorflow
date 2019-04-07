@@ -44,7 +44,7 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
     std::unique_ptr<DeviceResolverInterface> drl(
         new DeviceResolverLocal(device_mgr_.get()));
     std::unique_ptr<ParamResolverInterface> prl(
-        new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+        new CollectiveParamResolverLocal(cp, device_mgr_.get(), drl.get(),
                                          task_name));
     cme_.reset(new CollectiveExecutorMgr(cp, device_mgr_.get(), std::move(drl),
                                          std::move(prl)));
@@ -73,11 +73,11 @@ TEST_F(CollectiveExecutorMgrTest, StepSequenceRelated) {
   EXPECT_EQ(CollectiveExecutor::kInvalidId, cme_->NextStepId(123));
   Notification ss_note;
   Status ss_status;
-  cme_->RefreshStepIdSequenceAsync(
-      123, [this, &ss_status, &ss_note](const Status& s) {
-        ss_status = s;
-        ss_note.Notify();
-      });
+  cme_->RefreshStepIdSequenceAsync(123,
+                                   [&ss_status, &ss_note](const Status& s) {
+                                     ss_status = s;
+                                     ss_note.Notify();
+                                   });
   ss_note.WaitForNotification();
   EXPECT_FALSE(ss_status.ok());
   EXPECT_EQ(ss_status.error_message(),
@@ -87,7 +87,7 @@ TEST_F(CollectiveExecutorMgrTest, StepSequenceRelated) {
   GetStepSequenceRequest* req = nullptr;
   GetStepSequenceResponse* resp = nullptr;
   cme_->GetStepSequenceAsync(req, resp,
-                             [this, &gs_status, &gs_note](const Status& s) {
+                             [&gs_status, &gs_note](const Status& s) {
                                gs_status = s;
                                gs_note.Notify();
                              });

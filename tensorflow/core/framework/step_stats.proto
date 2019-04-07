@@ -77,6 +77,8 @@ message NodeExecStats {
 message DeviceStepStats {
   string device = 1;
   repeated NodeExecStats node_stats = 2;
+  // Its key is thread id.
+  map<uint32, string> thread_names = 3;
 }
 
 message StepStats {

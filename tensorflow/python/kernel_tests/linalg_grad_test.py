@@ -216,6 +216,7 @@ if __name__ == '__main__':
           shape = (rows, cols)
           name = '%s_%s_%s' % (dtype.__name__, '_'.join(map(str, shape)),
                                l2_regularization)
+          float32_tol_fudge = 5.1 if l2_regularization == 1e-6 else 4.0
           _AddTest(
               MatrixBinaryFunctorGradientTest,
               'MatrixSolveLsGradient',
@@ -226,6 +227,6 @@ if __name__ == '__main__':
                    linalg_ops.matrix_solve_ls(a, b, l)),
                   dtype,
                   shape,
-                  float32_tol_fudge=4.0))
+                  float32_tol_fudge))
 
   test_lib.main()

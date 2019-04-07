@@ -499,11 +499,13 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 
 // tp_dealloc for EagerTensor.
 void EagerTensor_dealloc(EagerTensor* self) {
+  // Unhook the object from python's GC so that the weakref deleter doesn't
+  // try to re-delete this.
+  PyObject_GC_UnTrack((PyObject*)self);
+
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
-  if (self->weakreflist != nullptr) {
-    PyObject_ClearWeakRefs((PyObject*)self);
-  }
+  PyObject_ClearWeakRefs((PyObject*)self);
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);

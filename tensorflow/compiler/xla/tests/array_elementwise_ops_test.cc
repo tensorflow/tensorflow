@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -350,9 +349,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
                              error_spec_);
 }
 
-// TODO(b/119692968): This test runs OOM on the GPU and CPU backend.
-XLA_TEST_F(ArrayElementwiseOpTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(DeeplyNestedAddWithSlices))) {
+XLA_TEST_F(ArrayElementwiseOpTest, DeeplyNestedAddWithSlices) {
   XlaBuilder builder(TestName());
   std::vector<float> values(30, 0.0);
   auto a_literal = LiteralUtil::CreateR1<float>(values);
@@ -1068,6 +1065,29 @@ XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementU32R1) {
   ComputeAndCompareR1<uint32>(&builder, {}, {});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, PopcntR1) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<int32>(&builder, {0, 1, -15, 341});
+  PopulationCount(a);
+  ComputeAndCompareR1<int32>(&builder, {0, 1, 29, 5}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, PopcntR2) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<int32>(&builder, {{0, 1}, {-15, 341}});
+  PopulationCount(a);
+  Array2D<int32> expected_array({{0, 1}, {29, 5}});
+  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, PopcntS64) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<int64>(&builder, {{0, -1}, {INT64_MAX, INT64_MAX - 1}});
+  PopulationCount(a);
+  Array2D<int64> expected_array({{0, 64}, {63, 62}});
+  ComputeAndCompareR2<int64>(&builder, expected_array, {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftS32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<int32>(
@@ -1441,6 +1461,27 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
 
   ComputeAndCompareR1<float>(&builder, {NAN, NAN, NAN, INFINITY}, {},
                              error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, PowC64s) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto lhs =
+      ConstantR1<complex64>(&builder, {-2.0f, -0.6f, -0.6f, 0.0f, 0.0f, 0.0f});
+  auto rhs =
+      ConstantR1<complex64>(&builder, {0.5f, 0.6f, -0.6f, 0.5f, 0.6f, 0.0f});
+  Pow(lhs, rhs);
+
+  ComputeAndCompareR1<complex64>(&builder,
+                                 {
+                                     {0, 1.41421356},
+                                     {-2.27443288e-01, 0.69999846},
+                                     {-4.19847531e-01, -1.29215783},
+                                     {0, 0},
+                                     {0, 0},
+                                     {1, 0},
+                                 },
+                                 {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
@@ -2044,6 +2085,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonNanClampF32) {
   Clamp(minimum, argument, maximum);
 
   ComputeAndCompareR1<float>(&builder, {2.0f, 0.5f, 1.0f, 2.25f, 10.0f}, {},
+                             error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampF32) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto minimum = ConstantR1<float>(&builder, {1.0f, -6.5f, 1.0f, 2.25f, NAN});
+  auto argument =
+      ConstantR1<float>(&builder, {2.0f, 10.0f, -5.0f, 1.0f, 10.0f});
+  auto maximum = ConstantR1<float>(&builder, {3.0f, 0.5f, 25.5f, NAN, 123.0f});
+  Clamp(minimum, argument, maximum);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f, 0.5f, 1.0f, NAN, NAN}, {},
                              error_spec_);
 }
 

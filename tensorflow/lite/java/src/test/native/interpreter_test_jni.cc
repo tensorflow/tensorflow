@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <jni.h>
+#include <algorithm>
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,22 +25,23 @@ extern "C" {
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
     JNIEnv* env, jclass clazz) {
-  // A simple op which outputs a vector of length 1 with the value [7].
+  // A simple op which outputs a tensor with values of 7.
   static TfLiteRegistration registration = {
       .init = nullptr,
       .free = nullptr,
       .prepare =
           [](TfLiteContext* context, TfLiteNode* node) {
+            TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
             TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
-            TfLiteIntArray* scalar_size = TfLiteIntArrayCreate(1);
-            scalar_size->data[0] = 1;
+            TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
             output->type = kTfLiteFloat32;
-            return context->ResizeTensor(context, output, scalar_size);
+            return context->ResizeTensor(context, output, output_dims);
           },
       .invoke =
           [](TfLiteContext* context, TfLiteNode* node) {
             TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
-            output->data.f[0] = 7.0f;
+            std::fill(output->data.f,
+                      output->data.f + tflite::NumElements(output), 7.0f);
             return kTfLiteOk;
           },
       .profiling_string = nullptr,
@@ -46,8 +49,6 @@ Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
       .custom_name = "",
       .version = 1,
   };
-  // A simple delegate which replaces all ops with a single op that outputs a
-  // vector of length 1 with the value [7].
   static TfLiteDelegate delegate = {
       .data_ = nullptr,
       .Prepare = [](TfLiteContext* context,
@@ -57,6 +58,11 @@ Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
             context->GetExecutionPlan(context, &execution_plan));
         context->ReplaceNodeSubsetsWithDelegateKernels(
             context, registration, execution_plan, delegate);
+        // Now bind delegate buffer handles for all tensors.
+        for (size_t i = 0; i < context->tensors_size; ++i) {
+          context->tensors[i].delegate = delegate;
+          context->tensors[i].buffer_handle = static_cast<int>(i);
+        }
         return kTfLiteOk;
       },
       .CopyFromBufferHandle = nullptr,

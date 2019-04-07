@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -71,7 +72,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant({{LOOP_BOUND}})
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
@@ -106,7 +107,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
     loop_var.2 = (s32[], s32[3]{0}, s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=2
-    ROOT less-than = pred[] less-than(get-tuple-element.3, get-tuple-element.4)
+    ROOT less-than = pred[] compare(get-tuple-element.3, get-tuple-element.4), direction=LT
   }
   ENTRY SimpleLoopWithIndirectLoopBound {
     constant.3 = s32[] constant(42)
@@ -208,11 +209,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
 
-// The limitation on not being able to simplify loops that contain infeeds (and
-// other non-removable instructions) isn't fundamental -- it just stems from the
-// fact that our infrastructure sees simplifying such a loop as tantamount to
-// removing the non-removable instruction.
-TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
+// We can simplify loops whose bodies contain infeed or other side-effecting
+// instructions other than send/recv.
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
   HloComputation* computation = m->entry_computation();
   auto* while_op = computation->root_instruction();
@@ -220,6 +219,22 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
   auto* while_body = while_op->while_body();
   auto token = while_body->AddInstruction(HloInstruction::CreateToken());
   while_body->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(), op::Tuple());
+}
+
+// We don't simplify trip-count-1 loops whose *conditions* contain infeed or
+// other side-effecting instructions, because simplifying such a loop always
+// removes its condition!
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedInCondNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloComputation* computation = m->entry_computation();
+  auto* while_op = computation->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  auto* while_cond = while_op->while_condition();
+  auto token = while_cond->AddInstruction(HloInstruction::CreateToken());
+  while_cond->AddInstruction(HloInstruction::CreateInfeed(
       ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
@@ -236,7 +251,7 @@ TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
  NonTupleShapedLoop.condition {
    loop_var = s32[] parameter(0)
    constant = s32[] constant(100)
-   ROOT less-than = pred[] less-than(s32[] loop_var, s32[] constant)
+   ROOT less-than = pred[] compare(s32[] loop_var, s32[] constant), direction=LT
  }
  ENTRY INonTupleShapedLoop {
    constant.2 = s32[] constant(42)
@@ -386,7 +401,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
     param0 = (s32[], s32[], s32[]) parameter(0)
     get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
       index=2
-    ROOT equal-to = pred[] equal-to(s32[] constant.2, s32[] get-tuple-element)
+    ROOT equal-to = pred[] compare(s32[] constant.2, s32[] get-tuple-element), direction=EQ
   }
   ENTRY RemoveUnusedOperands {
     x = s32[] parameter(0)
@@ -406,13 +421,12 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   // The original while instruction is still left in the module as a dead
   // instruction, find a while instruction with a different name as the new
   // while instruction.
+  const auto& instrs = m->entry_computation()->instructions();
   HloInstruction* new_while_op =
-      *std::find_if(m->entry_computation()->instructions().begin(),
-                    m->entry_computation()->instructions().end(),
-                    [&](const HloInstruction* instr) {
-                      return (instr->opcode() == HloOpcode::kWhile &&
-                              instr->name() != "while");
-                    });
+      *absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kWhile &&
+                instr->name() != "while");
+      });
 
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   EXPECT_TRUE(
@@ -429,6 +443,47 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+}
+
+// Check that we can remove unused loop operands even if the loop contains a
+// side-effecting instruction.
+TEST_F(WhileLoopSimplifierTest,
+       RemoveUnusedLoopOperandsDespiteSideEffectingOps) {
+  const string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  body {
+    loop_var = (s32[]) parameter(0)
+    gte0 = s32[] get-tuple-element(loop_var), index=0
+    token0 = token[] after-all()
+    unused = ((s32[], pred[]), token[]) infeed(token0)
+    ROOT tuple = (s32[]) tuple(gte0)
+  }
+  cond {
+    loop_var = (s32[]) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    tuple.1 = (s32[]) tuple(s32[] x)
+    ROOT while = (s32[]) while((s32[]) tuple.1),
+      condition=cond, body=body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+
+  // The original while instruction is still left in the module as a dead
+  // instruction, find a while instruction with a different name as the new
+  // while instruction.
+  const auto& instrs = m->entry_computation()->instructions();
+  HloInstruction* new_while_op =
+      *absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kWhile &&
+                instr->name() != "while");
+      });
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(new_while_op->shape()))
+      << new_while_op->shape().ToString();
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
@@ -471,7 +526,7 @@ TEST_F(WhileLoopSimplifierTest,
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(44)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
@@ -503,7 +558,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
     loop_var.2 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(47)
-    ROOT less-than = pred[] less-than(get-tuple-element.4, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.4, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
@@ -554,8 +609,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
 
   HloInstruction* new_while = FindFirstWhile(m.get());
   Shape flat_tuple =
-      ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3], s32[4])")
-          .ValueOrDie();
+      ParseShape("(s32[1], s32[2], s32[3], s32[4])").ValueOrDie();
   SCOPED_TRACE(m->ToString());
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), flat_tuple));
   EXPECT_TRUE(ShapeUtil::Equal(
@@ -567,8 +621,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
       flat_tuple));
   EXPECT_TRUE(ShapeUtil::Equal(
       m->entry_computation()->root_instruction()->shape(),
-      ShapeUtil::ParseShapeString("((s32[1]), (s32[2], s32[3], (s32[4])))")
-          .ValueOrDie()));
+      ParseShape("((s32[1]), (s32[2], s32[3], (s32[4])))").ValueOrDie()));
 }
 
 // Edge-case: All elements of the loop carry are constants which can be removed,
@@ -641,8 +694,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
   EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
 
   HloInstruction* new_while = FindFirstWhile(m.get());
-  Shape new_while_shape =
-      ShapeUtil::ParseShapeString("(s32[1], s32[3])").ValueOrDie();
+  Shape new_while_shape = ParseShape("(s32[1], s32[3])").ValueOrDie();
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_body()->root_instruction()->shape(), new_while_shape));
@@ -652,9 +704,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      m->entry_computation()->root_instruction()->shape(),
-      ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3])").ValueOrDie()));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(m->entry_computation()->root_instruction()->shape(),
+                       ParseShape("(s32[1], s32[2], s32[3])").ValueOrDie()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Tuple(_, op::Constant(), _));
 }
@@ -682,7 +734,7 @@ const char* const kSimpleMergeInductionVariablesModule = R"(
     b = TYPE[] get-tuple-element(param), index=1
     sum = TYPE[] power(a, b)
     ten = TYPE[] constant(10)
-    ROOT cond = pred[] less-than(sum, ten)
+    ROOT cond = pred[] compare(sum, ten), direction=LT
   }
   ENTRY Loop {
     a = TYPE[] constant(10)
@@ -712,7 +764,7 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_Simple) {
   // We should have added a new loop counter for s32[] to the end of the tuple.
   SCOPED_TRACE(m->ToString());
   Shape new_while_shape =
-      ShapeUtil::ParseShapeString("(s32[], s32[], s32[], s32[])").ValueOrDie();
+      ParseShape("(s32[], s32[], s32[], s32[])").ValueOrDie();
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_body()->root_instruction()->shape(), new_while_shape));

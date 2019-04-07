@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common TFGAN summaries."""
+"""Common TF-GAN summaries."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,9 +20,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.eval.python import eval_utils
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import util as loss_util
@@ -171,8 +172,10 @@ def add_image_comparison_summaries(gan_model, num_comparisons=2,
         gan_model.generated_data[:num_comparisons])
     real_list = array_ops.unstack(gan_model.real_data[:num_comparisons])
     diffs = [
-        math_ops.abs(math_ops.to_float(generated) - math_ops.to_float(real)) for
-        generated, real in zip(generated_list, real_list)]
+        math_ops.abs(math_ops.cast(generated, dtypes.float32) -
+                     math_ops.cast(real, dtypes.float32))
+        for generated, real in zip(generated_list, real_list)
+    ]
     image_list.extend(diffs)
 
   # Reshape image and display.
@@ -261,7 +264,7 @@ def add_stargan_image_summaries(stargan_model,
 
   summary.image(
       'stargan_image_generation',
-      functional_ops.map_fn(
+      map_fn.map_fn(
           _build_image,
           stargan_model.input_data[:num_images],
           parallel_iterations=num_images,

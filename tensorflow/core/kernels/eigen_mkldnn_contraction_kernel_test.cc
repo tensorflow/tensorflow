@@ -33,8 +33,8 @@ Eigen::array<Index, NumDims> RandomDims(int min_dim = 1, int max_dim = 20) {
 using Scalar = float;
 using Index = Eigen::Index;
 
-TEST(EigenMkldnnTest, MkldnnPack) {
-  // Packing with mkldnn_gemm_pack is the same as taking a slice of 2
+TEST(EigenMkldnnTest, GemmPackColMajor) {
+  // Packing with gemm_pack_colmajor_block is the same as taking a slice of 2
   // dimensional Tensor.
 
   // Mkldnn pack and gemm are used only in Tensor contractions, and it's
@@ -42,7 +42,8 @@ TEST(EigenMkldnnTest, MkldnnPack) {
   static const int Options = ColMajor;
 
   using DataMapper = blas_data_mapper<Scalar, Index, ColMajor>;
-  using MkldnnGemmPack = mkldnn_gemm_pack<Scalar, Index, DataMapper, ColMajor>;
+  using GemmPackColMajor =
+      gemm_pack_colmajor_block<Scalar, Index, DataMapper, ColMajor>;
   using Tensor2d = Tensor<Scalar, 2, Options, Index>;
 
   Eigen::array<Index, 2> dims = RandomDims<Index, 2>(1, 500);
@@ -65,9 +66,9 @@ TEST(EigenMkldnnTest, MkldnnPack) {
   Tensor2d pack_dst(slice_size[0], slice_size[1]);
   Tensor2d slice_dst(slice_size[0], slice_size[1]);
 
-  // Pack memory using mkldnn_gemm_pack.
+  // Pack memory using gemm_pack_colmajor_block.
   DataMapper data_mapper(src.data(), dims[0]);
-  MkldnnGemmPack gemm_pack;
+  GemmPackColMajor gemm_pack;
   gemm_pack(pack_dst.data(),
             data_mapper.getSubMapper(slice_start[0], slice_start[1]),
             slice_size[0], slice_size[1]);

@@ -126,7 +126,9 @@ class LBetaTest(test.TestCase):
     x_b = [0.1]
     with self.session(use_gpu=True):
       self.assertAllClose(
-          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
+          1,
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))),
+          rtol=3e-6)
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_b))))
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
@@ -202,54 +204,18 @@ class BesselTest(test.TestCase):
 class EinsumTest(test.TestCase):
 
   simple_cases = [
-      'ij,jk->ik',
-      'ijk,jklm->il',
-      'ij,jk,kl->il',
-      'ijk->i',
-      'ijk->kji',
-      'ji,kj->ik',
-      'ikl,kji->kl',
-      'klj,lki->ij',
-      'ijk,ilj->kli',
-      'kij,mkb->ijmb',
-      'ijk,ijl,ikl->i',
-      'i,ijk,j->k',
-      'ij,ij,jk,kl->il',
-      'ij,kj,il,jm->ml',
-      'a,ab,abc->abc',
-      'a,b,ab->ab',
-      'ab,ab,c->',
-      'ab,ab,c->c',
-      'ab,ab,cd,cd->',
-      'ab,ab,cd,cd->ac',
-      'ab,ab,cd,cd->cd',
-      'ab,ab,cd,cd,ef,ef->',
-      'ab,cd,ef->abcdef',
-      'ab,cd,ef->acdf',
-      'ab,cd,de->abcde',
-      'ab,cd,de->be',
-      'ab,bcd,cd->abcd',
-      'ab,bcd,cd->abd',
-      'eb,cb,fb->cef',
-      'abcd,ad',
-      'bd,db,eac->ace',
-      'ba,ac,da->bcd',
-      'ab,ab',
-      'ab,ba',
-      'abc,abc',
-      'abc,bac',
-      'abc,cba',
-      'dba,ead,cad->bce',
-      'aef,fbc,dca->bde',
-      'iJ,Jk->ik',
-      'iJ,Ki->JK',
-      'iJk,Jklm->Jk',
-      'ij, jk, kl -> il',
-      'a, ab, abc -> abc',
-      'ab, ab, cd, cd, ef, ef -> ',
-      'abc, bac',
-      'iJ, Ki -> JK',
-      'iJk, Jklm -> Jk'
+      'ij,jk->ik', 'ijk,jklm->il', 'ij,jk,kl->il', 'ijk->i', 'ijk->kji',
+      'ji,kj->ik', 'ikl,kji->kl', 'klj,lki->ij', 'ijk,ilj->kli',
+      'kij,mkb->ijmb', 'ijk,ijl,ikl->i', 'i,ijk,j->k', 'ij,ij,jk,kl->il',
+      'ij,kj,il,jm->ml', 'a,ab,abc->abc', 'a,b,ab->ab', 'ab,ab,c->',
+      'ab,ab,c->c', 'ab,ab,cd,cd->', 'ab,ab,cd,cd->ac', 'ab,ab,cd,cd->cd',
+      'ab,ab,cd,cd,ef,ef->', 'ab,cd,ef->abcdef', 'ab,cd,ef->acdf',
+      'ab,cd,de->abcde', 'ab,cd,de->be', 'ab,bcd,cd->abcd', 'ab,bcd,cd->abd',
+      'eb,cb,fb->cef', 'abcd,ad', 'bd,db,eac->ace', 'ba,ac,da->bcd', 'ab,ab',
+      'ab,ba', 'abc,abc', 'abc,bac', 'abc,cba', 'dba,ead,cad->bce',
+      'aef,fbc,dca->bde', 'iJ,Jk->ik', 'iJ,Ki->JK', 'iJk,Jklm->Jk',
+      'ij, jk, kl -> il', 'a, ab, abc -> abc', 'ab, ab, cd, cd, ef, ef -> ',
+      'abc, bac', 'iJ, Ki -> JK', 'iJk, Jklm -> Jk', 'ii', 'ijji'
   ]
 
   long_cases = [
@@ -267,7 +233,11 @@ class EinsumTest(test.TestCase):
       '',
       'ijk ijk',
       'ij.jk->ik',
-      'ij...,jk...->ik...',
+      '...ij...,jk...->ik...',
+      '...ij,jk...->...ik...',
+      'i$...',
+      'ij...,jk...->ik.',
+      'ij.,jk...->ik...',
       'ij,k ->kji',
       'ij,k-> kji',
 
@@ -278,10 +248,44 @@ class EinsumTest(test.TestCase):
       'ij,jkl->kl',
 
       # this is allowed in numpy but not implemented here yet
-      'iij,jk'
+      'iij,jk',
+      'a...a->a...',
   ]
 
-  dim_mismatch_cases = [('ijk,jkl->il', [(2, 3, 4), (3, 5, 6)])]
+  ellipsis_cases = [
+      ['...ij,...jk->...ik', 'abij,abjk->abik'],  # batch mat-mat multiply
+      ['...ij,...jk->...ik', 'abij,bjk->abik'],
+      ['...ij,...jk->...ik', 'abij,jk->abik'],
+      ['...ij,...jk->...ik', 'ij,jk->ik'],
+      ['...ij,...jk->...ik', 'abij,abjk->'],
+      ['...ij,...jk->', 'bij,bjk->'],
+      ['...ij,...jk', 'bij,bjk'],
+      ['...XY,...YZ', 'bXY,bYZ'],
+      ['...ik,...i->...i', 'abik,abi->abi'],      # batch mat-vec multiply
+      ['...ij->...ji', 'aij->aji'],               # batch matrix transpose
+      ['...ij->...', 'aij->a'],                   # batch sum
+      ['...,...->...', 'ij,ij->ij'],              # hadamard product
+      ['...i,...j->...ij', 'abi,abj->abij'],      # outer product
+      ['i...,j...->...ij', 'iab,jab->abij'],      #
+      ['i...,j...->ij...', 'iab,jab->ijab'],      #
+      ['...ik,...jkl,...il->...ij', 'aik,ajkl,ail->aij'],
+      ['...', 'abc'],                             # copy
+      ['...ca,cd...,d...f,afc->', 'bca,cdb,dbf,afc->'],
+      # Tests based on https://github.com/dask/dask/pull/3412/files
+      ['ab...,bc...->ac...', 'abxy,bcxy->acxy'],
+      ['a...a', 'aba'],
+      ['a...a', 'aa'],
+      ['abc...->cba...', 'abcxy->cbaxy'],
+      ['...ab->...a', 'xyab->xya'],
+      ['...abc,...abcd->...d', 'xyabc,xabcd->xyd'],
+      ['ab...,b->ab...', 'abxy,b->abxy'],
+  ]
+
+  dim_mismatch_cases = [('ijk,jkl->il', [(2, 3, 4), (3, 5, 6)]),
+                        ('...ij,...jk->...ik', [(3), (3, 4)]),
+                        (('...abcdefghijklmnopqrstuvwxyz,'
+                          '...ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
+                         [tuple([1] * 27), tuple([1] * 27)])]
 
   def test_simple(self):
     for case in self.simple_cases:
@@ -290,6 +294,10 @@ class EinsumTest(test.TestCase):
   def test_long(self):
     for case in self.long_cases:
       self.run_test(case)
+
+  def test_ellipsis(self):
+    for (axes, expanded_axes) in self.ellipsis_cases:
+      self.run_test(axes, expanded_axes)
 
   @test_util.run_deprecated_v1
   def test_invalid(self):
@@ -332,8 +340,10 @@ class EinsumTest(test.TestCase):
       with self.assertRaises(ValueError):
         _ = special_math_ops.einsum(axes, *inputs)
 
-  def run_test(self, axes):
-    all_axes = {ax: np.random.randint(4, 12) for ax in axes if ax.isalpha()}
+  def run_test(self, axes, expanded_axes=None):
+    expanded_axes = expanded_axes if expanded_axes is not None else axes
+    all_axes = {ax: np.random.randint(4, 12)
+                for ax in expanded_axes if ax.isalpha()}
 
     input_vals = []
     input_axes, _, _ = axes.partition('->')
@@ -348,10 +358,13 @@ class EinsumTest(test.TestCase):
     with self.session(use_gpu=True):
       output_value = self.evaluate(output_tensor)
 
-    correct_value = np.einsum(axes, *input_vals)
-
+    correct_value = 0
+    if axes == 'ijji':
+      output = math_ops.trace(*input_tensors)
+      correct_value = self.evaluate(output)
+    else:
+      correct_value = np.einsum(axes, *input_vals)
     err = np.abs(correct_value - output_value).max()
-    # print(axes, err)
     self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):
@@ -422,6 +435,20 @@ class EinsumTest(test.TestCase):
         }
         self.assertAllClose([[[7, 8]]], sess.run(out, feed_dict=feed_dict))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_multiple_ellipses(self):
+    m0 = array_ops.placeholder_with_default([[[[1, 2]], [[2, 1]]]],
+                                            shape=(None, 2, None, 2))
+    m1 = array_ops.placeholder_with_default([[3, 2]], shape=(None, 2))
+    out = special_math_ops.einsum('...jkl,...j->...kl', m0, m1)
+    self.assertAllClose([[[7, 8]]], self.evaluate(out))
+
+  def test_ellipses_with_unknown_input_dim(self):
+    with ops.Graph().as_default():
+      m0 = array_ops.placeholder(dtypes.float32)
+      m1 = array_ops.placeholder_with_default([[3, 2]], shape=(None, 2))
+      with self.assertRaises(ValueError):
+        _ = special_math_ops.einsum('...jkl,...j->...kl', m0, m1)
 
 if __name__ == '__main__':
   test.main()

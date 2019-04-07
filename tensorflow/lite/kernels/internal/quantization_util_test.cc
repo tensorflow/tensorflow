@@ -20,6 +20,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAreArray;
 using ::testing::Pair;
 
 template <class FloatIn, class IntOut>
@@ -404,6 +405,52 @@ TEST(QuantizationUtilTest, CalculateInputRadius) {
   EXPECT_EQ(CalculateInputRadius(3, 27), 14);
   EXPECT_EQ(CalculateInputRadius(3, 28), 7);
   EXPECT_EQ(CalculateInputRadius(4, 2), 503316480);
+}
+
+TEST(QuantizationUtilTest, QuantizeMultiplierArray) {
+  const std::vector<double> weights = {-4,    -2,   -1,  -0.5, -0.25, -0.125, 0,
+                                       0.125, 0.25, 0.5, 1,    2,     4};
+  const int size = weights.size();
+  std::vector<int32> effective_scale_significand(size);
+  std::vector<int> effective_scale_shift(size);
+  QuantizeMultiplierArray(weights.data(), size,
+                          effective_scale_significand.data(),
+                          effective_scale_shift.data());
+  const std::vector<int32> expected_effective_scale_significand = {
+      -1073741824,  // float scale = -4
+      -1073741824,  // float scale = -2
+      -1073741824,  // float scale = -1
+      -1073741824,  // float scale = -0.5
+      -1073741824,  // float scale = -0.25
+      -1073741824,  // float scale = -0.125
+      0,            // float scale = 0
+      1073741824,   // float scale = 0.125
+      1073741824,   // float scale = 0.25
+      1073741824,   // float scale = 0.5
+      1073741824,   // float scale = 1
+      1073741824,   // float scale = 2
+      1073741824,   // float scale = 4
+  };
+
+  const std::vector<int> expected_effective_scale_shift = {
+      3,   // float scale = -4
+      2,   // float scale = -2
+      1,   // float scale = -1
+      0,   // float scale = -0.5
+      -1,  // float scale = -0.25
+      -2,  // float scale = -0.125
+      0,   // float scale = 0
+      -2,  // float scale = 0.125
+      -1,  // float scale = 0.25
+      0,   // float scale = 0.5
+      1,   // float scale = 1
+      2,   // float scale = 2
+      3,   // float scale = 4
+  };
+  EXPECT_THAT(effective_scale_significand,
+              ElementsAreArray(expected_effective_scale_significand));
+  EXPECT_THAT(effective_scale_shift,
+              ElementsAreArray(expected_effective_scale_shift));
 }
 
 }  // namespace

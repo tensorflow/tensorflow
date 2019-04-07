@@ -62,7 +62,7 @@ def _read_graph_def(filename):
     raise ValueError("Input graph file '" + filename + "' does not exist!")
 
   graph_def = graph_pb2.GraphDef()
-  with gfile.FastGFile(filename, "rb") as f:
+  with gfile.GFile(filename, "rb") as f:
     graph_def.ParseFromString(f.read())
   return graph_def
 

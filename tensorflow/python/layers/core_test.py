@@ -463,9 +463,9 @@ class DropoutTest(test.TestCase):
       self.assertAllClose(np.ones((5, 5)), np_output)
 
 
-@test_util.run_v1_only('b/120545219')
 class FlattenTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCreateFlatten(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
@@ -490,6 +490,7 @@ class FlattenTest(test.TestCase):
     shape = core_layers.Flatten().compute_output_shape((None, 3, None))
     self.assertEqual(shape.as_list(), [None, None])
 
+  @test_util.run_deprecated_v1
   def testDataFormat5d(self):
     np_input_channels_last = np.arange(
         120, dtype='float32').reshape([1, 5, 4, 3, 2])
@@ -507,6 +508,7 @@ class FlattenTest(test.TestCase):
 
       self.assertAllEqual(np_output_cl, np_output_cf)
 
+  @test_util.run_deprecated_v1
   def testDataFormat4d(self):
     np_input_channels_last = np.arange(
         24, dtype='float32').reshape([1, 4, 3, 2])
@@ -524,11 +526,13 @@ class FlattenTest(test.TestCase):
 
       self.assertAllEqual(np_output_cl, np_output_cf)
 
+  @test_util.run_deprecated_v1
   def testFunctionalFlatten(self):
     x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
     y = core_layers.flatten(x, name='flatten')
     self.assertEqual(y.get_shape().as_list(), [None, 6])
 
+  @test_util.run_deprecated_v1
   def testFlatten0D(self):
     x = array_ops.placeholder(shape=(None,), dtype='float32')
     y = core_layers.Flatten()(x)
@@ -537,6 +541,7 @@ class FlattenTest(test.TestCase):
     self.assertEqual(list(np_output.shape), [5, 1])
     self.assertEqual(y.shape.as_list(), [None, 1])
 
+  @test_util.run_deprecated_v1
   def testFlattenUnknownAxes(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(shape=(5, None, None), dtype='float32')

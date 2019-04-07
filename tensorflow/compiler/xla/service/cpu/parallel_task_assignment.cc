@@ -146,11 +146,8 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       (opcode == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction,
                                                 target_machine_features_)) ||
-      PotentiallyImplementedAsEigenDot(*instruction,
-                                       target_machine_features_) ||
-      (opcode == HloOpcode::kFusion &&
-       instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
-      ShapeUtil::IsTuple(instruction->shape())) {
+      (opcode == HloOpcode::kFusion && !instruction->IsLoopFusion()) ||
+      instruction->shape().IsTuple()) {
     return 1;
   }
 

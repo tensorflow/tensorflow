@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.stack."""
+"""Tests for ragged_concat_ops.stack."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,7 +22,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -32,6 +33,52 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
                         parameterized.TestCase):
 
   @parameterized.parameters(
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=0',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21']],),   # shape=(3, None)
+          axis=0,
+          expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=1',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),   # shape=(3, None)
+          axis=1,
+          expected=[
+              [[b'a00', b'a01']],
+              [[]],
+              [[b'a20', b'a21', b'a22']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=2',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),   # shape=(3, None)
+          axis=2,
+          expected=[
+              [[b'a00'], [b'a01']], [],
+              [[b'a20'], [b'a21'], [b'a22']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=-3',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21']],),   # shape=(3, None)
+          axis=-3,
+          expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=-2',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),   # shape=(3, None)
+          axis=-2,
+          expected=[
+              [[b'a00', b'a01']],
+              [[]],
+              [[b'a20', b'a21', b'a22']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=-1',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),  # shape=(3, None)
+          axis=-1,
+          expected=[
+              [[b'a00'], [b'a01']], [],
+              [[b'a20'], [b'a21'], [b'a22']]]),
       dict(
           descr='Two rank-2 inputs (ragged_rank=1), axis=0',
           rt_inputs=(
@@ -279,11 +326,11 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
     if ragged_ranks is None:
       ragged_ranks = [None] * len(rt_inputs)
     rt_inputs = [
-        ragged.constant(rt_input, ragged_rank=rrank)
+        ragged_factory_ops.constant(rt_input, ragged_rank=rrank)  # pylint: disable=g-long-ternary
         if rrank != 0 else constant_op.constant(rt_input)
         for (rt_input, rrank) in zip(rt_inputs, ragged_ranks)
     ]
-    stacked = ragged.stack(rt_inputs, axis)
+    stacked = ragged_concat_ops.stack(rt_inputs, axis)
     if expected_ragged_rank is not None:
       self.assertEqual(stacked.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
@@ -313,7 +360,8 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
           message='axis=3 out of bounds: expected -3<=axis<3'),
   )
   def testError(self, rt_inputs, axis, error, message):
-    self.assertRaisesRegexp(error, message, ragged.stack, rt_inputs, axis)
+    self.assertRaisesRegexp(error, message, ragged_concat_ops.stack, rt_inputs,
+                            axis)
 
   def testSingleTensorInput(self):
     """Tests ragged_stack with a single tensor input.
@@ -322,8 +370,8 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
     also pass in a single value (as with tf.stack), in which case it is
     equivalent to expand_dims(axis=0).  This test exercises that path.
     """
-    rt_inputs = ragged.constant([[1, 2], [3, 4]])
-    stacked = ragged.stack(rt_inputs, 0)
+    rt_inputs = ragged_factory_ops.constant([[1, 2], [3, 4]])
+    stacked = ragged_concat_ops.stack(rt_inputs, 0)
     self.assertRaggedEqual(stacked, [[[1, 2], [3, 4]]])
 
 

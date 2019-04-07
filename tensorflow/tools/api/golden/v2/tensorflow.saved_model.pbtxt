@@ -77,7 +77,7 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "TRANING"
+    name: "TRAINING"
     mtype: "<type \'str\'>"
   }
   member {
@@ -89,28 +89,12 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member_method {
-    name: "build_signature_def"
-    argspec: "args=[\'inputs\', \'outputs\', \'method_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "classification_signature_def"
-    argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "contains_saved_model"
     argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "is_valid_signature"
-    argspec: "args=[\'signature_def\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "predict_signature_def"
-    argspec: "args=[\'inputs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "regression_signature_def"
-    argspec: "args=[\'examples\', \'predictions\'], varargs=None, keywords=None, defaults=None"
+    name: "load"
+    argspec: "args=[\'export_dir\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "save"

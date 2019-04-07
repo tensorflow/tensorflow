@@ -46,7 +46,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
+  if (!while_op->parent()->IsRemovable(while_op)) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -58,7 +58,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_body_root = while_body->root_instruction();
 
-  if (!ShapeUtil::IsTuple(while_init->shape())) {
+  if (!while_init->shape().IsTuple()) {
     VLOG(2) << "While op's carried value isn't tuple shaped.";
     return false;
   }
@@ -109,8 +109,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       // operand appears in, but it may appear more than once!
       if (user->user_count() == 1 && user->users().front() == while_body_root &&
           while_body_root->operand_index(user) == user->tuple_index() &&
-          std::count(while_body_root->operands().begin(),
-                     while_body_root->operands().end(), user) == 1) {
+          absl::c_count(while_body_root->operands(), user) == 1) {
         continue;
       }
 
@@ -127,7 +126,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // through to the while body's root, count that element as "used", since
   // removing that element would be observable.
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    if (used_tuple_indices.count(i)) {
+    if (used_tuple_indices.contains(i)) {
       continue;
     }
 
@@ -158,7 +157,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                           used_tuple_indices.end());
-  std::sort(new_to_old_tuple_idx.begin(), new_to_old_tuple_idx.end());
+  absl::c_sort(new_to_old_tuple_idx);
 
   absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
   for (int64 new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
@@ -181,7 +180,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // replace the old instructions after we remove unused elements from the while
   // tuple.
   auto make_while_computation_replacements = [&](const HloComputation* comp) {
-    std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements;
 
     auto* param = comp->parameter_instruction(0);
@@ -233,7 +232,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       while_cond->CloneWithReplacements(
           make_while_computation_replacements(while_cond));
 
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
   new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());
@@ -301,8 +300,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   }
   HloInstruction* new_tuple =
       computation->AddInstruction(HloInstruction::CreateTuple(new_tuple_elems));
-  TF_RETURN_IF_ERROR(while_op->ReplaceAllUsesWith(new_tuple));
-
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, new_tuple));
   return true;
 }
 
@@ -455,27 +453,29 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 //
 // Returns true if it made a change to the graph.
 static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
-  // Cowardly refuse to remove loops that are not removable.  In practice,
-  // this means that we can't remove loops that contain side-effecting
-  // instructions or have control predecessors/successors.
+  // Cowardly refuse to remove loops that are not removable.  In practice, this
+  // means that we can't remove loops that have control predecessors/successors.
+  if (!while_op->parent()->IsRemovable(while_op)) {
+    VLOG(2) << "Not attempting to remove while loop that is not removable: "
+            << while_op->ToShortString();
+    return false;
+  }
+
+  // Refuse to remove while loops with a condition that contain side-effects,
+  // because removing a while loop is tantamount to removing its condition.
   //
-  // This is not a fundamental limitation.  The control operands can be moved
-  // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.  But
-  // moving an op out of the loop also removes implicit control dependencies
-  // between the op and the ops outside the loop, so we'd have to add those back
-  // for things like infeed/outfeed.  It gets complicated.  So for now we just
-  // avoid it.
-  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
-    VLOG(2) << "Not attempting to remove while loop it is not removable: "
+  // TODO(jlebar): This is conservative: We could instead just run the while
+  // condition once (trip-count == 0) or twice (trip-count == 1).
+  if (while_op->while_condition()->HasSideEffect()) {
+    VLOG(2) << "Not attempting to remove while loop whose condition contains "
+               "side-effecting instructions: "
             << while_op->ToShortString();
     return false;
   }
 
   // Remove while loops with static trip count of 0.
   optional<int64> trip_count =
-      ComputeWhileLoopTripCount(while_op,
-                                /*max_value_returned=*/1);
+      ComputeWhileLoopTripCount(while_op, /*max_brute_force_iters=*/1);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
     // "init" operand.
@@ -583,8 +583,7 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
 static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     absl::Span<HloInstruction*> instrs, const Shape& desired_shape,
     std::vector<std::unique_ptr<HloInstruction>>* new_instrs) {
-  CHECK(ShapeUtil::IsTuple(desired_shape))
-      << ShapeUtil::HumanString(desired_shape);
+  CHECK(desired_shape.IsTuple()) << ShapeUtil::HumanString(desired_shape);
 
   // For each child shape in `desired_shape`, slice out the correct number of
   // `instrs` and call UnflattenTupleInstr recursively.  At each step we remove
@@ -593,7 +592,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
   std::vector<HloInstruction*> elems;
   for (int64 i = 0; i < desired_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = desired_shape.tuple_shapes(i);
-    if (!ShapeUtil::IsTuple(subshape)) {
+    if (!subshape.IsTuple()) {
       elems.push_back(instrs[0]);
       instrs.remove_prefix(1);
       continue;
@@ -603,7 +602,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     int64 num_leaves = 0;
     ShapeUtil::ForEachSubshape(
         subshape, [&](const Shape& s, const ShapeIndex& /*index*/) {
-          if (!ShapeUtil::IsTuple(s)) {
+          if (!s.IsTuple()) {
             ++num_leaves;
           }
         });
@@ -625,7 +624,7 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
     HloInstruction* instr,
     std::vector<std::unique_ptr<HloInstruction>>* new_instrs) {
   const auto& shape = instr->shape();
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     return {instr};
   }
   std::vector<HloInstruction*> elems;
@@ -665,7 +664,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   std::vector<Shape> flattened_shape_elems;
   ShapeUtil::ForEachSubshape(while_shape,
                              [&](const Shape& s, const ShapeIndex& /*index*/) {
-                               if (!ShapeUtil::IsTuple(s)) {
+                               if (!s.IsTuple()) {
                                  flattened_shape_elems.push_back(s);
                                }
                              });

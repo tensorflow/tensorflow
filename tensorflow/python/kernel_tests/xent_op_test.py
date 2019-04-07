@@ -41,7 +41,7 @@ from tensorflow.python.platform import test
 class XentTest(test.TestCase):
 
   def _npXent(self, features, labels, dim=-1):
-    if dim is -1:
+    if dim == -1:
       dim = len(features.shape) - 1
     one_only_on_dim = list(features.shape)
     one_only_on_dim[dim] = 1

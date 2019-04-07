@@ -51,14 +51,14 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
-        return std::unique_ptr<IteratorBase>(new ForeverIterator(
-            {this, strings::StrCat(prefix, "::ForeverRepeat")}));
+        return absl::make_unique<ForeverIterator>(ForeverIterator::Params{
+            this, strings::StrCat(prefix, "::ForeverRepeat")});
       } else if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(new EmptyIterator(
-            {this, strings::StrCat(prefix, "::EmptyRepeat")}));
+        return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+            this, strings::StrCat(prefix, "::EmptyRepeat")});
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(
-            {this, strings::StrCat(prefix, "::FiniteRepeat")}));
+        return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+            this, strings::StrCat(prefix, "::FiniteRepeat")});
       }
     }
 
@@ -220,6 +220,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
                 dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           }
           Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          DCHECK(!*end_of_sequence || out_tensors->empty());
           if (first_call_ && *end_of_sequence) {
             // If the first call to GetNext() fails because the end
             // of sequence has been reached, we terminate the

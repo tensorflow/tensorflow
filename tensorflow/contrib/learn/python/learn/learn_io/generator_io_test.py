@@ -174,7 +174,7 @@ class GeneratorIoTest(test.TestCase):
       return np.arange(32, 36)
 
     with self.cached_session():
-      with self.assertRaisesRegexp(TypeError, 'x\(\) must be generator'):
+      with self.assertRaisesRegexp(TypeError, r'x\(\) must be generator'):
         failing_input_fn = generator_io.generator_input_fn(
             generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -185,7 +185,7 @@ class GeneratorIoTest(test.TestCase):
       yield np.arange(32, 36)
 
     with self.cached_session():
-      with self.assertRaisesRegexp(TypeError, 'x\(\) must yield dict'):
+      with self.assertRaisesRegexp(TypeError, r'x\(\) must yield dict'):
         failing_input_fn = generator_io.generator_input_fn(
             generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()

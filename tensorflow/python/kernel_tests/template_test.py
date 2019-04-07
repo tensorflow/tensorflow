@@ -161,6 +161,21 @@ class TemplateTest(test.TestCase):
     self.assertNotEqual(len(first), len(result))
 
   @test_util.run_in_graph_and_eager_modes
+  def test_template_with_empty_name(self):
+    tpl = template.make_template("", variable_scoped_function)
+    with variable_scope.variable_scope("outer"):
+      x = variable_scope.get_variable("x", [])
+      v = tpl()
+    self.assertEqual("outer/", tpl.variable_scope_name)
+    self.assertEqual("outer//dummy:0", v.name)
+    if context.executing_eagerly():
+      # In eager mode `x` is not visible to the template since the template does
+      # not rely on global collections.
+      self.assertEqual([v], tpl.variables)
+    else:
+      self.assertEqual([x, v], tpl.variables)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_template_with_name(self):
     tmpl1 = template.make_template("s1", variable_scoped_function)
     tmpl2 = template.make_template("s1", variable_scoped_function)

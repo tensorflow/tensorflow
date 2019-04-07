@@ -16,18 +16,25 @@ The binary takes the following parameters:
     The path to the directory containing ground truth images.
 
 *   `ground_truth_labels`: `string` \
-    Path to ground truth labels file. This file should contain the same number of labels as    the number images in the ground truth directory. The labels are assumed to be in the
-    same order as the sorted filename of images. See [ground truth label generation](#ground-truth-label-generation)
-    section for more information about how to generate labels for images.
+    Path to ground truth labels file. This file should contain the same number
+    of labels as the number images in the ground truth directory. The labels are
+    assumed to be in the same order as the sorted filename of images. See
+    [ground truth label generation](#ground-truth-label-generation) section for
+    more information about how to generate labels for images.
 
-*    `model_output_labels`: `string` \
+*   `model_output_labels`: `string` \
     Path to the file containing labels, that is used to interpret the output of
     the model. E.g. in case of mobilenets, this is the path to
     `mobilenet_labels.txt` where each label is in the same order as the output
     1001 dimension tensor.
 
 *   `output_path`: `string` \
-    This is the path to the output file. The output is a CSV file that has top-10 accuracies in each row. Each line of output file is the cumulative accuracy after processing images in a sorted order. So first line is accuracy after processing the first image, second line is accuracy after procesing first two images. The last line of the file is accuracy after processing the entire validation set.
+    This is the path to the output file. The output is a CSV file that has
+    top-10 accuracies in each row. Each line of output file is the cumulative
+    accuracy after processing images in a sorted order. So first line is
+    accuracy after processing the first image, second line is accuracy after
+    processing first two images. The last line of the file is accuracy after
+    processing the entire validation set.
 
 and the following optional parameters:
 

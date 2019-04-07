@@ -101,6 +101,17 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   TF_EXPECT_OK(t.status());
 }
 
+TEST_F(FunctionalizeCondTest, JoinCondStatesMergeWithInputNotInCondContext) {
+  Tensor val_tensor(DT_INT32, TensorShape());
+  val_tensor.flat<int>().setZero();
+  Node* val = test::graph::Constant(graph_.get(), val_tensor, "val");
+  Node* m = test::graph::Merge(graph_.get(), val, val);
+
+  StateMap::CondState cond_state;
+  auto joined_or = JoinCondStatesMerge(m, /*src=*/nullptr, &cond_state);
+  EXPECT_FALSE(joined_or.ok());
+}
+
 }  // namespace
 }  // namespace functionalize_cond
 }  // namespace tensorflow

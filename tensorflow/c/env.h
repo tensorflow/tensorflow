@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -24,13 +25,13 @@ limitations under the License.
 // --------------------------------------------------------------------------
 // C API for tensorflow::Env.
 
-struct TF_WritableFileHandle;
-struct TF_StringStream;
-struct TF_Thread;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct TF_WritableFileHandle TF_WritableFileHandle;
+typedef struct TF_StringStream TF_StringStream;
+typedef struct TF_Thread TF_Thread;
 
 typedef struct TF_FileStatistics {
   // The length of the file in bytes.

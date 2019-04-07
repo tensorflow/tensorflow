@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -53,9 +55,16 @@ class BackendOptions {
   BackendOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices for selectively constructing stream executors
+  // on the platform.
+  BackendOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
+  const absl::optional<std::set<int>>& allowed_devices() const;
+
  private:
   se::Platform* platform_ = nullptr;
   int intra_op_parallelism_threads_ = -1;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // Class which encapsulates an XLA backend. It includes everything necessary
@@ -147,7 +156,6 @@ class Backend {
   Status ResetDevices();
 
  private:
-  struct EigenThreadPoolWrapper;
   Backend(se::Platform* platform, Compiler* compiler,
           absl::Span<se::StreamExecutor* const> stream_executors,
           TransferManager* transfer_manager,
@@ -167,13 +175,15 @@ class Backend {
   tensorflow::mutex mu_;
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
-  std::map<se::StreamExecutor*, StreamPool> stream_pools_ GUARDED_BY(mu_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamPool>>
+      stream_pools_ GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
-  std::unique_ptr<EigenThreadPoolWrapper> intra_op_thread_pool_wrapper_;
+  struct IntraOpThreadPool;
+  std::unique_ptr<IntraOpThreadPool> intra_op_thread_pool_;
 };
 
 }  // namespace xla

@@ -65,7 +65,8 @@ Master::Master(MasterEnv* env, double session_gc_seconds)
     : env_(env),
       last_1000_steps_(1000),
       step_count_(0),
-      session_gc_seconds_(session_gc_seconds) {
+      session_gc_seconds_(session_gc_seconds),
+      recent_request_ids_(10000) {
   // Right now, a master service must be co-located with a device.
   // Otherwise, fetches do not work.
   CHECK(!env->local_devices.empty());
@@ -510,6 +511,12 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
 
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "PartialRunSetup (Master)", *req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
@@ -525,6 +532,12 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      MutableRunStepResponseWrapper* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "RunStep (Master)", req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto start_time = env_->env->NowMicros();
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
@@ -664,6 +677,12 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
 
 void Master::MakeCallable(const MakeCallableRequest* req,
                           MakeCallableResponse* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "MakeCallable (Master)", *req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
@@ -681,6 +700,12 @@ void Master::MakeCallable(const MakeCallableRequest* req,
 
 void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
                          RunCallableResponse* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "RunCallable (Master)", *req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));

@@ -646,6 +646,7 @@ cc_library(
         ":amdgpu_asm_printer",
         ":amdgpu_info",
         ":amdgpu_utils",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -718,6 +719,7 @@ cc_library(
     deps = [
         ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -793,12 +795,14 @@ cc_library(
         ":amdgpu_utils",
         ":analysis",
         ":asm_printer",
+        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
         ":global_i_sel",
         ":ipo",
         ":mc",
+        ":mir_parser",
         ":scalar",
         ":selection_dag",
         ":support",
@@ -1037,6 +1041,7 @@ cc_library(
         ":config",
         ":core",
         ":debug_info_code_view",
+        ":debug_info_dwarf",
         ":debug_info_msf",
         ":mc",
         ":mc_parser",
@@ -1198,6 +1203,29 @@ cc_library(
         ":binary_format",
         ":config",
         ":debug_info_msf",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "debug_info_dwarf",
+    srcs = glob([
+        "lib/DebugInfo/DWARF/*.c",
+        "lib/DebugInfo/DWARF/*.cpp",
+        "lib/DebugInfo/DWARF/*.inc",
+        "lib/DebugInfo/DWARF/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/DebugInfo/DWARF/*.h",
+        "include/llvm/DebugInfo/DWARF/*.def",
+        "include/llvm/DebugInfo/DWARF/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":binary_format",
+        ":config",
+        ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -1486,6 +1514,32 @@ cc_library(
         ":config",
         ":mc",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "mir_parser",
+    srcs = glob([
+        "lib/CodeGen/MIRParser/*.c",
+        "lib/CodeGen/MIRParser/*.cpp",
+        "lib/CodeGen/MIRParser/*.inc",
+        "lib/CodeGen/MIRParser/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/CodeGen/MIRParser/*.h",
+        "include/llvm/CodeGen/MIRParser/*.def",
+        "include/llvm/CodeGen/MIRParser/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":asm_parser",
+        ":binary_format",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":support",
+        ":target",
     ],
 )
 
@@ -2241,7 +2295,6 @@ cc_library(
     deps = [
         ":code_gen",
         ":config",
-        ":core",
         ":support",
     ],
 )

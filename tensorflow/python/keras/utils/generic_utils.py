@@ -32,12 +32,12 @@ import six
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 
 
-@tf_export('keras.utils.CustomObjectScope')
+@keras_export('keras.utils.CustomObjectScope')
 class CustomObjectScope(object):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -73,7 +73,7 @@ class CustomObjectScope(object):
     _GLOBAL_CUSTOM_OBJECTS.update(self.backup)
 
 
-@tf_export('keras.utils.custom_object_scope')
+@keras_export('keras.utils.custom_object_scope')
 def custom_object_scope(*args):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -104,7 +104,7 @@ def custom_object_scope(*args):
   return CustomObjectScope(*args)
 
 
-@tf_export('keras.utils.get_custom_objects')
+@keras_export('keras.utils.get_custom_objects')
 def get_custom_objects():
   """Retrieves a live reference to the global dictionary of custom objects.
 
@@ -130,7 +130,7 @@ def serialize_keras_class_and_config(cls_name, cls_config):
   return {'class_name': cls_name, 'config': cls_config}
 
 
-@tf_export('keras.utils.serialize_keras_object')
+@keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
@@ -167,7 +167,7 @@ def class_and_config_for_serialized_keras_object(
   return (cls, config['config'])
 
 
-@tf_export('keras.utils.deserialize_keras_object')
+@keras_export('keras.utils.deserialize_keras_object')
 def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
@@ -200,17 +200,20 @@ def deserialize_keras_object(identifier,
       with CustomObjectScope(custom_objects):
         return cls(**cls_config)
   elif isinstance(identifier, six.string_types):
-    function_name = identifier
-    if custom_objects and function_name in custom_objects:
-      fn = custom_objects.get(function_name)
-    elif function_name in _GLOBAL_CUSTOM_OBJECTS:
-      fn = _GLOBAL_CUSTOM_OBJECTS[function_name]
+    object_name = identifier
+    if custom_objects and object_name in custom_objects:
+      obj = custom_objects.get(object_name)
+    elif object_name in _GLOBAL_CUSTOM_OBJECTS:
+      obj = _GLOBAL_CUSTOM_OBJECTS[object_name]
     else:
-      fn = module_objects.get(function_name)
-      if fn is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' +
-                         function_name)
-    return fn
+      obj = module_objects.get(object_name)
+      if obj is None:
+        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+    # Classes passed by name are instantiated with no args, functions are
+    # returned as-is.
+    if tf_inspect.isclass(obj):
+      return obj()
+    return obj
   else:
     raise ValueError('Could not interpret serialized ' + printable_module_name +
                      ': ' + identifier)
@@ -306,7 +309,7 @@ def has_arg(fn, name, accept_all=False):
   return name in arg_spec.args
 
 
-@tf_export('keras.utils.Progbar')
+@keras_export('keras.utils.Progbar')
 class Progbar(object):
   """Displays a progress bar.
 
@@ -391,9 +394,8 @@ class Progbar(object):
         sys.stdout.write('\n')
 
       if self.target is not None:
-        numdigits = int(np.floor(np.log10(self.target))) + 1
-        barstr = '%%%dd/%d [' % (numdigits, self.target)
-        bar = barstr % current
+        numdigits = int(np.log10(self.target)) + 1
+        bar = ('%' + str(numdigits) + 'd/%d [') % (current, self.target)
         prog = float(current) / self.target
         prog_width = int(self.width * prog)
         if prog_width > 0:
@@ -456,7 +458,10 @@ class Progbar(object):
       sys.stdout.flush()
 
     elif self.verbose == 2:
-      if self.target is None or current >= self.target:
+      if self.target is not None and current >= self.target:
+        numdigits = int(np.log10(self.target)) + 1
+        count = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
+        info = count + info
         for k in self._values_order:
           info += ' - %s:' % k
           avg = np.mean(self._values[k][0] / max(1, self._values[k][1]))
@@ -570,13 +575,18 @@ def to_snake_case(name):
   return 'private' + insecure
 
 
-def is_all_none(iterable_or_element):
-  if not isinstance(iterable_or_element, (list, tuple)):
-    iterable = [iterable_or_element]
-  else:
-    iterable = iterable_or_element
+def is_all_none(structure):
+  iterable = nest.flatten(structure)
   # We cannot use Python's `any` because the iterable may return Tensors.
   for element in iterable:
     if element is not None:
       return False
   return True
+
+
+def check_for_unexpected_keys(name, input_dict, expected_values):
+  unknown = set(input_dict.keys()).difference(expected_values)
+  if unknown:
+    raise ValueError('Unknown entries in {} dictionary: {}. Only expected '
+                     'following keys: {}'.format(name, list(unknown),
+                                                 expected_values))

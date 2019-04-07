@@ -1,0 +1,157 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package tflite.evaluation;
+
+// Defines the functionality executed by an EvaluationStage.
+//
+// Next ID: 5
+message ProcessSpecification {
+  oneof params {
+    ImagePreprocessingParams image_preprocessing_params = 1;
+    TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
+    TfliteInferenceParams tflite_inference_params = 3;
+    ImageClassificationParams image_classification_params = 4;
+  }
+}
+
+// Latency numbers in microseconds, based on all EvaluationStage::Run() calls so
+// far.
+//
+// Next ID: 6
+message LatencyMetrics {
+  // Latency for the last Run.
+  optional int64 last_us = 1;
+  // Maximum latency observed for any Run.
+  optional int64 max_us = 2;
+  // Minimum latency observed for any Run.
+  optional int64 min_us = 3;
+  // Sum of all Run latencies.
+  optional int64 sum_us = 4;
+  // Average latency across all Runs.
+  optional double avg_us = 5;
+}
+
+// Contains process-specific metrics, which may differ based on what an
+// EvaluationStage does.
+//
+// Next ID: 5
+message ProcessMetrics {
+  optional LatencyMetrics total_latency = 1;
+
+  oneof stage_metrics {
+    TopkAccuracyEvalMetrics topk_accuracy_metrics = 2;
+    TfliteInferenceMetrics tflite_inference_metrics = 3;
+    ImageClassificationMetrics image_classification_metrics = 4;
+  }
+}
+
+// Parameters that define how images are preprocessed.
+//
+// Next ID: 5
+message ImagePreprocessingParams {
+  // Required.
+  optional int32 image_height = 1;
+  // Required.
+  optional int32 image_width = 2;
+  // Same as tflite::TfLiteType.
+  optional int32 output_type = 3;
+  // Fraction for central-cropping.
+  // A central cropping-fraction of 0.875 is considered best for Inception
+  // models, hence the default value. See:
+  // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
+  // Set to 0 to disable cropping.
+  optional float cropping_fraction = 4 [default = 0.875];
+}
+
+// Parameters that control TFLite inference.
+//
+// Next ID: 5
+message TfliteInferenceParams {
+  // Required
+  optional string model_file_path = 1;
+
+  enum Delegate {
+    NONE = 0;
+    NNAPI = 1;
+  }
+  optional Delegate delegate = 2;
+  // Number of threads available to the TFLite Interpreter.
+  optional int32 num_threads = 3 [default = 1];
+
+  // Defines how many times the TFLite Interpreter is invoked for every input.
+  // This helps benchmark cases where extensive pre-processing might not be
+  // required for every input.
+  optional int32 invocations_per_run = 4 [default = 1];
+}
+
+// Metrics specific to TFLite inference.
+//
+// Next ID: 2
+message TfliteInferenceMetrics {
+  // Number of times the interpreter is invoked.
+  optional int32 num_inferences = 1;
+}
+
+// Parameters that define how top-K accuracy is evaluated.
+//
+// Next ID: 2
+message TopkAccuracyEvalParams {
+  // Required.
+  optional int32 k = 1;
+}
+
+// Metrics from top-K accuracy evaluation.
+//
+// Next ID: 2
+message TopkAccuracyEvalMetrics {
+  // A repeated field of size |k| where the ith element denotes the fraction of
+  // samples for which the correct label was present in the top (i + 1) model
+  // outputs.
+  // For example, topk_accuracies(1) will contain the fraction of
+  // samples for which the model returned the correct label as the top first or
+  // second output.
+  repeated float topk_accuracies = 1;
+}
+
+// Parameters that define how the Image Classification task is evaluated
+// end-to-end.
+//
+// Next ID: 3
+message ImageClassificationParams {
+  // Required.
+  // TfLite model should have 1 input & 1 output tensor.
+  // Input shape: {1, image_height, image_width, 3}
+  // Output shape: {1, num_total_labels}
+  optional TfliteInferenceParams inference_params = 1;
+
+  // Optional.
+  // If not set, accuracy evaluation is not performed.
+  optional TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
+}
+
+// Metrics from evaluation of the image classification task.
+//
+// Next ID: 5
+message ImageClassificationMetrics {
+  optional LatencyMetrics pre_processing_latency = 1;
+  optional LatencyMetrics inference_latency = 2;
+  optional TfliteInferenceMetrics inference_metrics = 3;
+  // Not set if topk_accuracy_eval_params was not populated in
+  // ImageClassificationParams.
+  optional TopkAccuracyEvalMetrics topk_accuracy_metrics = 4;
+}

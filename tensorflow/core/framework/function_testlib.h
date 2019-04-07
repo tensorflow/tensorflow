@@ -63,6 +63,21 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // x:T -> x * 2.
 FunctionDef XTimesTwo();
 
+// x:T -> cpu(x * 2) + cpu(x * 3).
+FunctionDef TwoDeviceTimesFive();
+
+// x:T -> cpu(x * 2), gpu(x * 3).
+FunctionDef TwoDeviceMult();
+
+// cpu(x):T, gpu(y):T -> cpu(x * 2), gpu(y * 3).
+FunctionDef TwoDeviceInputOutput();
+
+// Function taking a list of Tensors as input.
+FunctionDef FuncWithListInput();
+
+// Function returning a list of Tensors as output.
+FunctionDef FuncWithListOutput();
+
 // x:T -> x + x.
 FunctionDef XAddX();
 
@@ -90,6 +105,15 @@ FunctionDef RandomUniform();
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();
 
+// x:T, y:T -> y:T, x:T, the body has no nodes.
+FunctionDef EmptyBodySwap();
+
+// x:float, y:resource -> y:resource, 2*x:float.
+FunctionDef ResourceOutput();
+
+// x:resource -> y:float.
+FunctionDef ReadResourceVariable();
+
 // Contains malformed control flow which can't be run by the executor.
 FunctionDef InvalidControlFlow();
 
@@ -101,6 +125,9 @@ FunctionDef XPlusOneXTimesY();
 
 // x:T, y:T -> x <= N
 FunctionDef XYXLessThanOrEqualToN(int64 N);
+
+// x:T -> y: TensorSliceDatasetOp::Dataset
+FunctionDef MakeTensorSliceDataset();
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 

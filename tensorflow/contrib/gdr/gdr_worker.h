@@ -38,9 +38,13 @@ class GdrWorker : public GrpcWorker {
                                    ::grpc::ByteBuffer* response,
                                    StatusCallback done) override;
 
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response,
+                            StatusCallback done) override;
+
  private:
   RemoteMemoryManager* remote_memory_manager_;  // Not owned
-  RecentRequestIds recv_tensor_recent_request_ids_;
+  RecentRequestIds recent_request_ids_;
 };
 
 }  // namespace tensorflow

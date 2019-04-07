@@ -368,12 +368,21 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
 TEST_F(LayoutAssignmentTest, SortLayout) {
   const char* hlo_text = R"(
   HloModule SortLayout
+
+  compare {
+    p.0.lhs = f32[] parameter(0)
+    p.0.rhs = f32[] parameter(1)
+    p.1.lhs = f32[] parameter(2)
+    p.1.rhs = f32[] parameter(3)
+    ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
   ENTRY sort {
-    keys = f32[3,2]{0,1} constant(f32[3,2]{0,1}{{0,1},{0,1},{0,1}})
+    keys = f32[3,2]{0,1} constant({{0,1},{0,1},{0,1}})
     values = f32[2,3]{1,0} parameter(0)
     transpose = f32[3,2]{1,0} transpose(values), dimensions={1,0}
     ROOT sort = (f32[3,2]{1,0}, f32[3,2]{1,0}) sort(keys, transpose),
-      dimensions={1}
+      dimensions={1}, to_apply=compare
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -391,6 +400,35 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sort(op::ShapeWithLayout(expected_shape),
                        op::ShapeWithLayout(expected_shape)));
+}
+
+TEST_F(LayoutAssignmentTest, FftLayout) {
+  const char* hlo_text = R"(
+  HloModule Fft_module
+
+  ENTRY Fft {
+    input = c64[8,32]{0,1} parameter(0)
+    fft = c64[8,32] fft(input), fft_type=FFT, fft_length={32}
+    ROOT transpose = c64[32,8] transpose(fft), dimensions={1,0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape = ShapeUtil::MakeShapeWithLayout(C64, {8, 32}, {1, 0});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Transpose(op::ShapeWithLayout(expected_shape))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::Transpose(op::Fft(op::ShapeWithLayout(expected_shape)))));
 }
 
 }  // namespace

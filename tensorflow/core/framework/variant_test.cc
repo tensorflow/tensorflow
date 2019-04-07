@@ -186,7 +186,7 @@ TEST(VariantTest, TensorListTest) {
   x.Encode(&serialized);
 
   Variant y = TensorList();
-  y.Decode(std::move(serialized));
+  y.Decode(serialized);
 
   const TensorList& decoded_vec = *y.get<TensorList>();
   for (int i = 0; i < 4; ++i) {

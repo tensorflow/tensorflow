@@ -408,18 +408,24 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
   return GetTensorDimIndex<2>(format, dimension);
 }
 
+inline int32 GetTensorDimIndex(TensorFormat format, char dimension,
+                               int num_total_dims) {
+  int32 index = (GetTensorSpatialDims(num_total_dims, format) == 3)
+                    ? GetTensorDimIndex<3>(format, dimension)
+                    : GetTensorDimIndex<2>(format, dimension);
+  CHECK(index >= 0 && index < num_total_dims)  // Crash OK.
+      << "Invalid index from the dimension: " << index << ", " << format << ", "
+      << dimension;
+  return index;
+}
+
 // Return the element from 'dimension_attributes' that corresponds to the
 // specified 'dimension' according to 'tensor_format'.
 template <typename T>
 T GetTensorDim(gtl::ArraySlice<T> dimension_attributes,
                TensorFormat tensor_format, char dimension) {
   int index =
-      (GetTensorSpatialDims(dimension_attributes.size(), tensor_format) == 3)
-          ? GetTensorDimIndex<3>(tensor_format, dimension)
-          : GetTensorDimIndex<2>(tensor_format, dimension);
-  CHECK(index >= 0 && index < dimension_attributes.size())
-      << "Invalid index from the dimension: " << index << ", " << tensor_format
-      << ", " << dimension;
+      GetTensorDimIndex(tensor_format, dimension, dimension_attributes.size());
   return dimension_attributes[index];
 }
 
@@ -474,6 +480,15 @@ inline int64 GetFilterDim(const Tensor& tensor,
                           FilterTensorFormat filter_tensor_format,
                           char dimension) {
   return GetFilterDim(tensor.shape(), filter_tensor_format, dimension);
+}
+
+inline void GetExplicitPaddingForDim(
+    const std::vector<int64>& explicit_paddings, TensorFormat tensor_format,
+    char dimension, int64* padding_before, int64* padding_after) {
+  int index =
+      GetTensorDimIndex(tensor_format, dimension, explicit_paddings.size() / 2);
+  *padding_before = explicit_paddings[2 * index];
+  *padding_after = explicit_paddings[2 * index + 1];
 }
 
 // Return the string that specifies the data format for convnet operations.

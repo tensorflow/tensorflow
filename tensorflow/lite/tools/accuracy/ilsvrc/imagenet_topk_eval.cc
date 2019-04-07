@@ -67,11 +67,18 @@ Status ImagenetTopKAccuracy::ComputeEval(
     for (size_t i = 0; i < probs.size(); i++) {
       probabilities.push_back(probs(i));
     }
-  } else {
+  } else if (output.dtype() == DT_UINT8) {
     auto probs = output.flat<uint8>();
     for (size_t i = 0; i < probs.size(); i++) {
       probabilities.push_back(probs(i));
     }
+  } else if (output.dtype() == DT_INT8) {
+    auto probs = output.flat<int8>();
+    for (size_t i = 0; i < probs.size(); i++) {
+      probabilities.push_back(probs(i));
+    }
+  } else {
+    return errors::InvalidArgument("Invalid datatype");
   }
 
   CHECK_EQ(kNumCategories, probabilities.size());

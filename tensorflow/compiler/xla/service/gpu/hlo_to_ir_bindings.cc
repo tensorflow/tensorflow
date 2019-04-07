@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -37,18 +38,22 @@ using absl::StrCat;
 void HloToIrBindings::EmitBasePointersForHlos(
     absl::Span<const HloInstruction* const> io_hlos,
     absl::Span<const HloInstruction* const> non_io_hlos) {
-  // I/O HLOs are bound to the arguments of the current IR function. I.e.,
+  // I/O HLOs are bound to the arguments of the current IR function,
+  // *excluding* the output argument, which is added to non-I/O HLOs.
+  // I.e.,
   //
-  // void IrFunction(io_0, io_1, ..., io_{m-1}, temp_buffer_base) {
+  // void IrFunction(io_0, io_1, ..., io_{m-1}, output_arg, temp_buffer_base) {
   llvm::Function* function = b_->GetInsertBlock()->getParent();
-  CHECK_EQ(io_hlos.size() + 1, function->arg_size());
+  CHECK_EQ(io_hlos.size() + 2, function->arg_size());
 
   // An HLO can have duplicated operands. This data structure remembers which
   // operand HLOs are already bound to avoid rebinding the same HLO.
-  std::set<const HloInstruction*> already_bound_for_this_function;
+  absl::flat_hash_set<const HloInstruction*> already_bound_for_this_function;
   auto arg_iter = function->arg_begin();
   for (const HloInstruction* io_hlo : io_hlos) {
-    if (!already_bound_for_this_function.count(io_hlo)) {
+    CHECK(!absl::c_count(non_io_hlos, io_hlo))
+        << "IO HLOs and non-IO HLOs should be disjoint";
+    if (!already_bound_for_this_function.contains(io_hlo)) {
       if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {
         BindHloToIrValue(*io_hlo, EmitGetTupleElement(io_hlo, &*arg_iter));
       } else {
@@ -59,11 +64,15 @@ void HloToIrBindings::EmitBasePointersForHlos(
     ++arg_iter;
   }
 
+  // Name and skip the output parameter.
+  arg_iter->setName("output_arg");
+  ++arg_iter;
+
   temp_buffer_base_ = &*arg_iter;
   temp_buffer_base_->setName("temp_buffer");
 
   for (const HloInstruction* non_io_hlo : non_io_hlos) {
-    if (already_bound_for_this_function.count(non_io_hlo)) {
+    if (already_bound_for_this_function.contains(non_io_hlo)) {
       continue;
     }
     already_bound_for_this_function.insert(non_io_hlo);
@@ -112,10 +121,9 @@ void HloToIrBindings::EmitBasePointersForHlos(
             BindHloToIrValue(*non_io_hlo, b_->CreateAlloca(pointee_type),
                              index);
           } else if (slice.allocation()->is_constant()) {
-            llvm::Value* global_for_constant =
-                module_->getGlobalVariable(llvm_ir::AsStringRef(
-                    llvm_ir::ConstantBufferAllocationToGlobalName(
-                        *slice.allocation())));
+            llvm::Value* global_for_constant = module_->getGlobalVariable(
+                llvm_ir::ConstantBufferAllocationToGlobalName(
+                    *slice.allocation()));
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
             const int64 offset = slice.offset();
@@ -135,11 +143,11 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr), b_, module_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr), b_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr), b_, module_);
+      EmitGetTupleElement(gte->operand(0), base_ptr), b_);
 }
 
 // Returns true if `value` has a name that should not be changed.
@@ -165,11 +173,10 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value = b_->CreateBitCast(ir_value, pointee_type->getPointerTo());
   }
   if (!HasMeaningfulName(ir_value)) {
-    ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
+    ir_value->setName(llvm_ir::IrName(&hlo, "raw"));
   }
   if (!HasMeaningfulName(typed_ir_value)) {
-    typed_ir_value->setName(
-        llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
+    typed_ir_value->setName(llvm_ir::IrName(&hlo, "typed"));
   }
   return typed_ir_value;
 }
@@ -280,7 +287,7 @@ string HloToIrBindings::ToString() const {
       StrAppend(&s, "    ", instr->ToString());
 
       const ShapeTree<llvm::Value*>& shape_tree = it->second;
-      if (!ShapeUtil::IsTuple(instr->shape())) {
+      if (!instr->shape().IsTuple()) {
         const llvm::Value* val = shape_tree.begin()->second;
         StrAppend(&s, " -> ", llvm_ir::DumpToString(*val), "\n");
         continue;

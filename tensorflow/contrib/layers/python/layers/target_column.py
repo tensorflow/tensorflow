@@ -23,6 +23,7 @@ import six
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -185,7 +186,8 @@ class _TargetColumn(object):
       return None
     else:
       return array_ops.reshape(
-          math_ops.to_float(features[self._weight_column_name]), shape=(-1,))
+          math_ops.cast(features[self._weight_column_name], dtypes.float32),
+          shape=(-1,))
 
   @property
   def problem_type(self):
@@ -252,9 +254,10 @@ class _TargetColumn(object):
     if weight_tensor is None:
       return math_ops.reduce_mean(loss_unweighted, name="loss")
     loss_weighted = self._weighted_loss(loss_unweighted, weight_tensor)
-    return math_ops.div(math_ops.reduce_sum(loss_weighted),
-                        math_ops.to_float(math_ops.reduce_sum(weight_tensor)),
-                        name="loss")
+    return math_ops.div(
+        math_ops.reduce_sum(loss_weighted),
+        math_ops.cast(math_ops.reduce_sum(weight_tensor), dtypes.float32),
+        name="loss")
 
 
 class _RegressionTargetColumn(_TargetColumn):
@@ -323,7 +326,7 @@ class _MultiClassTargetColumn(_TargetColumn):
       metrics = {("accuracy", "classes"): metric_ops.streaming_accuracy}
 
     predictions = math_ops.sigmoid(logits)
-    labels_float = math_ops.to_float(labels)
+    labels_float = math_ops.cast(labels, dtypes.float32)
 
     default_metrics = self._default_eval_metrics()
     for metric_name, metric_op in default_metrics.items():
@@ -399,7 +402,8 @@ def _mean_squared_loss(logits, target):
     target = array_ops.expand_dims(target, axis=1)
 
   logits.get_shape().assert_is_compatible_with(target.get_shape())
-  return math_ops.square(logits - math_ops.to_float(target))
+  return math_ops.squared_difference(logits,
+                                     math_ops.cast(target, dtypes.float32))
 
 
 def _log_loss_with_two_classes(logits, target):
@@ -407,7 +411,7 @@ def _log_loss_with_two_classes(logits, target):
   if len(target.get_shape()) == 1:
     target = array_ops.expand_dims(target, axis=1)
   loss_vec = nn.sigmoid_cross_entropy_with_logits(
-      labels=math_ops.to_float(target), logits=logits)
+      labels=math_ops.cast(target, dtypes.float32), logits=logits)
   return loss_vec
 
 
@@ -475,7 +479,7 @@ def get_default_binary_metrics_for_eval(thresholds):
 def _float_weights_or_none(weights):
   if weights is None:
     return None
-  return math_ops.to_float(weights)
+  return math_ops.cast(weights, dtypes.float32)
 
 
 def _labels_streaming_mean(unused_predictions, labels, weights=None):
@@ -494,8 +498,8 @@ def _streaming_auc(predictions, labels, weights=None):
 def _accuracy_at_threshold(threshold):
 
   def _accuracy_metric(predictions, labels, weights=None):
-    threshold_predictions = math_ops.to_float(
-        math_ops.greater_equal(predictions, threshold))
+    threshold_predictions = math_ops.cast(
+        math_ops.greater_equal(predictions, threshold), dtypes.float32)
     return metric_ops.streaming_accuracy(
         predictions=threshold_predictions, labels=labels, weights=weights)
 

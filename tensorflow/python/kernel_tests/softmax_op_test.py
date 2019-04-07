@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 class SoftmaxTest(test.TestCase):
 
   def _npSoftmax(self, features, dim=-1, log=False):
-    if dim is -1:
+    if dim == -1:
       dim = len(features.shape) - 1
     one_only_on_dim = list(features.shape)
     one_only_on_dim[dim] = 1
@@ -198,6 +198,15 @@ class SoftmaxTest(test.TestCase):
                   [[2., 3., 4., 5.], [6., 7., 8., 9.]],
                   [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
         dim=1,
+        use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
+  def testAlongNegativeDimension(self):
+    self._testSoftmax(
+        np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                  [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                  [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
+        dim=-2,
         use_gpu=False)
     self._testOverflow(use_gpu=False)
 

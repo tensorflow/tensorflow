@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 
 namespace tensorflow {
 
@@ -227,7 +228,6 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
     // Add every line to unescaped until we see the "END" string.
     string unescaped;
     bool first = true;
-    string suffix;
     while (!multiline_pbtxt.empty()) {
       SplitAt('\n', &multiline_pbtxt, &line);
       if (str_util::ConsumePrefix(&line, end)) break;
@@ -488,14 +488,21 @@ Status ApiDefMap::LoadFile(Env* env, const string& filename) {
   if (filename.empty()) return Status::OK();
   string contents;
   TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &contents));
-  TF_RETURN_IF_ERROR(LoadApiDef(contents));
+  Status status = LoadApiDef(contents);
+  if (!status.ok()) {
+    // Return failed status annotated with filename to aid in debugging.
+    return Status(status.code(),
+                  strings::StrCat("Error parsing ApiDef file ", filename, ": ",
+                                  status.error_message()));
+  }
   return Status::OK();
 }
 
 Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
   const string contents = PBTxtFromMultiline(api_def_file_contents);
   ApiDefs api_defs;
-  protobuf::TextFormat::ParseFromString(contents, &api_defs);
+  TF_RETURN_IF_ERROR(
+      proto_utils::ParseTextFormatFromString(contents, &api_defs));
   for (const auto& api_def : api_defs.op()) {
     // Check if the op definition is loaded. If op definition is not
     // loaded, then we just skip this ApiDef.

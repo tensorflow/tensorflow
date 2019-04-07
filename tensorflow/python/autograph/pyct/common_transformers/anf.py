@@ -36,10 +36,10 @@ from tensorflow.python.autograph.pyct import transformer
 class DummyGensym(object):
   """A dumb gensym that suffixes a stem by sequential numbers from 1000."""
 
-  def __init__(self, entity_info):
-    del entity_info
+  def __init__(self, ctx):
+    del ctx
     # A proper implementation needs to account for:
-    #   * entity_info.namespace
+    #   * ctx.info.namespace
     #   * all the symbols defined in the AST
     #   * the symbols generated so far
     self._idx = 0
@@ -68,19 +68,19 @@ class AnfTransformer(transformer.Base):
   # processing the `body` and the `orelse` need to be kept together with them,
   # and not accidentally lifted out of the `if`.
 
-  def __init__(self, entity_info, gensym_source=None):
+  def __init__(self, ctx, gensym_source=None):
     """Creates an ANF transformer.
 
     Args:
-      entity_info: transformer.EntityInfo
+      ctx: transformer.Context
       gensym_source: An optional object with the same interface as `DummyGensym`
         for generating unique names
     """
-    super(AnfTransformer, self).__init__(entity_info)
+    super(AnfTransformer, self).__init__(ctx)
     if gensym_source is None:
-      self._gensym = DummyGensym(entity_info)
+      self._gensym = DummyGensym(ctx)
     else:
-      self._gensym = gensym_source(entity_info)
+      self._gensym = gensym_source(ctx)
     self._pending_statements = []
 
   def _consume_pending_statements(self):
@@ -406,7 +406,7 @@ class AnfTransformer(transformer.Base):
     return node
 
 
-def transform(node, entity_info, gensym_source=None):
+def transform(node, ctx, gensym_source=None):
   """Converts the given node to A-normal form (ANF).
 
   The general idea of A-normal form: https://en.wikipedia.org/wiki/A-normal_form
@@ -416,9 +416,9 @@ def transform(node, entity_info, gensym_source=None):
 
   Args:
     node: The node to transform.
-    entity_info: transformer.EntityInfo.  TODO(mdan): What information does this
+    ctx: transformer.EntityInfo.  TODO(mdan): What information does this
       argument provide?
     gensym_source: An optional object with the same interface as `DummyGensym`
       for generating unique names.
   """
-  return AnfTransformer(entity_info, gensym_source=gensym_source).visit(node)
+  return AnfTransformer(ctx, gensym_source=gensym_source).visit(node)

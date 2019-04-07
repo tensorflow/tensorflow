@@ -27,16 +27,33 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("b/123903858: Add eager and V2 test coverage")
 class MapDefunTest(test_base.DatasetTestBase):
+
+  def testNoIntraOpLimit(self):
+
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    def simple_fn(x):
+      return x * 2 + 3
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(
+        simple_fn, [elems], [dtypes.int32], [(2,)],
+        max_intra_op_parallelism=0)[0]
+    expected = elems * 2 + 3
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
   def testMapDefunSimple(self):
 
@@ -237,7 +254,7 @@ class MapDefunTest(test_base.DatasetTestBase):
       thread = self.checkedThread(
           self._assert_op_cancelled, args=(sess, map_defun_op))
       thread.start()
-      time.sleep(0.1)
+      time.sleep(0.2)
       sess.close()
       thread.join()
 
@@ -253,47 +270,70 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = x + c
     self.assertAllEqual(self.evaluate(expected), self.evaluate(map_defun_op))
 
+  def testMapDefunWithVariantTensor(self):
 
-class MapDefunBenchmark(test.Benchmark):
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.variant)])
+    def fn(x):
+      return x
 
-  def _run(self, op, name=None, num_iters=3000):
-    with session.Session() as sess:
-      # Warm up the session
-      for _ in range(5):
-        self.evaluate(op)
-      start = time.time()
-      for _ in range(num_iters):
-        self.evaluate(op)
-      end = time.time()
-      mean_us = (end - start) * 1e6 / num_iters
-      self.report_benchmark(
-          name=name,
-          iters=num_iters,
-          wall_time=mean_us,
-          extras={"examples_per_sec": num_iters / (end - start)})
+    st = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
 
-  def benchmarkDefunVsMapFn(self):
-    """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
+    serialized = sparse_ops.serialize_sparse_v2(st, out_type=dtypes.variant)
+    serialized = array_ops.stack([serialized, serialized])
+    map_defun_op = map_defun.map_defun(fn, [serialized], [dtypes.variant],
+                                       [None])[0]
+    deserialized = sparse_ops.deserialize_sparse(map_defun_op, dtypes.int32)
+    expected = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0, 0], [0, 1, 2], [1, 0, 0], [1, 1, 2]],
+        values=[1, 2, 1, 2],
+        dense_shape=[2, 3, 4])
+    actual = self.evaluate(deserialized)
+    self.assertSparseValuesEqual(expected, actual)
+
+  def testMapDefunWithVariantTensorAsCaptured(self):
+
+    st = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    serialized = sparse_ops.serialize_sparse_v2(st, out_type=dtypes.variant)
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
-    def defun(x):
-      return array_ops.identity(x)
+    def fn(x):
+      del x
+      return serialized
 
-    def map_fn(x):
-      return array_ops.identity(x)
+    x = constant_op.constant([0, 0])
+    map_defun_op = map_defun.map_defun(fn, [x], [dtypes.variant], [None])[0]
+    deserialized = sparse_ops.deserialize_sparse(map_defun_op, dtypes.int32)
+    expected = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0, 0], [0, 1, 2], [1, 0, 0], [1, 1, 2]],
+        values=[1, 2, 1, 2],
+        dense_shape=[2, 3, 4])
+    actual = self.evaluate(deserialized)
+    self.assertSparseValuesEqual(expected, actual)
 
-    base = math_ops.range(100)
-    for input_size in [10, 100, 1000, 10000]:
-      num_iters = 100000 // input_size
-      map_defun_op = map_defun.map_defun(defun, [base], [dtypes.int32], [()])
-      map_fn_op = functional_ops.map_fn(map_fn, base)
+  def testMapDefunWithStrTensor(self):
 
-      self._run(
-          map_defun_op,
-          "benchmarkMapDefun_size_%d" % input_size,
-          num_iters=num_iters)
-      self._run(
-          map_fn_op, "benchmarkMapFn_size_%d" % input_size, num_iters=num_iters)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    def fn(x):
+      return x
+
+    st = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+
+    serialized = sparse_ops.serialize_sparse_v2(st, out_type=dtypes.string)
+    serialized = array_ops.stack([serialized, serialized])
+    map_defun_op = map_defun.map_defun(fn, [serialized], [dtypes.string],
+                                       [None])[0]
+    deserialized = sparse_ops.deserialize_sparse(map_defun_op, dtypes.int32)
+    expected = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0, 0], [0, 1, 2], [1, 0, 0], [1, 1, 2]],
+        values=[1, 2, 1, 2],
+        dense_shape=[2, 3, 4])
+    actual = self.evaluate(deserialized)
+    self.assertSparseValuesEqual(expected, actual)
+
 
 if __name__ == "__main__":
   test.main()

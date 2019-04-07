@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator.LinearOperator\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "H"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "batch_shape"
     mtype: "<type \'property\'>"
   }
@@ -60,6 +64,10 @@ tf_class {
     argspec: "args=[\'self\', \'mat\', \'name\'], varargs=None, keywords=None, defaults=[\'add_to_tensor\'], "
   }
   member_method {
+    name: "adjoint"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'adjoint\'], "
+  }
+  member_method {
     name: "assert_non_singular"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'assert_non_singular\'], "
   }
@@ -90,6 +98,10 @@ tf_class {
   member_method {
     name: "domain_dimension_tensor"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'domain_dimension_tensor\'], "
+  }
+  member_method {
+    name: "inverse"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse\'], "
   }
   member_method {
     name: "log_abs_determinant"

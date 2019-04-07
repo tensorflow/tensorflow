@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -86,6 +87,7 @@ def prefetch_queue(tensors,
     enqueue_op = queue.enqueue(tensors)
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(queue, [enqueue_op] * num_threads))
-    summary.scalar("fraction_of_%d_full" % capacity,
-                   math_ops.to_float(queue.size()) * (1. / capacity))
+    summary.scalar(
+        "fraction_of_%d_full" % capacity,
+        math_ops.cast(queue.size(), _dtypes.float32) * (1. / capacity))
     return queue

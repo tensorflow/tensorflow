@@ -18,6 +18,9 @@
 - Builds images (and optionally runs image tests)
 - Pushes images to Docker Hub (provided with credentials)
 
+Logs are written to stderr; the list of successfully built images is
+written to stdout.
+
 Read README.md (in this directory) for instructions!
 """
 
@@ -31,6 +34,7 @@ import errno
 import itertools
 import multiprocessing
 import os
+import platform
 import re
 import shutil
 import sys
@@ -49,7 +53,7 @@ flags.DEFINE_string('hub_username', None,
 flags.DEFINE_string(
     'hub_password', None,
     ('Dockerhub password, only used with --upload_to_hub. Use from an env param'
-     'so your password isn\'t in your history.'))
+     ' so your password isn\'t in your history.'))
 
 flags.DEFINE_integer('hub_timeout', 3600,
                      'Abort Hub upload if it takes longer than this.')
@@ -141,6 +145,10 @@ flags.DEFINE_multi_string(
      '(e.g. --arg _TAG_PREFIX=foo) and for using as build arguments (unused '
      'args will print a warning).'),
     short_name='a')
+
+flags.DEFINE_boolean(
+    'nocache', False,
+    'Disable the Docker build cache; identical to "docker build --no-cache"')
 
 flags.DEFINE_string(
     'spec_file',
@@ -331,7 +339,7 @@ def get_slice_sets_and_required_args(slice_sets, tag_spec):
 
 def gather_tag_args(slices, cli_input_args, required_args):
   """Build a dictionary of all the CLI and slice-specified args for a tag."""
-  args = dict()
+  args = {}
 
   for s in slices:
     args = update_args_dict(args, s['args'])
@@ -444,7 +452,7 @@ def gather_existing_partials(partial_path):
     Dict[string, string] of partial short names (like "ubuntu/python" or
       "bazel") to the full contents of that partial.
   """
-  partials = dict()
+  partials = {}
   for path, _, files in os.walk(partial_path):
     for name in files:
       fullpath = os.path.join(path, name)
@@ -513,6 +521,7 @@ def main(argv):
   # Each tag has a name ('tag') and a definition consisting of the contents
   # of its Dockerfile, its build arg list, etc.
   failed_tags = []
+  succeeded_tags = []
   for tag, tag_defs in all_tags.items():
     for tag_def in tag_defs:
       eprint('> Working on {}'.format(tag))
@@ -544,6 +553,13 @@ def main(argv):
       if not FLAGS.build_images:
         continue
 
+      # Only build images for host architecture
+      proc_arch = platform.processor()
+      is_x86 = proc_arch.startswith('x86')
+      if (is_x86 and any([arch in tag for arch in ['ppc64le']]) or
+          not is_x86 and proc_arch not in tag):
+        continue
+
       # Generate a temporary Dockerfile to use to build, since docker-py
       # needs a filepath relative to the build context (i.e. the current
       # directory)
@@ -569,6 +585,7 @@ def main(argv):
           image, logs = dock.images.build(
               timeout=FLAGS.hub_timeout,
               path='.',
+              nocache=FLAGS.nocache,
               dockerfile=dockerfile,
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
@@ -656,11 +673,19 @@ def main(argv):
               args=(FLAGS.hub_repository, dock, image, tag))
           p.start()
 
+      if not tag_failed:
+        succeeded_tags.append(tag)
+
   if failed_tags:
     eprint(
         '> Some tags failed to build or failed testing, check scrollback for '
         'errors: {}'.format(','.join(failed_tags)))
     exit(1)
+
+  eprint('> Writing built{} tags to standard out.'.format(
+      ' and tested' if FLAGS.run_tests_path else ''))
+  for tag in succeeded_tags:
+    print('{}:{}'.format(FLAGS.repository, tag))
 
 
 if __name__ == '__main__':

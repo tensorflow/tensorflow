@@ -56,7 +56,7 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     (*name_to_id)[node->name()] = node->id();
   }
   // For nodes we have seen before (e.g. Merge nodes are executed twice by
-  // VirtualScheduler), the following fields will be overwritten/updated
+  // VirtualScheduler), the following fields will be overwritten/updated.
   node->set_device(op_context.device_name);
   node->set_compute_cost(node_costs.execution_time.asMicroSeconds().count());
   node->set_compute_time(node_costs.compute_time.asMicroSeconds().count());
@@ -67,16 +67,16 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     int input_port;
     string input_name = ParseNodeName(input, &input_port);
 
-    // All inputs should have been seen already unless this is a Merge node
+    // All inputs should have been seen already unless this is a Merge node.
     if (name_to_id->find(input_name) == name_to_id->end()) {
       if (!IsMerge(*node_manager->GetCurrNode()))
-        LOG(ERROR) << "input: " << input
-                   << " not found for non-Merge node: " << op_name;
+        VLOG(1) << "input: " << input
+                << " not found for non-Merge node: " << op_name;
 
       // For Merge node, some of inputs may not be seen before
       // For example, for a typical while loop in tensorflow, Merge node
       // will be executed twice by VirtualScheduler (one for Enter, the
-      // other for NextIteration), so eventually both inputs will be added
+      // other for NextIteration), so eventually both inputs will be added.
       continue;
     }
 
@@ -93,30 +93,52 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     auto output_info = node->add_output_info();
     output_info->set_alias_input_port(-1);
     output_info->set_dtype(output.dtype());
-    auto shape = output_info->mutable_shape();
-    *shape = output.shape();
+    *output_info->mutable_shape() = output.shape();
+
+    int64 size = DataTypeSize(output.dtype());
+    for (const auto& dim : output.shape().dim()) {
+      size *= std::max<int64>(1, dim.size());
+    }
+    output_info->set_size(size);
   }
 }
 
 }  // namespace
 
-AnalyticalCostEstimator::AnalyticalCostEstimator(Cluster* cluster,
-                                                 bool use_static_shapes)
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, bool use_static_shapes,
+    bool use_aggressive_shape_inference)
     : AnalyticalCostEstimator(
           cluster, absl::make_unique<OpLevelCostEstimator>(),
-          ReadyNodeManagerFactory("FirstReady"), use_static_shapes, nullptr) {}
+          ReadyNodeManagerFactory("FirstReady"), use_static_shapes,
+          use_aggressive_shape_inference) {}
 
 AnalyticalCostEstimator::AnalyticalCostEstimator(
     Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
     std::unique_ptr<ReadyNodeManager> node_manager, bool use_static_shapes,
-    RunMetadata* run_metadata)
-    : cluster_(cluster),
-      node_estimator_(std::move(node_estimator)),
+    bool use_aggressive_shape_inference)
+    : node_estimator_(std::move(node_estimator)),
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes),
-      run_metadata_(run_metadata) {
-  scheduler_ = absl::make_unique<VirtualScheduler>(use_static_shapes_, cluster_,
-                                                   node_manager_.get());
+      use_aggressive_shape_inference_(use_aggressive_shape_inference) {
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(),
+      absl::make_unique<VirtualPlacer>(cluster->GetDevices()));
+}
+
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager,
+    std::unique_ptr<VirtualPlacer> placer, bool use_static_shapes,
+    bool use_aggressive_shape_inference)
+    : node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)),
+      use_static_shapes_(use_static_shapes),
+      use_aggressive_shape_inference_(use_aggressive_shape_inference) {
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(), std::move(placer));
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
@@ -124,9 +146,8 @@ Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   return Status::OK();
 }
 
-// TODO(b/67607683): unify logic with VirtualCluster logic
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
-                                             CostGraphDef* cost_graph,
+                                             RunMetadata* run_metadata,
                                              Costs* costs) const {
   GrapplerItem item = item_;
   item.graph = optimized_graph;
@@ -138,10 +159,12 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
   }
 
   gtl::FlatMap<string, CostGraphDef::Node*> name_to_cost_node;
-  if (cost_graph) {
+  CostGraphDef* cost_graph = nullptr;
+  if (run_metadata) {
+    cost_graph = run_metadata->mutable_cost_graph();
     // TODO(pcma): Clear nodes in cost_graph after we make sure we always pass
     // in an empty cost_graph (a non-empty but incomplete cost_graph will cause
-    // problems, e.g., no node_id in cost_graph)
+    // problems, e.g., no node_id in cost_graph).
     for (auto& node : *cost_graph->mutable_node()) {
       name_to_cost_node[node.name()] = &node;
     }
@@ -164,7 +187,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
                 << node_costs.num_ops_with_unknown_shapes << " unknown shapes";
     }
 
-    // TODO(pcma): Add unit tests for generating CostGraphDef
+    // TODO(pcma): Add unit tests for generating CostGraphDef.
     if (cost_graph) {
       AddCostNode(node_manager_.get(), op_context, node_id++, node_costs,
                   &name_to_cost_node, &name_to_id, cost_graph);
@@ -179,18 +202,13 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
 
-  *costs = scheduler_->Summary(run_metadata_);
-  // run_metadata_ gets step_stats and parition_graphs from Summary.
-  // Note that cost_graph could already point to the cost_graph field of
-  // run_metadata_, since both are set by the caller.
-  if (run_metadata_ && cost_graph &&
-      run_metadata_->mutable_cost_graph() != cost_graph)
-    *run_metadata_->mutable_cost_graph() = *cost_graph;
+  // run_metadata gets step_stats and partition_graphs from Summary.
+  *costs = scheduler_->Summary(run_metadata);
 
   if (VLOG_IS_ON(1)) {
     bool verbose = VLOG_IS_ON(2);
-    if (run_metadata_) {
-      VLOG(1) << GetStatsStringFromRunMetadata(*run_metadata_, verbose);
+    if (run_metadata) {
+      VLOG(1) << GetStatsStringFromRunMetadata(*run_metadata, verbose);
     } else {
       RunMetadata run_metadata;
       scheduler_->GenerateRunMetadata(&run_metadata);

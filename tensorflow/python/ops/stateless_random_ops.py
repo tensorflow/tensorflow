@@ -182,7 +182,7 @@ def stateless_truncated_normal(shape,
 
 @tf_export(v1=["random.stateless_multinomial"])
 @deprecation.deprecated(
-    date=None, instructions="Use tf.random.stateless_categorical instead.")
+    date=None, instructions="Use `tf.random.stateless_categorical` instead.")
 def stateless_multinomial(logits,
                           num_samples,
                           seed,

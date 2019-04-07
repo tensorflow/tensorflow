@@ -49,7 +49,7 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
       auto* while_body_param = while_body_comp->parameter_instruction(0);
       auto* while_body_root = while_body_comp->root_instruction();
 
-      if (!ShapeUtil::IsTuple(xla_while->shape()) ||
+      if (!xla_while->shape().IsTuple() ||
           while_body_root->opcode() != HloOpcode::kTuple) {
         // Only run DCE on tuple-shaped while loops where body root is Tuple,
         // with no I/O instructions.

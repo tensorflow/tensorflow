@@ -260,6 +260,16 @@ Status Unavailable(const absl::FormatSpec<Args...>& format,
   return WithLogBacktrace(
       tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
 }
+template <typename... Args>
+Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
@@ -324,8 +334,7 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation);
 
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
-  return std::distance(container.begin(),
-                       std::find(container.begin(), container.end(), value));
+  return std::distance(container.begin(), absl::c_find(container, value));
 }
 
 // Formats the container as a comma-separated string. StrAppend must support

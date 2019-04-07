@@ -129,7 +129,7 @@ condition {
 
 ENTRY entry {
   const_0 = f32[2] constant({1, 2})
-  const_1 = (f32[2], f32[2]) constant((f32[2], f32[2]) ({2, 1},{3,1}))
+  const_1 = (f32[2], f32[2]) constant(({2, 1},{3,1}))
   while_init = (f32[2],(f32[2],f32[2])) tuple(const_0, const_1)
   ROOT while = (f32[2],(f32[2],f32[2])) while(while_init), condition=condition, body=body
 }
@@ -206,8 +206,8 @@ body {
   p_body.0 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=0
   p_body.1 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=1
 
-  token = token[] after-all()
-  outfeed = token[] outfeed(p_body.0, token)
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(p_body.0, token0)
   ROOT root = (f32[2],f32[2],f32[2]) tuple(p_body.0, p_body.1, p_body.1)
 }
 
@@ -260,7 +260,7 @@ condition {
   p_cond = (f32[],f32[]) parameter(0)
   p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
   p_cond.1 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=1
-  ROOT result = pred[] less-than(p_cond.0, p_cond.1)
+  ROOT result = pred[] compare(p_cond.0, p_cond.1), direction=LT
 }
 
 ENTRY entry {
@@ -300,12 +300,12 @@ condition {
   p_c.0 = f32[] get-tuple-element((f32[],(f32[],f32[])) p_c), index=0
   p_c.1 = (f32[],f32[]) get-tuple-element((f32[],(f32[],f32[])) p_c), index=1
   p_c.1.1 = f32[] get-tuple-element((f32[],f32[]) p_c.1), index=1
-  ROOT result = pred[] less-than(p_c.0, p_c.1.1)
+  ROOT result = pred[] compare(p_c.0, p_c.1.1), direction=LT
 }
 
 ENTRY entry {
   const_0 = f32[] constant(0)
-  const_1 = (f32[], f32[]) constant((f32[], f32[]) (1, 10))
+  const_1 = (f32[], f32[]) constant((1, 10))
   while_init = (f32[],(f32[],f32[])) tuple(const_0, const_1)
   ROOT while = (f32[],(f32[],f32[])) while(while_init), condition=condition, body=body
 }
@@ -342,7 +342,7 @@ condition {
   p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
   p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
   p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
-  ROOT result = pred[] less-than(p_cond.0, p_cond.1)
+  ROOT result = pred[] compare(p_cond.0, p_cond.1), direction=LT
 }
 
 ENTRY entry {
@@ -389,10 +389,10 @@ condition {
   p_cond = (f32[],f32[],f32[]) parameter(0)
   p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
   p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
-  lt.0 = pred[] less-than(p_cond.0, p_cond.2)
+  lt.0 = pred[] compare(p_cond.0, p_cond.2), direction=LT
   p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
   p_cond.2.c = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
-  lt.1 = pred[] less-than(p_cond.1, p_cond.2.c)
+  lt.1 = pred[] compare(p_cond.1, p_cond.2.c), direction=LT
   ROOT result = pred[] and(lt.0, lt.1)
 }
 

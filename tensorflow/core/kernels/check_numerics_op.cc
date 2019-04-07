@@ -41,6 +41,10 @@ struct CheckNumericsLaunch {
   void Run(const GPUDevice& d, const T* data, int size,
            int abnormal_detected[2]);
 };
+
+extern template struct CheckNumericsLaunch<Eigen::half>;
+extern template struct CheckNumericsLaunch<float>;
+extern template struct CheckNumericsLaunch<double>;
 #endif
 
 namespace {

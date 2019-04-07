@@ -133,7 +133,9 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   // Reverse the minor-to-major order of the literal.
   Layout* literal_layout = literal.mutable_shape_do_not_use()->mutable_layout();
   ASSERT_EQ(2, literal_layout->minor_to_major_size());
-  literal_layout->mutable_minor_to_major()->SwapElements(0, 1);
+  // Swap the first and second elements.
+  *literal_layout->mutable_minor_to_major() = {
+      literal_layout->minor_to_major(1), literal_layout->minor_to_major(0)};
 
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));

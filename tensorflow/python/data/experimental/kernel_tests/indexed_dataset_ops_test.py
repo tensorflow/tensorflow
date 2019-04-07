@@ -25,14 +25,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class IndexedDatasetOpsTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
   def testLowLevelIndexedDatasetOps(self):
     identity = ged_ops.experimental_identity_indexed_dataset(
         ops.convert_to_tensor(16, dtype=dtypes.uint64))
@@ -43,40 +42,34 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
         output_shapes=[[]])
     materialize = ged_ops.experimental_indexed_dataset_materialize(
         identity, handle)
-    index = array_ops.placeholder(dtypes.uint64)
     get_op = ged_ops.experimental_indexed_dataset_get(
-        handle, index, output_types=[dtypes.uint64], output_shapes=[[]])
+        handle, 3, output_types=[dtypes.uint64], output_shapes=[[]])
 
-    with self.cached_session() as sess:
-      self.evaluate(materialize)
-      self.assertEqual([3], sess.run(get_op, feed_dict={index: 3}))
+    self.evaluate(materialize)
+    self.assertEqual([3], self.evaluate(get_op))
 
+  # TODO(b/117581999): Eager mode not supported.
   @test_util.run_deprecated_v1
-  def testIdentityIndexedDataset(self):
+  def testSkipEagerIdentityIndexedDataset(self):
     ds = indexed_dataset_ops.IdentityIndexedDataset(16)
     materialized = ds.materialize()
-    with self.cached_session() as sess:
-      self.evaluate(materialized.initializer)
-      placeholder = array_ops.placeholder(dtypes.uint64, shape=[])
-      for i in range(16):
-        output = sess.run(
-            materialized.get(placeholder), feed_dict={placeholder: i})
-        self.assertEqual([i], output)
-      with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(materialized.get(placeholder), feed_dict={placeholder: 16})
+    self.evaluate(materialized.initializer)
+    for i in range(16):
+      output = self.evaluate(materialized.get(i))
+      self.assertEqual([i], output)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(materialized.get(16))
 
   @unittest.skip("Requisite functionality currently unimplemented.")
   def testIdentityIndexedDatasetIterator(self):
     ds = indexed_dataset_ops.IdentityIndexedDataset(16)
-    itr = ds.make_initializable_iterator()
-    n = itr.get_next()
-    with self.cached_session() as sess:
-      self.evaluate(itr.initializer)
-      for i in range(16):
-        output = self.evaluate(n)
-        self.assertEqual(i, output)
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(n)
+    n = self.getNext(ds)
+
+    for i in range(16):
+      output = self.evaluate(n())
+      self.assertEqual(i, output)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(n())
 
 
 if __name__ == "__main__":

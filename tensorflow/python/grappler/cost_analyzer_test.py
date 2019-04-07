@@ -124,7 +124,7 @@ class CostAnalysisTest(test.TestCase):
       op_count = int(m.group(1))
       # upper = int(m.group(5))
       lower = int(m.group(6))
-      if op_type is b"MatMul":
+      if op_type == b"MatMul":
         self.assertEqual(3, op_count)
       else:
         self.assertEqual(1, op_count)

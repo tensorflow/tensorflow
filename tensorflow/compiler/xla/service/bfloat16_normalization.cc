@@ -29,15 +29,20 @@ namespace xla {
 
 class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
  public:
-  explicit BFloat16NormalizationVisitor(HloComputation* computation,
-                                        const BFloat16Support* bfloat16_support)
-      : computation_(computation), bfloat16_support_(bfloat16_support) {}
+  explicit BFloat16NormalizationVisitor(
+      HloComputation* computation, const BFloat16Support* bfloat16_support,
+      BFloat16Normalization* bfloat16_normalization)
+      : computation_(computation),
+        bfloat16_support_(bfloat16_support),
+        bfloat16_normalization_(bfloat16_normalization) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
 
   static bool Run(HloComputation* computation,
-                  const BFloat16Support* bfloat16_support) {
-    BFloat16NormalizationVisitor visitor(computation, bfloat16_support);
+                  const BFloat16Support* bfloat16_support,
+                  BFloat16Normalization* bfloat16_normalization) {
+    BFloat16NormalizationVisitor visitor(computation, bfloat16_support,
+                                         bfloat16_normalization);
     TF_CHECK_OK(computation->Accept(&visitor));
     return visitor.changed_;
   }
@@ -73,6 +78,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
+  BFloat16Normalization* bfloat16_normalization_;
   bool changed_ = false;
 };
 
@@ -84,12 +90,18 @@ Status BFloat16NormalizationVisitor::InsertConvertAfterOutput(
   auto convert = computation->AddInstruction(
       HloInstruction::CreateConvert(hlo->shape(), hlo));
   for (auto* user : materialized_users) {
-    TF_RETURN_IF_ERROR(hlo->ReplaceUseWith(user, convert));
+    if (user->opcode() == HloOpcode::kConvert &&
+        user->shape().element_type() == F32) {
+      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
+    } else {
+      TF_RETURN_IF_ERROR(hlo->ReplaceUseWith(user, convert));
+    }
   }
   if (is_root) {
     computation->set_root_instruction(convert);
   }
   convert->mutable_shape()->set_element_type(to);
+  bfloat16_normalization_->UpdateLayout(convert->mutable_shape());
   changed_ = true;
   return Status::OK();
 }
@@ -98,6 +110,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     HloInstruction* hlo, PrimitiveType to, HloComputation* computation) {
   auto original_type = hlo->shape().element_type();
   hlo->mutable_shape()->set_element_type(to);
+  bfloat16_normalization_->UpdateLayout(hlo->mutable_shape());
   return InsertConvertAfterOutput(hlo, original_type, computation);
 }
 
@@ -105,8 +118,10 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
     HloInstruction* hlo, int64 operand_idx, PrimitiveType to,
     HloComputation* computation) {
   auto operand = hlo->mutable_operand(operand_idx);
-  auto convert = computation->AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::ChangeElementType(operand->shape(), to), operand));
+  auto shape = ShapeUtil::ChangeElementType(operand->shape(), to);
+  bfloat16_normalization_->UpdateLayout(&shape);
+  auto convert = computation->AddInstruction(
+      HloInstruction::CreateConvert(shape, operand));
   TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(operand_idx, convert));
   changed_ = true;
   return Status::OK();
@@ -205,6 +220,28 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
     return Status::OK();
   }
 
+  std::vector<HloComputation*> bf16_called_comps;
+  for (auto* comp : hlo->called_computations()) {
+    bool comp_has_bf16 = false;
+    if (comp->root_instruction()->shape().element_type() == F32) {
+      f32_count += 1;
+    } else if (comp->root_instruction()->shape().element_type() == BF16) {
+      bf16_count += 1;
+      comp_has_bf16 = true;
+    }
+    for (auto* param : comp->parameter_instructions()) {
+      if (param->shape().element_type() == F32) {
+        f32_count += 1;
+      } else if (param->shape().element_type() == BF16) {
+        bf16_count += 1;
+        comp_has_bf16 = true;
+      }
+    }
+    if (comp_has_bf16) {
+      bf16_called_comps.push_back(comp);
+    }
+  }
+
   std::vector<HloInstruction*> materialized_users = hlo->users();
   std::vector<HloInstruction*> output_elements(hlo->operand_count());
   auto original_shape = hlo->shape();
@@ -216,11 +253,13 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
       continue;
     }
     subshape->set_element_type(F32);
+    bfloat16_normalization_->UpdateLayout(subshape);
     auto gte = computation_->AddInstruction(
         HloInstruction::CreateGetTupleElement(*subshape, hlo, i));
+    auto shape = ShapeUtil::ChangeElementType(*subshape, BF16);
+    bfloat16_normalization_->UpdateLayout(&shape);
     output_elements[i] =
-        computation_->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::ChangeElementType(*subshape, BF16), gte));
+        computation_->AddInstruction(HloInstruction::CreateConvert(shape, gte));
   }
   auto tuple = computation_->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
@@ -236,7 +275,7 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
     computation_->set_root_instruction(tuple);
   }
   *tuple->mutable_shape() = original_shape;
-  return Status::OK();
+  return ConvertCalledComputations(hlo, bf16_called_comps);
 }
 
 Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
@@ -362,8 +401,8 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   }
   // TODO(b/112040122): Correctly normalize variadic reduce.
   if ((hlo->opcode() == HloOpcode::kSort ||
-       hlo->opcode() == HloOpcode::kCrossReplicaSum) &&
-      ShapeUtil::IsTuple(hlo->shape())) {
+       hlo->opcode() == HloOpcode::kAllReduce) &&
+      hlo->shape().IsTuple()) {
     return HandleMultipleOutputs(hlo);
   }
   return HandleInstruction(hlo);
@@ -374,7 +413,7 @@ StatusOr<bool> BFloat16Normalization::Run(HloModule* module) {
       2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeComputationPostOrder()) {
-    if (BFloat16NormalizationVisitor::Run(comp, bfloat16_support_)) {
+    if (BFloat16NormalizationVisitor::Run(comp, bfloat16_support_, this)) {
       changed = true;
     }
   }

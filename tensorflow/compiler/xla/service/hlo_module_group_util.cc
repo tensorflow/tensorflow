@@ -198,11 +198,41 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
   for (HloComputation* computation : computations) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (GlobalSuccessors(instruction).empty()) {
+        // An instruction that has no successors, e.g., an unused instruction,
+        // is in roots, even though it's not the ROOT of its computation.
         roots.push_back(instruction);
       }
     }
   }
   return roots;
+}
+
+string HloModuleGroupUtil::CycleToString(HloInstruction* init_instruction) {
+  std::vector<string> names;
+  absl::flat_hash_set<HloInstruction*> seen;
+
+  std::function<bool(HloInstruction*)> helper =
+      [&](HloInstruction* instruction) {
+        if (seen.find(instruction) != seen.end()) {
+          if (instruction == init_instruction) {
+            names.push_back(instruction->name());
+            return true;
+          }
+          return false;
+        }
+        seen.insert(instruction);
+        for (HloInstruction* predecessor : GlobalPredecessors(instruction)) {
+          bool init_found = helper(predecessor);
+          if (init_found) {
+            names.push_back(instruction->name());
+            return true;
+          }
+        }
+        return false;
+      };
+
+  helper(init_instruction);
+  return absl::StrJoin(names, " --> ");
 }
 
 Status HloModuleGroupUtil::VisitTopologicalOrder(
@@ -267,22 +297,9 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
         // a cycle. Generate an error with the list of instructions in the
         // cycle.
         if ((*visit_state)[predecessor] == VisitState::kVisiting) {
-          string cyclic_instructions;
-          for (const auto& state : *visit_state) {
-            if (state.second == VisitState::kVisiting) {
-              absl::StrAppend(&cyclic_instructions, state.first->ToString(),
-                              "\n");
-            }
-          }
-          // TODO(b/64305524): Improve the error message to print out the
-          // instructions in a deterministic order that forms the cycle.
           return FailedPrecondition(
-              "Cross-computation cycle detected via communicating nodes. The "
-              "cycle contains the node %s. The cycle is found among the "
-              "following nodes. Note that the order of the nodes is arbitrary "
-              "and that the list may include nodes that are not part of the "
-              "cycle.\n%s",
-              predecessor->ToString(), cyclic_instructions);
+              "Cross-computation cycle detected via communicating nodes.\n%s",
+              CycleToString(predecessor));
         }
         stack.push(predecessor);
       }

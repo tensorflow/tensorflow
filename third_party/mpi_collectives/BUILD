@@ -19,7 +19,7 @@ filegroup(
 cc_library(
     name = "mpi",
     srcs = select({
-        "//tensorflow:darwin": ["libmpi.dylib"],
+        "//tensorflow:macos": ["libmpi.dylib"],
         "//conditions:default": ["libmpi.so"],
     }),
     hdrs = [

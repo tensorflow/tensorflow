@@ -15,6 +15,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -31,6 +32,8 @@ namespace {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+constexpr char kDatasetName[] = "ParallelMap";
+
 class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParallelMapDatasetOp(OpKernelConstruction* ctx)
@@ -43,6 +46,8 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
  protected:
@@ -51,22 +56,25 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     int32 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
+    CapturedFunction::Params params;
+    params.use_inter_op_parallelism = use_inter_op_parallelism_;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 use_inter_op_parallelism_,
-                                                 &captured_func));
+                                                 params, &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
+    if (num_parallel_calls == model::kAutoTune) {
+      metrics::RecordTFDataAutotune(kDatasetName);
+    }
 
-    *output =
-        new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
-                    output_shapes_, use_inter_op_parallelism_, sloppy_,
-                    std::move(captured_func), indices, preserve_cardinality_);
+    *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
+                          output_shapes_, use_inter_op_parallelism_, sloppy_,
+                          std::move(captured_func), short_circuit_indices_,
+                          preserve_cardinality_);
   }
 
  private:
@@ -89,7 +97,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           sloppy_(sloppy),
           preserve_cardinality_(preserve_cardinality),
           captured_func_(std::move(captured_func)),
-          indices_(indices),
+          short_circuit_indices_(indices),
           can_move_(indices.empty() ? std::vector<bool>()
                                     : ComputeMoveVector(indices)) {
       input_->Ref();
@@ -100,13 +108,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       std::unique_ptr<ParallelMapFunctor> parallel_map_functor(nullptr);
-      if (indices_.empty()) {
-        parallel_map_functor.reset(new ParallelMapDatasetFunctor(this));
+      if (short_circuit_indices_.empty()) {
+        parallel_map_functor =
+            absl::make_unique<ParallelMapDatasetFunctor>(this);
       } else {
-        parallel_map_functor.reset(new ShortCircuitFunctor(this));
+        parallel_map_functor = absl::make_unique<ShortCircuitFunctor>(this);
       }
       return NewParallelMapIterator(
-          {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
+          {this, strings::StrCat(prefix, "::", kDatasetName)}, input_,
           std::move(parallel_map_functor), num_parallel_calls_, sloppy_,
           preserve_cardinality_);
     }
@@ -134,16 +143,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
 
       // Input: num_parallel_calls
       Node* num_parallel_calls = nullptr;
@@ -151,7 +154,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           b->AddScalar(num_parallel_calls_, &num_parallel_calls));
 
       // Attr: f
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       AttrValue f_attr;
       b->BuildAttrValue(func_, &f_attr);
 
@@ -200,17 +202,19 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
         const std::vector<Tensor>& captured_inputs =
             dataset_->captured_func_->captured_inputs();
         size_t num_args = input_element.size();
-        for (size_t i = 0; i < dataset_->indices_.size(); ++i) {
-          if (dataset_->indices_[i] < num_args) {
+        for (size_t i = 0; i < dataset_->short_circuit_indices_.size(); ++i) {
+          if (dataset_->short_circuit_indices_[i] < num_args) {
             if (dataset_->can_move_[i]) {
-              result->push_back(
-                  std::move(input_element[dataset_->indices_[i]]));
+              result->push_back(std::move(
+                  input_element[dataset_->short_circuit_indices_[i]]));
             } else {
-              result->push_back(input_element[dataset_->indices_[i]]);
+              result->push_back(
+                  input_element[dataset_->short_circuit_indices_[i]]);
             }
           } else {
             result->push_back(
-                captured_inputs[dataset_->indices_[i] - num_args]);
+                captured_inputs[dataset_->short_circuit_indices_[i] -
+                                num_args]);
           }
         }
         done(Status::OK());
@@ -263,7 +267,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     const bool sloppy_;
     const bool preserve_cardinality_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const std::vector<int> indices_;
+    const std::vector<int> short_circuit_indices_;
     const std::vector<bool> can_move_;
   };
 
@@ -273,6 +277,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   bool sloppy_;
   bool preserve_cardinality_;
   NameAttrList func_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParallelMapDataset").Device(DEVICE_CPU),

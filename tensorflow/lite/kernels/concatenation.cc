@@ -54,12 +54,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): These are limitations of our implementation that could be
   // removed with a bit of effort.
-  TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
-                     input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
-                     input_type == kTfLiteInt64);
+                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
+                     input_type == kTfLiteInt32 || input_type == kTfLiteInt64);
 
   // Output dimensions will match input dimensions, except 'axis', which
   // will be the sum of inputs
@@ -84,6 +83,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
+
+  if (input_type == kTfLiteInt8) {
+    // Make sure there is no re-scaling needed for Int8 quantized kernel. This
+    // is a restriction we introduced to Int8 kernels.
+    VectorOfTensors<int8_t> all_inputs(*context, *node->inputs);
+    for (int i = 0; i < node->inputs->size; ++i) {
+      TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
+      TF_LITE_ENSURE_EQ(context, t->params.scale, output->params.scale);
+      TF_LITE_ENSURE_EQ(context, t->params.zero_point,
+                        output->params.zero_point);
+    }
+  }
 
   return context->ResizeTensor(context, output, output_size);
 }
@@ -148,6 +159,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_CONCATENATION_QUANTIZED(optimized_ops);
       }
       break;
+    case kTfLiteInt8: {
+      if (kernel_type == kReference) {
+        TF_LITE_CONCATENATION(reference_ops, int8_t);
+      } else {
+        TF_LITE_CONCATENATION(optimized_ops, int8_t);
+      }
+    } break;
     case kTfLiteInt64:
       if (kernel_type == kReference) {
         TF_LITE_CONCATENATION(reference_ops, int64_t);

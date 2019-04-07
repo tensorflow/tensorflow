@@ -39,6 +39,7 @@ HloProto MakeHloProto(const HloModule& module) {
 
 StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config) {
+  VLOG(4) << proto.ShortDebugString();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(proto, module_config));
   TF_RETURN_IF_ERROR(
