@@ -1344,21 +1344,19 @@ def cast(x, dtype):
   Returns:
       Keras tensor with dtype `dtype`.
 
-  Example:
+  Examples:
+      Cast a float32 variable to a float64 tensor
+
   ```python
-      >>> from keras import backend as K
-      >>> input = K.placeholder((2, 3), dtype='float32')
-      >>> input
-      <tf.Tensor 'Placeholder_2:0' shape=(2, 3) dtype=float32>
-      # It doesn't work in-place as below.
-      >>> K.cast(input, dtype='float16')
-      <tf.Tensor 'Cast_1:0' shape=(2, 3) dtype=float16>
-      >>> input
-      <tf.Tensor 'Placeholder_2:0' shape=(2, 3) dtype=float32>
-      # you need to assign it.
-      >>> input = K.cast(input, dtype='float16')
-      >>> input
-      <tf.Tensor 'Cast_2:0' shape=(2, 3) dtype=float16>
+      >>> import tensorflow as tf
+      >>> from tensorflow.keras import backend as K 
+      >>> input = K.ones(shape=(1,3))
+      >>> print(input)
+      >>> cast_input = K.cast(input, dtype='float64')
+      >>> print(cast_input)
+
+      <tf.Variable 'Variable:0' shape=(1, 3) dtype=float32, numpy=array([[1., 1., 1.]], dtype=float32)>
+      tf.Tensor([[1. 1. 1.]], shape=(1, 3), dtype=float64)
   ```
   """
   return math_ops.cast(x, dtype)
