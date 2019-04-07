@@ -540,13 +540,13 @@ names are reserved for [dialect-specific types](#dialect-specific-types).
 Example:
 
 ```mlir {.mlir}
-!avx.m128 = type vector<4 x f32>
+!avx_m128 = type vector<4 x f32>
 
 // Using the original type.
 "foo"(%x) : vector<4 x f32> -> ()
 
 // Using the type alias.
-"foo"(%x) : !avx.m128 -> ()
+"foo"(%x) : !avx_m128 -> ()
 ```
 
 ### Builtin Types
