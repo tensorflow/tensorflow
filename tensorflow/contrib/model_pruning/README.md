@@ -133,10 +133,7 @@ For now, it is assumed that the underlying hardware platform will provide mechan
 
 ## Example: Pruning and training deep CNNs on the cifar10 dataset <a name="example"></a>
 
-Please see [Advanced Convolutional Neural Networks
-](https://www.tensorflow.org/tutorials/images/deep_cnn) for details on neural
-network architecture, setting up inputs etc. The additional changes needed to
-incorporate pruning are captured in the following:
+Please see [Advanced Convolutional Neural Networks](https://www.tensorflow.org/tutorials/images/deep_cnn) for details on neural network architecture, setting up inputs etc. The additional changes needed to incorporate pruning are captured in the following:
 
 *   [cifar10_pruning.py](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/model_pruning/examples/cifar10/cifar10_pruning.py)
     creates a deep CNN with the same architecture, but adds mask and threshold
