@@ -491,8 +491,8 @@ MLIR provides a first class set of polyhedral operations and analyses within the
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
 number of primitive types (like integers) and also aggregate types for tensors
-and memory buffers. MLIR standard types do not include complex numbers,
-structures, arrays, or dictionaries.
+and memory buffers. MLIR standard types do not include structures, arrays, or
+dictionaries.
 
 MLIR has an open type system (there is no fixed list of types), and types may
 have application-specific semantics. For example, MLIR supports a set of
