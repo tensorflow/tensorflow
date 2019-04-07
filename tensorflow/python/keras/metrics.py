@@ -179,8 +179,7 @@ class Metric(Layer):
       #   model = Model()
       #   mean = Mean()
       #   model.add_metric(mean(values), name='mean')
-      if not context.executing_eagerly():
-        result_t._metric_obj = self  # pylint: disable=protected-access
+      result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
   @property

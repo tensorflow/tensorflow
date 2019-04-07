@@ -56,9 +56,10 @@ class CallConvention(enum.Enum):
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  result = metric_obj(value)
-  return metric_obj, result
+  return (metric_obj,
+          distributed_training_utils.call_replica_local_fn(metric_obj, value))
 
 
 def make_variable(name,
