@@ -19,7 +19,7 @@ bool IsSupportedSharding(const HloSharding& sharding) {
   // tuple/tree of tensors on multiple devices.
   if (sharding.IsTuple()) {
     for (const auto& s : sharding.tuple_elements()) {
-      if (!sharding.HasUniqueDevice()) {
+      if (!s.HasUniqueDevice()) {
         return false;
       }
     }
@@ -41,8 +41,12 @@ HloSharding GetShardingForOperand(const HloInstruction* inst, int operand) {
       return comp->parameter_instruction(operand)->sharding();
     }
     case HloOpcode::kConditional: {
-      auto* comp = inst->true_computation();
-      return comp->parameter_instruction(operand)->sharding();
+      if (operand == 0) {
+        return inst->operand(0)->sharding();
+      } else {
+        auto* comp = inst->branch_computation(0);
+        return comp->parameter_instruction(0)->sharding();
+      }
     }
     case HloOpcode::kTuple: {
       auto s = inst->sharding();

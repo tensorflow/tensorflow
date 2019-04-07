@@ -464,6 +464,9 @@ HloModule top
 
 // Test feeding the second operand of a call instruction
 
+// test inserting copy before a conditional (they don't have sharding for their
+// first parameter)
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
