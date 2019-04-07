@@ -73,6 +73,10 @@ Type linalg::convertLinalgType(Type t) {
     auto *floatTy = llvm::Type::getFloatTy(dialect->getLLVMContext());
     return LLVM::LLVMType::get(context, floatTy);
   }
+  if (t.isF64()) {
+    auto *doubleTy = llvm::Type::getDoubleTy(dialect->getLLVMContext());
+    return LLVM::LLVMType::get(context, doubleTy);
+  }
 
   // Range descriptor contains the range bounds and the step as 64-bit integers.
   //
