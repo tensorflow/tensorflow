@@ -58,6 +58,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
@@ -453,6 +454,9 @@ class DatasetV2(object):
         ret_arrays = []
         for ret, dtype in zip(flattened_values, flattened_types):
           try:
+            if isinstance(ret, ragged_tensor.RaggedTensor):
+              ret_arrays.append(math_ops.cast(ret, dtype))
+              continue
             ret_arrays.append(script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
                 ret, dtype=dtype.as_numpy_dtype))
           except (TypeError, ValueError):
