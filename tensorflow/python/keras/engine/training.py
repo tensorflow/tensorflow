@@ -1048,7 +1048,7 @@ class Model(network.Network):
     Computation is done in batches.
 
     Arguments:
-         x: Input samples. It could be:
+        x: Input samples. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
