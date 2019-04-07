@@ -79,6 +79,18 @@ distribute_py_test(
     ],
 )
 
+distribute_py_test(
+    name = "distributed_training_utils_test",
+    srcs = ["distributed_training_utils_test.py"],
+    full_precision = True,
+    main = "distributed_training_utils_test.py",
+    deps = [
+        ":distribute",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python:platform",
+    ],
+)
+
 py_library(
     name = "keras_correctness_test_lib",
     srcs = [
