@@ -89,7 +89,7 @@ bool HasShardingForOperand(const HloInstruction* inst, int operand) {
       if (operand == 0) {
         sharding_inst = inst->operand(0);
       } else {
-        auto* comp = inst->branch_computation(0);
+        auto* comp = inst->branch_computation(operand - 1);
         sharding_inst = comp->parameter_instruction(0);
       }
       break;

@@ -44,7 +44,7 @@ HloSharding GetShardingForOperand(const HloInstruction* inst, int operand) {
       if (operand == 0) {
         return inst->operand(0)->sharding();
       } else {
-        auto* comp = inst->branch_computation(0);
+        auto* comp = inst->branch_computation(operand - 1);
         return comp->parameter_instruction(0)->sharding();
       }
     }
