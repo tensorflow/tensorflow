@@ -244,7 +244,7 @@ def convert_inner_node_data(nested, wrap=False):
       unwraps `ListWrapper` objects into lists.
 
   Returns:
-    Strucutre of same type as nested, with lists wrapped/unwrapped.
+    Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
   def _is_atomic_nested(nested):
