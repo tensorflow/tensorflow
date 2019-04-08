@@ -463,7 +463,7 @@ private:
       if (auto *print = dyn_cast<PrintExprAST>(expr.get())) {
         if (!mlirGen(*print))
           return false;
-        return true;
+        continue;
       }
       // Generic expression dispatch codegen.
       if (!mlirGen(*expr))
