@@ -334,8 +334,8 @@ class Context(object):
     finally:
       pywrap_tensorflow.TF_DeleteDeviceList(device_list)
 
-  def _initialize_handle_and_devices(self):
-    """Initialize handle and devices."""
+  def ensure_initialized(self):
+    """Initialize handle and devices if not already done so."""
     with self._initialize_lock:
       if self._context_handle is not None:
         return
@@ -430,21 +430,17 @@ class Context(object):
 
   @property
   def _handle(self):
-    ctx = self._context_handle
-    if ctx is None:
-      self._initialize_handle_and_devices()
-      return self._context_handle
-    else:
-      return ctx
+    if self._context_handle is None:
+      raise AssertionError("Context must be initialized first.")
+
+    return self._context_handle
 
   @property
   def _devices(self):
-    devices = self._context_devices
-    if devices is None:
-      self._initialize_handle_and_devices()
-      return self._context_devices
-    else:
-      return devices
+    if self._context_devices is None:
+      raise AssertionError("Context must be initialized first.")
+
+    return self._context_devices
 
   def __str__(self):
     if self._context_handle is None:
@@ -710,7 +706,7 @@ class Context(object):
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
-    self._initialize_handle_and_devices()
+    self.ensure_initialized()
     return self._num_gpus
 
   def add_function(self, fn):
@@ -933,6 +929,7 @@ class Context(object):
     To retrieve the accumulated metadata call context.export_run_metadata()
     and to stop tracing call context.disable_run_metadata().
     """
+    self.ensure_initialized()
     pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
 
   def disable_run_metadata(self):
@@ -947,6 +944,7 @@ class Context(object):
     To retrieve the accumulated graphs call context.export_run_metadata()
     and to stop collecting graphs call context.disable_graph_collection().
     """
+    self.ensure_initialized()
     pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
 
   def disable_graph_collection(self):
@@ -1019,7 +1017,7 @@ class _EagerDeviceContext(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          ctx._initialize_handle_and_devices()  # pylint: disable=protected-access
+          ctx.ensure_initialized()
           new_device_spec = pydev.DeviceSpec.from_string(
               ctx._context_devices[0])  # pylint: disable=protected-access
         new_device_spec.merge_from(device_spec)
@@ -1041,7 +1039,7 @@ class _EagerDeviceContext(object):
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-def _initialize_context():
+def _create_context():
   global _context
   with _context_lock:
     if _context is None:
@@ -1051,13 +1049,18 @@ def _initialize_context():
 def context():
   """Returns a singleton context object."""
   if _context is None:
-    _initialize_context()
+    _create_context()
   return _context
 
 
 def context_safe():
   """Returns current context (or None if one hasn't been initialized)."""
   return _context
+
+
+def ensure_initialized():
+  """Initialize the context."""
+  context().ensure_initialized()
 
 
 def set_global_seed(seed):
@@ -1148,8 +1151,8 @@ def device(name):
 
   Example:
   ```python
-  with tfe.device('gpu:0'):
-    with tfe.device('cpu:0'):
+  with tf.device('gpu:0'):
+    with tf.device('cpu:0'):
       shape = tf.constant([], dtype=tf.int32)
     x = tf.truncated_normal(shape, tf.float32)
   ```
@@ -1163,6 +1166,7 @@ def device(name):
   Returns:
     Context manager for setting the device.
   """
+  ensure_initialized()
   return context().device(name)
 
 

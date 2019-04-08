@@ -838,12 +838,10 @@ class _MirroredReplicaThread(threading.Thread):
     self.has_paused = threading.Event()
     # These fields have to do with inheriting various contexts from the
     # parent thread:
+    context.ensure_initialized()
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
     self.record_thread_local_context_fields()
-    # pylint: disable=protected-access
-    if not ctx._context_handle:
-      ctx._initialize_handle_and_devices()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))

@@ -107,6 +107,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testAsyncBasic(self):
     ctx = context.Context(execution_mode=context.ASYNC)
+    ctx.ensure_initialized()
     has_cpu_device = False
     for x in ctx.devices():
       has_cpu_device = has_cpu_device or 'CPU' in x

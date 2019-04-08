@@ -64,6 +64,8 @@ class EagerFunc(object):
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
 
+    context.ensure_initialized()
+
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
 
