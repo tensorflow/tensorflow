@@ -20,7 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.platform import test, tf_logging as logging
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class DistributedTrainingUtilsTest(test.TestCase):
