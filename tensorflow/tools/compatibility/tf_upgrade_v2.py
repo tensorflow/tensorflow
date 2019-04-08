@@ -672,8 +672,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.strings.reduce_join",
         "tf.load_file_system_library":
             "tf.load_library",
-        "tf.pywrap_tensorflow":
-            "tf.compat.v1.pywrap_tensorflow",
         "tf.bincount":
             "tf.math.bincount",
         "tf.confusion_matrix":
@@ -1423,7 +1421,13 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
              "<function name> returns ResourceVariables by default in 2.0, "
              "which have well-defined semantics and are stricter about shapes. "
              "You can disable this behavior by passing use_resource=False, or "
-             "by calling tf.compat.v1.disable_resource_variables().")
+             "by calling tf.compat.v1.disable_resource_variables()."),
+        "tf.pywrap_tensorflow":
+            (ast_edits.ERROR,
+             "<function name> cannot be converted automatically. "
+             "`tf.pywrap_tensorflow` will not be distributed with "
+             "TensorFlow 2.0, please consider an alternative in public "
+             "TensorFlow APIs.")
     }
 
     # Warnings that are emitted only if a specific arg is found.
