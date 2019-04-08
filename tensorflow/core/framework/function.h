@@ -275,7 +275,7 @@ class CallFrameInterface {
 class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
-  ~FunctionCallFrame();
+  ~FunctionCallFrame() override;
 
   // Caller methods.
   Status SetArgs(gtl::ArraySlice<Tensor> args);
@@ -443,7 +443,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
+    explicit FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
     FunctionDef fdef;
     OpRegistrationData op_registration_data;

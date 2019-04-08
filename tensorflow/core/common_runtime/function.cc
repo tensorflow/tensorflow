@@ -1447,11 +1447,11 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
 }
 
 Status InstantiateFunctionCall(const NodeDef& call_def,
-                               FunctionLibraryRuntime& flr,
+                               FunctionLibraryRuntime* flr,
                                FunctionLibraryRuntime::Handle* handle) {
   NameAttrList function;
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(call_def, &function));
-  return flr.Instantiate(function.name(), AttrSlice(&function.attr()), handle);
+  return flr->Instantiate(function.name(), AttrSlice(&function.attr()), handle);
 }
 
 namespace {
@@ -1892,7 +1892,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       continue;
     }
     FunctionLibraryRuntime::Handle handle;
-    Status s = InstantiateFunctionCall(node->def(), *lib, &handle);
+    Status s = InstantiateFunctionCall(node->def(), lib, &handle);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
       continue;
@@ -1937,7 +1937,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // possible execution order of the graph.
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
-  gdef->mutable_versions()->CopyFrom(g->versions());
+  *gdef->mutable_versions() = g->versions();
 
   std::vector<Node*> start_nodes;
   for (Node* n : g->nodes()) {

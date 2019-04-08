@@ -237,6 +237,8 @@ class ActivityAnalyzerTest(test.TestCase):
     node, _ = self._parse_and_analyze(test_fn)
     for_node = node.body[1]
     self.assertScopeIs(
+        anno.getanno(for_node, NodeAnno.ITERATE_SCOPE), (), ('_'))
+    self.assertScopeIs(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'))
     self.assertScopeIs(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE).parent, ('a', 'b', 'c'),

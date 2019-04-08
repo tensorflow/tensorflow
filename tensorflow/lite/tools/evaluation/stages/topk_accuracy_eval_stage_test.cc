@@ -15,12 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/topk_accuracy_eval_stage.h"
 
 #include <stdint.h>
-#include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
@@ -30,31 +27,10 @@ namespace {
 
 constexpr char kTopkAccuracyEvalStageName[] = "topk_accuracy_eval_stage";
 constexpr int kNumCategories = 1001;
-// Initializers.
-constexpr char kAllLabelsName[] = "all_labels";
-constexpr char kModelOutputTypeName[] = "model_output_type";
-constexpr char kModelOutputShapeName[] = "model_output_shape";
-constexpr char kAllLabelsMapping[] = "ALL_LABELS:all_labels";
-constexpr char kModelOutputTypeMapping[] =
-    "MODEL_OUTPUT_TYPE:model_output_type";
-constexpr char kModelOutputShapeMapping[] =
-    "MODEL_OUTPUT_SHAPE:model_output_shape";
-// Inputs.
-constexpr char kModelOutputName[] = "model_out";
-constexpr char kGroundTruthLabelName[] = "ground_truth";
-constexpr char kModelOutputMapping[] = "MODEL_OUTPUT:model_out";
-constexpr char kGroundTruthLabelMapping[] = "GROUND_TRUTH_LABEL:ground_truth";
 
 EvaluationStageConfig GetTopkAccuracyEvalStageConfig() {
-  TopkAccuracyEvalStage_ENABLE();
   EvaluationStageConfig config;
   config.set_name(kTopkAccuracyEvalStageName);
-  config.mutable_specification()->set_process_class(TOPK_ACCURACY_EVAL);
-  config.add_initializers(kAllLabelsMapping);
-  config.add_initializers(kModelOutputTypeMapping);
-  config.add_initializers(kModelOutputShapeMapping);
-  config.add_inputs(kModelOutputMapping);
-  config.add_inputs(kGroundTruthLabelMapping);
   auto* params =
       config.mutable_specification()->mutable_topk_accuracy_eval_params();
   params->set_k(5);
@@ -78,13 +54,21 @@ std::vector<std::string> CreateGroundTruthLabels() {
   return ground_truth_labels;
 }
 
+TEST(TopkAccuracyEvalStage, NoInitializers) {
+  // Create stage.
+  EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
+
+  EXPECT_EQ(stage.Init(), kTfLiteError);
+}
+
 TEST(TopkAccuracyEvalStage, NoK) {
   // Create stage.
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
   config.mutable_specification()
       ->mutable_topk_accuracy_eval_params()
       ->clear_k();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
 
   // Initialize.
   std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
@@ -92,18 +76,15 @@ TEST(TopkAccuracyEvalStage, NoK) {
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories;
   TfLiteType model_output_type = kTfLiteFloat32;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
   TfLiteIntArrayFree(model_output_shape);
 }
 
 TEST(TopkAccuracyEvalStage, NoGroundTruthLabels) {
   // Create stage.
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
 
   // Initialize.
   std::vector<std::string> ground_truth_labels = {};
@@ -111,11 +92,8 @@ TEST(TopkAccuracyEvalStage, NoGroundTruthLabels) {
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories;
   TfLiteType model_output_type = kTfLiteFloat32;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
   TfLiteIntArrayFree(model_output_shape);
 }
 
@@ -124,7 +102,7 @@ TEST(TopkAccuracyEvalStage, KTooLarge) {
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
   config.mutable_specification()->mutable_topk_accuracy_eval_params()->set_k(
       10000);
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
 
   // Initialize.
   std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
@@ -132,18 +110,15 @@ TEST(TopkAccuracyEvalStage, KTooLarge) {
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories;
   TfLiteType model_output_type = kTfLiteFloat32;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
   TfLiteIntArrayFree(model_output_shape);
 }
 
 TEST(TopkAccuracyEvalStage, WeirdModelOutputShape) {
   // Create stage.
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
 
   // Initialize.
   std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
@@ -151,18 +126,15 @@ TEST(TopkAccuracyEvalStage, WeirdModelOutputShape) {
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories + 1;
   TfLiteType model_output_type = kTfLiteFloat32;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
   TfLiteIntArrayFree(model_output_shape);
 }
 
 TEST(TopkAccuracyEvalStage, UnsupportedModelOutputType) {
   // Create stage.
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
 
   // Initialize.
   std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
@@ -170,55 +142,62 @@ TEST(TopkAccuracyEvalStage, UnsupportedModelOutputType) {
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories + 1;
   TfLiteType model_output_type = kTfLiteComplex64;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_FALSE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteError);
   TfLiteIntArrayFree(model_output_shape);
 }
 
-TEST(TopkAccuracyEvalStage, InvalidGroundTruth) {
+TEST(TopkAccuracyEvalStage, NoInputs) {
   // Create stage.
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
   // Initialize.
   std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
   TfLiteIntArray* model_output_shape = TfLiteIntArrayCreate(2);
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories;
   TfLiteType model_output_type = kTfLiteFloat32;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_TRUE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+  TfLiteIntArrayFree(model_output_shape);
+
+  EXPECT_EQ(stage.Run(), kTfLiteError);
+}
+
+TEST(TopkAccuracyEvalStage, InvalidGroundTruth) {
+  // Create stage.
+  EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
+  // Initialize.
+  std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
+  TfLiteIntArray* model_output_shape = TfLiteIntArrayCreate(2);
+  model_output_shape->data[0] = 1;
+  model_output_shape->data[1] = kNumCategories;
+  TfLiteType model_output_type = kTfLiteFloat32;
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
   TfLiteIntArrayFree(model_output_shape);
 
   float array[kNumCategories];
   float* tensor = ResetOutputArray(array);
   tensor[0] = 0.8;
   std::string ground_truth = "XYZ";
-  object_map[kModelOutputName] = tensor;
-  object_map[kGroundTruthLabelName] = &ground_truth;
-  EXPECT_FALSE(stage_ptr->Run(object_map));
+  stage.SetEvalInputs(tensor, &ground_truth);
+  EXPECT_EQ(stage.Run(), kTfLiteError);
 }
 
 TEST(TopkAccuracyEvalStage, FloatTest_CorrectLabelsAtLastIndices) {
   // Create stage.
   EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
-  std::unique_ptr<EvaluationStage> stage_ptr = EvaluationStage::Create(config);
+  TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
   // Initialize.
   std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
   TfLiteIntArray* model_output_shape = TfLiteIntArrayCreate(2);
   model_output_shape->data[0] = 1;
   model_output_shape->data[1] = kNumCategories;
   TfLiteType model_output_type = kTfLiteFloat32;
-  absl::flat_hash_map<std::string, void*> object_map;
-  object_map[kAllLabelsName] = &ground_truth_labels;
-  object_map[kModelOutputShapeName] = model_output_shape;
-  object_map[kModelOutputTypeName] = &model_output_type;
-  EXPECT_TRUE(stage_ptr->Init(object_map));
+  stage.SetTaskInfo(ground_truth_labels, model_output_type, model_output_shape);
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
   TfLiteIntArrayFree(model_output_shape);
 
   float array[kNumCategories];
@@ -232,10 +211,9 @@ TEST(TopkAccuracyEvalStage, FloatTest_CorrectLabelsAtLastIndices) {
   tensor[1] = 0.6;
   tensor[0] = 0.5;
   std::string ground_truth = "0";
-  object_map[kModelOutputName] = tensor;
-  object_map[kGroundTruthLabelName] = &ground_truth;
-  EXPECT_TRUE(stage_ptr->Run(object_map));
-  EvaluationStageMetrics metrics = stage_ptr->LatestMetrics();
+  stage.SetEvalInputs(tensor, &ground_truth);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
   EXPECT_EQ(1, metrics.num_runs());
   auto accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
   // Only top-5 count is 1.0, rest are 0.0
@@ -246,9 +224,9 @@ TEST(TopkAccuracyEvalStage, FloatTest_CorrectLabelsAtLastIndices) {
 
   // The ground truth is index 1, but it is 4th highest based on model's output.
   ground_truth = "1";
-  object_map[kGroundTruthLabelName] = &ground_truth;
-  EXPECT_TRUE(stage_ptr->Run(object_map));
-  metrics = stage_ptr->LatestMetrics();
+  stage.SetEvalInputs(tensor, &ground_truth);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  metrics = stage.LatestMetrics();
   EXPECT_EQ(2, metrics.num_runs());
   accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
   // 1/2 images had the currect output in top-4, 2/2 has currect output in
@@ -268,22 +246,19 @@ class CorrectTopkAccuracyEvalTest : public ::testing::Test {
                                     TfLiteType model_output_type) {
     // Create stage.
     EvaluationStageConfig config = GetTopkAccuracyEvalStageConfig();
-    std::unique_ptr<EvaluationStage> stage_ptr =
-        EvaluationStage::Create(config);
+    TopkAccuracyEvalStage stage = TopkAccuracyEvalStage(config);
     // Initialize.
     std::vector<std::string> ground_truth_labels = CreateGroundTruthLabels();
     TfLiteIntArray* model_output_shape = TfLiteIntArrayCreate(2);
     model_output_shape->data[0] = 1;
     model_output_shape->data[1] = kNumCategories;
-    absl::flat_hash_map<std::string, void*> object_map;
-    object_map[kAllLabelsName] = &ground_truth_labels;
-    object_map[kModelOutputShapeName] = model_output_shape;
-    object_map[kModelOutputTypeName] = &model_output_type;
-    EXPECT_TRUE(stage_ptr->Init(object_map));
+    stage.SetTaskInfo(ground_truth_labels, model_output_type,
+                      model_output_shape);
+    EXPECT_EQ(stage.Init(), kTfLiteOk);
     TfLiteIntArrayFree(model_output_shape);
 
     // Pre-run state.
-    EvaluationStageMetrics metrics = stage_ptr->LatestMetrics();
+    EvaluationStageMetrics metrics = stage.LatestMetrics();
     EXPECT_EQ(0, metrics.num_runs());
     auto accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
     EXPECT_EQ(0, accuracy_metrics.topk_accuracy_percentages_size());
@@ -294,10 +269,9 @@ class CorrectTopkAccuracyEvalTest : public ::testing::Test {
     T* tensor = ResetOutputArray(array);
     tensor[0] = ground_truth_0_value;
     std::string ground_truth = "0";
-    object_map[kModelOutputName] = tensor;
-    object_map[kGroundTruthLabelName] = &ground_truth;
-    EXPECT_TRUE(stage_ptr->Run(object_map));
-    metrics = stage_ptr->LatestMetrics();
+    stage.SetEvalInputs(tensor, &ground_truth);
+    EXPECT_EQ(stage.Run(), kTfLiteOk);
+    metrics = stage.LatestMetrics();
     EXPECT_EQ(1, metrics.num_runs());
     accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
     for (int i = 0; i < accuracy_metrics.topk_accuracy_percentages_size();
@@ -309,10 +283,9 @@ class CorrectTopkAccuracyEvalTest : public ::testing::Test {
     // Hence, for the second image as well, the top output ("1") was correct.
     tensor[1] = ground_truth_1_value;
     ground_truth = "1";
-    object_map[kModelOutputName] = tensor;
-    object_map[kGroundTruthLabelName] = &ground_truth;
-    EXPECT_TRUE(stage_ptr->Run(object_map));
-    metrics = stage_ptr->LatestMetrics();
+    stage.SetEvalInputs(tensor, &ground_truth);
+    EXPECT_EQ(stage.Run(), kTfLiteOk);
+    metrics = stage.LatestMetrics();
     EXPECT_EQ(2, metrics.num_runs());
     accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
     for (int i = 0; i < accuracy_metrics.topk_accuracy_percentages_size();

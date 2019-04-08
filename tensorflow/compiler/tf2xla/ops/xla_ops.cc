@@ -589,5 +589,13 @@ This op has better TPU performnce since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
 
+REGISTER_OP("XlaReplicaId")
+    .Output("id: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      context->set_output(0, context->MakeShape({}));
+      return Status::OK();
+    })
+    .Doc("Replica ID.");
+
 }  // namespace
 }  // namespace tensorflow

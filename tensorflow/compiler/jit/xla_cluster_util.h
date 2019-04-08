@@ -126,12 +126,14 @@ Status CanPickDeviceForXla(absl::Span<const string> device_names,
                            bool allow_mixing_unknown_and_cpu,
                            bool* out_can_pick_device);
 
-// Determine the global jit level which is ON if either the
-// GraphOptimizationPassOptions has the jit ON, or if the --tf_xla_auto_jit flag
-// is true.
-OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+// Determines the global jit level based on GraphOptimizationPassOptions,
+// --tf_xla_auto_jit and whether the graph is a single GPU graph.
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(
     const GraphOptimizationPassOptions& options);
 
+// Returns true if `g` is a single-GPU graph.  A single-GPU graph uses exactly
+// one GPU (and any number of CPUs).
+bool IsSingleGpuGraph(const Graph& g);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_

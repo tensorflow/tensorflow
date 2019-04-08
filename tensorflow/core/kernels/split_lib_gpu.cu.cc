@@ -212,39 +212,40 @@ template <typename T>
   }
 
 template <typename T, typename IntType>
-  void SplitVOpGPULaunch<T, IntType>::Run(const Eigen::GpuDevice& gpu_device, bool fixed_size,
-           const T* input_ptr, int total_rows, int total_cols,
-           const GpuDeviceArrayStruct<IntType>& output_scan,
-           const GpuDeviceArrayStruct<T*>& output_ptr_data) {
-    if (fixed_size) {
-      GpuLaunchConfig config =
-          GetGpuLaunchConfig(total_rows * total_cols, gpu_device);
+void SplitVOpGPULaunch<T, IntType>::Run(
+    const Eigen::GpuDevice& gpu_device, bool fixed_size, const T* input_ptr,
+    int total_rows, int total_cols,
+    const GpuDeviceArrayStruct<IntType>& output_scan,
+    const GpuDeviceArrayStruct<T*>& output_ptr_data) {
+  if (fixed_size) {
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(total_rows * total_cols, gpu_device);
 
-      GPU_LAUNCH_KERNEL(SplitVOpKernel_fixed<T>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          gpu_device.stream(),
-          input_ptr, total_rows, total_cols, output_ptr_data);
+    GPU_LAUNCH_KERNEL(SplitVOpKernel_fixed<T>,
+                      dim3(config.block_count), dim3(config.thread_per_block), 0,
+                      gpu_device.stream(),
+                      input_ptr, total_rows, total_cols, output_ptr_data);
+  } else {
+    auto config = GetGpu2DLaunchConfig(total_cols, total_rows, gpu_device);
+    IntType smem_max = gpu_device.sharedMemPerBlock();
+    IntType smem_usage = output_scan.size * sizeof(IntType);
+    // performance crossover is less than using maximum available shared
+    // memory on most processors possibly due to decreasing occupancy
+    // 4096 inputs is a lot, most code will take the smem path
+    const int32 kMaxSmemBytesPerformance = 16384;
+    if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
+      GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, true>),
+                        dim3(config.block_count), dim3(config.thread_per_block),
+                        smem_usage, gpu_device.stream(), input_ptr, output_scan,
+                        total_rows, total_cols, output_ptr_data);
     } else {
-      auto config = GetGpu2DLaunchConfig(total_cols, total_rows, gpu_device);
-      IntType smem_max = gpu_device.sharedMemPerBlock();
-      IntType smem_usage = output_scan.size * sizeof(IntType);
-      // performance crossover is less than using maximum available shared
-      // memory on most processors possibly due to decreasing occupancy
-      // 4096 inputs is a lot, most code will take the smem path
-      const int32 kMaxSmemBytesPerformance = 16384;
-      if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
-        GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, true>),
-            dim3(config.block_count), dim3(config.thread_per_block), smem_usage,
-            gpu_device.stream(),
-            input_ptr, output_scan, total_rows, total_cols, output_ptr_data);
-      } else {
-        GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, false>),
-            dim3(config.block_count), dim3(config.thread_per_block), 0,
-            gpu_device.stream(),
-            input_ptr, output_scan, total_rows, total_cols, output_ptr_data);
-      }
+      GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, false>),
+                        dim3(config.block_count), dim3(config.thread_per_block),
+                        0, gpu_device.stream(), input_ptr, output_scan, total_rows,
+                        total_cols, output_ptr_data);
     }
   }
+}
 
 #define REGISTER_GPU_KERNEL(T) template struct SplitOpGPULaunch<T>;
 

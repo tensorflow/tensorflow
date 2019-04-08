@@ -620,7 +620,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   if (SupportOutputTypeFloatInQuantizedOp(op)) {
     LOG(WARNING)
         << HelpfulOperatorTypeName(op) << " is a quantized op"
-        << "but it has a model flag that sets the output arrays to float.";
+        << " but it has a model flag that sets the output arrays to float.";
   } else {
     for (std::size_t output_index = 0; output_index < op.outputs.size();
          output_index++) {

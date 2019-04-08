@@ -31,8 +31,8 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras import distribute_strategy_test as keras_test_lib
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rms_prop_keras
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent

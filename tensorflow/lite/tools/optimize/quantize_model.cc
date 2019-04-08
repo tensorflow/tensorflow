@@ -59,7 +59,9 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
     if (input_type == TensorType_FLOAT32) {
       // Add tensor for quantize operator. Scales and zero points are not
       // needed.
-      const string leading_op_name = tensor->name + "_quantize";
+      const string leading_op_name = tensor->name;
+      const string new_name_original_input = tensor->name + "_int8";
+      tensor->name = new_name_original_input;
       utils::MakeTensor(leading_op_name, tensor->shape, input_type,
                         &leading_op_input);
     } else {
@@ -72,7 +74,9 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
       //  zero point is shifted by +128.
       TFLITE_DCHECK_GE(zero_point, -128);
       TFLITE_DCHECK_LE(zero_point, 127);
-      const string leading_op_name = tensor->name + "_requantize";
+      const string leading_op_name = tensor->name;
+      const string new_name_original_input = tensor->name + "_int8";
+      tensor->name = new_name_original_input;
       utils::MakeTensorWithQuantParam(leading_op_name, tensor->shape,
                                       input_type, scale, zero_point + 128,
                                       &leading_op_input);
@@ -107,7 +111,9 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
     // Create a new tensor to be the output of the tailing op.
     std::unique_ptr<TensorT> tailing_op_output;
     if (output_type == TensorType_FLOAT32) {
-      const string tailing_op_name = tensor->name + "_dequantize";
+      const string tailing_op_name = tensor->name;
+      const string new_name_original_output = tensor->name + "_int8";
+      tensor->name = new_name_original_output;
       utils::MakeTensor(tailing_op_name, tensor->shape, output_type,
                         &tailing_op_output);
     } else {
@@ -120,7 +126,9 @@ int32_t SetOutputType(ModelT* model, SubGraphT* subgraph,
       //  zero point is shifted by +128.
       TFLITE_DCHECK_GE(zero_point, -128);
       TFLITE_DCHECK_LE(zero_point, 127);
-      const string tailing_op_name = tensor->name + "_requantize";
+      const string tailing_op_name = tensor->name;
+      const string new_name_original_output = tensor->name + "_int8";
+      tensor->name = new_name_original_output;
       utils::MakeTensorWithQuantParam(tailing_op_name, tensor->shape,
                                       output_type, scale, zero_point + 128,
                                       &tailing_op_output);

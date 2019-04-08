@@ -1186,7 +1186,7 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
       expected_error = (
           errors.InvalidArgumentError,
           "Cannot place the graph because a reference or resource edge "
-          "connects colocation groups with incompatible assigned devices")
+          "connects colocation groups with incompatible resource devices")
       self.assertDatasetProduces(
           dataset, expected_error=expected_error, requires_initialization=True)
 
