@@ -106,7 +106,7 @@ class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
   using Base::Base;
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto edscContext = edsc::ScopedContext(rewriter, op->getLoc());
+    edsc::ScopedContext edscContext(rewriter, op->getLoc());
     auto elementType = linalg::convertLinalgType(*op->getResultTypes().begin());
     Value *viewDescriptor = operands[0];
     ArrayRef<Value *> indices = operands.drop_front();
@@ -122,7 +122,7 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   using Base::Base;
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
-    auto edscContext = edsc::ScopedContext(rewriter, op->getLoc());
+    edsc::ScopedContext edscContext(rewriter, op->getLoc());
     Value *viewDescriptor = operands[1];
     Value *data = operands[0];
     ArrayRef<Value *> indices = operands.drop_front(2);

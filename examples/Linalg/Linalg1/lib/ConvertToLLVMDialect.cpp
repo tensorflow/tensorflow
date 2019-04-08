@@ -159,7 +159,7 @@ public:
         linalg::convertLinalgType(rangeOp.getResult()->getType());
 
     using namespace intrinsics;
-    auto context = edsc::ScopedContext(rewriter, op->getLoc());
+    edsc::ScopedContext context(rewriter, op->getLoc());
 
     // Fill in an aggregate value of the descriptor.
     Value *rangeDescriptor = undef(rangeDescriptorType);
@@ -235,7 +235,7 @@ public:
     };
 
     using namespace intrinsics;
-    auto context = edsc::ScopedContext(rewriter, op->getLoc());
+    edsc::ScopedContext context(rewriter, op->getLoc());
 
     // Declare the view descriptor.
     Value *viewDescriptor = undef(viewDescriptorType);
@@ -343,7 +343,7 @@ public:
 
     // Declare the descriptor of the new view.
     using namespace intrinsics;
-    auto edscContext = edsc::ScopedContext(rewriter, op->getLoc());
+    edsc::ScopedContext context(rewriter, op->getLoc());
     Value *newViewDescriptor = undef(newViewDescriptorType);
 
     // Copy the buffer pointer from the old descriptor to the new one.
