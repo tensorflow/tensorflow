@@ -396,29 +396,15 @@ Status Converter::GetTrtBroadcastShape(
   (*operand_l_new_dims) = operand_l.GetTrtDims();
   (*operand_r_new_dims) = operand_r.GetTrtDims();
 
-  // Weights may include a batch dimension, so we need to remove it.
-  // We determine if that is the case by checking if the rank of the weights is larger
-  // than the rank of the tensor. Needed for cases such as:
-  // t: [1, 1] w/ implicit batch size of 1
-  // w: [1, 1, 1]
-  // where the output in TRT is expected to be 2D, not 3D.
-  if (operand_l.is_weights() && operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)  {
-    if (operand_l_new_dims->d[0] != -1 && operand_l_new_dims->d[0] != 1) {
+  constexpr auto stripBatchDimension = [](nvinfer1::Dims& dims) {
+    // If batch dimension is not either -1 or 1, this is an invalid broadcast.
+    if (dims.d[0] != 1 && dims.d[0] != -1) {
       return errors::InvalidArgument("Cannot broadcast weights with non-trivial batch dimension");
     }
-    TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_l_new_dims));
-  }
-
-  if (operand_r.is_weights() && operand_r_new_dims->nbDims > operand_l_new_dims->nbDims)  {
-    if (operand_r_new_dims->d[0] != -1 && operand_r_new_dims->d[0] != 1) {
-      return errors::InvalidArgument("Cannot broadcast weights with non-trivial batch dimension");
+    for (int i = 0; i < dims.nbDims - 1; ++i) {
+      dims.d[i] = dims.d[i + 1];
     }
-    TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_r_new_dims));
-  }
-
-  // If the rank of the tensors is already the same, we can't do anything further.
-  if (operand_l_new_dims->nbDims == operand_r_new_dims->nbDims) {
-    VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims) << " and [R] " << DebugString(*operand_r_new_dims);
+    --dims.nbDims;
     return Status::OK();
   }
 
@@ -441,8 +427,52 @@ Status Converter::GetTrtBroadcastShape(
     return ret;
   };
 
+  // Weights may include a batch dimension, so we need to remove it.
+  // We determine if that is the case by checking if the rank of the weights is larger
+  // than the rank of the tensor. Needed for cases such as:
+  // t: [1, 1] w/ implicit batch size of 1
+  // w: [1, 1, 1]
+  // where the output in TRT is expected to be
+  if (operand_l.is_weights() && operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)  {
+    TF_RETURN_IF_ERROR(stripBatchDimension(*operand_l_new_dims));
+  }
+
+  if (operand_r.is_weights() && operand_r_new_dims->nbDims > operand_l_new_dims->nbDims)  {
+    TF_RETURN_IF_ERROR(stripBatchDimension(*operand_r_new_dims));
+  }
+
+  // TODO(pranavm): Remove, DEBUG:
+  std::cout << "Found l_dims: " << (*operand_l_new_dims) << " and r_dims: " << (*operand_r_new_dims) << std::endl;
+
+  // If the rank of the tensors is already the same, we can't do anything further.
+  if (operand_l_new_dims->nbDims == operand_r_new_dims->nbDims) {
+    return Status::OK();
+  }
+
+  const nvinfer1::Dims* higher_rank =
+      (operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)
+          ? operand_l_new_dims
+          : operand_r_new_dims;
+  nvinfer1::Dims* lower_rank =
+      (operand_l_new_dims->nbDims <= operand_r_new_dims->nbDims)
+          ? operand_l_new_dims
+          : operand_r_new_dims;
+
+  // Broadcasts low_rank over high_rank in-place by inserting ones at the front of low_rank so the ranks match.
+  constexpr auto broadcastDims = [](const nvinfer1::Dims& high_rank,
+                                    const nvinfer1::Dims& low_rank) {
+    nvinfer1::Dims ret{high_rank.nbDims};
+    std::fill(ret.d, ret.d + ret.nbDims, 1);
+    int num_ones = high_rank.nbDims - low_rank.nbDims;
+    std::copy(low_rank.d, low_rank.d + low_rank.nbDims, ret.d + num_ones);
+    return ret;
+  };
+
   (*lower_rank) = broadcastDims(*higher_rank, *lower_rank);
-  VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims) << " and [R] " << DebugString(*operand_r_new_dims);
+
+  // TODO(pranavm): Remove, DEBUG:
+  std::cout << "After broadcasting, higher_rank dims: " << (*higher_rank) << " and lower_rank dims: " << (*lower_rank) << std::endl;
+  std::cout << "After broadcasting, operand_l_new_dims: " << (*operand_l_new_dims) << " and operand_r_new_dims: " << (*operand_r_new_dims) << std::endl;
 
   // Compare broadcast feasibility
   for (int i = 0; i < operand_r_new_dims->nbDims; ++i) {
@@ -1149,6 +1179,10 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     }
     VLOG(2) << "Adding out tensor " << output_name << ": "
             << output.DebugString();
+
+    // TODO(pranavm): Remove, DEBUG:
+    std::cout << "Converting " << node_def.name() << ": "
+            << output.DebugString() << std::endl;
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
       return Status(status.code(),
