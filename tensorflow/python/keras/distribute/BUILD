@@ -14,7 +14,6 @@ py_library(
     name = "distribute",
     srcs = [
         "distributed_training_utils.py",
-        "training_distributed.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

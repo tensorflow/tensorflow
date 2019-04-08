@@ -144,6 +144,7 @@ py_library(
         "engine/sequential.py",
         "engine/training.py",
         "engine/training_arrays.py",
+        "engine/training_distributed.py",
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
