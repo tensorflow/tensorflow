@@ -129,6 +129,10 @@ tf_class {
     argspec: "args=[\'self\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "sparse_read"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "to_proto"
     argspec: "args=[\'self\', \'export_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
