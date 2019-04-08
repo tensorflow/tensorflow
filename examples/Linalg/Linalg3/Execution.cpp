@@ -18,6 +18,7 @@
 #include "TestHarness.h"
 
 #include "linalg1/Common.h"
+#include "linalg1/Dialect.h"
 #include "linalg2/Intrinsics.h"
 #include "linalg3/ConvertToLLVMDialect.h"
 #include "linalg3/Ops.h"
@@ -26,6 +27,8 @@
 #include "llvm/Support/TargetSelect.h"
 
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
+
+// RUN: %p/execution | FileCheck %s
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -150,6 +153,8 @@ TEST_FUNC(execution) {
 }
 
 int main() {
+  mlir::registerDialect<linalg::LinalgDialect>();
+
   // Initialize LLVM targets.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
