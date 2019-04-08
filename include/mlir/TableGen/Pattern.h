@@ -160,10 +160,6 @@ public:
   // Precondition: isNativeCodeBuilder.
   llvm::StringRef getNativeCodeBuilder() const;
 
-  // Collects all recursively bound arguments involved in the DAG tree rooted
-  // from this node.
-  void collectBoundArguments(Pattern *pattern) const;
-
   // Returns true if this DAG construct means to replace with an existing SSA
   // value.
   bool isReplaceWithValue() const;
@@ -235,6 +231,10 @@ public:
   int getBenefit() const;
 
 private:
+  // Recursively collects all bound arguments inside the DAG tree rooted
+  // at `tree`.
+  void collectBoundArguments(DagNode tree);
+
   // The TableGen definition of this pattern.
   const llvm::Record &def;
 

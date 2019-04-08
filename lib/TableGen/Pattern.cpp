@@ -22,6 +22,7 @@
 
 #include "mlir/TableGen/Pattern.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 
@@ -141,36 +142,6 @@ StringRef tblgen::DagNode::getArgName(unsigned index) const {
   return node->getArgNameStr(index);
 }
 
-static void collectBoundArguments(const llvm::DagInit *tree,
-                                  tblgen::Pattern *pattern) {
-  auto &op = pattern->getDialectOp(tblgen::DagNode(tree));
-  if (llvm::StringInit *si = tree->getName()) {
-    auto name = si->getAsUnquotedString();
-    if (!name.empty())
-      pattern->getSourcePatternBoundResults().insert(name);
-  }
-
-  // TODO(jpienaar): Expand to multiple matches.
-  for (unsigned i = 0, e = tree->getNumArgs(); i != e; ++i) {
-    auto *arg = tree->getArg(i);
-
-    if (auto *argTree = dyn_cast<llvm::DagInit>(arg)) {
-      collectBoundArguments(argTree, pattern);
-      continue;
-    }
-
-    StringRef name = tree->getArgNameStr(i);
-    if (name.empty())
-      continue;
-
-    pattern->getSourcePatternBoundArgs().try_emplace(name, op.getArg(i));
-  }
-}
-
-void tblgen::DagNode::collectBoundArguments(tblgen::Pattern *pattern) const {
-  ::collectBoundArguments(node, pattern);
-}
-
 bool tblgen::DagNode::isReplaceWithValue() const {
   auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
   return dagOpDef->getName() == "replaceWithValue";
@@ -194,7 +165,7 @@ llvm::StringRef tblgen::DagNode::getNativeCodeBuilder() const {
 
 tblgen::Pattern::Pattern(const llvm::Record *def, RecordOperatorMap *mapper)
     : def(*def), recordOpMap(mapper) {
-  getSourcePattern().collectBoundArguments(this);
+  collectBoundArguments(getSourcePattern());
 }
 
 tblgen::DagNode tblgen::Pattern::getSourcePattern() const {
@@ -275,4 +246,35 @@ int tblgen::Pattern::getBenefit() const {
                     "The 'addBenefit' takes and only takes one integer value");
   }
   return initBenefit + dyn_cast<llvm::IntInit>(delta->getArg(0))->getValue();
+}
+
+void tblgen::Pattern::collectBoundArguments(DagNode tree) {
+  auto &op = getDialectOp(tree);
+  auto numOpArgs = op.getNumArgs();
+  auto numTreeArgs = tree.getNumArgs();
+
+  if (numOpArgs != numTreeArgs) {
+    PrintFatalError(def.getLoc(),
+                    formatv("op '{0}' argument number mismatch: "
+                            "{1} in pattern vs. {2} in definition",
+                            op.getOperationName(), numTreeArgs, numOpArgs));
+  }
+
+  // The name attached to the DAG node's operator is for representing the
+  // results generated from this op. It should be remembered as bound results.
+  auto treeName = tree.getOpName();
+  if (!treeName.empty())
+    boundResults.insert(treeName);
+
+  // TODO(jpienaar): Expand to multiple matches.
+  for (unsigned i = 0; i != numTreeArgs; ++i) {
+    if (auto treeArg = tree.getArgAsNestedDag(i)) {
+      // This DAG node argument is a DAG node itself. Go inside recursively.
+      collectBoundArguments(treeArg);
+    } else {
+      auto treeArgName = tree.getArgName(i);
+      if (!treeArgName.empty())
+        boundArguments.try_emplace(treeArgName, op.getArg(i));
+    }
+  }
 }
