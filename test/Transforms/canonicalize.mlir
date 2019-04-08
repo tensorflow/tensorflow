@@ -8,6 +8,22 @@ func @test_subi_zero(%arg0: i32) -> i32 {
   return %y: i32
 }
 
+// CHECK-LABEL: func @test_subi_zero_vector
+func @test_subi_zero_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
+  //CHECK-NEXT: %cst = constant splat<vector<4xi32>, 0>
+  %y = subi %arg0, %arg0 : vector<4xi32>
+  // CHECK-NEXT: return %cst
+  return %y: vector<4xi32>
+}
+
+// CHECK-LABEL: func @test_subi_zero_tensor
+func @test_subi_zero_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
+  //CHECK-NEXT: %cst = constant splat<tensor<4x5xi32>, 0>
+  %y = subi %arg0, %arg0 : tensor<4x5xi32>
+  // CHECK-NEXT: return %cst
+  return %y: tensor<4x5xi32>
+}
+
 // CHECK-LABEL: func @dim
 func @dim(%arg0: tensor<8x4xf32>) -> index {
 
@@ -211,6 +227,30 @@ func @or_zero_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
   // CHECK-NEXT: return %arg0
   %cst = constant splat<tensor<4x5xi32>, 0> : tensor<4x5xi32>
   %1 = or %arg0, %cst : tensor<4x5xi32>
+  return %1 : tensor<4x5xi32>
+}
+
+//CHECK-LABEL: func @xor_self
+func @xor_self(%arg0: i32) -> i32 {
+  //CHECK-NEXT: %c0_i32 = constant 0
+  %1 = xor %arg0, %arg0 : i32
+  //CHECK-NEXT: return %c0_i32
+  return %1 : i32
+}
+
+//CHECK-LABEL: func @xor_self_vector
+func @xor_self_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
+  //CHECK-NEXT: %cst = constant splat<vector<4xi32>, 0>
+  %1 = xor %arg0, %arg0 : vector<4xi32>
+  //CHECK-NEXT: return %cst
+  return %1 : vector<4xi32>
+}
+
+//CHECK-LABEL: func @xor_self_tensor
+func @xor_self_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
+  //CHECK-NEXT: %cst = constant splat<tensor<4x5xi32>, 0>
+  %1 = xor %arg0, %arg0 : tensor<4x5xi32>
+  //CHECK-NEXT: return %cst
   return %1 : tensor<4x5xi32>
 }
 

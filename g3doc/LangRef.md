@@ -2204,6 +2204,35 @@ same element type, and the source and destination types may not be the same.
 They must either have the same rank, or one may be an unknown rank. The
 operation is invalid if converting to a mismatching constant dimension.
 
+
+#### 'xor' operation
+
+Bitwise integer xor.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `xor` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar integer bitwise xor.
+%a = xor %b, %c : i64
+
+// SIMD vector element-wise bitwise integer xor.
+%f = xor %g, %h : vector<4xi32>
+
+// Tensor element-wise bitwise integer xor.
+%x = xor %y, %z : tensor<4x?xi8>
+```
+
+The `xor` operation takes two operands and returns one result, each of these is
+required to be the same type. This type may be an integer scalar type, a vector
+whose element type is integer, or a tensor of integers. It has no standard
+attributes.
+
 ## Dialects
 
 MLIR supports multiple dialects containing a set of operations and types defined

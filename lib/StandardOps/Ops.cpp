@@ -1991,7 +1991,8 @@ struct SimplifyXMinusX : public RewritePattern {
     if (subi.getOperand(0) != subi.getOperand(1))
       return matchFailure();
 
-    rewriter.replaceOpWithNewOp<ConstantIntOp>(op, 0, subi.getType());
+    rewriter.replaceOpWithNewOp<ConstantOp>(
+        op, subi.getType(), rewriter.getZeroAttr(subi.getType()));
     return matchSuccess();
   }
 };
@@ -2044,6 +2045,48 @@ Value *OrOp::fold() {
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// XOrOp
+//===----------------------------------------------------------------------===//
+
+Attribute XOrOp::constantFold(ArrayRef<Attribute> operands,
+                              MLIRContext *context) {
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a ^ b; });
+}
+
+Value *XOrOp::fold() {
+  /// xor(x, 0) -> x
+  if (matchPattern(rhs(), m_Zero()))
+    return lhs();
+
+  return nullptr;
+}
+
+namespace {
+/// xor(x,x) -> 0
+///
+struct SimplifyXXOrX : public RewritePattern {
+  SimplifyXXOrX(MLIRContext *context)
+      : RewritePattern(XOrOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    auto xorOp = op->cast<XOrOp>();
+    if (xorOp.lhs() != xorOp.rhs())
+      return matchFailure();
+
+    rewriter.replaceOpWithNewOp<ConstantOp>(
+        op, xorOp.getType(), rewriter.getZeroAttr(xorOp.getType()));
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace.
+
+void XOrOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                        MLIRContext *context) {
+  results.push_back(llvm::make_unique<SimplifyXXOrX>(context));
+}
 //===----------------------------------------------------------------------===//
 // TensorCastOp
 //===----------------------------------------------------------------------===//

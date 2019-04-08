@@ -142,4 +142,11 @@ def SubIOp : IntArithmeticOp<"std.subi"> {
   let hasCanonicalizer = 0b1;
 }
 
+def XOrOp : IntArithmeticOp<"std.xor", [Commutative]> {
+  let summary = "integer binary xor";
+  let hasConstantFolder = 0b1;
+  let hasCanonicalizer = 0b1;
+  let hasFolder = 1;
+}
+
 #endif // STANDARD_OPS

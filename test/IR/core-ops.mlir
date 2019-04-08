@@ -241,6 +241,18 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = or %cst_4, %cst_4 : tensor<42xi32>
   %59 = or %tci32, %tci32 : tensor<42 x i32>
 
+  // CHECK: %{{[0-9]+}} = xor %arg2, %arg2 : i32
+  %60 = "std.xor"(%i, %i) : (i32,i32) -> i32
+
+  // CHECK: %{{[0-9]+}} = xor %arg2, %arg2 : i32
+  %61 = xor %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = xor %cst_5, %cst_5 : vector<42xi32>
+  %62 = std.xor %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = xor %cst_4, %cst_4 : tensor<42xi32>
+  %63 = xor %tci32, %tci32 : tensor<42 x i32>
+
   return
 }
 
