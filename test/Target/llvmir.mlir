@@ -793,3 +793,7 @@ func @cond_br_arguments(%arg0: !llvm.i1, %arg1: !llvm.i1) {
 func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias: true}) {
   llvm.return
 }
+
+// CHECK-LABEL: @llvm_varargs(...) 
+func @llvm_varargs()
+  attributes {std.varargs: true}

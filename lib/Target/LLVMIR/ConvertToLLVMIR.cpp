@@ -83,8 +83,8 @@ private:
 // MLIR LLVM IR dialect types.  Use `loc` as a location when reporting errors.
 // Return nullptr on errors.
 static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
-                                               FunctionType type,
-                                               Location loc) {
+                                               FunctionType type, Location loc,
+                                               bool isVarArgs) {
   assert(type && "expected non-null type");
 
   auto context = type.getContext();
@@ -105,14 +105,14 @@ static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
 
   if (type.getNumResults() == 0)
     return llvm::FunctionType::get(llvm::Type::getVoidTy(llvmContext), argTypes,
-                                   /*isVarArg=*/false);
+                                   isVarArgs);
 
   auto wrappedResultType = type.getResult(0).dyn_cast<LLVM::LLVMType>();
   if (!wrappedResultType)
     return context->emitError(loc, "non-LLVM function result"), nullptr;
 
   return llvm::FunctionType::get(wrappedResultType.getUnderlyingType(),
-                                 argTypes, /*isVarArg=*/false);
+                                 argTypes, isVarArgs);
 }
 
 // Create an LLVM IR constant of `llvmType` from the MLIR attribute `attr`.
@@ -417,8 +417,12 @@ bool ModuleTranslation::convertFunctions() {
   // call graph with cycles.
   for (Function &function : mlirModule) {
     Function *functionPtr = &function;
-    llvm::FunctionType *functionType = convertFunctionType(
-        llvmModule->getContext(), function.getType(), function.getLoc());
+    mlir::BoolAttr isVarArgsAttr =
+        function.getAttrOfType<BoolAttr>("std.varargs");
+    bool isVarArgs = isVarArgsAttr && isVarArgsAttr.getValue();
+    llvm::FunctionType *functionType =
+        convertFunctionType(llvmModule->getContext(), function.getType(),
+                            function.getLoc(), isVarArgs);
     if (!functionType)
       return true;
     llvm::FunctionCallee llvmFuncCst =
