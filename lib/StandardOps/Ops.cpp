@@ -2003,6 +2003,48 @@ void SubIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AndOp
+//===----------------------------------------------------------------------===//
+
+Attribute AndOp::constantFold(ArrayRef<Attribute> operands,
+                              MLIRContext *context) {
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a & b; });
+}
+
+Value *AndOp::fold() {
+  /// and(x, 0) -> 0
+  if (matchPattern(rhs(), m_Zero()))
+    return rhs();
+  /// and(x,x) -> x
+  if (lhs() == rhs())
+    return rhs();
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// OrOp
+//===----------------------------------------------------------------------===//
+
+Attribute OrOp::constantFold(ArrayRef<Attribute> operands,
+                             MLIRContext *context) {
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a | b; });
+}
+
+Value *OrOp::fold() {
+  /// or(x, 0) -> x
+  if (matchPattern(rhs(), m_Zero()))
+    return lhs();
+  /// or(x,x) -> x
+  if (lhs() == rhs())
+    return rhs();
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // TensorCastOp
 //===----------------------------------------------------------------------===//
 

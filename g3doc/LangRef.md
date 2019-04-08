@@ -1807,6 +1807,34 @@ TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
 
+#### 'and' operation
+
+Bitwise integer and.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `and` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar integer bitwise and.
+%a = and %b, %c : i64
+
+// SIMD vector element-wise bitwise integer and.
+%f = and %g, %h : vector<4xi32>
+
+// Tensor element-wise bitwise integer and.
+%x = and %y, %z : tensor<4x?xi8>
+```
+
+The `and` operation takes two operands and returns one result, each of these is
+required to be the same type. This type may be an integer scalar type, a vector
+whose element type is integer, or a tensor of integers. It has no standard
+attributes.
+
 #### 'cmpi' operation
 
 Examples:
@@ -2020,6 +2048,34 @@ It has no standard attributes.
 TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
+
+#### 'or' operation
+
+Bitwise integer or.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `or` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar integer bitwise or.
+%a = or %b, %c : i64
+
+// SIMD vector element-wise bitwise integer or.
+%f = or %g, %h : vector<4xi32>
+
+// Tensor element-wise bitwise integer or.
+%x = or %y, %z : tensor<4x?xi8>
+```
+
+The `or` operation takes two operands and returns one result, each of these is
+required to be the same type. This type may be an integer scalar type, a vector
+whose element type is integer, or a tensor of integers. It has no standard
+attributes.
 
 #### 'remis' operation
 

@@ -121,6 +121,99 @@ func @muli_one_tensor(%arg0: tensor<4 x 5 x i32>) -> tensor<4 x 5 x i32> {
   return %y: tensor<4 x 5 x i32>
 }
 
+//CHECK-LABEL: func @and_self
+func @and_self(%arg0: i32) -> i32 {
+  //CHECK-NEXT: return %arg0
+  %1 = and %arg0, %arg0 : i32
+  return %1 : i32
+}
+
+//CHECK-LABEL: func @and_self_vector
+func @and_self_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
+  //CHECK-NEXT: return %arg0
+  %1 = and %arg0, %arg0 : vector<4xi32>
+  return %1 : vector<4xi32>
+}
+
+//CHECK-LABEL: func @and_self_tensor
+func @and_self_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
+  //CHECK-NEXT: return %arg0
+  %1 = and %arg0, %arg0 : tensor<4x5xi32>
+  return %1 : tensor<4x5xi32>
+}
+
+//CHECK-LABEL: func @and_zero
+func @and_zero(%arg0: i32) -> i32 {
+  // CHECK-NEXT: %c0_i32 = constant 0 : i32
+  %c0_i32 = constant 0 : i32
+  // CHECK-NEXT: return %c0_i32
+  %1 = and %arg0, %c0_i32 : i32
+  return %1 : i32
+}
+
+//CHECK-LABEL: func @and_zero_vector
+func @and_zero_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
+  // CHECK-NEXT: %cst = constant splat<vector<4xi32>, 0> : vector<4xi32>
+  %cst = constant splat<vector<4xi32>, 0> : vector<4xi32>
+  // CHECK-NEXT: return %cst
+  %1 = and %arg0, %cst : vector<4xi32>
+  return %1 : vector<4xi32>
+}
+
+//CHECK-LABEL: func @and_zero_tensor
+func @and_zero_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
+  // CHECK-NEXT: %cst = constant splat<tensor<4x5xi32>, 0> : tensor<4x5xi32>
+  %cst = constant splat<tensor<4x5xi32>, 0> : tensor<4x5xi32>
+  // CHECK-NEXT: return %cst
+  %1 = and %arg0, %cst : tensor<4x5xi32>
+  return %1 : tensor<4x5xi32>
+}
+
+//CHECK-LABEL: func @or_self
+func @or_self(%arg0: i32) -> i32 {
+  //CHECK-NEXT: return %arg0
+  %1 = or %arg0, %arg0 : i32
+  return %1 : i32
+}
+
+//CHECK-LABEL: func @or_self_vector
+func @or_self_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
+  //CHECK-NEXT: return %arg0
+  %1 = or %arg0, %arg0 : vector<4xi32>
+  return %1 : vector<4xi32>
+}
+
+//CHECK-LABEL: func @or_self_tensor
+func @or_self_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
+  //CHECK-NEXT: return %arg0
+  %1 = or %arg0, %arg0 : tensor<4x5xi32>
+  return %1 : tensor<4x5xi32>
+}
+
+//CHECK-LABEL: func @or_zero
+func @or_zero(%arg0: i32) -> i32 {
+  %c0_i32 = constant 0 : i32
+  // CHECK-NEXT: return %arg0
+  %1 = or %arg0, %c0_i32 : i32
+  return %1 : i32
+}
+
+//CHECK-LABEL: func @or_zero_vector
+func @or_zero_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
+  // CHECK-NEXT: return %arg0
+  %cst = constant splat<vector<4xi32>, 0> : vector<4xi32>
+  %1 = or %arg0, %cst : vector<4xi32>
+  return %1 : vector<4xi32>
+}
+
+//CHECK-LABEL: func @or_zero_tensor
+func @or_zero_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
+  // CHECK-NEXT: return %arg0
+  %cst = constant splat<tensor<4x5xi32>, 0> : tensor<4x5xi32>
+  %1 = or %arg0, %cst : tensor<4x5xi32>
+  return %1 : tensor<4x5xi32>
+}
+
 // CHECK-LABEL: func @memref_cast_folding
 func @memref_cast_folding(%arg0: memref<4 x f32>, %arg1: f32) -> f32 {
   %1 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>

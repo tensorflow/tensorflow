@@ -217,6 +217,30 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = remf %arg0, %arg0 : tensor<4x4x?xf32>
   %51 = remf %t, %t : tensor<4x4x?xf32>
 
+  // CHECK: %{{[0-9]+}} = and %arg2, %arg2 : i32
+  %52 = "std.and"(%i, %i) : (i32,i32) -> i32
+
+  // CHECK: %{{[0-9]+}} = and %arg2, %arg2 : i32
+  %53 = and %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = and %cst_5, %cst_5 : vector<42xi32>
+  %54 = std.and %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = and %cst_4, %cst_4 : tensor<42xi32>
+  %55 = and %tci32, %tci32 : tensor<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = or %arg2, %arg2 : i32
+  %56 = "std.or"(%i, %i) : (i32,i32) -> i32
+
+  // CHECK: %{{[0-9]+}} = or %arg2, %arg2 : i32
+  %57 = or %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = or %cst_5, %cst_5 : vector<42xi32>
+  %58 = std.or %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = or %cst_4, %cst_4 : tensor<42xi32>
+  %59 = or %tci32, %tci32 : tensor<42 x i32>
+
   return
 }
 

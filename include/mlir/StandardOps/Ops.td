@@ -80,6 +80,12 @@ def AddIOp : IntArithmeticOp<"std.addi", [Commutative]> {
   let hasConstantFolder = 0b1;
 }
 
+def AndOp : IntArithmeticOp<"std.and", [Commutative]> {
+  let summary = "integer binary and";
+  let hasConstantFolder = 0b1;
+  let hasFolder = 1;
+}
+
 def DivFOp : FloatArithmeticOp<"std.divf"> {
   let summary = "floating point division operation";
 }
@@ -101,6 +107,12 @@ def MulFOp : FloatArithmeticOp<"std.mulf"> {
 
 def MulIOp : IntArithmeticOp<"std.muli", [Commutative]> {
   let summary = "integer multiplication operation";
+  let hasConstantFolder = 0b1;
+  let hasFolder = 1;
+}
+
+def OrOp : IntArithmeticOp<"std.or", [Commutative]> {
+  let summary = "integer binary or";
   let hasConstantFolder = 0b1;
   let hasFolder = 1;
 }
