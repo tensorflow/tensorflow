@@ -221,7 +221,7 @@ TestCase TestCase7() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ false,
