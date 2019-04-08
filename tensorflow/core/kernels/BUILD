@@ -149,6 +149,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":dense_update_functor",
+        ":inplace_ops",
         ":ops_util",
         ":training_op_helpers",
         ":variable_ops",
@@ -5685,6 +5686,8 @@ filegroup(
         "gemm_functors.h",
         "image_resizer_state.h",
         "initializable_lookup_table.h",
+        "inplace_ops.cc",
+        "inplace_ops_functor.h",
         "logging_ops.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
