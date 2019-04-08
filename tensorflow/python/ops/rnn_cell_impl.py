@@ -504,8 +504,8 @@ class GRUCell(LayerRNNCell):
 
   References:
     Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation:
-    [Cho et al., 2014](https://aclanthology.coli.uni-saarland.de/papers/D14-1179/d14-1179)
-    ([pdf](http://emnlp2014.org/papers/pdf/EMNLP2014179.pdf))
+      [Cho et al., 2014](https://aclanthology.coli.uni-saarland.de/papers/D14-1179/d14-1179)
+      ([pdf](http://emnlp2014.org/papers/pdf/EMNLP2014179.pdf))
   """
 
   @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
