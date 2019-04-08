@@ -406,6 +406,25 @@ Status Converter::GetTrtBroadcastShape(
     }
     --dims.nbDims;
     return Status::OK();
+  }
+
+  const nvinfer1::Dims* higher_rank =
+      (operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)
+          ? operand_l_new_dims
+          : operand_r_new_dims;
+  nvinfer1::Dims* lower_rank =
+      (operand_l_new_dims->nbDims <= operand_r_new_dims->nbDims)
+          ? operand_l_new_dims
+          : operand_r_new_dims;
+
+  // Broadcasts low_rank over high_rank in-place by inserting ones at the front of low_rank so the ranks match.
+  constexpr auto broadcastDims = [](const nvinfer1::Dims& high_rank,
+                                    const nvinfer1::Dims& low_rank) {
+    nvinfer1::Dims ret{high_rank.nbDims};
+    std::fill(ret.d, ret.d + ret.nbDims, 1);
+    int num_ones = high_rank.nbDims - low_rank.nbDims;
+    std::copy(low_rank.d, low_rank.d + low_rank.nbDims, ret.d + num_ones);
+    return ret;
   };
 
   // Weights may include a batch dimension, so we need to remove it.
@@ -421,6 +440,9 @@ Status Converter::GetTrtBroadcastShape(
   if (operand_r.is_weights() && operand_r_new_dims->nbDims > operand_l_new_dims->nbDims)  {
     TF_RETURN_IF_ERROR(stripBatchDimension(*operand_r_new_dims));
   }
+
+  // TODO(pranavm): Remove, DEBUG:
+  std::cout << "Found l_dims: " << (*operand_l_new_dims) << " and r_dims: " << (*operand_r_new_dims) << std::endl;
 
   // If the rank of the tensors is already the same, we can't do anything further.
   if (operand_l_new_dims->nbDims == operand_r_new_dims->nbDims) {
@@ -447,6 +469,10 @@ Status Converter::GetTrtBroadcastShape(
   };
 
   (*lower_rank) = broadcastDims(*higher_rank, *lower_rank);
+
+  // TODO(pranavm): Remove, DEBUG:
+  std::cout << "After broadcasting, higher_rank dims: " << (*higher_rank) << " and lower_rank dims: " << (*lower_rank) << std::endl;
+  std::cout << "After broadcasting, operand_l_new_dims: " << (*operand_l_new_dims) << " and operand_r_new_dims: " << (*operand_r_new_dims) << std::endl;
 
   // Compare broadcast feasibility
   for (int i = 0; i < operand_r_new_dims->nbDims; ++i) {
@@ -1153,6 +1179,10 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     }
     VLOG(2) << "Adding out tensor " << output_name << ": "
             << output.DebugString();
+
+    // TODO(pranavm): Remove, DEBUG:
+    std::cout << "Converting " << node_def.name() << ": "
+            << output.DebugString() << std::endl;
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
       return Status(status.code(),
