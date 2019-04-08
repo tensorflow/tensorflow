@@ -740,6 +740,7 @@ cc_library(
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:using_rocm_hipcc": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
