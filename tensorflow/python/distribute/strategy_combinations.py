@@ -66,6 +66,14 @@ one_device_strategy_gpu = combinations.NamedDistribution(
     "OneDeviceGPU",
     lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
     required_gpus=1)
+one_device_strategy_on_worker_1 = combinations.NamedDistribution(
+    "OneDeviceOnWorker1CPU",
+    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/cpu:0"),  # pylint: disable=line-too-long
+    required_gpus=None)
+one_device_strategy_gpu_on_worker_1 = combinations.NamedDistribution(
+    "OneDeviceOnWorker1GPU",
+    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/gpu:0"),  # pylint: disable=line-too-long
+    required_gpus=1)
 tpu_strategy = combinations.NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2), required_tpu=True)
 tpu_strategy_one_step = combinations.NamedDistribution(
@@ -122,6 +130,9 @@ optimizers_v2 = [
 optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 graph_and_eager_modes = ["graph", "eager"]
+
+
+optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 
 def distributions_and_v1_optimizers():

@@ -1101,6 +1101,7 @@ tf_cc_test(
         ":buffer_liveness",
         ":hlo",
         ":hlo_dataflow_analysis",
+        ":hlo_parser",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -1975,6 +1976,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "dot_decomposer_test",
+    srcs = ["dot_decomposer_test.cc"],
+    deps = [
+        ":dot_decomposer",
+        ":hlo_matchers",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+    ],
+)
+
 cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
@@ -2027,6 +2040,7 @@ cc_library(
     deps = [
         ":hlo",
         ":while_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

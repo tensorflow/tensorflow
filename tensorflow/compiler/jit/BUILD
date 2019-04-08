@@ -89,10 +89,10 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
-        ":create_xla_launch_op",  # buildcleaner: keep
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -109,9 +109,9 @@ cc_library(
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
     deps = [
-        ":create_xla_launch_op",  # buildcleaner: keep
         ":jit_compilation_passes",
         ":xla_device",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -338,10 +338,10 @@ cc_library(
 )
 
 cc_library(
-    name = "create_xla_launch_op",
+    name = "xla_kernel_creator",
     srcs = [
-        "create_xla_launch_op.cc",
-        "create_xla_launch_op.h",
+        "xla_kernel_creator.cc",
+        "xla_kernel_creator.h",
     ],
     deps = [
         ":common",
@@ -358,13 +358,13 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "create_xla_launch_op_test",
+    name = "xla_kernel_creator_test",
     srcs = [
-        "create_xla_launch_op.h",
-        "create_xla_launch_op_test.cc",
+        "xla_kernel_creator.h",
+        "xla_kernel_creator_test.cc",
     ],
     deps = [
-        ":create_xla_launch_op",
+        ":xla_kernel_creator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -21,18 +21,16 @@ from __future__ import print_function
 import os
 
 from tensorflow.python import keras
-from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import convert_to_constants
-from tensorflow.python.framework import importer
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 
 
 # TODO(nupurgarg): Simplify the test cases to use the ConcreteFunction.
@@ -48,24 +46,6 @@ class VariablesToConstantsTest(test.TestCase):
   def _getNumVariables(self, graph_def):
     """Returns the number of ReadVariableOp in the graph."""
     return sum(node.op == "ReadVariableOp" for node in graph_def.node)
-
-  def _getTensors(self, sess, tensor_list):
-    """Returns a list of Tensor objects from the Session."""
-    return [
-        sess.graph.get_tensor_by_name(tensor.name) for tensor in tensor_list
-    ]
-
-  def _evaluateGraphDef(self, graph_def, func, input_data):
-    """Evaluates the GraphDef using Sessions."""
-    with ops.Graph().as_default() as graph:
-      importer.import_graph_def(graph_def, name="")
-      func.add_to_graph(graph)
-      sess = session.Session(graph=graph)
-
-    input_tensors = self._getTensors(sess, func.inputs)
-    output_tensors = self._getTensors(sess, func.outputs)
-    return sess.run(
-        output_tensors, feed_dict=dict(zip(input_tensors, input_data)))
 
   @test_util.run_v2_only
   def testConstSavedModel(self):
@@ -92,8 +72,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = root.f(input_data)
-    actual_value = self._evaluateGraphDef(constant_graph_def, input_func,
-                                          [input_data.numpy()])
+    actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
@@ -117,8 +96,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = root.f(input_data)
-    actual_value = self._evaluateGraphDef(constant_graph_def, input_func,
-                                          [input_data.numpy()])
+    actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
@@ -147,8 +125,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = root.f(input_data)
-    actual_value = self._evaluateGraphDef(constant_graph_def, input_func,
-                                          [input_data.numpy()])
+    actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
@@ -188,8 +165,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = root.add(input_data)
-    actual_value = self._evaluateGraphDef(constant_graph_def, input_func,
-                                          [input_data.numpy()])
+    actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
@@ -202,7 +178,7 @@ class VariablesToConstantsTest(test.TestCase):
     func = root.f.get_concrete_function(input_data)
 
     input_func = convert_to_constants._construct_concrete_function(
-        func, func.graph.as_graph_def())
+        func, func.graph.as_graph_def(), {})
 
     # Test if model has enough metadata to be frozen afterwards.
     variable_graph_def = input_func.graph.as_graph_def()
@@ -216,8 +192,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = root.f(input_data)
-    actual_value = self._evaluateGraphDef(constant_graph_def, input_func,
-                                          [input_data.numpy()])
+    actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
@@ -251,8 +226,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = to_save(input_data)
-    actual_value = self._evaluateGraphDef(constant_graph_def, input_func,
-                                          [input_data.numpy()])
+    actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
 

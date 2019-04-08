@@ -3349,4 +3349,10 @@ class DropoutWrapperTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  # TODO(b/129895139): We can remove this once we have have a process-global
+  # auto-tuning cache for GEMMs.  Without b/129895139 it is possible for the
+  # forward and backward passes to pick different GEMM algorithms when run under
+  # XLA.
+  os.environ["XLA_FLAGS"] = ("--xla_gpu_disable_autotune=true" +
+                             os.environ.get("XLA_FLAGS", ""))
   test.main()

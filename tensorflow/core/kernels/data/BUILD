@@ -371,6 +371,30 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "interleave_dataset_op_test",
+    size = "small",
+    srcs = ["interleave_dataset_op_test.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":interleave_dataset_op",
+        ":iterator_ops",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
+    ],
+)
+
 tf_kernel_library(
     name = "parallel_interleave_dataset_op",
     srcs = ["parallel_interleave_dataset_op.cc"],
@@ -383,6 +407,30 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_interleave_dataset_op_test",
+    size = "small",
+    srcs = ["parallel_interleave_dataset_op_test.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":parallel_interleave_dataset_op",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
     ],
 )
 

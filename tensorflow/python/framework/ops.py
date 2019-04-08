@@ -2924,7 +2924,7 @@ def get_stats_for_node_def(graph, node, statistic_type):
   return result
 
 
-def _name_from_scope_name(name):
+def name_from_scope_name(name):
   """Returns the name of an op given the name of its scope.
 
   Args:
@@ -3523,7 +3523,7 @@ class Graph(object):
     # If a names ends with a '/' it is a "name scope" and we use it as-is,
     # after removing the trailing '/'.
     if name and name[-1] == "/":
-      name = _name_from_scope_name(name)
+      name = name_from_scope_name(name)
     else:
       name = self.unique_name(name)
 
@@ -4241,7 +4241,7 @@ class Graph(object):
     if not name:  # Both for name=None and name="" we re-set to empty scope.
       new_stack = None
     elif name[-1] == "/":
-      new_stack = _name_from_scope_name(name)
+      new_stack = name_from_scope_name(name)
     else:
       new_stack = self.unique_name(name)
     self._name_stack = new_stack

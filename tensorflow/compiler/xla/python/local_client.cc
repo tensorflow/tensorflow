@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace xla_python {
@@ -70,12 +71,14 @@ StatusOr<LocalClient*> GetLocalClient(const std::string& platform_name) {
 /* static */
 StatusOr<LocalShapedBuffer> LocalShapedBuffer::FromPython(
     const py::object& argument, LocalClient* client, int device_ordinal) {
-  VLOG(1) << "Creating shaped buffer from literal on device ordinal: "
-          << device_ordinal;
+  tensorflow::profiler::TraceMe("LocalShapedBuffer::FromPython");
   TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
 
   // We are done manipulating Python objects; release the GIL.
   py::gil_scoped_release gil_release;
+  VLOG(1) << "LocalShapedBuffer::FromPython: shape: " << tree.shape.ToString()
+          << " device ordinal: " << device_ordinal;
+
   DeviceMemoryAllocator* allocator = client->backend().memory_allocator();
   TransferManager* transfer_manager = client->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
@@ -122,6 +125,7 @@ const Shape& LocalShapedBuffer::shape() const {
 }
 
 StatusOr<py::object> LocalShapedBuffer::ToPython() const {
+  tensorflow::profiler::TraceMe("LocalShapedBuffer::ToPython");
   auto literal = absl::make_unique<Literal>();
   {
     py::gil_scoped_release gil_release;
@@ -132,6 +136,7 @@ StatusOr<py::object> LocalShapedBuffer::ToPython() const {
 }
 
 StatusOr<std::vector<LocalShapedBuffer>> LocalShapedBuffer::DestructureTuple() {
+  tensorflow::profiler::TraceMe("LocalShapedBuffer::DestructureTuple");
   const Shape tuple_shape = shape();
 
   if (!tuple_shape.IsTuple()) {
@@ -192,6 +197,7 @@ std::vector<int> LocalExecutableWrapper::DeviceOrdinals() const {
 
 StatusOr<LocalShapedBuffer> LocalExecutableWrapper::Execute(
     absl::Span<LocalShapedBuffer* const> argument_handles) {
+  tensorflow::profiler::TraceMe("LocalExecutable::Execute");
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute()",
@@ -230,6 +236,7 @@ StatusOr<LocalShapedBuffer> LocalExecutableWrapper::Execute(
 StatusOr<std::vector<LocalShapedBuffer>>
 LocalExecutableWrapper::ExecutePerReplica(
     absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
+  tensorflow::profiler::TraceMe("LocalExecutable::ExecutePerReplica");
   const int num_devices = client_->device_count();
 
   if (argument_handles.size() != num_replicas()) {
@@ -269,6 +276,8 @@ LocalExecutableWrapper::ExecutePerReplica(
     results[replica] = std::move(result_buffer_status);
   };
 
+  VLOG(1) << "Executing replicated computation; num_replicas="
+          << num_replicas();
   if (num_replicas() == 1) {
     // Fast-path if there is only one replica — run the computation on the
     // current thread.
@@ -283,6 +292,7 @@ LocalExecutableWrapper::ExecutePerReplica(
     }
     execute(num_replicas() - 1);
   }
+  VLOG(1) << "Replicated execution complete.";
 
   std::vector<LocalShapedBuffer> wrapped_results(num_replicas());
   for (int replica = 0; replica < num_replicas(); ++replica) {
@@ -339,6 +349,7 @@ LocalExecutableWrapper::Compile(const XlaComputation& computation,
                                 const std::vector<Shape>& argument_shapes,
                                 const ExecutableBuildOptions* build_options,
                                 LocalClient* client) {
+  tensorflow::profiler::TraceMe("LocalExecutable::Compile");
   std::vector<const Shape*> argument_shape_pointers;
   argument_shape_pointers.reserve(argument_shapes.size());
   for (auto& argument_shape : argument_shapes) {

@@ -214,40 +214,6 @@ static DirectSessionRegistrar registrar;
 
 std::atomic_int_fast64_t DirectSession::step_id_counter_(1);
 
-// NOTE: On Android with a single device, there is never
-// a risk of an OpKernel blocking indefinitely:
-//
-// 1) No operations do I/O that depends on other simultaneous kernels,
-//
-// 2) Recv nodes always complete immediately: The inputs are sent into
-//    the local rendezvous before we start the executor, so the
-//    corresponding recvs will not block.
-//
-// Based on these assumptions, we can use the same thread pool for
-// both "non-blocking" and "blocking" OpKernels on Android.
-//
-// This may change down the road when we add support for multiple
-// devices that run concurrently, in which case we will need to
-// revisit this decision.
-void DirectSession::SchedClosure(thread::ThreadPool* pool,
-                                 std::function<void()> c) {
-// TODO(sanjay): Get rid of __ANDROID__ path
-#ifdef __ANDROID__
-  // On Android, there is no implementation of ThreadPool that takes
-  // std::function, only Closure, which we cannot easily convert.
-  //
-  // Instead, we just run the function in-line, which is currently
-  // safe given the reasoning above.
-  c();
-#else
-  if (pool != nullptr) {
-    pool->Schedule(std::move(c));
-  } else {
-    c();
-  }
-#endif  // __ANDROID__
-}
-
 static RunHandlerPool* GetOrCreateRunHandlerPool(
     const SessionOptions& options) {
   static RunHandlerPool* pool =
@@ -632,7 +598,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     };
   } else {
     default_runner = [this, pool](Executor::Args::Closure c) {
-      SchedClosure(pool, std::move(c));
+      pool->Schedule(std::move(c));
     };
   }
 
@@ -648,7 +614,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       args.runner = default_runner;
     } else {
       args.runner = [this, device_thread_pool](Executor::Args::Closure c) {
-        SchedClosure(device_thread_pool, std::move(c));
+        device_thread_pool->Schedule(std::move(c));
       };
     }
     item.executor->RunAsync(args, barrier->Get());
@@ -892,7 +858,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   // their use is intended.
   args.collective_executor = nullptr;
   args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
+    pool->Schedule(std::move(c));
   };
   args.session_state = &session_state_;
   args.session_handle = session_handle_;

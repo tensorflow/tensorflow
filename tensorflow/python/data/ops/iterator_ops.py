@@ -33,6 +33,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -441,6 +442,8 @@ class Iterator(trackable.Trackable):
           self._iterator_resource, name=name)
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_classes(iterator)`.")
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
@@ -453,6 +456,8 @@ class Iterator(trackable.Trackable):
     return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_shapes(iterator)`.")
   def output_shapes(self):
     """Returns the shape of each component of an element of this iterator.
 
@@ -463,6 +468,8 @@ class Iterator(trackable.Trackable):
     return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_types(iterator)`.")
   def output_types(self):
     """Returns the type of each component of an element of this iterator.
 
@@ -587,6 +594,8 @@ class EagerIterator(trackable.Trackable):
       raise StopIteration
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_classes(iterator)`.")
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
@@ -599,6 +608,8 @@ class EagerIterator(trackable.Trackable):
     return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_shapes(iterator)`.")
   def output_shapes(self):
     """Returns the shape of each component of an element of this iterator.
 
@@ -609,6 +620,8 @@ class EagerIterator(trackable.Trackable):
     return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_types(iterator)`.")
   def output_types(self):
     """Returns the type of each component of an element of this iterator.
 

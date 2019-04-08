@@ -179,8 +179,7 @@ class Metric(Layer):
       #   model = Model()
       #   mean = Mean()
       #   model.add_metric(mean(values), name='mean')
-      if not context.executing_eagerly():
-        result_t._metric_obj = self  # pylint: disable=protected-access
+      result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
   @property
@@ -2709,7 +2708,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
-  y_pred.shape.assert_is_compatible_with(y_true.get_shape())
+  y_pred.shape.assert_is_compatible_with(y_true.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())

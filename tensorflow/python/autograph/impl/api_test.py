@@ -415,6 +415,16 @@ class ApiTest(test.TestCase):
     # The constant has static shape so the result is a primitive not a Tensor.
     self.assertEqual(x, 1)
 
+  def test_converted_call_no_kwargs_allowed(self):
+
+    def f(*args):
+      # Note: np.broadcast rejects any **kwargs, even *{}
+      return np.broadcast(args[:1])
+
+    opts = converter.ConversionOptions(internal_convert_user_code=False)
+
+    self.assertIsNotNone(api.converted_call(f, None, opts, (1, 2, 3, 4), None))
+
   def test_converted_call_whitelisted_method(self):
 
     opts = converter.ConversionOptions()

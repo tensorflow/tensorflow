@@ -58,6 +58,7 @@ py_library(
         ":execution_callbacks",
         ":function",
         ":graph_only_ops",
+        ":monitoring",
         ":profiler",
         ":profiler_client",
         ":tape",
@@ -92,6 +93,26 @@ py_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
     ],
+)
+
+py_library(
+    name = "monitoring",
+    srcs = ["monitoring.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "monitoring_test",
+    srcs = ["monitoring_test.py"],
+    additional_deps = [
+        ":monitoring",
+        ":test",
+    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

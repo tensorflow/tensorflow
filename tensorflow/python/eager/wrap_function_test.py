@@ -277,6 +277,30 @@ class WrapFunctionTest(test.TestCase):
         outputs=original_func_graph.outputs[0].name)
     self.assertEqual(2., revived_function(constant_op.constant(1.)).numpy())
 
+  def test_create_variables_with_same_name(self):
+    def f():
+      v1 = variables.Variable(0, name='v')
+      v2 = variables.Variable(1, name='v')
+      return v1, v2
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    self.assertDictEqual(
+        {'v:0': 0, 'v_1:0': 1},  # assert that variable names are uniquified
+        {v.name: v.numpy()
+         for v in f_wrapped._variable_holder.variables.values()})
+
+    # Uniquification should reset in separate calls to wrap_function.
+    def f2():
+      v1 = variables.Variable(3, name='v')
+      v2 = variables.Variable(4, name='v')
+      return v1, v2
+
+    f_wrapped_2 = wrap_function.wrap_function(f2, [])
+    self.assertDictEqual(
+        {'v:0': 3, 'v_1:0': 4},
+        {v.name: v.numpy()
+         for v in f_wrapped_2._variable_holder.variables.values()})
+
 
 class WrappedGraphTest(test.TestCase):
 
@@ -375,8 +399,7 @@ class WrappedGraphTest(test.TestCase):
     # Sanity check - result from this function shouldn't change.
     self.assertEqual(35, different_variable_fn(constant_op.constant(7)).numpy())
 
-    self.assertAllEqual({'reuse/v:0', 'no_reuse/v:0'},
-                        set([v.name for v in g.variables]))
+    self.assertAllEqual({'reuse/v', 'no_reuse/v'}, set(g.variables.keys()))
 
   def testShareVariablesDifferentGraphs(self):
 
@@ -423,8 +446,7 @@ class WrappedGraphTest(test.TestCase):
     # Sanity check - result from this function shouldn't change.
     self.assertEqual(35, different_variable_fn(constant_op.constant(7)).numpy())
 
-    self.assertAllEqual({'v:0', 'different_scope/v:0'},
-                        set([v.name for v in vh.variables]))
+    self.assertAllEqual({'v', 'different_scope/v'}, set(vh.variables.keys()))
 
   def testReturnOp(self):
 
@@ -437,9 +459,9 @@ class WrappedGraphTest(test.TestCase):
     signature = [tensor_spec.TensorSpec([], dtypes.int32)]
     update_var = g.wrap_function(update_var_v1, signature)
 
-    self.assertEqual(g.variables[0].numpy(), 3)
+    self.assertEqual(g.variables['v'].numpy(), 3)
     update_var(constant_op.constant(12))
-    self.assertEqual(g.variables[0].numpy(), 12)
+    self.assertEqual(g.variables['v'].numpy(), 12)
 
 
 if __name__ == '__main__':

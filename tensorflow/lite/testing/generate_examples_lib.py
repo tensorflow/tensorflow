@@ -3744,7 +3744,7 @@ def make_slice_tests(options):
   test_parameters = [
       # 4-D
       {
-          "dtype": [tf.float32, tf.int32, tf.int64],
+          "dtype": [tf.float32, tf.int32, tf.int64, tf.string],
           "index_type": [tf.int32, tf.int64],
           "input_shape": [[12, 2, 2, 5]],
           "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
@@ -3752,7 +3752,7 @@ def make_slice_tests(options):
       },
       # 2-D
       {
-          "dtype": [tf.float32, tf.int32, tf.int64],
+          "dtype": [tf.float32, tf.int32, tf.int64, tf.string],
           "index_type": [tf.int32, tf.int64],
           "input_shape": [[2, 3]],
           "begin": [[0, 0], [1, 0]],
@@ -3795,7 +3795,7 @@ def make_slice_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=18)
+      expected_tf_failures=24)
 
 
 @register_make_test_function()
@@ -4785,6 +4785,47 @@ def make_unidirectional_sequence_rnn_tests(options):
       build_inputs,
       use_frozen_graph=True)
 
+
+@register_make_test_function()
+def make_unfused_gru_tests(options):
+  """Make a set of tests for unfused gru op."""
+
+  test_parameters = [{
+      "units": [2, 5],
+      "batch_size": [1, 2],
+      "time": [3],
+  }]
+
+  def build_graph(parameters):
+    inputs = [
+        tf.placeholder(tf.float32,
+                       [parameters["batch_size"], parameters["units"]])
+        for _ in range(parameters["time"])
+    ]
+    cell_fw = tf.nn.rnn_cell.GRUCell(parameters["units"])
+    cell_bw = tf.nn.rnn_cell.GRUCell(parameters["units"])
+    outputs, _, _ = tf.nn.static_bidirectional_rnn(
+        cell_fw, cell_bw, inputs, dtype=tf.float32)
+
+    return inputs, outputs
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = [
+        create_tensor_data(tf.float32,
+                           [parameters["batch_size"], parameters["units"]])
+        for _ in range(parameters["time"])
+    ]
+    init = tf.global_variables_initializer()
+    sess.run(init)
+    return input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
+
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      use_frozen_graph=True)
 
 # Toco binary path provided by the generate rule.
 bin_path = None

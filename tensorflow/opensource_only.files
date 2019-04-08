@@ -62,6 +62,12 @@ tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py3/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/cuda10.0-cudnn7/cuda/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/centos6/gcc7-nvcc-cuda10.0/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/tensorrt5/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/centos6/tensorrt5/BUILD
+tensorflow/third_party/toolchains/preconfig/centos6/py3/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD

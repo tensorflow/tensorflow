@@ -1529,6 +1529,8 @@ class DatasetV1(DatasetV2):
         get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_classes(dataset)`.")
   def output_classes(self):
     """Returns the class of each component of an element of this dataset.
 
@@ -1541,6 +1543,8 @@ class DatasetV1(DatasetV2):
     return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_shapes(dataset)`.")
   def output_shapes(self):
     """Returns the shape of each component of an element of this dataset.
 
@@ -1551,6 +1555,8 @@ class DatasetV1(DatasetV2):
     return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_types(dataset)`.")
   def output_types(self):
     """Returns the type of each component of an element of this dataset.
 
@@ -1868,8 +1874,7 @@ def make_initializable_iterator(dataset, shared_name=None):
     return DatasetV1Adapter(dataset)._make_initializable_iterator(shared_name)  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Replace this method with a public API for reflecting on
-# dataset structure.
+@tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
   """Returns the `tf.data.experimental.Structure` of a `Dataset` or `Iterator`.
 
@@ -1894,7 +1899,7 @@ def get_structure(dataset_or_iterator):
                   "but got %s." % type(dataset_or_iterator))
 
 
-# TODO(b/110122868): Remove all uses of this method.
+@tf_export(v1=["data.get_output_shapes"])
 def get_legacy_output_shapes(dataset_or_iterator):
   """Returns the output shapes of a `Dataset` or `Iterator`.
 
@@ -1912,7 +1917,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
   return get_structure(dataset_or_iterator)._to_legacy_output_shapes()  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Remove all uses of this method.
+@tf_export(v1=["data.get_output_types"])
 def get_legacy_output_types(dataset_or_iterator):
   """Returns the output shapes of a `Dataset` or `Iterator`.
 
@@ -1930,7 +1935,7 @@ def get_legacy_output_types(dataset_or_iterator):
   return get_structure(dataset_or_iterator)._to_legacy_output_types()  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Remove all uses of this method.
+@tf_export(v1=["data.get_output_classes"])
 def get_legacy_output_classes(dataset_or_iterator):
   """Returns the output classes of a `Dataset` or `Iterator`.
 
@@ -2164,6 +2169,34 @@ class _VariantDataset(DatasetV2):
   @property
   def _element_structure(self):
     return self._structure
+
+
+@tf_export("data.experimental.from_variant")
+def from_variant(variant, structure):
+  """Constructs a dataset from the given variant and structure.
+
+  Args:
+    variant: A scalar `tf.variant` tensor representing a dataset.
+    structure: A `tf.data.experimental.Structure` object representing the
+      structure of each element in the dataset.
+
+  Returns:
+    A `tf.data.Dataset` instance.
+  """
+  return _VariantDataset(variant, structure)  # pylint: disable=protected-access
+
+
+@tf_export("data.experimental.to_variant")
+def to_variant(dataset):
+  """Returns a variant representing the given dataset.
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A scalar `tf.variant` tensor representing the given dataset.
+  """
+  return dataset._variant_tensor  # pylint: disable=protected-access
 
 
 @tf_export("data.experimental.DatasetStructure")

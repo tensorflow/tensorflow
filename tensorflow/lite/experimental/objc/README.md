@@ -17,8 +17,7 @@ Then, configure TensorFlow by navigating to the root directory and executing the
 python configure.py
 ```
 
-Follow the prompts and when asked to configure TensorFlow for iOS builds,
-enter `y`.
+Follow the prompts and when asked to build TensorFlow with iOS support, enter `y`.
 
 ### Bazel
 

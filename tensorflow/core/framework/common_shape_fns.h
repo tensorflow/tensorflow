@@ -321,6 +321,12 @@ Status SliceShape(shape_inference::InferenceContext* c);
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape);
 
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type);
+
+// Shape function for GatherNd operations.
+Status GatherNdShape(InferenceContext* c);
+
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);
 

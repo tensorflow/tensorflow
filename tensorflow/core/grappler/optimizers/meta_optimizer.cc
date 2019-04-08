@@ -604,10 +604,12 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             false;
       }
 
-      // Function item is allowed to use all devices from the main graph.
-      Status added_devices = func_item.AddDevices(item);
-      if (!added_devices.ok()) {
-        VLOG(3) << added_devices.error_message();
+      // Device set available to the function is defined only by the runtime,
+      // when we instantiate and execute the function. We can't use all devices
+      // available to the main graph, because after partitioning the function
+      // call node might execute on a remote worker.
+      if (!func_item.devices().empty()) {
+        return errors::Internal("GrapplerFunctionItem devices must be empty.");
       }
 
       // We are not allowed to prune certain types of ops from the graph

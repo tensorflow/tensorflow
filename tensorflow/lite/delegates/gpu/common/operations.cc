@@ -64,12 +64,16 @@ std::string ToString(enum OperationType op) {
       return "cos";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
+    case OperationType::DIV:
+      return "div";
     case OperationType::LOG:
       return "log";
     case OperationType::MUL:
       return "mul";
     case OperationType::PAD:
       return "pad";
+    case OperationType::POW:
+      return "pow";
     case OperationType::PRELU:
       return "prelu";
     case OperationType::RELU:
@@ -92,6 +96,8 @@ std::string ToString(enum OperationType op) {
       return "sqrt";
     case OperationType::SQUARE:
       return "square";
+    case OperationType::SQUARED_DIFF:
+      return "squared_diff";
     case OperationType::UPSAMPLE_2D:
       return "upsample_2d";
     case OperationType::CONVOLUTION_TRANSPOSED:

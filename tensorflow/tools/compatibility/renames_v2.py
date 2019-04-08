@@ -225,6 +225,12 @@ renames = {
         'tf.linalg.cross',
     'tf.cumprod':
         'tf.math.cumprod',
+    'tf.data.get_output_classes':
+        'tf.compat.v1.data.get_output_classes',
+    'tf.data.get_output_shapes':
+        'tf.compat.v1.data.get_output_shapes',
+    'tf.data.get_output_types':
+        'tf.compat.v1.data.get_output_types',
     'tf.data.make_initializable_iterator':
         'tf.compat.v1.data.make_initializable_iterator',
     'tf.data.make_one_shot_iterator':
@@ -269,8 +275,6 @@ renames = {
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
         'tf.compat.v1.disable_resource_variables',
-    'tf.disable_v2_batch_normalization':
-        'tf.compat.v1.disable_v2_batch_normalization',
     'tf.disable_v2_behavior':
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
@@ -323,8 +327,6 @@ renames = {
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':
         'tf.compat.v1.enable_resource_variables',
-    'tf.enable_v2_batch_normalization':
-        'tf.compat.v1.enable_v2_batch_normalization',
     'tf.enable_v2_behavior':
         'tf.compat.v1.enable_v2_behavior',
     'tf.enable_v2_tensorshape':
@@ -399,10 +401,6 @@ renames = {
         'tf.compat.v1.global_variables',
     'tf.global_variables_initializer':
         'tf.compat.v1.global_variables_initializer',
-    'tf.glorot_normal_initializer':
-        'tf.compat.v1.glorot_normal_initializer',
-    'tf.glorot_uniform_initializer':
-        'tf.compat.v1.glorot_uniform_initializer',
     'tf.graph_util.convert_variables_to_constants':
         'tf.compat.v1.graph_util.convert_variables_to_constants',
     'tf.graph_util.extract_sub_graph':
@@ -445,46 +443,16 @@ renames = {
         'tf.compat.v1.initialize_local_variables',
     'tf.initialize_variables':
         'tf.compat.v1.initialize_variables',
-    'tf.initializers.constant':
-        'tf.compat.v1.initializers.constant',
     'tf.initializers.global_variables':
         'tf.compat.v1.initializers.global_variables',
-    'tf.initializers.glorot_normal':
-        'tf.compat.v1.initializers.glorot_normal',
-    'tf.initializers.glorot_uniform':
-        'tf.compat.v1.initializers.glorot_uniform',
-    'tf.initializers.he_normal':
-        'tf.compat.v1.initializers.he_normal',
-    'tf.initializers.he_uniform':
-        'tf.compat.v1.initializers.he_uniform',
-    'tf.initializers.identity':
-        'tf.compat.v1.initializers.identity',
-    'tf.initializers.lecun_normal':
-        'tf.compat.v1.initializers.lecun_normal',
-    'tf.initializers.lecun_uniform':
-        'tf.compat.v1.initializers.lecun_uniform',
     'tf.initializers.local_variables':
         'tf.compat.v1.initializers.local_variables',
-    'tf.initializers.ones':
-        'tf.compat.v1.initializers.ones',
-    'tf.initializers.orthogonal':
-        'tf.compat.v1.initializers.orthogonal',
-    'tf.initializers.random_normal':
-        'tf.compat.v1.initializers.random_normal',
-    'tf.initializers.random_uniform':
-        'tf.compat.v1.initializers.random_uniform',
     'tf.initializers.tables_initializer':
         'tf.compat.v1.initializers.tables_initializer',
-    'tf.initializers.truncated_normal':
-        'tf.compat.v1.initializers.truncated_normal',
     'tf.initializers.uniform_unit_scaling':
         'tf.compat.v1.initializers.uniform_unit_scaling',
     'tf.initializers.variables':
         'tf.compat.v1.initializers.variables',
-    'tf.initializers.variance_scaling':
-        'tf.compat.v1.initializers.variance_scaling',
-    'tf.initializers.zeros':
-        'tf.compat.v1.initializers.zeros',
     'tf.invert_permutation':
         'tf.math.invert_permutation',
     'tf.io.PaddingFIFOQueue':
@@ -495,6 +463,8 @@ renames = {
         'tf.queue.QueueBase',
     'tf.io.RandomShuffleQueue':
         'tf.queue.RandomShuffleQueue',
+    'tf.io.TFRecordCompressionType':
+        'tf.compat.v1.io.TFRecordCompressionType',
     'tf.io.tf_record_iterator':
         'tf.compat.v1.io.tf_record_iterator',
     'tf.is_finite':
@@ -513,16 +483,6 @@ renames = {
         'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session':
         'tf.compat.v1.keras.backend.get_session',
-    'tf.keras.initializers.normal':
-        'tf.compat.v1.keras.initializers.normal',
-    'tf.keras.initializers.random_normal':
-        'tf.compat.v1.keras.initializers.random_normal',
-    'tf.keras.initializers.random_uniform':
-        'tf.compat.v1.keras.initializers.random_uniform',
-    'tf.keras.initializers.truncated_normal':
-        'tf.compat.v1.keras.initializers.truncated_normal',
-    'tf.keras.initializers.uniform':
-        'tf.compat.v1.keras.initializers.uniform',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -712,7 +672,7 @@ renames = {
     'tf.make_tensor_proto':
         'tf.compat.v1.make_tensor_proto',
     'tf.manip.gather_nd':
-        'tf.gather_nd',
+        'tf.compat.v1.manip.gather_nd',
     'tf.manip.reshape':
         'tf.reshape',
     'tf.manip.reverse':
@@ -887,8 +847,6 @@ renames = {
         'tf.compat.v1.nn.xw_plus_b',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
-    'tf.orthogonal_initializer':
-        'tf.compat.v1.orthogonal_initializer',
     'tf.parse_single_sequence_example':
         'tf.io.parse_single_sequence_example',
     'tf.parse_tensor':
@@ -919,8 +877,6 @@ renames = {
         'tf.compat.v1.profiler.write_op_log',
     'tf.py_func':
         'tf.compat.v1.py_func',
-    'tf.io.TFRecordCompressionType':
-        'tf.compat.v1.python_io.TFRecordCompressionType',
     'tf.python_io.TFRecordCompressionType':
         'tf.compat.v1.python_io.TFRecordCompressionType',
     'tf.python_io.TFRecordOptions':
@@ -1511,8 +1467,6 @@ renames = {
         'tf.compat.v1.variable_scope',
     'tf.variables_initializer':
         'tf.compat.v1.variables_initializer',
-    'tf.variance_scaling_initializer':
-        'tf.compat.v1.variance_scaling_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
     'tf.wrap_function':

@@ -1051,6 +1051,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.flags has been removed, please use the argparse or absl"
         " modules if you need command line parsing.")
 
+    contrib_cudnn_rnn_warning = (
+        ast_edits.WARNING,
+        "(Manual edit required) tf.contrib.cudnn_rnn.* has been deprecated, "
+        "and the CuDNN kernel has been integrated with "
+        "tf.keras.layers.LSTM/GRU in TensorFlow 2.0. Please check the new API "
+        "and use that instead."
+    )
+
+    contrib_rnn_warning = (
+        ast_edits.WARNING,
+        "(Manual edit required) tf.contrib.rnn.* has been deprecated, and "
+        "widely used cells/functions will be moved to tensorflow/addons "
+        "repository. Please check it there and file Github issues if necessary."
+    )
+
     decay_function_comment = (
         ast_edits.INFO,
         "To use learning rate decay schedules with TensorFlow 2.0, switch to "
@@ -1706,6 +1721,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     self.module_deprecations = {
         "tf.contrib": contrib_warning,
+        "tf.contrib.cudnn_rnn": contrib_cudnn_rnn_warning,
+        "tf.contrib.rnn": contrib_rnn_warning,
         "tf.flags": flags_warning,
     }
 
@@ -1815,8 +1832,8 @@ def _add_argument_transformer(parent, node, full_name, name, logs,
   node.keywords.append(ast.keyword(arg=arg_name, value=arg_value_ast))
   logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
-      "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1],
-                                                          full_name or name))
+      "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1]),
+                                               full_name or name)
   ))
   return node
 

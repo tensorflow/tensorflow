@@ -118,15 +118,10 @@ class BaseDenseAttention(Layer):
     k = inputs[2] if len(inputs) > 2 else v
     q_mask = mask[0] if mask else None
     v_mask = mask[1] if mask else None
-    # TODO(b/125916026): Support query_mask.
-    if q_mask is not None:
-      raise NotImplementedError('query_mask is not supported yet.')
     scores = self._calculate_scores(query=q, key=k)
     if v_mask is not None:
       # Mask of shape [batch_size, 1, Tv].
-      value_mask = array_ops.expand_dims(v_mask, axis=-2)
-    else:
-      value_mask = None
+      v_mask = array_ops.expand_dims(v_mask, axis=-2)
     if self.causal:
       # Creates a lower triangular mask, so position i cannot attend to
       # positions j>i. This prevents the flow of information from the future
@@ -139,8 +134,13 @@ class BaseDenseAttention(Layer):
       causal_mask = _lower_triangular_mask(causal_mask_shape)
     else:
       causal_mask = None
-    scores_mask = _merge_masks(value_mask, causal_mask)
-    return self._apply_scores(scores=scores, value=v, scores_mask=scores_mask)
+    scores_mask = _merge_masks(v_mask, causal_mask)
+    result = self._apply_scores(scores=scores, value=v, scores_mask=scores_mask)
+    if q_mask is not None:
+      # Mask of shape [batch_size, Tq, 1].
+      q_mask = array_ops.expand_dims(q_mask, axis=-1)
+      result *= math_ops.cast(q_mask, dtype=result.dtype)
+    return result
 
   def _validate_call_args(self, inputs, mask):
     """Validates arguments of the call method."""

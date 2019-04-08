@@ -243,8 +243,8 @@ inline void FullyConnectedAsGEMVWorkerImpl(
     reduced = vaddq_s32(reduced, output_offset_vec);
     // Narrow values down to 16 bit signed.
     const int16x4_t res16 = vqmovn_s32(reduced);
-    // Narrow values down to 8 bit unsigned, saturating.
-    int8x8_t res8 = vqmovun_s16(vcombine_s16(res16, res16));
+    // Narrow values down to 8 bit signed, saturating.
+    int8x8_t res8 = vqmovn_s16(vcombine_s16(res16, res16));
     // Apply the clamping from the activation function
     res8 = vmax_s8(res8, vdup_n_s8(output_activation_min));
     res8 = vmin_s8(res8, vdup_n_s8(output_activation_max));

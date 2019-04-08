@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -40,8 +41,8 @@ std::string GetMaxPoolingCode(const HW& kernel_size) {
     constant int window_w = $0;
     constant int window_h = $1;
     struct uniforms {
-      int2 src_size;
-      int2 dst_size;
+      int4 src_size;
+      int4 dst_size;
       int2 stride;
       int2 offset;
     };
@@ -51,7 +52,8 @@ std::string GetMaxPoolingCode(const HW& kernel_size) {
                                 $$1
                                 uint3 gid[[thread_position_in_grid]]) {
       if (static_cast<int>(gid.x) >= params.dst_size.x ||
-          static_cast<int>(gid.y) >= params.dst_size.y) {
+          static_cast<int>(gid.y) >= params.dst_size.y ||
+          static_cast<int>(gid.z) >= params.dst_size.z) {
         return;
       }
 
@@ -84,8 +86,8 @@ std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
     constant int window_w = $0;
     constant int window_h = $1;
     struct uniforms {
-      int2 src_size;
-      int2 dst_size;
+      int4 src_size;
+      int4 dst_size;
       int2 stride;
       int2 offset;
     };
@@ -95,7 +97,8 @@ std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
                                 $$1
                                 uint3 gid[[thread_position_in_grid]]) {
       if (static_cast<int>(gid.x) >= params.dst_size.x ||
-          static_cast<int>(gid.y) >= params.dst_size.y) {
+          static_cast<int>(gid.y) >= params.dst_size.y ||
+          static_cast<int>(gid.z) >= params.dst_size.z) {
         return;
       }
 
@@ -147,8 +150,8 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
   constant int window_h = $1;
   constant float multiplier = $2;
   struct uniforms {
-    int2 src_size;
-    int2 dst_size;
+    int4 src_size;
+    int4 dst_size;
     int2 stride;
     int2 offset;
   };
@@ -158,7 +161,8 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
                               uint tid[[thread_index_in_threadgroup]],
                               uint3 gid[[thread_position_in_grid]]) {
     if (static_cast<int>(gid.x) >= params.dst_size.x ||
-        static_cast<int>(gid.y) >= params.dst_size.y) {
+        static_cast<int>(gid.y) >= params.dst_size.y ||
+        static_cast<int>(gid.z) >= params.dst_size.z) {
       return;
     }
 
@@ -219,8 +223,12 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
          std::vector<int> uniform_params = {
              dimension.w,
              dimension.h,
+             IntegralDivideRoundUp(dimension.c, 4),
+             dimension.w * dimension.h,
              output_dimension.w,
              output_dimension.h,
+             IntegralDivideRoundUp(dimension.c, 4),
+             output_dimension.w * output_dimension.h,
              params.strides.w,
              params.strides.h,
              params.padding.prepended.w,
@@ -230,14 +238,14 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [input_id,
-                           params](const std::map<ValueId, BHWC>& buffers) {
-    const uint3 groups_size{16, 16, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    BHWC dst_shape = CalculateOutputShape(src_shape, params);
-    int groups_x = IntegralDivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_shape.h, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(dst_shape.c, 4);
+  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+    BHWC dst_shape = buffers.find(output_id)->second;
+    const uint3 grid =
+        uint3(dst_shape.w, dst_shape.h, IntegralDivideRoundUp(dst_shape.c, 4));
+    const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
+    int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
+    int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
+    int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

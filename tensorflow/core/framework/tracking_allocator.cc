@@ -109,11 +109,11 @@ void TrackingAllocator::DeallocateRaw(void* ptr) {
   }
 }
 
-bool TrackingAllocator::TracksAllocationSizes() {
+bool TrackingAllocator::TracksAllocationSizes() const {
   return track_sizes_locally_ || allocator_->TracksAllocationSizes();
 }
 
-size_t TrackingAllocator::RequestedSize(const void* ptr) {
+size_t TrackingAllocator::RequestedSize(const void* ptr) const {
   if (track_sizes_locally_) {
     mutex_lock lock(mu_);
     auto it = in_use_.find(ptr);
@@ -126,7 +126,7 @@ size_t TrackingAllocator::RequestedSize(const void* ptr) {
   }
 }
 
-size_t TrackingAllocator::AllocatedSize(const void* ptr) {
+size_t TrackingAllocator::AllocatedSize(const void* ptr) const {
   if (track_sizes_locally_) {
     mutex_lock lock(mu_);
     auto it = in_use_.find(ptr);
@@ -139,7 +139,7 @@ size_t TrackingAllocator::AllocatedSize(const void* ptr) {
   }
 }
 
-int64 TrackingAllocator::AllocationId(const void* ptr) {
+int64 TrackingAllocator::AllocationId(const void* ptr) const {
   if (track_sizes_locally_) {
     mutex_lock lock(mu_);
     auto it = in_use_.find(ptr);

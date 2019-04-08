@@ -22,6 +22,7 @@ import collections
 import contextlib
 import copy
 import random
+import six
 import threading
 
 from tensorflow.core.protobuf import config_pb2
@@ -1011,7 +1012,7 @@ class _EagerDeviceContext(object):
     except KeyError:
       # Handle a cache miss.
       if new_device_name is not None:
-        if not isinstance(new_device_name, str):
+        if not isinstance(new_device_name, six.string_types):
           raise ValueError("Expecting a string device name. Got %s(%s)" %
                            (type(new_device_name), new_device_name))
         device_spec = pydev.DeviceSpec.from_string(new_device_name)

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -565,8 +566,15 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   strategy = model._distribution_strategy
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
+
+  # When the inputs are dict, then we want to flatten it in the same order as
+  # the input layers, such that the data are fed into the input layers in the
+  # correct order.
+  if isinstance(inputs, dict):
+    inputs = [inputs[key] for key in model._feed_input_names]
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+
   # Expand 1-dimensional inputs.
   # TODO(b/124535720): Remove once this standarize data logic is shared with
   # main flow.
@@ -637,6 +645,9 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
   else:
     updated_model = models._clone_functional_model(
         model, input_tensors=inputs, layer_fn=models.share_weights)
+    # Callable losses added directly to a functional Model need to be added
+    # here.
+    updated_model._callable_losses = model._callable_losses
 
   # Recast all low precision outputs back to float32 since we only casted
   # the inputs to bfloat16 and not targets. This is done so that we can preserve
@@ -904,6 +915,37 @@ def _generate_cache_key(mode):
 def distributed_scope(strategy, learning_phase):
   with strategy.scope(), K.learning_phase_scope(learning_phase):
     yield
+
+
+def call_replica_local_fn(fn, *args, **kwargs):
+  """Call a function that uses replica-local variables.
+
+  This function correctly handles calling `fn` in a cross-replica
+  context.
+
+  Arguments:
+    fn: The function to call.
+    *args: Positional arguments to the `fn`.
+    **kwargs: Keyword argument to `fn`.
+
+  Returns:
+    The result of calling `fn`.
+  """
+  # TODO(b/120571621): We want to avoid reductions here since
+  # since TPUStrategy does not implement replica local variables.
+  # Remove this hack once we support TPUReplicaLocalVariables.
+  strategy = None
+  if 'strategy' in kwargs:
+    strategy = kwargs.pop('strategy')
+  else:
+    if ds_context.get_strategy():
+      strategy = ds_context.get_strategy()
+
+  is_tpu = is_tpu_strategy(strategy)
+  if ((not is_tpu) and strategy and ds_context.in_cross_replica_context()):
+    with strategy.scope():
+      return strategy.extended.call_for_each_replica(fn, args, kwargs)
+  return fn(*args, **kwargs)
 
 
 def is_current_worker_chief():

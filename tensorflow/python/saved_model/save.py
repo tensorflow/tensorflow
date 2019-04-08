@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -80,7 +81,12 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
   """
 
   def __init__(self, root):
-    super(_AugmentedGraphView, self).__init__(root)
+    if (not context.executing_eagerly()
+        and not ops.inside_function()):
+      saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
+    else:
+      saveables_cache = None
+    super(_AugmentedGraphView, self).__init__(root, saveables_cache)
     # Object -> (name -> dep)
     self._extra_dependencies = object_identity.ObjectIdentityDictionary()
     self._functions = object_identity.ObjectIdentityDictionary()
@@ -228,10 +234,11 @@ class _SaveableView(object):
 
     for concrete_function in self.concrete_functions:
       for capture in concrete_function.captured_inputs:
-        if (isinstance(capture, ops.EagerTensor)
+        if (tensor_util.is_tensor(capture)
             and capture.dtype not in _UNCOPIABLE_DTYPES
             and capture not in self.captured_tensor_node_ids):
-          copied_tensor = constant_op.constant(capture.numpy())
+          copied_tensor = constant_op.constant(
+              tensor_util.constant_value(capture))
           node_id = len(self.nodes)
           node = _CapturedConstant(
               eager_tensor=capture, graph_tensor=copied_tensor)
@@ -446,9 +453,13 @@ _AssetInfo = collections.namedtuple(
 
 def _process_asset(trackable_asset, asset_info, resource_map):
   """Add `trackable_asset` to `asset_info` and `resource_map`."""
-  original_variable = trackable_asset.asset_path
-  with context.eager_mode():
-    original_path = original_variable.numpy()
+  original_path_tensor = trackable_asset.asset_path
+  original_path = tensor_util.constant_value(original_path_tensor)
+  try:
+    original_path = str(original_path.astype(str))
+  except AttributeError:
+    # Already a string rather than a numpy array
+    pass
   path = builder_impl.get_asset_filename_to_add(
       asset_filepath=original_path,
       asset_filename_map=asset_info.asset_filename_map)
@@ -456,7 +467,7 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   # and asset in the graph def consider deduping the assets that
   # point to the same file.
   asset_path_initializer = array_ops.placeholder(
-      shape=original_variable.shape,
+      shape=original_path_tensor.shape,
       dtype=dtypes.string,
       name="asset_path_initializer")
   asset_variable = resource_variable_ops.ResourceVariable(
@@ -466,10 +477,10 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   asset_def.filename = path
   asset_def.tensor_info.name = asset_path_initializer.name
   asset_info.asset_defs.append(asset_def)
-  asset_info.asset_initializers_by_resource[original_variable] = (
+  asset_info.asset_initializers_by_resource[original_path_tensor] = (
       asset_variable.initializer)
   asset_info.asset_index[trackable_asset] = len(asset_info.asset_defs) - 1
-  resource_map[original_variable] = asset_variable
+  resource_map[original_path_tensor] = asset_variable
 
 
 def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
@@ -747,23 +758,19 @@ def save(obj, export_dir, signatures=None):
     ValueError: If `obj` is not trackable.
 
   @compatibility(eager)
-  Not supported when graph building. From TensorFlow 1.x,
-  `tf.enable_eager_execution()` must run first. May not be called from within a
-  function body.
+  Not well supported when graph building. From TensorFlow 1.x,
+  `tf.enable_eager_execution()` should run first. Calling tf.saved_model.save in
+  a loop when graph building from TensorFlow 1.x will add new save operations to
+  the default graph each iteration.
+
+  May not be called from within a function body.
   @end_compatibility
   """
-  if not context.executing_eagerly():
-    with ops.init_scope():
-      if context.executing_eagerly():
-        raise AssertionError(
-            "tf.saved_model.save is not supported inside a traced "
-            "@tf.function. Move the call to the outer eagerly-executed "
-            "context.")
-      else:
-        raise AssertionError(
-            "tf.saved_model.save is not supported when graph building. "
-            "tf.enable_eager_execution() must run first when calling it from "
-            "TensorFlow 1.x.")
+  if ops.inside_function():
+    raise AssertionError(
+        "tf.saved_model.save is not supported inside a traced "
+        "@tf.function. Move the call to the outer eagerly-executed "
+        "context.")
   # pylint: enable=line-too-long
   if not isinstance(obj, base.Trackable):
     raise ValueError(

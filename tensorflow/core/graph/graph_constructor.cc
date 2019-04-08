@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -195,6 +196,12 @@ class GraphConstructor {
 
   void Undo();
 
+  // Prints cycles in the graph.
+  void PrintCycles();
+  // Performs DFS starting at `cur_node` and prints any cycles found.
+  void DFS(int cur_node, std::vector<int>* cur_branch,
+           std::vector<bool>* is_on_cur_branch,
+           absl::flat_hash_set<int>* unvisited);
   Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
   Status ValidateColocationConstraints(const NodeDef& node_def);
   Status MakeNode(const NodeDef& node_def, Node** node);
@@ -923,6 +930,52 @@ Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
   return Status::OK();
 }
 
+void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
+                           std::vector<bool>* is_on_cur_branch,
+                           absl::flat_hash_set<int>* unvisited) {
+  cur_branch->push_back(cur_node);
+  is_on_cur_branch->at(cur_node) = true;
+  for (auto next_node : outputs_[cur_node]) {
+    if (unvisited->find(next_node) != unvisited->end()) {
+      if (is_on_cur_branch->at(next_node)) {
+        auto iter =
+            std::find(cur_branch->begin(), cur_branch->end(), next_node);
+        LOG(WARNING) << "Cycle detected:";
+        while (iter != cur_branch->end()) {
+          LOG(WARNING) << SummarizeNodeDef(*node_defs_[*iter]);
+          ++iter;
+        }
+        LOG(WARNING) << "End of cycle";
+      } else {
+        DFS(next_node, cur_branch, is_on_cur_branch, unvisited);
+      }
+    }
+  }
+  cur_branch->pop_back();
+  is_on_cur_branch->at(cur_node) = false;
+  unvisited->erase(cur_node);
+}
+
+void GraphConstructor::PrintCycles() {
+  int num_nodes = outputs_.size();
+  absl::flat_hash_set<int> unvisited;
+  for (int i = 0; i < num_nodes; i++) {
+    unvisited.insert(i);
+  }
+  while (!unvisited.empty()) {
+    int cur_node = *unvisited.begin();
+    // Nodes on the current branch of DFS in traversal order. This is used for
+    // printing the nodes in the cycle.
+    std::vector<int> cur_branch;
+    // This is just to make lookups O(1).
+    // is_on_cur_branch[i] ==
+    //   (std::find(cur_branch.start(),
+    //              cur_branch.end(), i) != cur_branch.end())
+    std::vector<bool> is_on_cur_branch(num_nodes, false);
+    DFS(cur_node, &cur_branch, &is_on_cur_branch, &unvisited);
+  }
+}
+
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
@@ -1082,6 +1135,7 @@ Status GraphConstructor::Convert() {
                      << " WITH PENDING COUNT = " << pending_count_[i];
       }
     }
+    PrintCycles();
     return errors::InvalidArgument(node_defs_.size() - processed,
                                    " nodes in a cycle");
   }

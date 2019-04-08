@@ -43,6 +43,9 @@ void MakeTensorWithQuantParam(const string& name,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor);
 
+// Checks if the tensor has scale and zero point populated.
+bool QuantizationParametersExist(const TensorT* tensor);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

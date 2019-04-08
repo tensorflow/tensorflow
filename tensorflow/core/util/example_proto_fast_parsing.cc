@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -2047,6 +2048,10 @@ Status FastParseSequenceExample(
   feature_list_result->dense_values.resize(feature_list_config.dense.size());
   dense_feature_lengths->resize(feature_list_config.dense.size());
 
+  // NOTE(mrry): Cache the CPU allocator here and use it in Tensor construction,
+  // to avoid lock contention in `tensorflow::cpu_allocator()`.
+  Allocator* allocator = tensorflow::cpu_allocator();
+
   int t = 0;
   for (const auto& c : context_config.dense) {
     TensorShape dense_shape, example_shape;
@@ -2063,7 +2068,7 @@ Status FastParseSequenceExample(
     for (const int dim : c.shape.dim_sizes()) {
       dense_shape.AddDim(dim);
     }
-    context_result->dense_values[t] = Tensor(dtype, dense_shape);
+    context_result->dense_values[t] = Tensor(allocator, dtype, dense_shape);
 
     // TODO(sundberg): Refactor to reduce code duplication, and add bounds
     // checking for the outputs.
@@ -2171,9 +2176,11 @@ Status FastParseSequenceExample(
     indices_shape.AddDim(expected_num_elements);
     indices_shape.AddDim(2);
     values_shape.AddDim(expected_num_elements);
-    context_result->sparse_indices[t] = Tensor(DT_INT64, indices_shape);
-    context_result->sparse_values[t] = Tensor(dtype, values_shape);
-    context_result->sparse_shapes[t] = Tensor(DT_INT64, TensorShape({2}));
+    context_result->sparse_indices[t] =
+        Tensor(allocator, DT_INT64, indices_shape);
+    context_result->sparse_values[t] = Tensor(allocator, dtype, values_shape);
+    context_result->sparse_shapes[t] =
+        Tensor(allocator, DT_INT64, TensorShape({2}));
     // TODO(sundberg): Refactor to reduce code duplication, and add bounds
     // checking for the outputs.
     string* out_bytes = nullptr;
@@ -2261,8 +2268,10 @@ Status FastParseSequenceExample(
     for (const int dim : feature_list_config.dense[t].shape.dim_sizes()) {
       dense_shape.AddDim(dim);
     }
-    feature_list_result->dense_values[t] = Tensor(dtype, dense_shape);
-    (*dense_feature_lengths)[t] = Tensor(DT_INT64, dense_length_shape);
+    feature_list_result->dense_values[t] =
+        Tensor(allocator, dtype, dense_shape);
+    (*dense_feature_lengths)[t] =
+        Tensor(allocator, DT_INT64, dense_length_shape);
     int64* out_lengths = (*dense_feature_lengths)[t].flat<int64>().data();
 
     string* out_bytes = nullptr;
@@ -2369,9 +2378,12 @@ Status FastParseSequenceExample(
     indices_shape.AddDim(expected_num_elements);
     indices_shape.AddDim(3);
     values_shape.AddDim(expected_num_elements);
-    feature_list_result->sparse_indices[t] = Tensor(DT_INT64, indices_shape);
-    feature_list_result->sparse_values[t] = Tensor(dtype, values_shape);
-    feature_list_result->sparse_shapes[t] = Tensor(DT_INT64, TensorShape({3}));
+    feature_list_result->sparse_indices[t] =
+        Tensor(allocator, DT_INT64, indices_shape);
+    feature_list_result->sparse_values[t] =
+        Tensor(allocator, dtype, values_shape);
+    feature_list_result->sparse_shapes[t] =
+        Tensor(allocator, DT_INT64, TensorShape({3}));
 
     string* out_bytes = nullptr;
     float* out_float = nullptr;
