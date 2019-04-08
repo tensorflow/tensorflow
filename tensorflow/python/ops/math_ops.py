@@ -2806,9 +2806,7 @@ def add_n(inputs, name=None):
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
     raise ValueError("inputs must be a list of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
-  for x in inputs:
-    if x.dtype == dtypes.float16:
-      x = cast(x,dtypes.float32,name=name)
+  
   if len(inputs) == 1:
     if isinstance(inputs[0], ops.IndexedSlices):
       values = ops.convert_to_tensor(inputs[0])
