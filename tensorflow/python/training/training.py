@@ -33,6 +33,8 @@ from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
 from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
+from tensorflow.python.training.loss_scale import FixedLossScale, DynamicLossScale
+from tensorflow.python.training.loss_scale_optimizer import LossScaleOptimizer
 from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
