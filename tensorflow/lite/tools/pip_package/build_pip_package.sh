@@ -35,7 +35,7 @@ import tflite_runtime.lite.interpreter
 EOF
 
 cat > $BUILD_ROOT/tflite_runtime/lite/__init__.py <<EOF;
-from interpreter import Interpreter as Interpreter
+from tflite_runtime.lite.interpreter import Interpreter as Interpreter
 EOF
 
 cat > $BUILD_ROOT/tflite_runtime/lite/python/__init__.py <<EOF;
