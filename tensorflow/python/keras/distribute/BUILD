@@ -310,3 +310,22 @@ py_library(
         "//tensorflow/python/keras",
     ],
 )
+
+cuda_py_test(
+    name = "multi_worker_callback_test",
+    srcs = ["multi_worker_callback_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/keras/distribute:multi_worker_test",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 12,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+)
