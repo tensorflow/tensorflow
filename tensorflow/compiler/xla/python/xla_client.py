@@ -303,7 +303,7 @@ def dtype_to_etype(dtype):
   return DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
 
 
-class LocalBuffer(object):
+class Buffer(object):
   """Represents a handle to data owned by XLA.
 
   The referent is ready for use in executing a local, compiled
@@ -322,7 +322,7 @@ class LocalBuffer(object):
     backend = backend or get_local_backend()
     pyval = require_numpy_array_layout(pyval)
     cbuf = backend.buffer_from_pyval(pyval, device)
-    return LocalBuffer(cbuf, backend, device)
+    return Buffer(cbuf, backend, device)
 
   def to_py(self):
     return self.c_buffer.ToPython()
@@ -344,7 +344,7 @@ class LocalBuffer(object):
     result = self._backend.destructure_tuple(self.c_buffer)
     self.delete()
     return tuple(
-        LocalBuffer(sub_buffer, device=self._device, backend=self._backend)
+        Buffer(sub_buffer, device=self._device, backend=self._backend)
         for sub_buffer in result)
 
   def is_deleted(self):
@@ -352,6 +352,11 @@ class LocalBuffer(object):
 
   def __del__(self):
     self.delete()
+
+
+# TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
+# compatibility with Jaxlib versions older than 0.1.13.
+LocalBuffer = Buffer
 
 
 class Format(enum.IntEnum):
@@ -725,25 +730,25 @@ class Executable(object):
     return self._device_ordinals
 
   def Execute(self, arguments=(), check_for_deleted_args=True):
-    """Execute on one replica with LocalBuffer arguments and return value."""
+    """Execute on one replica with Buffer arguments and return value."""
     if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
     raw_args = [arg.c_buffer for arg in arguments]
     output_buffer = self._backend.execute(self._c_executable, raw_args)
-    return LocalBuffer(
+    return Buffer(
         output_buffer, backend=self._backend, device=self._device_ordinals[0])
 
   def ExecutePerReplica(self, arguments=None):
-    """Execute on many replicas with LocalBuffer arguments and return value.
+    """Execute on many replicas with Buffer arguments and return value.
 
     Args:
-      arguments: A sequence of sequences of LocalBuffers. The i'th inner
-        sequence comprises the arguments for execution on the i'th replica.
+      arguments: A sequence of sequences of Buffers. The i'th inner sequence
+        comprises the arguments for execution on the i'th replica.
 
     Returns:
-      A list of the computation's outputs for each replica, as a LocalBuffer. If
+      A list of the computation's outputs for each replica, as a Buffer. If
       a shallow sequence of arguments was passed in for `arguments`, then the
-      sole, zero'th replica's output is returned instead, as a LocalBuffer.
+      sole, zero'th replica's output is returned instead, as a Buffer.
     """
     if arguments is None:
       arguments = ((),) * len(self._device_ordinals)
@@ -770,9 +775,9 @@ class Executable(object):
     output_buffers = self._backend.execute_replicated(self._c_executable,
                                                       stripped_args)
 
-    # Wrap output handles in LocalBuffer instances
+    # Wrap output handles in Buffer instances
     return tuple(
-        LocalBuffer(
+        Buffer(
             output_buffer,
             backend=self._backend,
             device=self._device_ordinals[replica])
@@ -782,7 +787,7 @@ class Executable(object):
     """Execute on one replica with Python values as arguments and output."""
 
     def put(arg):
-      return LocalBuffer.from_pyval(
+      return Buffer.from_pyval(
           arg, device=self._device_ordinals[0], backend=self._backend)
 
     arguments = [put(arg) for arg in arguments]
@@ -792,7 +797,7 @@ class Executable(object):
     """Execute on many replicas with Python values as arguments and output."""
 
     def put(arg, device):
-      return LocalBuffer.from_pyval(arg, device, backend=self._backend)
+      return Buffer.from_pyval(arg, device, backend=self._backend)
 
     # pylint: disable=g-complex-comprehension
     arguments = [[
