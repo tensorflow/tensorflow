@@ -27,7 +27,9 @@
 #include "mlir/IR/Types.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/LLVMIR/Transforms.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/Passes.h"
 
 #include "linalg1/ConvertToLLVMDialect.h"
 #include "linalg1/LLVMIntrinsics.h"
