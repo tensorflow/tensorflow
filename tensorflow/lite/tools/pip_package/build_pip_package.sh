@@ -24,7 +24,7 @@ export TENSORFLOW_VERSION=`grep "_VERSION = " $TENSORFLOW_SRC_ROOT/tensorflow/to
 
 
 # Build a pip build tree.
-BUILD_ROOT=/tmp/tflite_pip
+BUILD_ROOT=$MY_DIRECTORY/gen/tflite_pip
 rm -rf $BUILD_ROOT
 mkdir -p $BUILD_ROOT/tflite_runtime/lite
 mkdir -p $BUILD_ROOT/tflite_runtime/lite/python
