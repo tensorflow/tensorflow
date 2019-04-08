@@ -1841,7 +1841,7 @@ class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
   cosine similarity = (a . b) / ||a|| ||b||
-  (https://en.wikipedia.org/wiki/Cosine_similarity)
+  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 
   For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
   similarity is 0.5.
