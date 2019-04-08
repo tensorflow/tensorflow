@@ -637,6 +637,15 @@ class Confined<Attr attr, list<AttrConstraint> constraints> : Attr<
   let isOptional = attr.isOptional;
 }
 
+// An AttrConstraint that holds if all attr constraints specified in
+// 'constraints' hold.
+class AllAttrConstraintsOf<list<AttrConstraint> constraints> : AttrConstraint<
+    AllOf<!listconcat([!head(constraints).predicate],
+                      !foreach(pred, !tail(constraints), pred.predicate))>,
+    !foldl(/*init*/!head(constraints).description, /*list*/!tail(constraints),
+           prev, cur, prev # " and " # cur.description)> {
+}
+
 class IntMinValue<int n> : AttrConstraint<
     CPred<"{0}.cast<IntegerAttr>().getInt() >= " # n>,
     "whose minimal value is " # n>;
