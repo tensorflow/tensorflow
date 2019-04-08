@@ -279,6 +279,8 @@ distribute_py_test(
 
 cuda_py_test(
     name = "multi_worker_test",
+    # TODO(rchao): Investigate the timeout issue and size it back to medium.
+    size = "large",
     srcs = ["multi_worker_test.py"],
     additional_deps = [":multi_worker_test_main_lib"],
     shard_count = 32,
