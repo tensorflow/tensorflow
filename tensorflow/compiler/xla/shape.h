@@ -200,6 +200,12 @@ class Shape {
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Shape& s) {
+    return H::combine(std::move(h), s.element_type_, s.dimensions_,
+                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+  }
+
  private:
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
