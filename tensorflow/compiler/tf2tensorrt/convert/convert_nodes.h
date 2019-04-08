@@ -51,6 +51,15 @@ namespace convert {
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
     NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
+inline std::ostream& operator<<(std::ostream& o, const nvinfer1::Dims& dims)
+{
+    o << "[";
+    for (int i = 0; i < dims.nbDims; i++)
+        o << (i ? "," : "") << dims.d[i];
+    o << "]";
+    return o;
+}
+
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
