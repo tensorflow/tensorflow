@@ -1275,12 +1275,9 @@ class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
 class IdentityTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_gpu_only
   def testEagerIdentity(self):
     with context.eager_mode():
-      ctx = context.context()
-      if not ctx.num_gpus():
-        self.skipTest("No GPUs found")
-
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())

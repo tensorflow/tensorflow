@@ -967,21 +967,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         dense_shape=None)
     validate(indexed_slice)
 
+  @test_util.run_gpu_only
   def testFunctionOnDevice(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     x = constant_op.constant([1.]).gpu()
     # TODO(b/121134877): Remove the autograph override.
     f = def_function.function(math_ops.add, autograph=False)
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testFunctionWithResourcesOnDifferentDevices(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/cpu:0'):
       v_cpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
 
@@ -999,11 +995,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     expected = self.evaluate(sum_gather())
     self.assertAllEqual(expected, self.evaluate(defined()))
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testOpInFunctionWithConflictingResourceInputs(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/cpu:0'):
       v_cpu = resource_variable_ops.ResourceVariable(
           [0.0, 1.0, 2.0], name='cpu')
@@ -1038,10 +1032,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.evaluate(variables.global_variables_initializer())
       self.evaluate(resource_apply_adam())
 
+  @test_util.run_gpu_only
   def testFunctionHandlesInputsOnDifferentDevices(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # The Reshape op requires the shape tensor to be placed in host memory.
     # TODO(b/121134877): Remove the autograph override.
     reshape = def_function.function(array_ops.reshape, autograph=False)
@@ -1050,10 +1042,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     reshaped = reshape(value, shape).cpu()
     self.assertAllEqual(reshaped, [[1], [2]])
 
+  @test_util.run_gpu_only
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # The Reshape op requires the shape tensor to be placed in host memory.
     # TODO(b/121134877): Remove the autograph override.
     reshape = def_function.function(array_ops.reshape, autograph=False)
@@ -1303,12 +1293,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('cpu:1'):
       self.assertEqual(0., self.evaluate(default_graph_function()))
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testColocateWithRespected(self):
     # TODO(b/113291792): Use multiple CPUs instead of a GPU.
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('cpu:0'):
       x = constant_op.constant(1.0)
 
@@ -2524,10 +2512,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIn('node assert_equal/Assert/Assert (defined at', e.message)
     self.assertNotIn('fn3', e.message)
 
+  @test_util.run_gpu_only
   def testFunctionIsNotPinned(self):
     """Tests that functions aren't pinned to the CPU by the eager runtime."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
     seed1, seed2 = 79, 25
     shape = constant_op.constant([4, 7])
     dtype = dtypes.float32
@@ -2637,11 +2624,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.run_gpu_only
   def testMultiDeviceOutput(self):
     """Tests that functions can produce outputs on multiple devices."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     @function.defun
     def func(a, b, transpose_a):
       with ops.device('/device:CPU:0'):
@@ -2657,10 +2642,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m2.numpy(), [[10, 14], [14, 20]])
     self.assertRegexpMatches(m2.backing_device, 'GPU')
 
+  @test_util.run_gpu_only
   def testEmptyBody(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     @function.defun
     def func(a, b):
       return b, a
@@ -2676,6 +2659,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m2.numpy(), 3.0)
     self.assertRegexpMatches(m2.backing_device, 'CPU')
 
+  @test_util.run_gpu_only
   def testMultiDeviceInt32(self):
     """Tests that multi-device functions can take and output INT32s.
 
@@ -2690,9 +2674,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     FunctionLibraryRuntime now. We can try that.
 
     """
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       int_cpu = constant_op.constant(3, dtype=dtypes.int32)
       resource = resource_variable_ops.ResourceVariable(5, dtype=dtypes.int32)
@@ -2721,11 +2702,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m2.numpy(), 23)
     self.assertRegexpMatches(m2.backing_device, 'CPU')
 
+  @test_util.run_gpu_only
   def testMultiDeviceColocateWith(self):
     """Tests that function's outputs respect colocation constraints."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     @function.defun
     def func(a, b):
       with ops.colocate_with(a):
@@ -2747,10 +2726,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(rb.numpy(), 30.0)
       self.assertRegexpMatches(rb.backing_device, dev2)
 
+  @test_util.run_gpu_only
   def testMultiDeviceResources(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       c1 = resource_variable_ops.ResourceVariable(2.0)
       c2 = resource_variable_ops.ResourceVariable(7.0)
@@ -2780,10 +2757,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r2.numpy(), 14.0)
     self.assertRegexpMatches(r2.backing_device, 'GPU')
 
+  @test_util.run_gpu_only
   def testOutputResources(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       c1 = resource_variable_ops.ResourceVariable(2.0)
     with ops.device('/device:GPU:0'):
@@ -2826,11 +2801,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     check_handle(res1, 3.0)
     check_handle(res2, 2.0)
 
+  @test_util.run_gpu_only
   def testComplexInputOutputDevicePattern(self):
     """Tests input/output mapping logic in partitioning."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       rc0 = resource_variable_ops.ResourceVariable(2.0)
       rc1 = resource_variable_ops.ResourceVariable(3.0)
@@ -2872,11 +2845,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(m2.numpy(), 55.0)
     self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
 
+  @test_util.run_gpu_only
   def testArgumentPrunning(self):
     """Tests functions taking unnecessary arguments."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       c1 = constant_op.constant(5.0)
       c2 = constant_op.constant(7.0)
