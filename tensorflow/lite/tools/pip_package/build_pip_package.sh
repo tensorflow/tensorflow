@@ -51,4 +51,8 @@ cp $TFLITE_ROOT/tools/pip_package/MANIFEST.in $BUILD_ROOT
 
 # Build the Pip
 cd $BUILD_ROOT
-python setup.py bdist_wheel
+if [ -n "${TENSORFLOW_TARGET}" ] && [ -n "${TENSORFLOW_TARGET_ARCH}" ]; then
+  python3 setup.py bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
+else
+  python3 setup.py bdist_wheel
+fi
