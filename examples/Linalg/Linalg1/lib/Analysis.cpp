@@ -59,7 +59,7 @@ std::pair<mlir::Value *, unsigned> linalg::getViewRootIndexing(Value *view,
     if (auto rangeOp = indexing->getDefiningOp()->cast<RangeOp>()) {
       // If I sliced with a range and I sliced at this dim, then I'm it.
       if (dim == sliceDim) {
-        return make_pair(rangeOp.getResult(), dim);
+        return std::make_pair(rangeOp.getResult(), dim);
       }
       // Otherwise, I did not change the rank, just go look for `dim` into my
       // parent.
