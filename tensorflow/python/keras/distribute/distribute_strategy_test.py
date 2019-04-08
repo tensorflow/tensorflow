@@ -1417,6 +1417,98 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     self.assertAllClose(history.history, ds_history.history)
 
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def test_distribution_strategy_with_add_metric_in_call(self, distribution):
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_weight(name='bias', initializer='zeros', shape=())
+
+      def call(self, inputs):
+        self.add_metric(
+            math_ops.reduce_mean(inputs), name='bias', aggregation='mean')
+        return inputs + self.bias
+
+    def _make_model_with_add_metric():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = Bias()(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model_with_add_metric()
+    self.assertLen(model.metrics, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(
+        x,
+        y,
+        steps_per_epoch=2,
+        validation_data=(x, y),
+        validation_steps=2,
+        epochs=2)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_metric()
+      self.assertLen(ds_model.metrics, 1)
+      ds_model.compile('sgd', 'mse')
+      ds_history = ds_model.fit(
+          x,
+          y,
+          steps_per_epoch=2,
+          validation_data=(x, y),
+          validation_steps=2,
+          epochs=2)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def test_distribution_strategy_with_add_metric_outside_call(
+      self, distribution):
+
+    def _make_model_with_add_metric():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x1)
+      model = keras.Model(inputs, outputs)
+      model.add_metric(
+          math_ops.reduce_mean(x1), name='mid_mean', aggregation='mean')
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model_with_add_metric()
+    self.assertLen(model.metrics, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(
+        x,
+        y,
+        steps_per_epoch=2,
+        validation_data=(x, y),
+        validation_steps=2,
+        epochs=2)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_metric()
+      self.assertLen(ds_model.metrics, 1)
+      ds_model.compile('sgd', 'mse')
+      ds_history = ds_model.fit(
+          x,
+          y,
+          steps_per_epoch=2,
+          validation_data=(x, y),
+          validation_steps=2,
+          epochs=2)
+
+    self.assertAllClose(history.history, ds_history.history)
+
 
 if __name__ == '__main__':
   test.main()

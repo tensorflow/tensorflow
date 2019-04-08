@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
@@ -210,15 +211,24 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
-  def test_supports_variable_like_objects(self):
+  def test_supports_distributed_variables(self):
+    device_map = distributed_values.SingleDeviceMap("/CPU:0")
+    mirrored = distributed_values.MirroredVariable(
+        None, device_map, [variables.Variable(1.)],
+        variables.VariableAggregation.SUM)
+    tpu = distributed_values.TPUMirroredVariable(
+        strategy=None,
+        device_map=device_map,
+        values=[variables.Variable(42.)],
+        aggregation=None)
+    aggregating = distributed_values.AggregatingVariable(
+        strategy=None, v=variables.Variable(1.), aggregation=None)
+
     m = module.Module()
-    v = VariableLike()
-    self.assertFalse(hasattr(v, "trainable"))
-    m.v = v
-    self.assertEqual(m.variables, (v,))
-    self.assertEmpty(m.trainable_variables)
-    m.v.trainable = True
-    self.assertEqual(m.trainable_variables, (v,))
+    m.a = mirrored
+    m.b = tpu
+    m.c = aggregating
+    self.assertEqual(m.variables, (mirrored, tpu, aggregating))
 
 
 class ModuleTrackingTest(test.TestCase):
@@ -438,7 +448,7 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     mod.decoder = mod.encoder
 
     state_dict = dict(
-        mod._flatten(with_path=True, predicate=module._is_variable_like))
+        mod._flatten(with_path=True, predicate=module._is_variable))
 
     self.assertEqual(state_dict,
                      {("w",): mod.w,
@@ -470,7 +480,7 @@ class LayerModule(module.Module):
 
     return list(
         self._flatten(
-            predicate=module._is_variable_like,
+            predicate=module._is_variable,
             attribute_traversal_key=key_function))
 
 
@@ -487,12 +497,6 @@ class SimpleModule(module.Module):
     self.a = container_type([MemberType(), MemberType()])
     if create_child:
       self.c = SimpleModule(create_child=False)
-
-
-class VariableLike(object):
-
-  _should_act_as_resource_variable = True
-
 
 is_member = lambda v: isinstance(v, MemberType)
 

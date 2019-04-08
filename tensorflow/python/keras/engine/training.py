@@ -216,10 +216,6 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     run_eagerly = kwargs.pop('run_eagerly', None)
-    if run_eagerly and getattr(self, '_contains_symbolic_tensors', False):
-      raise ValueError(
-          'We currently do not support enabling `run_eagerly` on compile if '
-          '`model.add_metric(tensor)` has been called.')
 
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
@@ -260,11 +256,6 @@ class Model(network.Network):
         raise ValueError(
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
-
-      if getattr(self, '_contains_symbolic_tensors', False):
-        raise ValueError(
-            'We currently do not support compiling the model with distribution '
-            'strategy if `model.add_metric(tensor)` has been called.')
 
       if not self.built or not self.inputs or not self.outputs:
         raise ValueError(
@@ -1722,8 +1713,11 @@ class Model(network.Network):
           # Compute the stateful loss value.
           if weighted_losses is not None:
             # TODO(b/120571621): Directly call metric when the bug is fixed.
-            aggregated_output_loss = self._call_fn_for_each_replica(
-                self._output_loss_metrics[i], weighted_losses)
+            aggregated_output_loss = (
+                distributed_training_utils.call_replica_local_fn(
+                    self._output_loss_metrics[i],
+                    weighted_losses,
+                    strategy=self._distribution_strategy))
           else:
             # Custom loss class.
             aggregated_output_loss = self._call_metric_fn(
@@ -1984,26 +1978,14 @@ class Model(network.Network):
   def _call_metric_fn(self, metric_fn, y_true, y_pred, weights, mask=None):
     # TODO(b/120571621): Remove this function when the bug is fixed.
     """Helper function to call metric function with distribution strategy."""
-    return self._call_fn_for_each_replica(
+    return distributed_training_utils.call_replica_local_fn(
         training_utils.call_metric_function,
         metric_fn,
         y_true,
         y_pred,
         weights=weights,
-        mask=mask)
-
-  def _call_fn_for_each_replica(self, fn, *args, **kwargs):
-    # TODO(b/120571621): We want to avoid metric reductions here since
-    # since TPUStrategy does not implement replica local variables.
-    # Remove this hack once we support TPUReplicaLocalVariables.
-    is_tpu = distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy)
-    if ((not is_tpu) and self._distribution_strategy and
-        distribution_strategy_context.in_cross_replica_context()):
-      with self._distribution_strategy.scope():
-        return self._distribution_strategy.extended.call_for_each_replica(
-            fn, args, kwargs)
-    return fn(*args, **kwargs)
+        mask=mask,
+        strategy=self._distribution_strategy)
 
   def _handle_per_output_metrics(self,
                                  metrics_dict,

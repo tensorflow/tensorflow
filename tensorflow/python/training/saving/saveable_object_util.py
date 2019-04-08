@@ -234,6 +234,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   names_to_saveables = {}
   # pylint: disable=protected-access
   for var in op_list:
+    resource_or_ref_variable = (
+        isinstance(var, resource_variable_ops.ResourceVariable) or
+        isinstance(var, variables.RefVariable))
+
     if isinstance(var, saveable_object.SaveableObject):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
@@ -250,8 +254,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
-    elif (isinstance(var, trackable.Trackable)
-          and not isinstance(var, variables.Variable)):
+    elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
           for factory in var._gather_saveables_for_checkpoint().values()]

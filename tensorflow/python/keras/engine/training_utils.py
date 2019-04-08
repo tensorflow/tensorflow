@@ -853,20 +853,26 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
     return metrics_module.categorical_crossentropy
 
 
-def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
+def call_metric_function(metric_fn,
+                         y_true,
+                         y_pred=None,
+                         weights=None,
+                         mask=None):
   """Invokes metric function and returns the metric result tensor."""
-  if mask is None:
+  if mask is not None:
+    mask = math_ops.cast(mask, y_pred.dtype)
+    if weights is None:
+      # Use mask as sample weight.
+      weights = mask
+    else:
+      # Update dimensions of weights to match with mask.
+      mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
+      weights *= mask
+
+  if y_pred is not None:
     return metric_fn(y_true, y_pred, sample_weight=weights)
-
-  mask = math_ops.cast(mask, y_pred.dtype)
-  if weights is None:
-    # Use mask as sample weight.
-    return metric_fn(y_true, y_pred, sample_weight=mask)
-
-  # Update dimensions of weights to match with mask.
-  mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-  weights *= mask
-  return metric_fn(y_true, y_pred, sample_weight=weights)
+  # `Mean` metric only takes a single value.
+  return metric_fn(y_true, sample_weight=weights)
 
 
 def get_loss_function(loss):

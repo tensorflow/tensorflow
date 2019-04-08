@@ -34,7 +34,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rms_prop_keras
-from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 
@@ -314,26 +313,6 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             steps_per_epoch=2,
             verbose=0,
             callbacks=[keras.callbacks.ReduceLROnPlateau()])
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.one_device_strategy],
-          mode=['graph']))
-  def test_distribution_strategy_with_add_metric(self, distribution):
-    with distribution.scope():
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
-
-      err_msg = (
-          'We currently do not support compiling the model with distribution '
-          r'strategy if `model.add_metric\(tensor\)` has been called.')
-
-      # Test with add_metric.
-      model = keras.models.Model(x, y)
-      model.add_metric(
-          math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.compile('sgd',)
 
   @combinations.generate(
       combinations.combine(
