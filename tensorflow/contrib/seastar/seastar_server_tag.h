@@ -18,17 +18,12 @@ class SeastarTensorResponse;
 class SeastarServerTag;
 
 void InitSeastarServerTag(protobuf::Message* request,
-			  protobuf::Message* response,
-			  SeastarServerTag* tag);
+                          protobuf::Message* response,
+                          SeastarServerTag* tag);
 
 void InitSeastarServerTag(protobuf::Message* request,
-			  SeastarTensorResponse* response,
-			  SeastarServerTag* tag,
-                          StatusCallback clear);
-
-void InitSeastarServerTag(protobuf::Message* request,
-			  SeastarFuseTensorResponse* response,
-			  SeastarServerTag* tag,
+                          SeastarTensorResponse* response,
+                          SeastarServerTag* tag,
                           StatusCallback clear);
 
 class SeastarServerTag {
@@ -55,22 +50,18 @@ class SeastarServerTag {
   char* GetRequestBodyBuffer();
 
   void StartResp();
-  void StartRespWithTensors();
-
-  void InitFuse(int32_t fuse_count); 
+  void StartRespWithTensor();
 
  private:
-  friend class SeastarTagFactory;
   seastar::user_packet* ToUserPacket();
-  std::vector<seastar::user_packet*> ToUserPacketWithTensors();
+  seastar::user_packet* ToUserPacketWithTensor();
 
  public:
   SeastarBuf req_body_buf_;
   SeastarBuf resp_header_buf_;
   SeastarBuf resp_body_buf_;
-  int32_t fuse_count_;
-  std::vector<SeastarBuf> resp_message_bufs_;
-  std::vector<SeastarBuf> resp_tensor_bufs_;
+  SeastarBuf resp_message_buf_;
+  SeastarBuf resp_tensor_buf_;
 
   SeastarWorkerServiceMethod method_;
 

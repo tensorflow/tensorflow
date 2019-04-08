@@ -27,12 +27,4 @@ void SeastarTensorResponse::Clear() {
   tensor_proto_ = TensorProto();
 }
 
-void SeastarFuseTensorResponse::Clear() {
-  SeastarTensorResponse::Clear();
-  fuse_count_ = 0;
-  tensors_.clear();
-  tensor_protos_.clear();
-  is_deads_.clear();
-}
-
 }  // namespace tensorflow

@@ -14,7 +14,7 @@
 
 namespace tensorflow {
 typedef std::function<void(const Status&)> StatusCallback;
-typedef std::function<Status(int)> ParseMessageCallback;
+typedef std::function<Status()> ParseMessageCallback;
 
 class SeastarWorkerService;
 class SeastarTensorResponse;
@@ -33,26 +33,20 @@ void InitSeastarClientTag(protobuf::Message* request,
 			  SeastarClientTag* tag,
         CallOptions* call_opts);
 
-void InitSeastarClientTag(protobuf::Message* request,
-			  SeastarFuseTensorResponse* response,
-			  StatusCallback done,
-			  SeastarClientTag* tag,
-        CallOptions* call_opts);
-
 class SeastarClientTag {
  public:
   // Client Header 32B:
   // |ID:8B|tag:8B|method:4B|reserve:4B|body_len:8B|
   static const uint64_t HEADER_SIZE = 32;
   SeastarClientTag(tensorflow::SeastarWorkerServiceMethod method,
-                   WorkerEnv* env, int fuse_count = 0);
+                   WorkerEnv* env);
   virtual ~SeastarClientTag();
 
   // Called by seatar remote worker, notify seastar engine to send request.
   void StartReq(seastar::channel* seastar_channel);
 
   bool IsRecvTensor();
-  Status ParseMessage(int idx);
+  Status ParseMessage();
 
   // Called by seastar engine, handle the upper layer callback, ex. callback of 'RecvOp'.
   void RecvRespDone(Status s);
@@ -60,13 +54,11 @@ class SeastarClientTag {
   uint64_t GetResponseBodySize();
   char* GetResponseBodyBuffer();
 
-  uint64_t GetResponseMessageSize(int idx);
-  char* GetResponseMessageBuffer(int idx);
+  uint64_t GetResponseMessageSize();
+  char* GetResponseMessageBuffer();
 
-  uint64_t GetResponseTensorSize(int idx);
-  char* GetResponseTensorBuffer(int idx);
-  
-  int32_t GetFuseCount() { return fuse_count_; }
+  uint64_t GetResponseTensorSize();
+  char* GetResponseTensorBuffer();
 
  private:
   friend class SeastarTagFactory;
@@ -83,9 +75,8 @@ class SeastarClientTag {
   SeastarBuf req_header_buf_;
   SeastarBuf req_body_buf_;
   SeastarBuf resp_body_buf_;
-  int32_t fuse_count_;
-  std::vector<SeastarBuf> resp_message_bufs_;
-  std::vector<SeastarBuf> resp_tensor_bufs_;
+  SeastarBuf resp_message_buf_;
+  SeastarBuf resp_tensor_buf_;
   ParseMessageCallback parse_message_;
   CallOptions* call_opts_;
   bool fail_fast_;

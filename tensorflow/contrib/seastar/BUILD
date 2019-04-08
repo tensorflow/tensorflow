@@ -109,16 +109,6 @@ cc_library(
 )
 
 cc_library(
-  name = "seastar_stat",
-  srcs = select({"//tensorflow:with_seastar_support": ["seastar_stat.cc"],
-                 "//conditions:default": []}),
-  hdrs = ["seastar_stat.h"],
-  linkstatic = 1,
-  deps = ["//tensorflow/core:lib"],
-  alwayslink = 1,
-)
-
-cc_library(
     name = "seastar_engine",
     srcs = select({"//tensorflow:with_seastar_support": ["seastar_engine.cc",
                                                          "seastar_client.cc",
@@ -138,7 +128,6 @@ cc_library(
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
     deps = select({"//tensorflow:with_seastar_support": [":seastar_cpuset",
-                                                         ":seastar_stat",
                                                          ":seastar_worker_service"],
                    "//conditions:default": []}),
     alwayslink = 1,

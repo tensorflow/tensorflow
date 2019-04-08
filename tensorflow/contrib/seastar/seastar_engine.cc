@@ -82,9 +82,9 @@ seastar::channel* SeastarEngine::AsyncConnect(const std::string& ip) {
   string s = LocalhostToIp(ip);
   auto ch = new seastar::channel(s);
   alien::submit_to(core_id, [core_id, s, ch, this] {
-    LOG(INFO) << "client start connect core:" << core_id
-              << ", connect server:" << s;
-    client_->start(seastar::ipv4_addr{s}, s, ch, tag_factory_);
+    VLOG(2) << "client start connect core:" << core_id
+            << ", connect server:" << s;
+    client_->Connect(seastar::ipv4_addr{s}, s, ch, tag_factory_);
     return seastar::make_ready_future();
   });
   return ch; 
@@ -138,11 +138,11 @@ void SeastarEngine::ConstructArgs(int* argc, char*** argv) {
   (*argv)[2] = av2;
   (*argv)[3] = av3;
 
-  LOG(INFO) << "Construct args result, argc: " << *(argc)
-            << ", argv[0]: " << (*argv)[0]
-            << ", argv[1]: " << (*argv)[1]
-            << ", argv[2]: " << (*argv)[2]
-            << ", argv[3]: " << (*argv)[3];
+  VLOG(2) << "Construct args result, argc: " << *(argc)
+          << ", argv[0]: " << (*argv)[0]
+          << ", argv[1]: " << (*argv)[1]
+          << ", argv[2]: " << (*argv)[2]
+          << ", argv[3]: " << (*argv)[3];
 }
 
 void SeastarEngine::AsyncStartServer() {
@@ -158,8 +158,8 @@ void SeastarEngine::AsyncStartServer() {
                                    tag_factory_);
     }).then([this]() {
         is_server_ready_ = true;
-        LOG(INFO) << "Seastar server started succefully"
-                  << ", listen port: " << local_ << ".";
+        VLOG(2) << "Seastar server started successfully"
+                << ", listen port: " << local_ << ".";
         return seastar::make_ready_future();
       }); 
   });

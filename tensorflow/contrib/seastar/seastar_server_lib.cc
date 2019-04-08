@@ -252,7 +252,6 @@ Status SeastarServer::Init() {
       });
 
   // master intialize
-  master_env_.tensor_fuse = config.tensor_fuse();
   master_env_.compute_pool = worker_env_.compute_pool;
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;

@@ -33,7 +33,6 @@ SeastarWorkerService::SeastarWorkerService(SeastarWorker* worker)
   : worker_(worker) {
   handler_map_[SeastarWorkerServiceMethod::kRunGraph] = &SeastarWorkerService::RunGraphHandler;
   handler_map_[SeastarWorkerServiceMethod::kRecvTensor] = &SeastarWorkerService::RecvTensorHandlerRaw;
-  handler_map_[SeastarWorkerServiceMethod::kFuseRecvTensor] = &SeastarWorkerService::FuseRecvTensorHandlerRaw;
   handler_map_[SeastarWorkerServiceMethod::kGetStatus] = &SeastarWorkerService::GetStatusHandler;
   handler_map_[SeastarWorkerServiceMethod::kCreateWorkerSession] = &SeastarWorkerService::CreateWorkerSessionHandler;
   handler_map_[SeastarWorkerServiceMethod::kDeleteWorkerSession] = &SeastarWorkerService::DeleteWorkerSessionHandler;
@@ -199,24 +198,6 @@ void SeastarWorkerService::RecvTensorHandlerRaw(SeastarServerTag *tag) {
     });
 }
 
-void SeastarWorkerService::FuseRecvTensorHandlerRaw(SeastarServerTag *tag) {
-  // LOG(INFO) << "SeastarWorkerService::FuseRecvTensorHandlerRaw";
-  Schedule([this, tag]() {
-      CallOptions* call_opts = new CallOptions;
-
-      SeastarCall<FuseRecvTensorRequest, SeastarFuseTensorResponse> *call =
-          new SeastarCall<FuseRecvTensorRequest, SeastarFuseTensorResponse>();
-
-      InitSeastarServerTag(&call->req_, &call->resp_, tag, [call] (const Status& s) {delete call;});
-
-      worker_->FuseRecvTensorAsync(call_opts, &call->req_, &call->resp_,
-                                   [tag, call, call_opts](const Status& s) {
-                                     delete call_opts;
-                                     tag->ProcessDone(s);
-                                   });
-    });
-}
-
 void SeastarWorkerService::Schedule(std::function<void()> f) {
   worker_->env()->compute_pool->Schedule(std::move(f));
 }
@@ -312,123 +293,6 @@ void SeastarWorker::RecvTensorAsync(CallOptions* opts,
           }
         } else {
           // !s.ok()
-          done(status);
-        }
-      });
-}
-
-void SeastarWorker::FuseRecvTensorAsync(CallOptions* opts,
-                                        const FuseRecvTensorRequest* request,
-                                        SeastarFuseTensorResponse* response,
-                                        StatusCallback done) {
-    const int64 step_id = request->step_id();
-    int fuse_count = request->rendezvous_key_size();
-    std::vector<Rendezvous::ParsedKey> parsed_keys(fuse_count);
-    std::vector<Device*>* src_devs = new std::vector<Device*>(fuse_count, nullptr);
-
-    for (int idx = 0; idx < fuse_count; ++idx) {
-      const string& key = request->rendezvous_key(idx);
-      Status s = Rendezvous::ParseKey(key, &parsed_keys[idx]);
-      // LOG(INFO) << "parsed_keys at index " << idx << " is " << parsed_keys[idx].FullKey()
-      //          << " incarnation is " << parsed_keys[idx].src_incarnation;
-      if (s.ok()) {
-        s = PrepareRecvTensor(parsed_keys[idx], &(*src_devs)[idx]);
-      }
-      
-      if (!s.ok()) {
-        LOG(WARNING) << "PrepareRecvTensor failed, tensor:" << key;
-        delete src_devs;
-        done(s);
-        abort();
-      }
-    }
-
-    // TODO(rangeng.llb): make call opts useful.
-    // opts->SetCancelCallback([this, step_id]() { AbortStep(step_id); });
-    env_->rendezvous_mgr->FuseRecvLocalAsync(
-      step_id, parsed_keys,
-      [opts, request, response, done, fuse_count, src_devs](
-          const Status& status,
-          const std::vector<Rendezvous::Args>& send_argses,
-          const Rendezvous::Args& recv_args,
-          const std::vector<Tensor>& vals,
-          const std::vector<bool>& is_deads) {
-        // opts->ClearCancelCallback();
-
-        CHECK(status.ok()) << "env_->rendezvous_mgr->FuseRecvLocalAsync failed"
-                           << status.error_message();
-        
-        if (status.ok()) {
-          response->Init(fuse_count);
-          int *fuse_counter = new int(fuse_count);
-          
-          for (int idx = 0; idx < fuse_count; ++idx) {
-            response->SetIsDeadByIndex(idx, is_deads[idx]);
-            bool can_memcpy = DataTypeCanUseMemcpy(vals[idx].dtype());
-            
-            if ((*src_devs)[idx]->tensorflow_gpu_device_info() &&
-                (!send_argses[idx].alloc_attrs.on_host())) {
-#if GOOGLE_CUDA
-              CHECK(send_argses[idx].device_context)
-                << "send dev name: " << (*src_devs)[idx]->name()
-                << " gpu_info: " << (*src_devs)[idx]->tensorflow_gpu_device_info();
-
-              if (can_memcpy) {
-                Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
-                Tensor* cpu_copy = new Tensor(alloc, vals[idx].dtype(), vals[idx].shape());
-                
-                GPUUtil::CopyGPUTensorToCPU((*src_devs)[idx], send_argses[idx].device_context,
-                                            &vals[idx], cpu_copy,
-                                            [response, cpu_copy, done,
-                                             src_devs, fuse_counter, idx](const Status& s) {
-                                              CHECK(s.ok()) << "copy tensor from gpu sync";
-                                              response->SetTensorByIndex(idx, *cpu_copy);
-                                              delete cpu_copy;
-                                              if (__sync_sub_and_fetch(fuse_counter, 1) == 0) {
-                                                done(s);
-                                                delete src_devs;
-                                                delete fuse_counter;
-                                              }
-                                            });
-              } else {
-                // NOTE(rangeng.llb): Should not be executed currrently.
-                Tensor* copy = new Tensor(vals[idx]);
-                GPUUtil::SetProtoFromGPU(*copy,
-                                         (*src_devs)[idx],
-                                         send_argses[idx].device_context,
-                                         &response->GetTensorProtoByIndex(idx),
-                                         is_deads[idx],
-                                         [response, copy, done,
-                                          src_devs, fuse_counter, idx] (const Status& s) {
-                                           CHECK(s.ok()) << "copy proto from gpu sync";
-                                           response->SetTensorByIndex(idx, *copy);
-                                           delete copy;
-                                           if (__sync_sub_and_fetch(fuse_counter, 1) == 0) {
-                                             done(s);
-                                             delete src_devs;
-                                             delete fuse_counter;
-                                           }
-                                         });
-              }
-#else
-              done(errors::Internal("No GPU device in process"));
-              abort();
-#endif
-            } else {
-              // tensor is in CPU memory.
-              response->SetTensorByIndex(idx, vals[idx]);
-              if (!can_memcpy) {
-                vals[idx].AsProtoTensorContent(&response->GetTensorProtoByIndex(idx));
-              }
-              if (__sync_sub_and_fetch(fuse_counter, 1) == 0) {
-                done(Status());
-                delete src_devs;
-                delete fuse_counter;
-              }
-            }
-          } // end of cycle for with fuse_count
-        } else { // !s.ok()
-          delete src_devs;
           done(status);
         }
       });
