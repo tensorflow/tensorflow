@@ -773,6 +773,18 @@ rinfo_.push_back({csinfo_.tanh_grad,
          // CheckForMklOp
          FuseConv3D,
          CopyAttrsConv});
+
+    auto CheckForMaxPool3DOp =
+        std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.max_pool3d);
+    auto FuseMaxPool3D =
+        std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, "NCDHW");
+    finfo_.push_back({"transpose-elimination for MaxPool3D",
+                      {CheckForTransposeToNDHWC, CheckForMaxPool3DOp,
+                       CheckForTransposeToNCDHW},
+                      // CheckForMklOp
+                      FuseMaxPool3D,
+                      CopyAttrsPooling});
 #endif  // !ENABLE_MKLDNN_V1
   }
 
@@ -1838,6 +1850,9 @@ rinfo_.push_back({csinfo_.tanh_grad,
   static void CopyAttrsQuantizedMatMulWithBias(const Node* orig_node,
                                                NodeBuilder* nb,
                                                bool change_format = false);
+  static void CopyAttrsPooling(const Node* orig_node,
+                               NodeBuilder* nb,
+                               bool change_format = false);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
   // using node for original node 'orig_node' and return it in '*out'.
@@ -2590,6 +2605,64 @@ void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
   nb->Attr("padding", padding);
   nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
+                                            NodeBuilder* nb,
+                                            bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> ksize, strides;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("padding", padding);
+
+  if (!change_format) {
+    nb->Attr("strides", strides);
+    nb->Attr("ksize", ksize);
+
+    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+    nb->Attr("data_format", data_format);
+  } else {
+    std::vector<int32> new_strides;
+    std::vector<int32> new_ksize;
+    if (strides.size() == 5) {
+      new_strides.push_back(strides[0]);
+      new_strides.push_back(strides[4]);
+      new_strides.push_back(strides[1]);
+      new_strides.push_back(strides[2]);
+      new_strides.push_back(strides[3]);
+      nb->Attr("strides", new_strides);
+
+      new_ksize.push_back(ksize[0]);
+      new_ksize.push_back(ksize[4]);
+      new_ksize.push_back(ksize[1]);
+      new_ksize.push_back(ksize[2]);
+      new_ksize.push_back(ksize[3]);
+      nb->Attr("ksize", new_ksize);
+
+    } else {
+      new_strides.push_back(strides[0]);
+      new_strides.push_back(strides[3]);
+      new_strides.push_back(strides[1]);
+      new_strides.push_back(strides[2]);
+      nb->Attr("strides", new_strides);
+
+      new_ksize.push_back(ksize[0]);
+      new_ksize.push_back(ksize[3]);
+      new_ksize.push_back(ksize[1]);
+      new_ksize.push_back(ksize[2]);
+      nb->Attr("ksize", new_ksize);
+    }
+  }
 }
 
 void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
