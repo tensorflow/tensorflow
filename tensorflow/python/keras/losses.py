@@ -426,7 +426,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.SparseCategoricalCrossentropy())
-  ````
+  ```
 
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
