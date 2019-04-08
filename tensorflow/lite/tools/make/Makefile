@@ -124,7 +124,7 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
 
-BUILD_WITH_NNAPI=true
+BUILD_WITH_NNAPI:=true
 ifeq ($(BUILD_TYPE),micro)
 	BUILD_WITH_NNAPI=false
 endif
