@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -1360,6 +1361,204 @@ ENTRY MatrixVectorComplex {
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
+
+// Tests disable constant folding by default, but this test needs it
+// enabled, because we want to move the transpose from the non-constant
+// side to the constant side and then check if constant folding indeed
+// happens and the transpose is folded.
+class DotOperationTestNoConstantFolding : public DotOperationTest {
+ public:
+  DotOperationTestNoConstantFolding() {
+    mutable_debug_options()->clear_xla_disable_hlo_passes();
+  }
+};
+
+XLA_TEST_F(DotOperationTestNoConstantFolding,
+           ReorderContractingDimsConstLHS_RL) {
+  Array3D<float> input_arr(2, 3, 2);
+  Array2D<float> const_arr(2, 6);
+  input_arr.FillRandom(1.f, 1.f);
+  const_arr.FillRandom(1.f, 1.f);
+
+  XlaBuilder builder(TestName());
+  auto t0 =
+      AddParam(LiteralUtil::CreateR3FromArray3D<float>(input_arr), &builder);
+  auto t1 = Transpose(t0, /*permutation=*/{1, 0, 2});
+  auto rhs = Reshape(/*operand=*/t1, /*new_sizes=*/{6, 2});
+  auto lhs = ConstantR2FromArray2D(&builder, const_arr);
+  Dot(lhs, rhs);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTestNoConstantFolding,
+           ReorderContractingDimsConstLHS_RR) {
+  Array3D<float> input_arr(2, 2, 3);
+  Array2D<float> const_arr(2, 6);
+  input_arr.FillRandom(1.f, 1.f);
+  const_arr.FillRandom(1.f, 1.f);
+
+  XlaBuilder builder(TestName());
+  auto t0 =
+      AddParam(LiteralUtil::CreateR3FromArray3D<float>(input_arr), &builder);
+  auto t1 = Transpose(t0, /*permutation=*/{0, 2, 1});
+  auto rhs = Reshape(/*operand=*/t1, /*new_sizes=*/{2, 6});
+  auto lhs = ConstantR2FromArray2D(&builder, const_arr);
+
+  DotDimensionNumbers dims;
+  dims.add_lhs_contracting_dimensions(1);
+  dims.add_rhs_contracting_dimensions(1);
+  DotGeneral(lhs, rhs, dims);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTestNoConstantFolding,
+           ReorderContractingDimsConstRHS_LR) {
+  Array3D<float> input_arr(2, 3, 2);
+  Array2D<float> const_arr(2, 6);
+  input_arr.FillRandom(1.f, 1.f);
+  const_arr.FillRandom(1.f, 1.f);
+
+  XlaBuilder builder(TestName());
+  auto t0 =
+      AddParam(LiteralUtil::CreateR3FromArray3D<float>(input_arr), &builder);
+  auto t1 = Transpose(t0, /*permutation=*/{1, 0, 2});
+  auto lhs = Reshape(/*operand=*/t1, /*new_sizes=*/{6, 2});
+  auto rhs = ConstantR2FromArray2D(&builder, const_arr);
+
+  DotDimensionNumbers dims;
+  dims.add_lhs_contracting_dimensions(0);
+  dims.add_rhs_contracting_dimensions(1);
+  DotGeneral(lhs, rhs, dims);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTestNoConstantFolding,
+           ReorderContractingDimsConstRHS_MM) {
+  Array3D<float> input_arr(2, 6, 2);
+  Array3D<float> const_arr(2, 6, 3);
+  input_arr.FillRandom(1.f, 1.f);
+  const_arr.FillRandom(1.f, 1.f);
+
+  XlaBuilder builder(TestName());
+  auto t0 =
+      AddParam(LiteralUtil::CreateR3FromArray3D<float>(input_arr), &builder);
+  auto t1 = Reshape(t0, {2, 2, 3, 2});
+  auto t2 = Transpose(t1, /*permutation=*/{0, 2, 1, 3});
+  auto lhs = Reshape(/*operand=*/t2, /*new_sizes=*/{2, 6, 2});
+  auto rhs = ConstantR3FromArray3D(&builder, const_arr);
+
+  DotDimensionNumbers dims;
+  dims.add_lhs_contracting_dimensions(1);
+  dims.add_rhs_contracting_dimensions(1);
+  dims.add_lhs_batch_dimensions(0);
+  dims.add_rhs_batch_dimensions(0);
+  DotGeneral(lhs, rhs, dims);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTestNoConstantFolding,
+           ReorderContractingDims_Multipass) {
+  Array4D<float> input_arr(2, 2, 3, 5);
+  Array2D<float> const_arr(2, 30);
+  input_arr.FillRandom(1.f, 1.f);
+  const_arr.FillRandom(1.f, 1.f);
+
+  XlaBuilder builder(TestName());
+  auto t0 =
+      AddParam(LiteralUtil::CreateR4FromArray4D<float>(input_arr), &builder);
+  auto t1 = Transpose(t0, {0, 2, 1, 3});
+  auto t2 = Reshape(t1, {2, 6, 5});
+  auto t3 = Transpose(t2, {0, 2, 1});
+  auto lhs = Reshape(t3, {2, 30});
+  auto rhs = ConstantR2FromArray2D(&builder, const_arr);
+
+  DotDimensionNumbers dims;
+  dims.add_lhs_contracting_dimensions(1);
+  dims.add_rhs_contracting_dimensions(1);
+  DotGeneral(lhs, rhs, dims);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+
+void DOT_ReorderContracting(int num_iters) {
+  tensorflow::testing::StopTiming();
+
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  StreamExecutorMemoryAllocator allocator(platform, executors);
+
+  xla::LocalClientOptions client_options;
+  client_options.set_platform(platform);
+  auto client =
+      ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
+
+  int device_ordinal = client->default_device_ordinal();
+
+  // Computation shape parameters.
+  const int64 d0 = 256;
+  const int64 d1 = 256;
+  const int64 d2 = 256;
+  const int64 d3 = 256;
+
+  // Create computation.
+  XlaBuilder builder("ReorderContracting");
+  Shape shape0 = ShapeUtil::MakeShape(F32, {d0, d1 * d2});
+  Shape shape1 = ShapeUtil::MakeShape(F32, {d0, d1, d2});
+  auto param0 = Parameter(&builder, 0, shape0, "param0");
+
+  auto t0 = Reshape(param0, shape1.dimensions());
+  auto t1 = Transpose(t0, {0, 2, 1});
+  auto dot0 = Reshape(t1, shape0.dimensions());
+
+  auto dot1_literal = LiteralUtil::CreateR2F32Linspace(0.0, 1.0, d1 * d2, d3);
+  auto dot1 = ConstantLiteral(&builder, dot1_literal);
+  auto dot = Dot(dot0, dot1);
+  auto computation = builder.Build().ConsumeValueOrDie();
+
+  auto dot0_literal = LiteralUtil::CreateR2F32Linspace(1.0, 2.0, d0, d1 * d2);
+  ScopedShapedBuffer buffer0 =
+      client->LiteralToShapedBuffer(dot0_literal, device_ordinal)
+          .ConsumeValueOrDie();
+
+  // Build executable.
+  std::unique_ptr<LocalExecutable> executable =
+      client
+          ->Compile(computation, {&buffer0.on_host_shape()},
+                    ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
+  se::Stream stream(executors[device_ordinal]);
+  stream.Init();
+
+  // Initialize ExecutableRunOptions.
+  ExecutableRunOptions options;
+  options.set_allocator(&allocator);
+
+  // Run some warm-up executions.
+  const int kWarmups = 2;
+  for (int i = 0; i < kWarmups; ++i) {
+    auto result = executable->Run({&buffer0}, options);
+    ASSERT_TRUE(result.ok());
+  }
+
+  // Run benchmark.
+  const int64 total_bytes = d0 * d1 * d2 + d1 * d2 * d3 + d0 * d3;
+  tensorflow::testing::BytesProcessed(static_cast<int64>(num_iters) *
+                                      total_bytes * sizeof(float));
+  tensorflow::testing::UseRealTime();
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < num_iters; ++i) {
+    auto result = executable->Run({&buffer0}, options);
+    ASSERT_TRUE(result.ok());
+  }
+}
+
+BENCHMARK(DOT_ReorderContracting);
 
 }  // namespace
 }  // namespace xla

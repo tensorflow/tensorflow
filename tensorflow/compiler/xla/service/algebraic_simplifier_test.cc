@@ -4966,5 +4966,357 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
                                              m::Sqrt(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RL) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2, 3}), "param0"));
+  HloInstruction* transpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 3, 2}), param0, {0, 2, 1}));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {2, 6}), transpose));
+  Array2D<float> const_arr(6, 2);
+  // Fill random number otherwise a broadcast will be inserted for
+  // the constant side and the pattern won't be matched.
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2}), reshape, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
+  auto shape2 = ShapeUtil::MakeShape(F32, {3, 2, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Dot(
+          m::Reshape(m::Parameter(0)).WithShapeEqualTo(&shape1),
+          m::Reshape(
+              m::Transpose(m::Reshape(m::Constant()).WithShapeEqualTo(&shape2))
+                  .WithShapeEqualTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RL2) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 6}), "param0"));
+  HloInstruction* t0 = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {2, 2, 3}), param0));
+  HloInstruction* t1 = builder.AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {2, 3, 2}), t0, {0, 2, 1}));
+  HloInstruction* t2 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {2, 6}), t1));
+  Array2D<float> const_arr(6, 2);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(
+      HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), t2, constant,
+                                dot_dnums, DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
+  auto shape2 = ShapeUtil::MakeShape(F32, {3, 2, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Dot(
+          m::Reshape(m::Reshape(m::Parameter(0))).WithShapeEqualTo(&shape1),
+          m::Reshape(
+              m::Transpose(m::Reshape(m::Constant()).WithShapeEqualTo(&shape2))
+                  .WithShapeEqualTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RR) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2, 3}), "param0"));
+  HloInstruction* transpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 3, 2}), param0, {0, 2, 1}));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {2, 6}), transpose));
+  Array2D<float> const_arr(2, 6);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2}), reshape, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3});
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Dot(
+          m::Reshape(m::Parameter(0)).WithShapeEqualTo(&shape1),
+          m::Reshape(
+              m::Transpose(m::Reshape(m::Constant()).WithShapeEqualTo(&shape2))
+                  .WithShapeEqualTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_LR) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 3, 2}), "param0"));
+  HloInstruction* transpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {3, 2, 2}), param0, {1, 0, 2}));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {6, 2}), transpose));
+  Array2D<float> const_arr(2, 6);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(0);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2}), reshape, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  auto shape1 = ShapeUtil::MakeShape(F32, {6, 2});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3});
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Dot(
+          m::Reshape(m::Parameter(0)).WithShapeEqualTo(&shape1),
+          m::Reshape(
+              m::Transpose(m::Reshape(m::Constant()).WithShapeEqualTo(&shape2))
+                  .WithShapeEqualTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_MM) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 6, 2}), "param0"));
+  HloInstruction* t0 = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {2, 2, 3, 2}), param0));
+  HloInstruction* t1 = builder.AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {2, 3, 2, 2}), t0, {0, 2, 1, 3}));
+  HloInstruction* t2 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {2, 6, 2}), t1));
+  Array3D<float> const_arr(2, 6, 3);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR3FromArray3D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2, 3}), t2, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 6, 2});
+  auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2, 3});
+  auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3, 3});
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Dot(
+          m::Reshape(m::Reshape(m::Parameter(0))).WithShapeEqualTo(&shape1),
+          m::Reshape(
+              m::Transpose(m::Reshape(m::Constant()).WithShapeEqualTo(&shape2))
+                  .WithShapeEqualTo(&shape3)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_Multipass) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2, 3, 5}), "param0"));
+  HloInstruction* transpose1 =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 3, 2, 5}), param0, {0, 2, 1, 3}));
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {2, 6, 5}), transpose1));
+  HloInstruction* transpose2 =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 5, 6}), reshape1, {0, 2, 1}));
+  HloInstruction* reshape2 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {2, 30}), transpose2));
+  Array2D<float> const_arr(2, 30);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2}), reshape2, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+
+  auto shape1 = ShapeUtil::MakeShape(F32, {2, 30});
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Dot(
+          m::Reshape(m::Parameter(0)).WithShapeEqualTo(&shape1),
+          m::Reshape(
+            m::Transpose(m::Reshape(
+              m::Transpose(m::Reshape(m::Constant())))))
+      )));
+}
+
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegTranspose) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 2}), "param0"));
+  // This transpose affects non-contracting dimension.
+  HloInstruction* transpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 3, 4}), param0, {2, 0, 1}));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {2, 12}), transpose));
+  Array2D<float> const_arr(12, 2);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2}), reshape, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegReshape) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 4, 3}), "param0"));
+  HloInstruction* transpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 3, 4}), param0, {0, 2, 1}));
+  // This reshape affects non-contracting dimension.
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {3, 8}), transpose));
+  Array2D<float> const_arr(8, 2);
+  const_arr.FillRandom(1.f, 1.f);
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2FromArray2D<float>(const_arr)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {3, 2}), reshape, constant, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegConstant) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 2}), "param0"));
+  HloInstruction* param1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, ShapeUtil::MakeShape(F32, {12, 2}), "param1"));
+  HloInstruction* transpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {2, 3, 4}), param0, {2, 0, 1}));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {2, 12}), transpose));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  // Both operands are non-constant, so the optimization should not
+  // happen.
+  builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {2, 2}), reshape, param1, dot_dnums,
+      DefaultPrecisionConfig(2)));
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+}
+
+
 }  // namespace
 }  // namespace xla
