@@ -72,9 +72,9 @@ std::unique_ptr<HloInstruction>
 HloGroupNormGradInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext*) const {
-  return CreateGroupNorm(shape, new_operands[0], new_operands[1],
-                         new_operands[2], new_operands[3], new_operands[4],
-                         num_groups(), epsilon(), feature_index());
+  return CreateGroupNormGrad(shape, new_operands[0], new_operands[1],
+                             new_operands[2], new_operands[3], new_operands[4],
+                             num_groups(), epsilon(), feature_index());
 }
 
 std::unique_ptr<HloInstruction> CreateGroupNormGrad(
