@@ -26,10 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python import pywrap_tensorflow
-if pywrap_tensorflow.IsBuiltWithROCm():
-  from tensorflow.contrib import rccl as nccl_ops
-else:
-  from tensorflow.python.ops import nccl_ops
+from tensorflow.python.ops import nccl_ops
 
 
 def _flatten_tensors(tensors):
