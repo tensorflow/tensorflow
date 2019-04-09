@@ -603,6 +603,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nest.map_structure",
         "tf.contrib.framework.nest.pack_sequence_as":
             "tf.nest.pack_sequence_as",
+        "tf.contrib.batching.batch_function":
+            "tf.nondifferentiable_batch_function",
         "tf.contrib.util.constant_value":
             "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":
