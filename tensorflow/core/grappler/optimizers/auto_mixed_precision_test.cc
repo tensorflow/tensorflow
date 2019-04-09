@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unordered_map>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -25,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+
+// TODO(benbarsdell): Improve the numerical checks in these tests. The tests
+// were originally written only to check the graph coloring, so the graphs do
+// not have particularly realistic numerical behavior.
 
 namespace tensorflow {
 namespace grappler {
@@ -117,15 +123,19 @@ void VerifyGraphsEquivalent(const GraphDef& original_graph,
 }
 
 TEST_F(AutoMixedPrecisionTest, NoOp) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("B1", "Exp", {"In"}, &graph);
-  AddSimpleNode("C1", "Relu", {"B1"}, &graph);
-  AddSimpleNode("G1", "Sqrt", {"C1"}, &graph);
-  AddSimpleNode("C2", "Relu", {"G1"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.234f, {32});
+  Output blk1 = ops::Exp(s.WithOpName("blk1"), input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), blk1);
+  Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), gry1);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -135,62 +145,78 @@ TEST_F(AutoMixedPrecisionTest, NoOp) {
   VerifyGraphsEquivalent(item.graph, output, __FUNCTION__);
 
   GraphView output_view(&output);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("B1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, AlreadyFp16) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  NodeDef* cast1 = AddSimpleNode("Cast1", "Cast", {"In"}, &graph);
-  cast1->mutable_attr()->at("DstT").set_type(DT_HALF);
-  NodeDef* w1 = AddSimpleNode("W1", "MatMul", {"Cast1", "Cast1"}, &graph);
-  w1->mutable_attr()->at("T").set_type(DT_HALF);
-  NodeDef* c1 = AddSimpleNode("C1", "Relu", {"W1"}, &graph);
-  c1->mutable_attr()->at("T").set_type(DT_HALF);
-  NodeDef* cast2 = AddSimpleNode("Cast2", "Cast", {"C1"}, &graph);
-  cast2->mutable_attr()->at("SrcT").set_type(DT_HALF);
-  AddSimpleNode("C2", "Relu", {"Cast2"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
+  Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_HALF);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), cst1, cst1);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), wht1);
+  Output cst2 = ops::Cast(s.WithOpName("cst2"), clr1, DT_FLOAT);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), cst2);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
-
   VLOG(1) << output.DebugString();
 
   VerifyGraphsEquivalent(item.graph, output, __FUNCTION__);
-
   GraphView output_view(&output);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("Cast1")->attr().at("DstT").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Cast2")->attr().at("SrcT").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Cast2")->attr().at("DstT").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("cst2")->attr().at("SrcT").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("cst2")->attr().at("DstT").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, Simple) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("B1", "Exp", {"In"}, &graph);
-  AddSimpleNode("C1", "Relu", {"B1"}, &graph);
-  AddSimpleNode("G1", "Sqrt", {"C1"}, &graph);
-  AddSimpleNode("C2", "Relu", {"G1"}, &graph);
-  AddSimpleNode("W1", "MatMul", {"C2", "C2"}, &graph);
-  AddSimpleNode("C3", "Relu", {"W1"}, &graph);
-  AddSimpleNode("B2", "Exp", {"C3"}, &graph);
-  AddSimpleNode("C4", "Relu", {"B2"}, &graph);
-  AddSimpleNode("B4", "SparseMatMul", {"C4", "C4"}, &graph);
-  AddSimpleNode("C5", "Relu", {"B4"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output blk1 = ops::Exp(s.WithOpName("blk1"), input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), blk1);
+  Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), gry1);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), wht1);
+  Output blk2 = ops::Log(s.WithOpName("blk2"), clr3);
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), blk2);
+  Output blk3 = ops::SparseMatMul(s.WithOpName("blk3"), clr4, clr4);
+  Output clr5 = ops::Relu(s.WithOpName("clr5"), blk3);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr5);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -198,32 +224,44 @@ TEST_F(AutoMixedPrecisionTest, Simple) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 2);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("B1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("C3")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("B2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C4")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("B4")->attr().at("Ta").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("B4")->attr().at("Tb").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C5")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("blk2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk3")->attr().at("Ta").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk3")->attr().at("Tb").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr5")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, BidirectionalClearChain) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("C1", "Relu", {"In"}, &graph);
-  AddSimpleNode("C2", "Relu", {"In"}, &graph);
-  AddSimpleNode("W1", "MatMul", {"C1", "C1"}, &graph);
-  AddSimpleNode("C3", "ShapeN", {"C1", "C2"}, &graph);
-  AddSimpleNode("C4", "Relu", {"C2"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), input);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), input);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr1, clr1);
+  ops::ShapeN(s.WithOpName("clr3"), {clr1, clr2});
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), clr2);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht1);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), clr4);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch1", "fetch2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -231,34 +269,40 @@ TEST_F(AutoMixedPrecisionTest, BidirectionalClearChain) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 1);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("C3")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("C4")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 3);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
 };
 
 TEST_F(AutoMixedPrecisionTest, PreserveFetches) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("Const1", "Const", {}, &graph);
-  AddSimpleNode("W1", "MatMul", {"In", "Const1"}, &graph);
-  AddSimpleNode("C1", "Relu", {"W1"}, &graph);
-  AddSimpleNode("G1", "Sqrt", {"C1"}, &graph);
-  AddSimpleNode("B1", "Exp", {"G1"}, &graph);
-  AddSimpleNode("C2", "Relu", {"B1"}, &graph);
-  AddSimpleNode("W2", "MatMul", {"C2", "C2"}, &graph);
-  AddSimpleNode("C3", "Relu", {"W2"}, &graph);
-  AddSimpleNode("B2", "Exp", {"C3"}, &graph);
-  AddSimpleNode("C4", "Relu", {"B2"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), wht1);
+  Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
+  Output blk1 = ops::Exp(s.WithOpName("blk1"), gry1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), blk1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), wht2);
+  Output blk2 = ops::Exp(s.WithOpName("blk2"), clr3);
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), blk2);
 
   GrapplerItem item;
-  item.graph = graph;
-  item.fetch.push_back("W1");
-  item.fetch.push_back("C2");
-  item.fetch.push_back("C3");
+  item.fetch = {"wht1", "clr2", "clr3"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -266,32 +310,43 @@ TEST_F(AutoMixedPrecisionTest, PreserveFetches) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 2);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("Const1")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("B1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("W2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("C3")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("B2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C4")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-3);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, PreserveCPUNodes) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("C1", "Relu", {"In"}, &graph);
-  AddSimpleNode("W1", "MatMul", {"C1", "C1"}, &graph);
-  AddSimpleNode("G1", "Tanh", {"W1"}, &graph);
-  NodeDef* w2 = AddSimpleNode("W2", "MatMul", {"G1", "G1"}, &graph);
-  w2->set_device("/job:localhost/replica:0/task:0/device:CPU:0");
-  AddSimpleNode("C2", "Relu", {"W2"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), input);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr1, clr1);
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), wht1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2").WithDevice(
+                                "/job:localhost/replica:0/task:0/device:CPU:0"),
+                            gry1, gry1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), wht2);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -299,30 +354,42 @@ TEST_F(AutoMixedPrecisionTest, PreserveCPUNodes) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 2);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("W2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, PreserveIdentityAfterVariable) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("V1", "VariableV2", {}, &graph);
-  AddSimpleNode("C1", "Identity", {"V1"}, &graph);
-  AddSimpleNode("W1", "MatMul", {"In", "C1"}, &graph);
-  AddSimpleNode("VarHandle1", "VarHandleOp", {}, &graph);
-  AddSimpleNode("V2", "ReadVariableOp", {"VarHandle1"}, &graph);
-  AddSimpleNode("W2", "MatMul", {"In", "V2"}, &graph);
-  AddSimpleNode("Const1", "Const", {}, &graph);
-  AddSimpleNode("C2", "Identity", {"Const1"}, &graph);
-  AddSimpleNode("W3", "MatMul", {"In", "C2"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output var1 = ops::Variable(s.WithOpName("var1"), {32, 32}, DT_FLOAT);
+  Output clr1 = ops::Identity(s.WithOpName("clr1"), var1);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, clr1);
+  Output input2 = ops::Const(s.WithOpName("input2"), 1.f / 32, {32, 32});
+  Output clr2 = ops::Identity(s.WithOpName("clr2"), input2);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), input, clr2);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht1);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), wht2);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch1", "fetch2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto var1_tensor =
+      GenerateConstantTensor<DT_FLOAT>(TensorShape({32, 32}), 3.141593f);
+  std::vector<std::pair<string, Tensor>> feed = {{"var1", var1_tensor}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -330,38 +397,54 @@ TEST_F(AutoMixedPrecisionTest, PreserveIdentityAfterVariable) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 4);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("V1")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("VarHandle1")->attr().at("dtype").type(),
-            DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("V2")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("W2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Const1")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("C2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W3")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 5);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("var1")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("input2")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-3);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
-  GraphDef graph;
-  AddSimpleNode("X", "Placeholder", {}, &graph);
-  AddSimpleNode("Const1", "Const", {}, &graph);
-  AddSimpleNode("Scale", "Placeholder", {}, &graph);
-  AddSimpleNode("Offset", "Placeholder", {}, &graph);
-  AddSimpleNode("Mean", "Placeholder", {}, &graph);
-  AddSimpleNode("Variance", "Placeholder", {}, &graph);
-  AddSimpleNode("W1", "Conv2D", {"X", "Const1"}, &graph);
-  AddSimpleNode("BN1", "FusedBatchNorm",
-                {"W1", "Scale", "Offset", "Mean", "Variance"}, &graph);
-  AddSimpleNode("BNG1", "FusedBatchNormGrad",
-                {"BN1", "W1", "Scale", "Mean", "Variance"}, &graph);
-  AddSimpleNode("G1", "Add", {"BN1", "BNG1"}, &graph);
-  AddSimpleNode("W2", "Conv2D", {"G1", "Const1"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  // Uses NHWC data format because non-GPU execution does not support NCHW.
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {8, 56, 56, 16});
+  Output weight = ops::Const(s.WithOpName("weight"), 2.f, {3, 3, 16, 16});
+  Output scale = ops::Const(s.WithOpName("scale"), 3.f, {16});
+  Output offset = ops::Const(s.WithOpName("offset"), 4.f, {16});
+  Output mean = ops::Const(s.WithOpName("mean"), 5.f, {0});
+  Output variance = ops::Const(s.WithOpName("variance"), 6.f, {0});
+  Output wht1 = ops::Conv2D(s.WithOpName("wht1"), input, weight, {1, 1, 1, 1},
+                            "SAME", ops::Conv2D::DataFormat("NHWC"));
+  auto fbn1_op =
+      ops::FusedBatchNorm(s.WithOpName("fbn1"), wht1, scale, offset, mean,
+                          variance, ops::FusedBatchNorm::DataFormat("NHWC"));
+  Output fbn1 = fbn1_op.y;
+  Output fbn1_rs1 = fbn1_op.reserve_space_1;
+  Output fbn1_rs2 = fbn1_op.reserve_space_2;
+  Output bng1 = ops::FusedBatchNormGrad(
+                    s.WithOpName("bng1"), fbn1, wht1, scale, fbn1_rs1, fbn1_rs2,
+                    ops::FusedBatchNormGrad::DataFormat("NHWC"))
+                    .x_backprop;
+  Output gry1 = ops::Add(s.WithOpName("gry1"), fbn1, bng1);
+  Output wht2 = ops::Conv2D(s.WithOpName("wht2"), gry1, weight, {1, 1, 1, 1},
+                            "SAME", ops::Conv2D::DataFormat("NHWC"));
+  Output fetch = ops::Identity(s.WithOpName("fetch"), wht2);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -369,28 +452,41 @@ TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 2);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("BN1")->op(), "FusedBatchNormV2");
-  EXPECT_EQ(output_view.GetNode("BN1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("BN1")->attr().at("U").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("BNG1")->op(), "FusedBatchNormGradV2");
-  EXPECT_EQ(output_view.GetNode("BNG1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("BNG1")->attr().at("U").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 3);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("fbn1")->op(), "FusedBatchNormV2");
+  EXPECT_EQ(output_view.GetNode("fbn1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("fbn1")->attr().at("U").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("bng1")->op(), "FusedBatchNormGradV2");
+  EXPECT_EQ(output_view.GetNode("bng1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("bng1")->attr().at("U").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 1e-3);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, RepeatedAndListTypeAttrs) {
-  GraphDef graph;
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("W1", "MatMul", {"In", "In"}, &graph);
-  AddSimpleNode("ID", "IdentityN", {"W1", "W1", "W1"}, &graph);
-  AddSimpleNode("G1", "AddN", {"ID:0", "ID:1", "ID:2"}, &graph);
-  AddSimpleNode("W2", "MatMul", {"G1", "G1"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  auto clr1_op = ops::IdentityN(s.WithOpName("clr1"), {wht1, wht1, wht1});
+  Output gry1 =
+      ops::AddN(s.WithOpName("gry1"),
+                {clr1_op.output[0], clr1_op.output[1], clr1_op.output[2]});
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), wht2);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -398,26 +494,35 @@ TEST_F(AutoMixedPrecisionTest, RepeatedAndListTypeAttrs) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 1);
-  EXPECT_EQ(output_view.GetNode("In")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  for (auto type : output_view.GetNode("ID")->attr().at("T").list().type()) {
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  for (auto type : output_view.GetNode("clr1")->attr().at("T").list().type()) {
     EXPECT_EQ(type, DT_HALF);
   }
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, ExistingCast) {
-  GraphDef graph;
-  NodeDef* ph = AddSimpleNode("In", "Placeholder", {}, &graph);
-  ph->mutable_attr()->at("dtype").set_type(DT_BOOL);
-  NodeDef* cast = AddSimpleNode("Cast1", "Cast", {"In"}, &graph);
-  cast->mutable_attr()->at("SrcT").set_type(DT_BOOL);
-  AddSimpleNode("W1", "MatMul", {"Cast1", "Cast1"}, &graph);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), true, {32, 32});
+  Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_FLOAT);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), cst1, cst1);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), wht1);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -425,27 +530,105 @@ TEST_F(AutoMixedPrecisionTest, ExistingCast) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size());
-  EXPECT_EQ(output_view.GetNode("Cast1")->attr().at("DstT").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 1);
+  EXPECT_EQ(output_view.GetNode("cst1")->attr().at("SrcT").type(), DT_BOOL);
+  EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
+TEST_F(AutoMixedPrecisionTest, TensorArray) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto ta1 = ops::TensorArray(s.WithOpName("ta1"), 8, DT_FLOAT);
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output idx1 = ops::Const(s.WithOpName("idx1"), 1);
+  Output idx2 = ops::Const(s.WithOpName("idx2"), 2);
+  Output idx3 = ops::Const(s.WithOpName("idx3"), 3);
+  Output ta1w1 = ops::TensorArrayWrite(s.WithOpName("ta1w1"), ta1.handle, idx1,
+                                       input, ta1.flow)
+                     .flow_out;
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  Output ta1w2 = ops::TensorArrayWrite(s.WithOpName("ta1w2"), ta1.handle, idx2,
+                                       wht1, ta1.flow)
+                     .flow_out;
+  Output ta1r1 = ops::TensorArrayRead(s.WithOpName("ta1r1"), ta1.handle, idx2,
+                                      ta1w2, DT_FLOAT)
+                     .value;
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), ta1r1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  Output ta1w3 = ops::TensorArrayWrite(s.WithOpName("ta1w3"), ta1.handle, idx3,
+                                       wht2, ta1.flow)
+                     .flow_out;
+  Output ta1r2 = ops::TensorArrayRead(s.WithOpName("ta1r2"), ta1.handle, idx3,
+                                      ta1w3, DT_FLOAT)
+                     .value;
+  auto ta2 = ops::TensorArray(s.WithOpName("ta2"), 8, DT_FLOAT);
+  Output ta2w1 = ops::TensorArrayWrite(s.WithOpName("ta2w1"), ta2.handle, idx1,
+                                       input, ta2.flow)
+                     .flow_out;
+  Output ta2r1 = ops::TensorArrayRead(s.WithOpName("ta2r1"), ta2.handle, idx1,
+                                      ta2w1, DT_FLOAT)
+                     .value;
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), ta1r2);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), ta2r1);
+
+  GrapplerItem item;
+  item.fetch = {"fetch1", "fetch2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  EXPECT_EQ(output_view.GetNode("ta1")->attr().at("dtype").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("ta1w1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("ta1w2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("ta1r1")->attr().at("dtype").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("ta1w3")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("ta2")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("ta2w1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("ta2r1")->attr().at("dtype").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
+  }
 }
 
 TEST_F(AutoMixedPrecisionTest, StackV2) {
+  // TODO(benbarsdell): Add execution and numerical checks to this test
+  // (difficult because there is currently no C API for creating Stack ops).
   GraphDef graph;
-  AddSimpleNode("Handle1", "Const", {}, &graph);
-  AddSimpleNode("Stack1", "StackV2", {"Handle1"}, &graph);
-  AddSimpleNode("In", "Placeholder", {}, &graph);
-  AddSimpleNode("Push1", "StackPushV2", {"Stack1", "In"}, &graph);
-  AddSimpleNode("W1", "MatMul", {"In", "In"}, &graph);
-  AddSimpleNode("Push2", "StackPushV2", {"Stack1", "W1"}, &graph);
-  AddSimpleNode("Pop1", "StackPopV2", {"Stack1"}, &graph);
-  AddSimpleNode("G1", "Tanh", {"Pop1"}, &graph);
-  AddSimpleNode("W2", "MatMul", {"G1", "G1"}, &graph);
-  AddSimpleNode("Push3", "StackPushV2", {"Stack1", "W2"}, &graph);
-  AddSimpleNode("Handle2", "Const", {}, &graph);
-  AddSimpleNode("Stack2", "StackV2", {"Handle2"}, &graph);
-  AddSimpleNode("Push1-2", "StackPushV2", {"Stack2", "In"}, &graph);
-  AddSimpleNode("Pop1-2", "StackPopV2", {"Stack2"}, &graph);
+  AddSimpleNode("handle1", "Const", {}, &graph);
+  AddSimpleNode("stack1", "StackV2", {"handle1"}, &graph);
+  AddSimpleNode("input", "Placeholder", {}, &graph);
+  AddSimpleNode("psh1", "StackPushV2", {"stack1", "input"}, &graph);
+  AddSimpleNode("wht1", "MatMul", {"input", "input"}, &graph);
+  AddSimpleNode("psh2", "StackPushV2", {"stack1", "wht1"}, &graph);
+  AddSimpleNode("pop1", "StackPopV2", {"stack1"}, &graph);
+  AddSimpleNode("gry1", "Tanh", {"pop1"}, &graph);
+  AddSimpleNode("wht2", "MatMul", {"gry1", "gry1"}, &graph);
+  AddSimpleNode("psh3", "StackPushV2", {"stack1", "wht2"}, &graph);
+  AddSimpleNode("handle2", "Const", {}, &graph);
+  AddSimpleNode("stack2", "StackV2", {"handle2"}, &graph);
+  AddSimpleNode("psh1-2", "StackPushV2", {"stack2", "input"}, &graph);
+  AddSimpleNode("pop1-2", "StackPopV2", {"stack2"}, &graph);
 
   GrapplerItem item;
   item.graph = graph;
@@ -457,20 +640,20 @@ TEST_F(AutoMixedPrecisionTest, StackV2) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), graph.node_size() + 1);
-  EXPECT_EQ(output_view.GetNode("Stack1")->attr().at("elem_type").type(),
+  EXPECT_EQ(output_view.GetNode("stack1")->attr().at("elem_type").type(),
             DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Push1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Push2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Pop1")->attr().at("elem_type").type(),
+  EXPECT_EQ(output_view.GetNode("psh1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("psh2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("pop1")->attr().at("elem_type").type(),
             DT_HALF);
-  EXPECT_EQ(output_view.GetNode("G1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("W2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Push3")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("Stack2")->attr().at("elem_type").type(),
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("psh3")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("stack2")->attr().at("elem_type").type(),
             DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("Push1-2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("Pop1-2")->attr().at("elem_type").type(),
+  EXPECT_EQ(output_view.GetNode("psh1-2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("pop1-2")->attr().at("elem_type").type(),
             DT_FLOAT);
 }
 
