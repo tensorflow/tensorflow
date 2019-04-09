@@ -64,47 +64,6 @@ absl::optional<std::pair<PoplibsOp::Lib, PoplibsOp::Op>> GetPoplibsCustomOp(
   return absl::nullopt;
 }
 
-const bool IsPoplibsCustomOp(const HloInstruction* inst) {
-  return GetPoplibsCustomOp(inst) != absl::nullopt;
-}
-
-const bool IsPoplibsCustomOp(const HloInstruction* inst, PoplibsOp::Lib lib,
-                             PoplibsOp::Op op) {
-  auto ret = GetPoplibsCustomOp(inst);
-  if (!ret) {
-    return false;
-  }
-  return ret->first == lib && ret->second == op;
-}
-
-const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst) {
-  if (!IsPoplibsCustomOp(inst)) {
-    return false;
-  }
-  auto ret = GetPoplibsCustomOp(inst);
-  if (!ret) {
-    return false;
-  }
-
-  switch (ret->first) {
-    case PoplibsOp::Popops: {
-      switch (ret->second) {
-        default: { return false; }
-      }
-      break;
-    }
-    case PoplibsOp::Poprand: {
-      switch (ret->second) {
-        case PoplibsOp::TruncatedNormal: {
-          return true;
-        }
-        default: { return false; }
-      }
-    }
-    default: { return false; }
-  }
-}
-
 namespace IPUCustomKernelsUtil {
 
 AttributeMap::AttributeMap() {}

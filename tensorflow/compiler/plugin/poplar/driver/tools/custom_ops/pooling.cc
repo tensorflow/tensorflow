@@ -39,6 +39,8 @@ absl::flat_hash_map<int64, int64> HloPoolingInstruction::LayoutDependencies()
 
 uint64 HloPoolingInstruction::NumberOfInplaceOperands() const { return 0; }
 
+bool HloPoolingInstruction::IsPopOpsElementwise() const { return false; }
+
 std::vector<std::string> HloPoolingInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {};

@@ -46,6 +46,9 @@ class HloPoplarInstruction : public HloCustomCallInstruction {
   // is treated as NotInplace.
   virtual uint64 NumberOfInplaceOperands() const = 0;
 
+  // Returns whether this is an elementwise instruction.
+  virtual bool IsPopOpsElementwise() const = 0;
+
  private:
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,

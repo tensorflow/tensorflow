@@ -62,6 +62,8 @@ absl::flat_hash_map<int64, int64> HloGroupNormInstruction::LayoutDependencies()
 
 uint64 HloGroupNormInstruction::NumberOfInplaceOperands() const { return 0; }
 
+bool HloGroupNormInstruction::IsPopOpsElementwise() const { return false; }
+
 std::unique_ptr<HloInstruction>
 HloGroupNormInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,

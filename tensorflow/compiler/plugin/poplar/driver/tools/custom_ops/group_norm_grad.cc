@@ -66,6 +66,8 @@ uint64 HloGroupNormGradInstruction::NumberOfInplaceOperands() const {
   return 0;
 }
 
+bool HloGroupNormGradInstruction::IsPopOpsElementwise() const { return false; }
+
 std::unique_ptr<HloInstruction>
 HloGroupNormGradInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,

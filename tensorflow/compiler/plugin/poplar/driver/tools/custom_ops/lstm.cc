@@ -65,6 +65,8 @@ absl::flat_hash_map<int64, int64> HloLSTMFwdInstruction::LayoutDependencies()
 
 uint64 HloLSTMFwdInstruction::NumberOfInplaceOperands() const { return 0; }
 
+bool HloLSTMFwdInstruction::IsPopOpsElementwise() const { return false; }
+
 std::unique_ptr<HloInstruction> HloLSTMFwdInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloCloneContext* ctx) const {
@@ -97,6 +99,8 @@ absl::flat_hash_map<int64, int64> HloLSTMBwdInstruction::LayoutDependencies()
 }
 
 uint64 HloLSTMBwdInstruction::NumberOfInplaceOperands() const { return 0; }
+
+bool HloLSTMBwdInstruction::IsPopOpsElementwise() const { return false; }
 
 std::unique_ptr<HloInstruction> HloLSTMBwdInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> operands,

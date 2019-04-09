@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/custom_op_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/while_loop_to_repeat_simplify.h"
@@ -2242,7 +2243,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   %convolution = f32[1,4,4,2] convolution(f32[1,4,4,2] %arg0, f32[1,1,2,2] %arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
   %arg2 = f32[2] parameter(2)
   %arg3 = f32[2] parameter(3)
-  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %convolution, f32[2] %arg2, f32[2] %arg3), custom_call_target="Popnn::GroupNormInference", opaque="{\"allocating_indexes\":[],\"layout_dependencies\":{\"keys\":[1,2],\"values\":[0,0]},\"epsilon\":0.001,\"feature_index\":3,\"num_inplace_operands\":0}\n"
+  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %convolution, f32[2] %arg2, f32[2] %arg3), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
 }
 
 )";
@@ -2252,15 +2253,16 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  const auto* root = module0->entry_computation()->root_instruction();
-  const auto* custom_op = root;
+  CompilerAnnotations annotations(module0);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
+
+  const auto* custom_op = module0->entry_computation()->root_instruction();
   const auto* conv = custom_op->operand(0);
   const auto* ip2 = custom_op->operand(1);
   const auto* ip3 = custom_op->operand(2);
   const auto* ip1 = conv->operand(1);
   const auto* ip0 = conv->operand(0);
-
-  CompilerAnnotations annotations(module0);
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());

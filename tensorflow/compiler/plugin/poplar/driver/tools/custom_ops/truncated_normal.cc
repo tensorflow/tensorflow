@@ -40,6 +40,10 @@ uint64 HloTruncatedNormalInstruction::NumberOfInplaceOperands() const {
   return 0;
 }
 
+bool HloTruncatedNormalInstruction::IsPopOpsElementwise() const {
+  return false;
+}
+
 std::unique_ptr<HloInstruction>
 HloTruncatedNormalInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const>,
