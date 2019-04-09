@@ -35,7 +35,7 @@ echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
 bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=rocm --test_tag_filters=-no_gpu,-benchmark-test,-no_oss,-no_rocm -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --jobs=${N_JOBS} --test_timeout 600,900,2400,7200 \
     --build_tests_only --test_output=errors --local_test_jobs=1 \
     --test_sharding_strategy=disabled \
     --config=xla -- \
