@@ -63,6 +63,7 @@ load(
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "nccl_config")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -196,9 +197,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ] + if_nccl([
-        "@local_config_nccl//:nccl",
         "//tensorflow/core/nccl:nccl_lib",
-    ]),
+        ] + nccl_config()
+    ),
 )
 
 tf_cuda_cc_test(
@@ -362,11 +363,11 @@ tf_kernel_library(
         "nccl_ops.cc",
     ]),
     deps = if_nccl([
-        "@local_config_nccl//:nccl",
         "//tensorflow/core/nccl:nccl_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
-    ]),
+        ] + nccl_config()
+    ),
 )
 
 cc_library(

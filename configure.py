@@ -1249,6 +1249,150 @@ def set_tf_nccl_install_path(environ_cp):
   write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
 
 
+def set_tf_rccl_install_path(environ_cp):
+  """Set RCCL_INSTALL_PATH, RCCL_HDR_PATH and TF_RCCL_VERSION.
+
+  Args:
+    environ_cp: copy of the os.environ.
+
+  Raises:
+    ValueError: if this method was called under non-Linux platform.
+    UserInputError: if user has provided invalid input multiple times.
+  """
+  if not is_linux():
+    raise ValueError('Currently RCCL is only supported on Linux platforms.')
+
+  ask_rccl_version = (
+      'Please specify the locally installed RCCL version you want to use. '
+      '[Default is 2.3.7]: ')
+
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
+    tf_rccl_version = get_from_env_or_user_or_default(
+        environ_cp, 'TF_RCCL_VERSION', ask_rccl_version, '2.3.7')
+
+    if not tf_rccl_version:
+      print('RCCL version not specified, this is okay')
+      tf_rccl_version = '2.3.7'
+
+    tf_rccl_version = reformat_version_sequence(str(tf_rccl_version), 1)
+
+    # Look with ldconfig first if we can find the library in paths
+    # like /opt/rocm/rccl and the header file in the corresponding
+    # include directory. This is where the RCCL .deb packages install them.
+
+    # First check to see if RCCL is in the ldconfig.
+    # If its found, use that location.
+    if is_linux():
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+      rccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      rccl2_path_from_ldconfig = re.search('.*librccl.so .* => (.*)',
+                                           rccl2_path_from_ldconfig)
+    if rccl2_path_from_ldconfig:
+      rccl2_path_from_ldconfig = rccl2_path_from_ldconfig.group(1)
+      if (os.path.exists('%s.%s' % (rccl2_path_from_ldconfig, tf_rccl_version))
+          or (rccl2_path_from_ldconfig.endswith('.so')
+            and os.path.exists(rccl2_path_from_ldconfig))):
+        if (rccl2_path_from_ldconfig.endswith('.so')
+            and os.path.exists(rccl2_path_from_ldconfig)):
+          print('RCCL library is not versioned, using anyway')
+        rccl_install_path = os.path.dirname(rccl2_path_from_ldconfig)
+        print('RCCL libraries found in ' + rccl2_path_from_ldconfig)
+
+        # Check if this is the main system lib location
+        if re.search('.*linux-gnu', rccl_install_path):
+          trunc_rccl_install_path = '/usr'
+          print('This looks like a system path.')
+        else:
+          trunc_rccl_install_path = rccl_install_path + '/..'
+
+        # Look for header
+        rccl_hdr_path = trunc_rccl_install_path + '/include'
+        print('Assuming RCCL header path is ' + rccl_hdr_path)
+        if os.path.exists(rccl_hdr_path + '/rccl.h'):
+          # Set RCCL_INSTALL_PATH
+          environ_cp['RCCL_INSTALL_PATH'] = rccl_install_path
+          write_action_env_to_bazelrc('RCCL_INSTALL_PATH', rccl_install_path)
+
+          # Set RCCL_HDR_PATH
+          environ_cp['RCCL_HDR_PATH'] = rccl_hdr_path
+          write_action_env_to_bazelrc('RCCL_HDR_PATH', rccl_hdr_path)
+          break
+        else:
+          print(
+              'The header for RCCL2 cannot be found. Please install the rccl package.'
+          )
+      else:
+        print('RCCL2 is listed by ldconfig but the library is not found. '
+              'Your ldconfig is out of date. Please run sudo ldconfig.')
+    else:
+      # RCCL is not found in ldconfig. Ask the user for the location.
+      default_rccl_path = '/opt/rocm/rccl'
+      ask_rccl_path = (
+          r'Please specify the location where RCCL %s library is '
+          'installed. Refer to README.md for more details. [Default '
+          'is %s]:') % (tf_rccl_version, default_rccl_path)
+      rccl_install_path = get_from_env_or_user_or_default(
+          environ_cp, 'RCCL_INSTALL_PATH', ask_rccl_path, default_rccl_path)
+
+      # Result returned from "read" will be used unexpanded. That make "~"
+      # unusable. Going through one more level of expansion to handle that.
+      rccl_install_path = os.path.realpath(
+          os.path.expanduser(rccl_install_path))
+      if is_windows() or is_cygwin():
+        rccl_install_path = cygpath(rccl_install_path)
+
+      rccl_lib_path = ''
+      if is_windows():
+        rccl_lib_path = 'lib/x64/rccl.lib'
+      elif is_linux():
+        rccl_lib_filename = 'librccl.so.%s' % tf_rccl_version
+        rccl_lpath = '%s/lib/%s' % (rccl_install_path, rccl_lib_filename)
+        if not os.path.exists(rccl_lpath):
+          for relative_path in RCCL_LIB_PATHS:
+            path = '%s/%s%s' % (rccl_install_path, relative_path,
+                                rccl_lib_filename)
+            if os.path.exists(path):
+              print('RCCL found at ' + path)
+              rccl_lib_path = path
+              break
+        else:
+          rccl_lib_path = rccl_lpath
+      elif is_macos():
+        rccl_lib_path = 'lib/librccl.%s.dylib' % tf_rccl_version
+
+      rccl_lib_path = os.path.join(rccl_install_path, rccl_lib_path)
+      rccl_hdr_path = os.path.join(
+          os.path.dirname(rccl_lib_path), '../include/rccl.h')
+      print('Assuming RCCL header path is ' + rccl_hdr_path)
+      if os.path.exists(rccl_lib_path) and os.path.exists(rccl_hdr_path):
+        # Set RCCL_INSTALL_PATH
+        environ_cp['RCCL_INSTALL_PATH'] = os.path.dirname(rccl_lib_path)
+        write_action_env_to_bazelrc('RCCL_INSTALL_PATH',
+                                    os.path.dirname(rccl_lib_path))
+
+        # Set RCCL_HDR_PATH
+        environ_cp['RCCL_HDR_PATH'] = os.path.dirname(rccl_hdr_path)
+        write_action_env_to_bazelrc('RCCL_HDR_PATH',
+                                    os.path.dirname(rccl_hdr_path))
+        break
+
+      # Reset and Retry
+      print(
+          'Invalid path to RCCL %s toolkit, %s or %s not found. Please use the '
+          'O/S agnostic package of RCCL 2' % (tf_rccl_version, rccl_lib_path,
+                                              rccl_hdr_path))
+
+      environ_cp['TF_RCCL_VERSION'] = ''
+  else:
+    raise UserInputError('Invalid TF_RCCL setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
+  # Set TF_RCCL_VERSION
+  environ_cp['TF_RCCL_VERSION'] = tf_rccl_version
+  write_action_env_to_bazelrc('TF_RCCL_VERSION', tf_rccl_version)
+
+
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
 
@@ -1668,7 +1812,7 @@ def main():
 
   if environ_cp.get('TF_NEED_ROCM') == '1':
     if is_linux():
-      set_tf_nccl_install_path(environ_cp)
+      set_tf_rccl_install_path(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and

@@ -236,6 +236,11 @@ def if_nccl(a):
         "//conditions:default": a,
     })
 
+def nccl_config():
+    return (if_rocm_is_configured(["@local_config_rccl//:rccl"])
+         or if_cuda_is_configured(["@local_config_nccl//:nccl"])
+         or [])
+
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
         "/DPLATFORM_WINDOWS",

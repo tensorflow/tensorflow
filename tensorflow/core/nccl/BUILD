@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "nccl_config")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
@@ -29,13 +30,13 @@ cc_library(
     ]),
     copts = tf_copts(),
     deps = if_nccl([
-        "@local_config_nccl//:nccl",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
-    ]),
+        ] + nccl_config()
+    ),
     alwayslink = 1,
 )
 
@@ -52,8 +53,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
     ] + if_nccl([
         ":nccl_lib",
-        "@local_config_nccl//:nccl",
-    ]) + if_cuda_is_configured([
+        ] + nccl_config()
+    ) + if_cuda_is_configured([
         "//tensorflow/core:cuda",
     ]) + if_rocm_is_configured([
         "//tensorflow/core:rocm",
