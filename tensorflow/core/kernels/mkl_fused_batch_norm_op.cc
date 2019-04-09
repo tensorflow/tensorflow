@@ -1066,7 +1066,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
                               tf_shape_src, dnn_shape_diff_src);
     auto diff_src_data = (*diff_src_tensor)->flat<T>().data();
     std::fill_n(diff_src_data, (*diff_src_tensor)->shape().num_elements(),
-                (T)0);
+                static_cast<T>(0));
 
     Tensor* diff_scale_tensor = nullptr;
     Tensor* diff_shift_tensor = nullptr;
