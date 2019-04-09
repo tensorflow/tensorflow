@@ -38,8 +38,8 @@ import tensorflow as tf
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -89,6 +89,13 @@ def _KeyToFilePath(key, api_version):
   """From a given key, construct a filepath.
 
   Filepath will be inside golden folder for api_version.
+
+  Args:
+    key: a string used to determine the file path
+    api_version: a number indicating the tensorflow API version, e.g. 1 or 2.
+
+  Returns:
+    A string of file path to the pbtxt file which describes the public API
   """
 
   def _ReplaceCapsWithDash(matchobj):
