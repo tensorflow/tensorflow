@@ -323,6 +323,7 @@ def compute_gradient(f, x, delta=1e-3):
 
   theoretical, numerical = tf.test.compute_gradient(test_func, [1.0])
   theoretical, numerical
+  # ((array([[2.]], dtype=float32),), (array([[2.000004]], dtype=float32),))
   ```
   """
   if not isinstance(x, list):
