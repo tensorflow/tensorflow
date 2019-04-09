@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/pooling.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -36,52 +38,56 @@ namespace xla {
 namespace poplarplugin {
 namespace {
 class MaxPoolOp : public PoplibsOpDef {
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
-    TF_ASSIGN_OR_RETURN(Window window,
-                        attribute_map.GetAttributeAsWindow("window"));
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
+    auto pool_inst = Cast<HloPoolingInstruction>(inst);
+
     return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::MAX,
-                                window);
+                                pool_inst->window());
   }
 };
 REGISTER_POPLIBS_OP(Popnn, MaxPool, MaxPoolOp);
 
 class AvgPoolOp : public PoplibsOpDef {
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
-    TF_ASSIGN_OR_RETURN(Window window,
-                        attribute_map.GetAttributeAsWindow("window"));
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
+    auto pool_inst = Cast<HloPoolingInstruction>(inst);
+
     return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::AVG,
-                                window);
+                                pool_inst->window());
   }
 };
 REGISTER_POPLIBS_OP(Popnn, AvgPool, AvgPoolOp);
 
 class MaxPoolGradOp : public PoplibsOpDef {
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
-    TF_ASSIGN_OR_RETURN(Window window,
-                        attribute_map.GetAttributeAsWindow("window"));
-    return CreatePoplibsMaxPoolGrad(res, inst, tensor_map, window);
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
+    auto pool_inst = Cast<HloPoolingInstruction>(inst);
+
+    return CreatePoplibsMaxPoolGrad(res, inst, tensor_map, pool_inst->window());
   }
 };
 REGISTER_POPLIBS_OP(Popnn, MaxPoolGrad, MaxPoolGradOp);
 
 class AvgPoolGradOp : public PoplibsOpDef {
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
-    TF_ASSIGN_OR_RETURN(Window window,
-                        attribute_map.GetAttributeAsWindow("window"));
-    return CreatePoplibsPoolingGrad(res, inst, tensor_map,
-                                    popnn::PoolingType::AVG, window);
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
+    auto pool_inst = Cast<HloPoolingInstruction>(inst);
+
+    return CreatePoplibsPoolingGrad(
+        res, inst, tensor_map, popnn::PoolingType::AVG, pool_inst->window());
   }
 };
 REGISTER_POPLIBS_OP(Popnn, AvgPoolGrad, AvgPoolGradOp);

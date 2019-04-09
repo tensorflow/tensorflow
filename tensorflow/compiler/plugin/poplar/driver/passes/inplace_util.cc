@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
@@ -212,19 +214,12 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     }
 
     case HloOpcode::kCustomCall: {
-      if (IsPoplibsCustomOp(inst)) {
-        // For custom Poplibs Ops, get num_inplace_operands attribute which
-        // indicates the following:
-        // If num_inplace_operands == 0 then the op is NotInplaceHloInstruction;
-        // Else the op is inplace on the first num_inplace_operands operands.
-        auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
-        auto statusor =
-            attribute_map.GetAttributeAsUInt64("num_inplace_operands");
-        if (!statusor.ok()) {
-          LOG(FATAL) << "Custom Poplibs op " << inst->name()
-                     << " is missing \"num_inplace_operands\" attribute.";
-        }
-        uint64 num_inplace_operands = statusor.ValueOrDie();
+      if (IsPoplibsHloCustomOp(inst)) {
+        auto poplar_inst = Cast<HloPoplarInstruction>(inst);
+
+        const auto num_inplace_operands =
+            poplar_inst->NumberOfInplaceOperands();
+
         if (num_inplace_operands) {
           OperandIndexes indexes(num_inplace_operands);
           std::iota(indexes.begin(), indexes.end(), 0);

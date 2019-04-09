@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/lstm.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -39,8 +41,9 @@ namespace {
 static const size_t basic_lstm_cell_num_units = 4;
 
 StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
-    const HloInstruction* inst,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+    const HloInstruction* inst) {
+  auto lstm_inst = Cast<HloLSTMInstruction>(inst);
+
   const auto input_shape = inst->operand(0)->shape();
   const auto time_steps = input_shape.dimensions(0);
   const auto batch_size = input_shape.dimensions(1);
@@ -50,9 +53,8 @@ StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
   }
   const auto input_size = *optional_input_size;
 
-  TF_ASSIGN_OR_RETURN(int32 num_channels_int32,
-                      attribute_map.GetAttributeAsInt("num_channels"));
-  auto optional_num_channels = convert_scalar<uint32>(num_channels_int32);
+  auto optional_num_channels =
+      convert_scalar<uint32>(lstm_inst->num_channels());
   if (!optional_num_channels) {
     return xla::FailedPrecondition("LSTM - Num Channels can't be casted.");
   }
@@ -62,25 +64,21 @@ StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
   popnn::lstm::LstmParams lstm_params(type, batch_size, time_steps,
                                       {input_size, num_channels});
 
-  TF_ASSIGN_OR_RETURN(bool is_training,
-                      attribute_map.GetAttributeAsBool("is_training"));
-  lstm_params.calcInputGradients = is_training;
+  lstm_params.calcInputGradients = lstm_inst->is_training();
   return lstm_params;
 }
 
-StatusOr<poplar::OptionFlags> GetLstmOpts(
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+StatusOr<poplar::OptionFlags> GetLstmOpts(const HloInstruction* inst) {
+  auto lstm_inst = Cast<HloLSTMInstruction>(inst);
+
   poplar::OptionFlags lstm_opts;
-  TF_ASSIGN_OR_RETURN(bool is_training,
-                      attribute_map.GetAttributeAsBool("is_training"));
+  bool is_training = lstm_inst->is_training();
   if (!is_training) {
     lstm_opts.set({{"inferenceOnly", "true"}});
   }
+
   // Get the partial type
-  TF_ASSIGN_OR_RETURN(tensorflow::DataType partials_tf_type,
-                      attribute_map.GetAttributeAsTFDataType("partials_dtype"));
-  xla::PrimitiveType partials_xla_type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(partials_tf_type, &partials_xla_type));
+  xla::PrimitiveType partials_xla_type = lstm_inst->partials_type();
   TF_ASSIGN_OR_RETURN(poplar::Type partials_poplar_type,
                       PoplarDataType(partials_xla_type));
   lstm_opts.set({{"partialsType", partials_poplar_type.toString()}});
@@ -117,18 +115,17 @@ poplar::Tensor PackLstmKernel(poplar::Tensor input_weights,
 }
 
 class LstmLayerFwdOp : public PoplibsOpDef {
-  StatusOr<poplar::Tensor> Allocator(
-      poplar::Graph& graph, CompilerResources& res, const std::string& name,
-      const TensorTarget& tensor_target,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map,
-      const TensorMap& tensor_map) override {
+  StatusOr<poplar::Tensor> Allocator(poplar::Graph& graph,
+                                     CompilerResources& res,
+                                     const std::string& name,
+                                     const TensorTarget& tensor_target,
+                                     const TensorMap& tensor_map) override {
     const HloInstruction* inst = tensor_target.tgt;
     const int64 input_index = tensor_target.input_index;
 
     TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
-                        GetLstmParameters(inst, attribute_map));
-    TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
-                        GetLstmOpts(attribute_map));
+                        GetLstmParameters(inst));
+    TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts, GetLstmOpts(inst));
     switch (input_index) {
       case 0: {
         // Allocate LSTM input tensor
@@ -169,10 +166,11 @@ class LstmLayerFwdOp : public PoplibsOpDef {
     }
   }
 
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
     poplar::program::Sequence seq;
     popnn::lstm::LstmWeights weights;
 
@@ -188,9 +186,8 @@ class LstmLayerFwdOp : public PoplibsOpDef {
                         FindInstructionInput(tensor_map, res, inst, 4, seq));
 
     TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
-                        GetLstmParameters(inst, attribute_map));
-    TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
-                        GetLstmOpts(attribute_map));
+                        GetLstmParameters(inst));
+    TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts, GetLstmOpts(inst));
 
     auto input_size = ShapeUtil::GetDimension(inst->operand(0)->shape(), 2);
     auto output_size = ShapeUtil::GetDimension(inst->operand(1)->shape(), 1);
@@ -201,8 +198,8 @@ class LstmLayerFwdOp : public PoplibsOpDef {
 
     poplar::Tensor output, output_c_state, intermediates;
 
-    TF_ASSIGN_OR_RETURN(bool is_training,
-                        attribute_map.GetAttributeAsBool("is_training"));
+    auto lstm_inst = Cast<HloLSTMInstruction>(inst);
+    bool is_training = lstm_inst->is_training();
 
     auto intermediates_ptr = is_training ? &intermediates : nullptr;
     std::tie(output, output_c_state) = popnn::lstm::lstmFwd(
@@ -223,10 +220,11 @@ class LstmLayerFwdOp : public PoplibsOpDef {
 REGISTER_POPLIBS_OP(Popnn, LstmLayerFwd, LstmLayerFwdOp);
 
 class LstmLayerBwdOp : public PoplibsOpDef {
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
     poplar::program::Sequence seq;
     popnn::lstm::LstmWeights weights;
 
@@ -256,9 +254,8 @@ class LstmLayerBwdOp : public PoplibsOpDef {
                         FindInstructionInput(tensor_map, res, inst, 11, seq));
 
     TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
-                        GetLstmParameters(inst, attribute_map));
-    TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
-                        GetLstmOpts(attribute_map));
+                        GetLstmParameters(inst));
+    TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts, GetLstmOpts(inst));
 
     auto input_size = ShapeUtil::GetDimension(inst->operand(0)->shape(), 2);
     auto output_size = ShapeUtil::GetDimension(inst->operand(1)->shape(), 1);

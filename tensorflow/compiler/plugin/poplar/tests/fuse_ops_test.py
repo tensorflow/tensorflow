@@ -221,7 +221,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'max/custom-call.*/maxPool5x5']
+      ok = ['__seed*', 'max/custom-call*/maxPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFwdAndBwdMaxPool(self):
@@ -270,8 +270,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = [
-          '__seed*', 'Copy_*', 'MaxPool/custom-call.*/maxPool2x2/',
-          'MaxPoolGrad/custom-call.*/maxPool2x2'
+          '__seed*', 'Copy_*', 'MaxPool/custom-call*/maxPool2x2/',
+          'MaxPoolGrad/custom-call*/maxPool2x2'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -525,7 +525,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'avg/custom-call.*/avgPool10x10']
+      ok = ['__seed*', 'avg/custom-call*/avgPool10x10']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAvgPoolValidWithBroadcast(self):
@@ -567,7 +567,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'avg/custom-call.*/avgPool5x5']
+      ok = ['__seed*', 'avg/custom-call*/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAvgPoolSameWithReshape(self):
@@ -615,7 +615,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['__seed*', 'avg/custom-call.*/avgPool5x5']
+      ok = ['__seed*', 'avg/custom-call*/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFullyConnectedWithBias(self):
@@ -784,6 +784,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
-                                os.environ.get('TF_XLA_FLAGS', ''))
+  os.environ['TF_XLA_FLAGS'] = (
+      '--tf_xla_min_cluster_size=1 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

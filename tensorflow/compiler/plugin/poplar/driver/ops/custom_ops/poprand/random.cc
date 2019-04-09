@@ -28,10 +28,11 @@ namespace xla {
 namespace poplarplugin {
 namespace {
 class TruncatedNormalOp : public PoplibsOpDef {
-  StatusOr<poplar::program::Program> Creator(
-      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-      const xla::Shape& output_shape, TensorMap& tensor_map,
-      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+  StatusOr<poplar::program::Program> Creator(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             const xla::Shape& output_shape,
+                                             TensorMap& tensor_map) override {
     poplar::program::Program prog;
 
     TF_ASSIGN_OR_RETURN(prog,
