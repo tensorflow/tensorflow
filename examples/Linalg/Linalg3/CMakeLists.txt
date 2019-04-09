@@ -1,3 +1,5 @@
+add_definitions(-DLINALG_STEP=3)
+
 add_subdirectory(lib)
 
 set(LLVM_LINK_COMPONENTS

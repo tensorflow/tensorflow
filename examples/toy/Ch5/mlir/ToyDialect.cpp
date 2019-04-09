@@ -92,11 +92,16 @@ ToyArrayType ToyArrayType::get(mlir::MLIRContext *context,
 
 ArrayRef<int64_t> ToyArrayType::getShape() { return getImpl()->getShape(); }
 
+mlir::MemRefType ToyArrayType::toMemref() {
+  auto memRefType = mlir::MemRefType::get(getShape(), getElementType(), {}, 0);
+  return memRefType;
+}
+
 /// Dialect creation, the instance will be owned by the context. This is the
 /// point of registration of custom types and operations for the dialect.
 ToyDialect::ToyDialect(mlir::MLIRContext *ctx) : mlir::Dialect("toy", ctx) {
   addOperations<ConstantOp, GenericCallOp, PrintOp, TransposeOp, ReshapeOp,
-                MulOp, AddOp, ReturnOp>();
+                MulOp, AddOp, ReturnOp, AllocOp, TypeCastOp>();
   addTypes<ToyArrayType>();
 }
 
@@ -310,12 +315,9 @@ void ReturnOp::build(mlir::Builder *builder, mlir::OperationState *state,
 }
 
 mlir::LogicalResult ReturnOp::verify() {
-  if (getNumOperands() > 1) {
-    std::string msg;
-    raw_string_ostream os(msg);
-    os << "expects zero or one operand, got " << getNumOperands();
-    return emitOpError(os.str());
-  }
+  if (getNumOperands() > 1)
+    return emitOpError("expects zero or one operand, got " +
+                       Twine(getNumOperands()));
   if (hasOperand() && failed(verifyToySingleOperand(this)))
     return mlir::failure();
   return mlir::success();
@@ -387,6 +389,17 @@ mlir::LogicalResult MulOp::verify() {
   if (failed(verifyToyBinOperands(this)))
     return mlir::failure();
   return mlir::success();
+}
+
+void AllocOp::build(mlir::Builder *builder, mlir::OperationState *state,
+                    mlir::Type retType) {
+  state->types.push_back(retType);
+}
+
+void TypeCastOp::build(mlir::Builder *builder, mlir::OperationState *state,
+                       mlir::Value *value, mlir::Type destTy) {
+  state->operands.push_back(value);
+  state->types.push_back(destTy);
 }
 
 } // namespace toy

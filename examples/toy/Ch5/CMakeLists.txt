@@ -1,0 +1,37 @@
+set(LLVM_LINK_COMPONENTS
+  Support
+  )
+
+add_toy_chapter(toyc-ch5
+  toyc.cpp
+  parser/AST.cpp
+  mlir/EarlyLowering.cpp
+  mlir/LateLowering.cpp
+  mlir/MLIRGen.cpp
+  mlir/ShapeInferencePass.cpp
+  mlir/ToyDialect.cpp
+  mlir/ToyCombine.cpp
+  )
+include_directories(include/)
+target_link_libraries(toyc-ch5
+  PRIVATE
+    Linalg3DialectConstruction
+    Linalg3
+    Linalg2
+    Linalg1
+    MLIRAnalysis
+    MLIREDSC
+    MLIRExecutionEngine
+    MLIRIR
+    MLIRLLVMIR
+    MLIRParser
+    MLIRPass
+    MLIRTargetLLVMIR
+    MLIRTransforms
+    MLIRSupport
+)
+whole_archive_link(toyc-ch5
+  MLIRAffineOps
+  MLIRStandardOps
+)
+

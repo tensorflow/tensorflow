@@ -1,0 +1,16 @@
+# RUN: toyc-ch5 %s -emit=llvm-ir 2>&1 | FileCheck %s
+
+# User defined generic function that operates on unknown shaped arguments
+def multiply_transpose(a, b) {
+  return a * transpose(b);
+}
+
+# CHECK: define void @main() {
+# CHECK:  %1 = call i8* @malloc(i64 48)
+def main() {
+  var a<2, 3> = [[1, 2, 3], [4, 5, 6]];
+  var b<2, 3> = [1, 2, 3, 4, 5, 6];
+  var c = multiply_transpose(a, b);
+  var d = multiply_transpose(b, a);
+  print(d);
+}

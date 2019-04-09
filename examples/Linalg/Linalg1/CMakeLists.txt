@@ -17,6 +17,8 @@ add_llvm_example(linalg-example-1
 
 target_link_libraries(linalg-example-1
   PRIVATE
+    Linalg1DialectConstruction
+    Linalg1
     MLIRAnalysis
     MLIRDialect
     MLIREDSC
@@ -25,8 +27,6 @@ target_link_libraries(linalg-example-1
     MLIRParser
     MLIRPass
     MLIRTransforms
-    Linalg1
-    Linalg1DialectConstruction
     )
 
 whole_archive_link(linalg-example-1
@@ -35,6 +35,8 @@ whole_archive_link(linalg-example-1
 
 target_link_libraries(linalg-conversion-1
   PRIVATE
+    Linalg1DialectConstruction
+    Linalg1
     MLIRAnalysis
     MLIRDialect
     MLIREDSC
@@ -43,8 +45,6 @@ target_link_libraries(linalg-conversion-1
     MLIRParser
     MLIRPass
     MLIRTransforms
-    Linalg1
-    Linalg1DialectConstruction
     )
 
 whole_archive_link(linalg-conversion-1

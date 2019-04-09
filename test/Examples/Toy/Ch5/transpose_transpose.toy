@@ -1,0 +1,19 @@
+# RUN: toyc-ch5 %s -emit=mlir 2>&1 | FileCheck %s
+# RUN: toyc-ch5 %s -emit=mlir -opt 2>&1 | FileCheck %s --check-prefix=OPT
+
+def transpose_transpose(x) {
+  return transpose(transpose(x));
+}
+
+def main() {
+  print(transpose_transpose([[1, 2], [3, 4]]));
+}
+
+#CHECK-LABEL: func @transpose_transpose
+#CHECK: transpose
+#CHECK-LABEL: main
+
+
+#OPT-LABEL: func @transpose_transpose
+#OPT-NOT: transpose
+

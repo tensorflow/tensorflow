@@ -297,7 +297,7 @@ template <typename T> static mlir::LogicalResult verifyToySingleOperand(T *op) {
     raw_string_ostream os(msg);
     os << "expects a Toy Array for its argument, got "
        << op->getOperand()->getType();
-    return op->emitOpError(msg);
+    return op->emitOpError(os.str());
   }
   return mlir::success();
 }
