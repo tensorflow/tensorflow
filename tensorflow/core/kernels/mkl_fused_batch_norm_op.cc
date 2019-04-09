@@ -1147,7 +1147,7 @@ REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklFusedBatchNormGradOp<CPUDevice, T, T>);
 
-REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU(float);
+TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU
 
 #define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(T, U)              \
