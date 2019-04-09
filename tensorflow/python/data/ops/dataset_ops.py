@@ -2070,13 +2070,7 @@ class TensorDataset(DatasetSource):
 
   def __init__(self, tensors):
     """See `Dataset.from_tensors()` for details."""
-    with ops.name_scope("tensors"):
-      tensors = nest.pack_sequence_as(tensors, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(tensors))
-      ])
+    tensors = structure_lib.normalize_tensors(tensors)
     self._structure = structure_lib.Structure.from_value(tensors)
     self._tensors = self._structure._to_tensor_list(tensors)  # pylint: disable=protected-access
 

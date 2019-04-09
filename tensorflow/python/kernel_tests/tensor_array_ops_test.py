@@ -437,16 +437,22 @@ class TensorArrayTest(test.TestCase):
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
-      # Test writing the wrong datatype
-      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
-          not context.executing_eagerly()):
-        error_msg = ("Invalid data types; op elements string but list elements "
-                     "float")
-      else:
-        error_msg = (
-            "TensorArray dtype is (float|float32) but Op is trying to write "
-            "dtype string")
-      with self.assertRaisesOpError(error_msg):
+      # TODO(b/129870929): Remove the last 2 checks (runtime checks) after
+      # back back from preferred_dtype= to dtype= in convert_to_tensor.  Also
+      # restrict error check to only TypeError.
+      error_msg_regex = (
+          "("
+          "Expected float32, got 'wrong_type_scalar' of type 'str' instead."
+          "|"
+          "Cannot convert provided value to EagerTensor. Provided value: "
+          "wrong_type_scalar Requested dtype: float"
+          "|"
+          "TensorArray dtype is float.* but Op is trying to write dtype string"
+          "|"
+          "Invalid data types; op elements string but list elements float"
+          ")")
+      with self.assertRaisesRegexp(
+          (TypeError, errors.InvalidArgumentError), error_msg_regex):
         self.evaluate(ta.write(0, "wrong_type_scalar").flow)
 
       if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
