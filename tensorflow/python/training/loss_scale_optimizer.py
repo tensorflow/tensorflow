@@ -129,10 +129,10 @@ class LossScaleOptimizer(optimizer.Optimizer):
   def _scale_grads(self, grads):
     loss_scale = self._loss_scale()
     loss_scale_reciprical = 1 / loss_scale
-    return [None if g is None else self._indexed_slices(
+    return [None if g is None else self._scale_grad(
         g, loss_scale_reciprical) for g in grads]
 
-  def _indexed_slices(self, grad, loss_scale_reciprical):
+  def _scale_grad(self, grad, loss_scale_reciprical):
     if isinstance(grad, ops.IndexedSlices):
       grad_vals = grad.values * loss_scale_reciprical
       return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
@@ -170,7 +170,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
 
     # TODO(nluehr) cleanup GraphKeys.TRAIN_OP
     return replica_context.merge_call(
-        self._maybe_apply_gradients_cross_replica,
+        self._apply_gradients_cross_replica,
         args=(grads_and_vars, global_step, name))
 
   def _distributed_apply(self,
@@ -197,10 +197,10 @@ class LossScaleOptimizer(optimizer.Optimizer):
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    self._maybe_apply_gradients_cross_replica(distribution, grads_and_vars,
+    self._apply_gradients_cross_replica(distribution, grads_and_vars,
                                               global_step, name)
 
-  def _maybe_apply_gradients_cross_replica(self, distribution, grads_and_vars,
+  def _apply_gradients_cross_replica(self, distribution, grads_and_vars,
                                            global_step, name):
     """Conditionally apply gradients in cross replica context."""
     name = name if name is not None else self.get_name()
