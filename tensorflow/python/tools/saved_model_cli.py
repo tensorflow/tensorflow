@@ -484,6 +484,7 @@ def _create_example_string(example_dict):
       example.features.feature[feature_name].float_list.value.extend(
           feature_list)
     elif isinstance(feature_list[0], str):
+      feature_list = list(map(lambda x: x.encode(), feature_list))
       example.features.feature[feature_name].bytes_list.value.extend(
           feature_list)
     elif isinstance(feature_list[0], integer_types):
