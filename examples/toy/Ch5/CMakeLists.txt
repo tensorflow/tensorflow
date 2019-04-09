@@ -13,6 +13,9 @@ add_toy_chapter(toyc-ch5
   mlir/ToyCombine.cpp
   )
 include_directories(include/)
+include_directories(../../Linalg/Linalg1/include/)
+include_directories(../../Linalg/Linalg2/include/)
+include_directories(../../Linalg/Linalg3/include/)
 target_link_libraries(toyc-ch5
   PRIVATE
     Linalg3DialectConstruction
