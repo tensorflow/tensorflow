@@ -49,6 +49,8 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.tracking import tracking
 
+_SAVED_MODEL_SIGNATURE_KEY = "mypredict"
+
 
 class TrtConvertTest(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration python API."""
@@ -140,15 +142,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       graph_def = graph_util.convert_variables_to_constants(
           sess, g.as_graph_def(add_shapes=True), ["output"])
     node_name_to_op = {node.name: node.op for node in graph_def.node}
-    self.assertEqual({
-        "v1": "Const",
-        "v1/read": "Identity",
-        "input": "Placeholder",
-        "add": "Add",
-        "mul": "Mul",
-        "add_1": "Add",
-        "output": "Identity"
-    }, node_name_to_op)
+    self.assertEqual(
+        {
+            "v1": "Const",
+            "v1/read": "Identity",
+            "input": "Placeholder",
+            "add": "Add",
+            "mul": "Mul",
+            "add_1": "Add",
+            "output": "Identity"
+        }, node_name_to_op)
     return graph_def
 
   def _WriteInputSavedModel(self, input_saved_model_dir):
@@ -163,7 +166,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       sess.run(var.initializer)
       saved_model_builder.add_meta_graph_and_variables(
           sess, [tag_constants.SERVING],
-          signature_def_map={"mypredict": signature_def})
+          signature_def_map={_SAVED_MODEL_SIGNATURE_KEY: signature_def})
     saved_model_builder.save()
 
   def _ConvertGraph(self,
@@ -178,7 +181,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     """Helper method to convert a GraphDef or SavedModel using TF-TRT."""
     converter = trt_convert.TrtGraphConverter(
         input_saved_model_dir=input_saved_model_dir,
-        input_saved_model_signature_key="mypredict",
+        input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
         input_graph_def=None if input_saved_model_dir else self._GetGraphDef(),
         nodes_blacklist=["output"],
         session_config=self._GetConfigProto(),
@@ -235,8 +238,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       if context.executing_eagerly():
         root = load.load(output_saved_model_dir)
         saved_model_graph_def = root.signatures[
-            signature_constants
-            .DEFAULT_SERVING_SIGNATURE_DEF_KEY].graph.as_graph_def()
+            _SAVED_MODEL_SIGNATURE_KEY].graph.as_graph_def()
       else:
         saved_model_graph_def = saved_model_utils.get_meta_graph_def(
             output_saved_model_dir, tag_constants.SERVING).graph_def
@@ -252,11 +254,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         self.assertIn("TRTEngineOp_0", node_name_to_op)
         self.assertEqual("TRTEngineOp", node_name_to_op["TRTEngineOp_0"])
       else:
-        self.assertEqual({
-            "input": "Placeholder",
-            "TRTEngineOp_0": "TRTEngineOp",
-            "output": "Identity"
-        }, node_name_to_op)
+        self.assertEqual(
+            {
+                "input": "Placeholder",
+                "TRTEngineOp_0": "TRTEngineOp",
+                "output": "Identity"
+            }, node_name_to_op)
 
       if need_calibration:
         trt_engine_nodes = [
@@ -271,10 +274,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
           importer.import_graph_def(graph_def, name="")
           with self.session(config=self._GetConfigProto()) as sess:
             for test_data in range(10):
-              self.assertEqual((test_data + 1.0)**2,
-                               sess.run(
-                                   "output:0",
-                                   feed_dict={"input:0": [[[test_data]]]}))
+              self.assertEqual(
+                  (test_data + 1.0)**2,
+                  sess.run("output:0", feed_dict={"input:0": [[[test_data]]]}))
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_BasicConversion(self):
@@ -328,7 +330,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir1_v2")
     root = SimpleModel()
-    save.save(root, input_saved_model_dir)
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Convert the SavedModel and verify the result.
     output_saved_model_dir = os.path.join(tmp_dir, "out_dir1_v2")
@@ -358,14 +361,15 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       return
     output_graph_def = self._ConvertGraph(minimum_segment_size=5)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
-    self.assertEqual({
-        "v1/read": "Const",
-        "input": "Placeholder",
-        "add": "Add",
-        "mul": "Mul",
-        "add_1": "Add",
-        "output": "Identity"
-    }, node_name_to_op)
+    self.assertEqual(
+        {
+            "v1/read": "Const",
+            "input": "Placeholder",
+            "add": "Add",
+            "mul": "Mul",
+            "add_1": "Add",
+            "output": "Identity"
+        }, node_name_to_op)
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_DynamicOp(self):
