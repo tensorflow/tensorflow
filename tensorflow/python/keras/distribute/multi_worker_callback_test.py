@@ -61,7 +61,7 @@ def generate_callback_test_function(custom_callable):
                                   self._make_mock_run_std_server()):
         strategy = get_strategy_object(strategy_cls)
         batch_size = 64
-        steps = 5
+        steps = 2
         train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
         with strategy.scope():
           model = _get_model((28, 28, 1))
