@@ -520,6 +520,11 @@ Status EagerContext::InitializeRemote(
             {
               {
                 mutex_lock l(keep_alive_thread_shutdown_mu_);
+
+                if (shutting_down_) {
+                  return;
+                }
+
                 keep_alive_thread_cv_.wait_for(
                     l, std::chrono::seconds(sleep_for_secs_));
 
