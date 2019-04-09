@@ -25,9 +25,6 @@ public:
   virtual ~SeastarChannelSpec() {}
 
   Status AddHostPortsJob(const std::string& job_id,
-                         const std::vector<string>& host_ports);
-
-  Status AddHostPortsJob(const std::string& job_id,
                          const std::map<int, std::string>& host_ports);
 
   const std::vector<HostPortsJob>& host_ports_jobs() const {

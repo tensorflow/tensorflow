@@ -2,12 +2,12 @@
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
-#include <sys/file.h>
 #include <dirent.h>
+#include <string>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string>
 
 namespace tensorflow {
 namespace {
@@ -20,7 +20,7 @@ const size_t INIT_CPU_ID = 16;
 
 class FileLocker {
 public:
-  FileLocker(const std::string& rd) : _root_dir(rd) {}
+  FileLocker(const std::string& rd) : root_dir_(rd) {}
   virtual ~FileLocker() {}
 
   bool Lock(const std::string& file_name) {
@@ -34,10 +34,10 @@ public:
 private:
   bool LockerOpImpl(const std::string& file_name, int lock_type) {
     std::string file_path;
-    file_path += _root_dir + std::string("/") + file_name;
+    file_path += root_dir_ + std::string("/") + file_name;
     int fd = open(file_path.c_str(), O_RDWR | O_CREAT, 0777);
     if (fd < 0) {
-      LOG(ERROR) << "can't open file:" << file_path;
+      VLOG(2) << "can't open file:" << file_path;
       return false;
     }
 
@@ -46,7 +46,7 @@ private:
   }
 
 private:
-  const std::string _root_dir;
+  const std::string root_dir_;
 };
 
 std::string CpusetAllocator::GetCpuset(size_t core_number) {
@@ -61,50 +61,48 @@ std::string CpusetAllocator::GetCpuset(size_t core_number) {
 
 bool CpusetAllocator::ExistDir() {
   if (opendir(ROOT_PATH) != nullptr) {
-    _root_dir = ROOT_PATH;
+    root_dir_ = ROOT_PATH;
   } else if (opendir(DEFAULT_ROOT_PATH) != nullptr) {
-    _root_dir = DEFAULT_ROOT_PATH;
+    root_dir_ = DEFAULT_ROOT_PATH;
   } else {
-    LOG(ERROR) << "create cpuset dir failure," 
-               << "both /tmp & /tmp_tf not exist in the machine, "
-               << "please try other protocol";
     return false;
   }
-  _root_dir += CPUSET_FILE_PATH;
+  root_dir_ += CPUSET_FILE_PATH;
 
-  return opendir(_root_dir.c_str()) != nullptr;
+  return opendir(root_dir_.c_str()) != nullptr;
 }
 
 void CpusetAllocator::CreateDir() {
-  int flag=mkdir(_root_dir.c_str(), 0777);
+  int flag=mkdir(root_dir_.c_str(), 0777);
   if (flag != 0) {
-    LOG(ERROR) << "create cpuset dir failure";
+    LOG(FATAL) << "Seastar: create cpuset dir failure";
   }
 }
 
 void CpusetAllocator::CreateFiles() {
-  // todo: port::NumAllCPUs(), all phsical core should be available in docker, or this would bug here
-  // fuxi set value is better.
+  // todo: port::NumAllCPUs(), all phsical core should be available in docker
+  // or this would bug here, k8s could be a candidate to allocator cpu cores.
   for (auto i = INIT_CPU_ID; i < port::NumAllCPUs(); ++i) {
     auto file_name = std::to_string(i);
 
     std::string file_path;
-    file_path += _root_dir + std::string("/") + file_name;
+    file_path += root_dir_ + std::string("/") + file_name;
     int fd = open(file_path.c_str(), O_RDWR | O_CREAT, 0777);
     if (fd < 0) {
-      LOG(ERROR) << "can't create cpuset lock files" << file_path;
-      return;
+      LOG(FATAL) << "Seastar error: can't create lock files for cpuset,"
+                 << ", please try other protocol, filepath:"
+                 << file_path;
     }
     close(fd);
 
-    _files.emplace_back(file_name); 
+    files_.emplace_back(file_name);
   }
 }
 
 std::vector<std::string> CpusetAllocator::LockFiles(size_t core_number) {
   std::vector<std::string> locked_files;
-  FileLocker locker(_root_dir);
-  for (auto file : _files) {
+  FileLocker locker(root_dir_);
+  for (auto file : files_) {
     if (core_number <= 0) 
       break;
     if (locker.Lock(file)) {
@@ -113,7 +111,8 @@ std::vector<std::string> CpusetAllocator::LockFiles(size_t core_number) {
     }
   }
   if (core_number > 0) {
-    LOG(ERROR) << "allocate cpuset failure";
+    LOG(WARNING) << "Seastar: allocate cpuset by file lock failure,"
+                 << "please try other protocol";
     for (auto file : locked_files) {
       locker.Unlock(file);
     }

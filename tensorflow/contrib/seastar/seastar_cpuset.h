@@ -2,8 +2,8 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CPUSET_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CPUSET_H_
 
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace tensorflow {
 class CpusetAllocator {
@@ -20,8 +20,8 @@ private:
   std::string ToCpuset(const std::vector<std::string>& locked_files);
 
 private:
-  std::string _root_dir;
-  std::vector<std::string> _files;
+  std::string root_dir_;
+  std::vector<std::string> files_;
 };
 }
 #endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CPUSET_H_

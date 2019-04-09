@@ -32,15 +32,6 @@ Status ValidateHostPortPair(const string& host_port) {
 }
 } // namespace
 
-Status SeastarChannelSpec::AddHostPortsJob(const string& job_id,
-                                        const std::vector<string>& host_ports) {
-  std::map<int, string> host_ports_map;
-  for (size_t i = 0; i < host_ports.size(); ++i) {
-    host_ports_map[i] = host_ports[i];
-  }
-  return AddHostPortsJob(job_id, host_ports_map);
-}
-
 Status SeastarChannelSpec::AddHostPortsJob(
     const string& job_id, const std::map<int, string>& host_ports) {
   if (!job_ids_.insert(job_id).second) {
@@ -76,7 +67,6 @@ public:
     }
     return ch;
   }
-
 
 protected:
   virtual seastar::channel* FindChannelOnce(const string& target) = 0;
@@ -224,4 +214,4 @@ SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine, const Seastar
   return caches.size() == 1 ? caches[0] : new MultiSeastarChannelCache(caches);
 }
 
-}
+} // tensorflow

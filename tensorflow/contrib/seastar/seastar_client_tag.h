@@ -22,16 +22,16 @@ class SeastarClientTag;
 struct WorkerEnv;
 
 void InitSeastarClientTag(protobuf::Message* request,
-			  protobuf::Message* response,
-			  StatusCallback done,
-			  SeastarClientTag* tag,
-        CallOptions* call_opts);
+                          protobuf::Message* response,
+                          StatusCallback done,
+                          SeastarClientTag* tag,
+                          CallOptions* call_opts);
 
 void InitSeastarClientTag(protobuf::Message* request,
-			  SeastarTensorResponse* response,
-			  StatusCallback done,
-			  SeastarClientTag* tag,
-        CallOptions* call_opts);
+                          SeastarTensorResponse* response,
+                          StatusCallback done,
+                          SeastarClientTag* tag,
+                          CallOptions* call_opts);
 
 class SeastarClientTag {
  public:

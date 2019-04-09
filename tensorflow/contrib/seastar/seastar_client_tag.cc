@@ -47,12 +47,6 @@ void InitSeastarClientTag(protobuf::Message* request,
   StatusCallback wrapper_done
       = std::bind([response, tag](StatusCallback done,
                                   const Status& s) {
-    // internal error, that we dont need to parse the response,
-    // reponse is nullptr
-    if (s.code() != error::INTERNAL) {
-      response->ParseFromArray(tag->resp_body_buf_.data_,
-                               tag->resp_body_buf_.len_);
-    }
     if (!s.ok()) {
       if (tag->method_ == SeastarWorkerServiceMethod::kLogging ||
           tag->method_ == SeastarWorkerServiceMethod::kTracing) {
@@ -62,6 +56,9 @@ void InitSeastarClientTag(protobuf::Message* request,
         LOG(INFO) << "RPC's status is not ok. status code=" << s.code()
                   << ", err msg=" << s.error_message().c_str();
       }
+    } else {
+      response->ParseFromArray(tag->resp_body_buf_.data_,
+                               tag->resp_body_buf_.len_);
     }
     done(s);
     delete tag;
