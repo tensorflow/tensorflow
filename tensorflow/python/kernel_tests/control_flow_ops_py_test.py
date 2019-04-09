@@ -2663,6 +2663,20 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
 
+  def testWhileGradInControlDeps(self):
+
+    @def_function.function
+    def f():
+      x_init = constant_op.constant(2.)
+      loop_cond = lambda i, x: math_ops.less(i, 2)
+      loop_body = lambda i, x: [i + 1, x**2]
+      _, x = control_flow_ops.while_loop(loop_cond, loop_body, [0, x_init])
+      with ops.control_dependencies([x]):
+        (grad,) = gradients_impl.gradients(x, x_init)
+        return grad
+
+    self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
+
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 
     with self.cached_session(use_gpu=use_gpu):

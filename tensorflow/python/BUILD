@@ -2413,6 +2413,7 @@ py_library(
     deps = [
         ":control_flow_util",
         ":framework_ops",
+        ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
