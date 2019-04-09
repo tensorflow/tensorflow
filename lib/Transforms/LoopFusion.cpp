@@ -162,7 +162,7 @@ public:
   struct Node {
     // The unique identifier of this node in the graph.
     unsigned id;
-    // The top-level statment which is (or contains) loads/stores.
+    // The top-level statement which is (or contains) a load/store.
     Operation *op;
     // List of load operations.
     SmallVector<Operation *, 4> loads;
@@ -587,6 +587,7 @@ public:
     if (inEdges.count(id) > 0)
       forEachMemRefEdge(inEdges[id], callback);
   }
+
   // Calls 'callback' for each output edge from node 'id' which carries a
   // memref dependence.
   void forEachMemRefOutputEdge(unsigned id,
@@ -594,6 +595,7 @@ public:
     if (outEdges.count(id) > 0)
       forEachMemRefEdge(outEdges[id], callback);
   }
+
   // Calls 'callback' for each edge in 'edges' which carries a memref
   // dependence.
   void forEachMemRefEdge(ArrayRef<Edge> edges,
@@ -787,14 +789,14 @@ struct LoopNestStatsCollector {
 // operation count * loop trip count) for the entire loop nest.
 // If 'tripCountOverrideMap' is non-null, overrides the trip count for loops
 // specified in the map when computing the total op instance count.
-// NOTE: this is used to compute the cost of computation slices, which are
+// NOTEs: 1) This is used to compute the cost of computation slices, which are
 // sliced along the iteration dimension, and thus reduce the trip count.
 // If 'computeCostMap' is non-null, the total op count for forOps specified
 // in the map is increased (not overridden) by adding the op count from the
 // map to the existing op count for the for loop. This is done before
 // multiplying by the loop's trip count, and is used to model the cost of
 // inserting a sliced loop nest of known cost into the loop's body.
-// NOTE: this is used to compute the cost of fusing a slice of some loop nest
+// 2) This is also used to compute the cost of fusing a slice of some loop nest
 // within another loop.
 static int64_t getComputeCost(
     Operation *forInst, LoopNestStats *stats,
@@ -973,7 +975,7 @@ static unsigned getMaxLoopDepth(ArrayRef<Operation *> loadOpInsts,
 // *) Computes the loop permutation which sinks sequential loops deeper into
 //    the loop nest, while preserving the relative order between other loops.
 // *) Checks each dependence component against the permutation to see if the
-//    desired loop interchange would violated dependences by making the a
+//    desired loop interchange would violate dependences by making the
 //    dependence componenent lexicographically negative.
 // TODO(andydavis) Move this function to LoopUtils.
 static bool
@@ -1001,7 +1003,7 @@ computeLoopInterchangePermutation(ArrayRef<Operation *> ops,
         FlatAffineConstraints dependenceConstraints;
         llvm::SmallVector<DependenceComponent, 2> depComps;
         // TODO(andydavis,bondhugula) Explore whether it would be profitable
-        // to pre-compute and store deps instead of repeatidly checking.
+        // to pre-compute and store deps instead of repeatedly checking.
         if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
                                         &dependenceConstraints, &depComps)) {
           isParallelLoop[d - 1] = false;
@@ -1010,6 +1012,7 @@ computeLoopInterchangePermutation(ArrayRef<Operation *> ops,
       }
     }
   }
+
   // Count the number of parallel loops.
   unsigned numParallelLoops = 0;
   for (unsigned i = 0, e = isParallelLoop.size(); i < e; ++i)
@@ -1223,7 +1226,7 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   return newMemRef;
 }
 
-// Does the slice have a single iteration?
+// Return the number of iterations in the given slice.
 static uint64_t getSliceIterationCount(
     const llvm::SmallDenseMap<Operation *, uint64_t, 8> &sliceTripCountMap) {
   uint64_t iterCount = 1;
@@ -1236,7 +1239,7 @@ static uint64_t getSliceIterationCount(
 // Checks if node 'srcId' (which writes to a live out memref), can be safely
 // fused into node 'dstId'. Returns true if the following conditions are met:
 // *) 'srcNode' only writes to live out 'memref'.
-// *) 'srcNode' has exaclty one output edge on 'memref' (which is to 'dstId').
+// *) 'srcNode' has exactly one output edge on 'memref' (which is to 'dstId').
 // *) 'dstNode's read/write region to 'memref' is a super set of 'srcNode's
 //    write region to 'memref'.
 // TODO(andydavis) Generalize this to handle more live in/out cases.
@@ -1570,7 +1573,7 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
             (static_cast<double>(srcLoopNestCost) + dstLoopNestCost) -
         1;
 
-    // Compute what the slice write MemRefRegion would be, if the src loop
+    // Determine what the slice write MemRefRegion would be, if the src loop
     // nest slice 'sliceStates[i - 1]' were to be inserted into the dst loop
     // nest at loop depth 'i'
     MemRefRegion sliceWriteRegion(srcStoreOpInst->getLoc());
@@ -1744,11 +1747,11 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
 //
 // *) A worklist is initialized with node ids from the dependence graph.
 // *) For each node id in the worklist:
-//   *) Pop a AffineForOp of the worklist. This 'dstAffineForOp' will be a
+//   *) Pop an AffineForOp of the worklist. This 'dstAffineForOp' will be a
 //      candidate destination AffineForOp into which fusion will be attempted.
 //   *) Add each LoadOp currently in 'dstAffineForOp' into list 'dstLoadOps'.
 //   *) For each LoadOp in 'dstLoadOps' do:
-//      *) Lookup dependent loop nests which have a single store op to the same
+//      *) Look up dependent loop nests which have a single store op to the same
 //         memref.
 //      *) Check if dependences would be violated by the fusion.
 //      *) Get a computation slice of 'srcLoopNest', which adjusts its loop
@@ -1756,7 +1759,7 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
 //      *) Fuse the 'srcLoopNest' computation slice into the 'dstLoopNest',
 //         at a loop depth determined by the cost model in 'isFusionProfitable'.
 //      *) Add the newly fused load/store operations to the state,
-//         and also add newly fuse load ops to 'dstLoopOps' to be considered
+//         and also add newly fused load ops to 'dstLoopOps' to be considered
 //         as fusion dst load ops in another iteration.
 //      *) Remove old src loop nest and its associated state.
 //
@@ -1867,7 +1870,7 @@ public:
         // Skip if no input edges along which to fuse.
         if (mdg->inEdges.count(dstId) == 0)
           continue;
-        // Iterate through in edges for 'dstId' and src node id for any
+        // Iterate through in-edges for 'dstId' and src node id for any
         // edges on 'memref'.
         SmallVector<unsigned, 2> srcNodeIds;
         for (auto &srcEdge : mdg->inEdges[dstId]) {
@@ -1977,12 +1980,12 @@ public:
                 loads.push_back(loadOpInst);
             }
 
-            // Clear and add back loads and stores
+            // Clear and add back loads and stores.
             mdg->clearNodeLoadAndStores(dstNode->id);
             mdg->addToNode(dstId, dstLoopCollector.loadOpInsts,
                            dstLoopCollector.storeOpInsts);
             // Remove old src loop nest if it no longer has outgoing dependence
-            // edges, and it does not write to a memref which escapes the
+            // edges, and if it does not write to a memref which escapes the
             // function. If 'writesToLiveInOrOut' is true, then 'srcNode' has
             // been fused into 'dstNode' and write region of 'dstNode' covers
             // the write region of 'srcNode', and 'srcNode' has no other users
