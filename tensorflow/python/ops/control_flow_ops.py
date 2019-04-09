@@ -134,11 +134,14 @@ def Assert(condition, data, summarize=None, name=None):
   Returns:
     assert_op: An `Operation` that, when executed, raises a
     `tf.errors.InvalidArgumentError` if `condition` is not true.
-    @compatibility{eager} returns None.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
 
   Raises:
-    @compatibility{eager} `tf.errors.InvalidArgumentError` if `condition`
-    is not true
+    @compatibility(eager)
+    `tf.errors.InvalidArgumentError` if `condition` is not true
+    @end_compatibility
   """
   if context.executing_eagerly():
     if not condition:
@@ -3946,7 +3949,7 @@ def case(pred_fn_pairs,
   deterministic, so that variables created in conditional branches are created
   in fixed order across runs.
 
-  @compatibility{eager}
+  @compatibility(eager)
   Unordered dictionaries are not supported in eager mode when `exclusive=False`.
   Use a list of tuples instead.
   @end_compatibility
