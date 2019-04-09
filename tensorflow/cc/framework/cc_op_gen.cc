@@ -17,6 +17,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/strip.h"
+
 #include "tensorflow/cc/framework/cc_op_gen.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -44,22 +46,15 @@ const int kRightMargin = 79;
 // Converts:
 //   bazel-out/.../genfiles/(external/YYY/)?XX
 // to: XX.
-string GetPath(const string& dot_h_fname) {
-  auto pos = dot_h_fname.find("/genfiles/");
-  string result = dot_h_fname;
-  if (pos != string::npos) {
-    // - 1 account for the terminating null character (\0) in "/genfiles/".
-    result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
-  }
-  if (result.size() > sizeof("external/") &&
-      result.compare(0, sizeof("external/") - 1, "external/") == 0) {
-    result = result.substr(sizeof("external/") - 1);
-    pos = result.find("/");
+string GetPath(const string& dot_h_fname, const string& genfiles_dir) {
+  absl::string_view result = absl::StripPrefix(dot_h_fname, genfiles_dir);
+  if (absl::ConsumePrefix(&result, "external/")) {
+    auto pos = result.find("/");
     if (pos != string::npos) {
       result = result.substr(pos + 1);
     }
   }
-  return result;
+  return string(result);
 }
 
 // Converts: some/path/to/file.xx
@@ -76,7 +71,7 @@ string GetFilename(const string& path) {
 //   cc/ops/gen_foo_ops.h
 // to:
 //   CC_OPS_GEN_FOO_OPS_H_
-string ToGuard(const string& path) {
+string ToGuard(absl::string_view path) {
   string guard;
   guard.reserve(path.size() + 1);  // + 1 -> trailing _
   for (const char c : path) {
@@ -1011,7 +1006,7 @@ void WriteCCOp(const OpDef& graph_op_def, const ApiDef& api_def,
 }
 
 void StartFiles(bool internal, const string& dot_h_fname, WritableFile* h,
-                WritableFile* cc, string* op_header_guard) {
+                WritableFile* cc, string* op_header_guard, const string& genfiles_dir) {
   const string header =
       R"header(// This file is MACHINE GENERATED! Do not edit.
 
@@ -1038,7 +1033,7 @@ namespace ops {
 
 )namespace";
 
-  const string op_header = GetPath(dot_h_fname);
+  const string op_header = GetPath(dot_h_fname, genfiles_dir);
   *op_header_guard = ToGuard(op_header);
   const string cc_header = strings::StrCat(
       R"include(// This file is MACHINE GENERATED! Do not edit.
@@ -1100,7 +1095,8 @@ string MakeInternal(const string& fname) {
 }  // namespace
 
 void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
-                const string& dot_h_fname, const string& dot_cc_fname) {
+                const string& dot_h_fname, const string& dot_cc_fname,
+                const string& genfiles_dir) {
   Env* env = Env::Default();
 
   // Write the initial boilerplate to the .h and .cc files.
@@ -1109,7 +1105,7 @@ void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
   TF_CHECK_OK(env->NewWritableFile(dot_h_fname, &h));
   TF_CHECK_OK(env->NewWritableFile(dot_cc_fname, &cc));
   string op_header_guard;
-  StartFiles(false, dot_h_fname, h.get(), cc.get(), &op_header_guard);
+  StartFiles(false, dot_h_fname, h.get(), cc.get(), &op_header_guard, genfiles_dir);
 
   // Create the internal versions of these files for the hidden ops.
   std::unique_ptr<WritableFile> internal_h = nullptr;
@@ -1119,7 +1115,7 @@ void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
   TF_CHECK_OK(env->NewWritableFile(MakeInternal(dot_cc_fname), &internal_cc));
   string internal_op_header_guard;
   StartFiles(true /* internal */, internal_dot_h_fname, internal_h.get(),
-             internal_cc.get(), &internal_op_header_guard);
+             internal_cc.get(), &internal_op_header_guard, genfiles_dir);
 
   for (const auto& graph_op_def : ops.op()) {
     // Skip deprecated ops.

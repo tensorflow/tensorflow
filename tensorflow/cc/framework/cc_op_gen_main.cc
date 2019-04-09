@@ -29,7 +29,8 @@ namespace {
 
 void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
                    bool include_internal,
-                   const std::vector<string>& api_def_dirs) {
+                   const std::vector<string>& api_def_dirs,
+                   const std::string& genfiles_dir) {
   OpList ops;
   OpRegistry::Global()->Export(include_internal, &ops);
   ApiDefMap api_def_map(ops);
@@ -49,7 +50,7 @@ void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
 
   api_def_map.UpdateDocs();
 
-  WriteCCOps(ops, api_def_map, dot_h, dot_cc);
+  WriteCCOps(ops, api_def_map, dot_h, dot_cc, genfiles_dir);
 }
 
 }  // namespace
@@ -57,13 +58,13 @@ void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
 
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-  if (argc != 5) {
+  if (argc != 6) {
     for (int i = 1; i < argc; ++i) {
       fprintf(stderr, "Arg %d = %s\n", i, argv[i]);
     }
     fprintf(stderr,
             "Usage: %s out.h out.cc include_internal "
-            "api_def_dirs1,api_def_dir2 ...\n"
+            "api_def_dirs1,api_def_dir2... genfiles_dir\n"
             "  include_internal: 1 means include internal ops\n",
             argv[0]);
     exit(1);
@@ -72,6 +73,6 @@ int main(int argc, char* argv[]) {
   bool include_internal = tensorflow::StringPiece("1") == argv[3];
   std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
       argv[4], ",", tensorflow::str_util::SkipEmpty());
-  tensorflow::PrintAllCCOps(argv[1], argv[2], include_internal, api_def_dirs);
+  tensorflow::PrintAllCCOps(argv[1], argv[2], include_internal, api_def_dirs, argv[5]);
   return 0;
 }

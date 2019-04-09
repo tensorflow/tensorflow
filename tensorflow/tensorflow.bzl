@@ -700,7 +700,7 @@ def tf_gen_op_wrapper_cc(
         tools = [":" + tool] + tf_binary_additional_srcs(),
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
-               str(include_internal_ops) + " " + api_def_args_str),
+               str(include_internal_ops) + " " + api_def_args_str + " $(GENDIR)/"),
     )
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
