@@ -20,14 +20,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "linalg4/Transforms.h"
-#include "linalg1/Common.h"
-#include "linalg1/Utils.h"
 #include "linalg3/Intrinsics.h"
 #include "linalg3/TensorOps.h"
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/EDSC/Helpers.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Transforms/LoopUtils.h"
 
@@ -59,25 +56,27 @@ static bool isZeroIndex(Value *v) {
          v->getDefiningOp()->dyn_cast<ConstantIndexOp>().getValue() == 0;
 }
 
+template <typename ConcreteOp>
 static llvm::SmallVector<Value *, 4>
-makeTiledRanges(TensorContractionBase &contraction, ArrayRef<Value *> allRanges,
-                llvm::ArrayRef<Value *> ivs,
+makeTiledRanges(TensorContractionBase<ConcreteOp> &contraction,
+                ArrayRef<Value *> allRanges, llvm::ArrayRef<Value *> ivs,
                 llvm::ArrayRef<Value *> tileSizes) {
   assert(ivs.size() == tileSizes.size());
   if (ivs.empty())
     return RangeParts(allRanges).makeRanges();
 
+  auto *op = static_cast<ConcreteOp *>(&contraction);
   RangeParts result(allRanges.size());
   RangeParts rangeParts(allRanges);
 
-  for (auto map : contraction.loopsToOperandRangeMaps()) {
+  for (auto map : op->loopsToOperandRangeMaps()) {
     // 1. Take the first ivs results of the map, the other ones are not composed
     // but merely copied over.
     assert(map.getNumSymbols() == 0);
     assert(map.getRangeSizes().empty());
     MLIRContext *context = ScopedContext::getContext();
-    unsigned numParallel = contraction.getNumParallelDims();
-    unsigned numReduction = contraction.getNumReductionDims();
+    unsigned numParallel = op->getNumParallelDims();
+    unsigned numReduction = op->getNumReductionDims();
     if (ivs.size() < numParallel + numReduction) {
       // Inject zeros in positions that are not tiled.
       SmallVector<AffineExpr, 4> dimReplacements(numParallel + numReduction);
@@ -121,8 +120,9 @@ makeTiledRanges(TensorContractionBase &contraction, ArrayRef<Value *> allRanges,
   return result.makeRanges();
 }
 
+template <class ConcreteOp>
 static SmallVector<Value *, 4>
-makeTiledViews(linalg::TensorContractionBase &contraction,
+makeTiledViews(linalg::TensorContractionBase<ConcreteOp> &contraction,
                ArrayRef<Value *> ivs, ArrayRef<Value *> tileSizes) {
   auto tiledRanges =
       makeTiledRanges(contraction, getRanges(contraction), ivs, tileSizes);
@@ -141,15 +141,15 @@ makeTiledViews(linalg::TensorContractionBase &contraction,
   return res;
 }
 
-template <typename ConcreteOp>
+template <class ConcreteOp>
 static SmallVector<mlir::AffineForOp, 8>
-writeContractionAsTiledViews(ConcreteOp &contraction,
+writeContractionAsTiledViews(TensorContractionBase<ConcreteOp> &contraction,
                              ArrayRef<Value *> tileSizes) {
   assert(tileSizes.size() <=
          contraction.getNumParallelDims() + contraction.getNumReductionDims());
 
-  ScopedContext scope(mlir::FuncBuilder(contraction.getOperation()),
-                      contraction.getLoc());
+  auto *op = static_cast<ConcreteOp *>(&contraction);
+  ScopedContext scope(mlir::FuncBuilder(op->getOperation()), op->getLoc());
   SmallVector<IndexHandle, 4> ivs(tileSizes.size());
   auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
 

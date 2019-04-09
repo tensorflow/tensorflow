@@ -20,11 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "linalg3/Transforms.h"
-#include "linalg1/Common.h"
 #include "linalg2/Intrinsics.h"
 #include "linalg3/Ops.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
