@@ -403,10 +403,16 @@ Status Converter::GetTrtBroadcastShape(
   // w: [1, 1, 1]
   // where the output in TRT is expected to be 2D, not 3D.
   if (operand_l.is_weights() && operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)  {
+    if (operand_l_new_dims->d[0] != -1 && operand_l_new_dims->d[0] != 1) {
+      return errors::InvalidArgument("Cannot broadcast weights with non-trivial batch dimension");
+    }
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_l_new_dims));
   }
 
   if (operand_r.is_weights() && operand_r_new_dims->nbDims > operand_l_new_dims->nbDims)  {
+    if (operand_r_new_dims->d[0] != -1 && operand_r_new_dims->d[0] != 1) {
+      return errors::InvalidArgument("Cannot broadcast weights with non-trivial batch dimension");
+    }
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_r_new_dims));
   }
 
