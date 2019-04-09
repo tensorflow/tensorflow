@@ -181,7 +181,9 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
         KerasMultiWorkerCallbackTest.initialFitting(
             test_obj, model, train_ds, num_epoch, steps, saving_filepath)
 
-    model.load_weights(saving_filepath)
+    with strategy.scope():
+      model.load_weights(saving_filepath)
+
     history_after_loading_weight_and_one_more_epoch = model.fit(
         x=train_ds, epochs=1, steps_per_epoch=steps)
 

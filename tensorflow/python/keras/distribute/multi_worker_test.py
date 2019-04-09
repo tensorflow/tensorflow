@@ -86,12 +86,8 @@ def _get_model(input_shape):
           activation='relu',
           input_shape=input_shape,
           kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-  # model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
-  # model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-  # model.add(keras.layers.Dropout(0.25))
+  model.add(keras.layers.BatchNormalization())
   model.add(keras.layers.Flatten())
-  # model.add(keras.layers.Dense(128, activation='relu'))
-  # model.add(keras.layers.Dropout(0.5))
   model.add(
       keras.layers.Dense(
           10,
