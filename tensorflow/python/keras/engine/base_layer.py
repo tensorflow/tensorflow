@@ -564,7 +564,7 @@ class Layer(trackable.Trackable):
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
-    with base_layer_utils.call_context():
+    with base_layer_utils.call_context(self):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
@@ -598,6 +598,8 @@ class Layer(trackable.Trackable):
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
+          # TODO(omalleyt): Reconcile this with new `trainable` behavior
+          # when available.
           learning_phase_passed_by_framework = False
           if (self._expects_training_arg and
               not base_layer_utils.training_arg_passed_to_call(
@@ -669,6 +671,7 @@ class Layer(trackable.Trackable):
           self._initial_weights is not None):
         self.set_weights(self._initial_weights)
         del self._initial_weights
+
     return outputs
 
   @property
@@ -974,7 +977,10 @@ class Layer(trackable.Trackable):
     execution).
 
     Arguments:
-      updates: Update op, or list/tuple of update ops.
+      updates: Update op, or list/tuple of update ops, or zero-arg callable
+        that returns an update op. A zero-arg callable should be passed in
+        order to disable running the updates by setting `trainable=False`
+        on this Layer, when executing in Eager mode.
       inputs: If anything other than None is passed, it signals the updates
         are conditional on some of the layer's inputs,
         and thus they should only be run where these inputs are available.
@@ -984,10 +990,20 @@ class Layer(trackable.Trackable):
         have is available at runtime.
         A step counter might fall into this category.
     """
+    updates = generic_utils.to_list(updates)
+
     if context.executing_eagerly():
+      # Don't run callable updates if currently executing inside the `call`
+      # of a Layer/Model with `trainable=False`.
+      if not base_layer_utils.is_in_frozen_context():
+        for update in updates:
+          if callable(update):
+            update()
       return  # Updates already applied when in eager mode.
 
     def process_update(x):
+      if callable(x):
+        x = x()
       if isinstance(x, ops.Operation):
         return x
       elif hasattr(x, 'op'):
@@ -995,7 +1011,6 @@ class Layer(trackable.Trackable):
       else:
         return ops.convert_to_tensor(x)
 
-    updates = generic_utils.to_list(updates)
     updates = [process_update(x) for x in updates]
     self._updates += updates
     if inputs is None:
