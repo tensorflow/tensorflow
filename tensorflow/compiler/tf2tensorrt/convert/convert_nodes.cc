@@ -422,9 +422,6 @@ Status Converter::GetTrtBroadcastShape(
     TF_RETURN_IF_ERROR(stripBatchDimension(*operand_r_new_dims));
   }
 
-  // TODO(pranavm): Remove, DEBUG:
-  std::cout << "Found l_dims: " << (*operand_l_new_dims) << " and r_dims: " << (*operand_r_new_dims) << std::endl;
-
   // If the rank of the tensors is already the same, we can't do anything further.
   if (operand_l_new_dims->nbDims == operand_r_new_dims->nbDims) {
     return Status::OK();
@@ -450,10 +447,6 @@ Status Converter::GetTrtBroadcastShape(
   };
 
   (*lower_rank) = broadcastDims(*higher_rank, *lower_rank);
-
-  // TODO(pranavm): Remove, DEBUG:
-  std::cout << "After broadcasting, higher_rank dims: " << (*higher_rank) << " and lower_rank dims: " << (*lower_rank) << std::endl;
-  std::cout << "After broadcasting, operand_l_new_dims: " << (*operand_l_new_dims) << " and operand_r_new_dims: " << (*operand_r_new_dims) << std::endl;
 
   // Compare broadcast feasibility
   for (int i = 0; i < operand_r_new_dims->nbDims; ++i) {
@@ -1160,10 +1153,6 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     }
     VLOG(2) << "Adding out tensor " << output_name << ": "
             << output.DebugString();
-
-    // TODO(pranavm): Remove, DEBUG:
-    std::cout << "Converting " << node_def.name() << ": "
-            << output.DebugString() << std::endl;
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
       return Status(status.code(),
