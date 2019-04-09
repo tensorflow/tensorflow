@@ -312,7 +312,6 @@ class _EagerDefinedFunction(object):
       outputs: the tensors in the graph which will be outputs to the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
-    context.ensure_initialized()
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
@@ -345,6 +344,7 @@ class _EagerDefinedFunction(object):
     function_def.ParseFromString(compat.as_bytes(proto_data))
     with ops.init_scope():
       if context.executing_eagerly():
+        context.ensure_initialized()
         context.add_function(fn)
     self.definition = function_def
     self.name = compat.as_bytes(function_def.signature.name)
