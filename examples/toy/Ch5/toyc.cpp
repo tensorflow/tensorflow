@@ -238,6 +238,7 @@ int dumpLLVMIR() {
   // Initialize LLVM targets.
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
+  mlir::ExecutionEngine::setupTargetTriple(llvmModule.get());
   auto optPipeline = mlir::makeOptimizingTransformer(
       /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0);
   if (auto err = optPipeline(llvmModule.get())) {

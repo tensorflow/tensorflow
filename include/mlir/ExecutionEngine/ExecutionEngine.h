@@ -87,6 +87,10 @@ public:
   /// the templated `invoke`.
   llvm::Error invoke(StringRef name, MutableArrayRef<void *> args);
 
+  /// Set the target triple on the module. This is implicitly done when creating
+  /// the engine.
+  static bool setupTargetTriple(llvm::Module *llvmModule);
+
 private:
   // Ordering of llvmContext and jit is important for destruction purposes: the
   // jit must be destroyed before the context.

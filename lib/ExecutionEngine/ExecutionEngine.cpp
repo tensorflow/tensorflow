@@ -187,7 +187,7 @@ static void getDefaultPasses(
 }
 
 // Setup LLVM target triple from the current machine.
-static bool setupTargetTriple(llvm::Module *llvmModule) {
+bool ExecutionEngine::setupTargetTriple(llvm::Module *llvmModule) {
   // Setup the machine properties from the current architecture.
   auto targetTriple = llvm::sys::getDefaultTargetTriple();
   std::string errorMessage;
