@@ -178,7 +178,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
 
-      return EmitLibdeviceMathCall("fmod", {lhs_value, rhs_value},
+      return EmitLibdeviceMathCall("__ocml_fmod", {lhs_value, rhs_value},
                                    {lhs_input_type, rhs_input_type},
                                    output_type);
     }
