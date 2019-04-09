@@ -95,14 +95,16 @@ class FusedMatMulOpTest : public OpsTestBase {
   }
 
   void RunMatMulWithBias(const Tensor& lhs_data, const Tensor& rhs_data,
-                         const Tensor& bias_data, Tensor* output,
+                         const Tensor& bias_data, bool transpose_a,
+                         bool transpose_b, Tensor* output,
                          bool allow_gpu_device = false) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     ops::MatMul matmul = ops::MatMul(
         root.WithOpName("matmul"),
         ops::Const(root.WithOpName("lhs"), Input::Initializer(lhs_data)),
-        ops::Const(root.WithOpName("rhs"), Input::Initializer(rhs_data)));
+        ops::Const(root.WithOpName("rhs"), Input::Initializer(rhs_data)),
+        ops::MatMul::Attrs().TransposeA(transpose_a).TransposeB(transpose_b));
 
     ops::BiasAdd with_bias = ops::BiasAdd(
         root.WithOpName("with_bias"), matmul,
@@ -111,18 +113,17 @@ class FusedMatMulOpTest : public OpsTestBase {
     RunAndFetch(root, "with_bias", output, allow_gpu_device);
   }
 
-  void RunMatMulWithBiasAndActivation(const Tensor& lhs_data,
-                                      const Tensor& rhs_data,
-                                      const Tensor& bias_data,
-                                      const string& activation_type,
-                                      Tensor* output,
-                                      bool allow_gpu_device = false) {
+  void RunMatMulWithBiasAndActivation(
+      const Tensor& lhs_data, const Tensor& rhs_data, const Tensor& bias_data,
+      bool transpose_a, bool transpose_b, const string& activation_type,
+      Tensor* output, bool allow_gpu_device = false) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     ops::MatMul matmul = ops::MatMul(
         root.WithOpName("matmul"),
         ops::Const(root.WithOpName("lhs"), Input::Initializer(lhs_data)),
-        ops::Const(root.WithOpName("rhs"), Input::Initializer(rhs_data)));
+        ops::Const(root.WithOpName("rhs"), Input::Initializer(rhs_data)),
+        ops::MatMul::Attrs().TransposeA(transpose_a).TransposeB(transpose_b));
 
     ops::BiasAdd with_bias = ops::BiasAdd(
         root.WithOpName("with_bias"), matmul,
@@ -143,7 +144,8 @@ class FusedMatMulOpTest : public OpsTestBase {
 
   void RunFusedMatMulOp(const Tensor& lhs_data, const Tensor& rhs_data,
                         const std::vector<Tensor>& args_data,
-                        const std::vector<string>& fused_ops, Tensor* output,
+                        const std::vector<string>& fused_ops, bool transpose_a,
+                        bool transpose_b, Tensor* output,
                         bool allow_gpu_device = false) {
     Scope root = tensorflow::Scope::NewRootScope();
 
@@ -170,6 +172,8 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("num_args", num_args)
                      .Attr("T", dtype)
                      .Attr("fused_ops", fused_ops)
+                     .Attr("transpose_a", transpose_a)
+                     .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
@@ -209,40 +213,45 @@ class FusedMatMulOpTest : public OpsTestBase {
 
   // Verifies that computing MatMul+BiasAdd in a graph is identical to
   // FusedMatMul.
-  void VerifyMatMulWithBias(int m, int k, int n) {
+  void VerifyMatMulWithBias(int m, int k, int n, bool transpose_a,
+                            bool transpose_b) {
     const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMatMulWithBias(input_data, filter_data, bias_data, out);
+        [&](const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& bias_data, Tensor* out) {
+          RunMatMulWithBias(input_data, filter_data, bias_data, transpose_a,
+                            transpose_b, out);
         };
 
-    const BiasAddGraphRunner run_fused = [this](const Tensor& input_data,
-                                                const Tensor& filter_data,
-                                                const Tensor& bias_data,
-                                                Tensor* out) {
-      RunFusedMatMulOp(input_data, filter_data, {bias_data}, {"BiasAdd"}, out);
-    };
+    const BiasAddGraphRunner run_fused =
+        [&](const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& bias_data, Tensor* out) {
+          RunFusedMatMulOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
+                           transpose_a, transpose_b, out);
+        };
 
     VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
   }
 
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
   // to FusedMatMul.
-  void VerifyConv2DWithBiasAndActivation(int m, int k, int n,
+  void VerifyConv2DWithBiasAndActivation(int m, int k, int n, bool transpose_a,
+                                         bool transpose_b,
                                          const string& activation) {
-    const BiasAddGraphRunner run_default =
-        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
-                            const Tensor& bias_data, Tensor* out) {
-          RunMatMulWithBiasAndActivation(input_data, filter_data, bias_data,
-                                         activation, out);
-        };
+    const BiasAddGraphRunner run_default = [&](const Tensor& input_data,
+                                               const Tensor& filter_data,
+                                               const Tensor& bias_data,
+                                               Tensor* out) {
+      RunMatMulWithBiasAndActivation(input_data, filter_data, bias_data,
+                                     transpose_a, transpose_b, activation, out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
-                            const Tensor& bias_data, Tensor* out) {
-          RunFusedMatMulOp(input_data, filter_data, {bias_data},
-                           {"BiasAdd", activation}, out);
-        };
+    const BiasAddGraphRunner run_fused = [&](const Tensor& input_data,
+                                             const Tensor& filter_data,
+                                             const Tensor& bias_data,
+                                             Tensor* out) {
+      RunFusedMatMulOp(input_data, filter_data, {bias_data},
+                       {"BiasAdd", activation}, transpose_a, transpose_b, out);
+    };
 
     VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
   }
@@ -261,42 +270,55 @@ TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest);
 // -------------------------------------------------------------------------- //
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
-  this->VerifyMatMulWithBias(256, 256, 256);
+  this->VerifyMatMulWithBias(256, 256, 256, false, false);
+  this->VerifyMatMulWithBias(256, 256, 256, true, false);
+  this->VerifyMatMulWithBias(256, 256, 256, false, true);
+  this->VerifyMatMulWithBias(256, 256, 256, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
-  this->VerifyMatMulWithBias(1, 256, 256);
+  this->VerifyMatMulWithBias(1, 256, 256, false, false);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
-  this->VerifyMatMulWithBias(256, 256, 1);
+  this->VerifyMatMulWithBias(256, 256, 1, false, false);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
-  this->VerifyMatMulWithBias(1, 256, 1);
+  this->VerifyMatMulWithBias(1, 256, 1, false, false);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256WithActivation) {
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, activation);
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, false,
+                                            activation);
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, false,
+                                            activation);
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, true,
+                                            activation);
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, true,
+                                            activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
-    this->VerifyConv2DWithBiasAndActivation(1, 256, 256, activation);
+    this->VerifyConv2DWithBiasAndActivation(1, 256, 256, false, false,
+                                            activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 1, activation);
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
+                                            activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
-    this->VerifyConv2DWithBiasAndActivation(1, 256, 1, activation);
+    this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
+                                            activation);
   }
 }
 
