@@ -54,8 +54,10 @@ BUILD_AVX2_CONTAINERS=${BUILD_AVX2_CONTAINERS:-no}
 BUILD_SKX_CONTAINERS=${BUILD_SKX_CONTAINERS:-no}
 BUILD_CLX_CONTAINERS=${BUILD_CLX_CONTAINERS:-no}
 CONTAINER_PORT=${TF_DOCKER_BUILD_PORT:-8888}
+BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS:-no}
+ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
 
-
+debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
 debug "TF_ROOT_CONTAINER_TAG=${TF_ROOT_CONTAINER_TAG}"
 debug "TF_BUILD_VERSION=${TF_BUILD_VERSION}"
 debug "FINAL_IMAGE_NAME=${FINAL_IMAGE_NAME}"
@@ -64,6 +66,8 @@ debug "BUILD_AVX_CONTAINERS=${BUILD_AVX_CONTAINERS}"
 debug "BUILD_AVX2_CONTAINERS=${BUILD_AVX2_CONTAINERS}"
 debug "BUILD_SKX_CONTAINERS=${BUILD_SKX_CONTAINERS}"
 debug "BUILD_CLX_CONTAINERS=${BUILD_CLX_CONTAINERS}"
+debug "BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS}"
+debug "ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD}"
 debug "TMP_DIR=${TMP_DIR}"
 
 function build_container()
@@ -85,8 +89,17 @@ function build_container()
   TF_DOCKER_BUILD_ARGS+=("--build-arg SOCKS_PROXY=${socks_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg NO_PROXY=${no_proxy}")
 
+  #Add --config=v2 build arg for TF v2
+  if [[ ${BUILD_TF_V2_CONTAINERS} == "no" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg CONFIG_V2_DISABLE=--disable-v2")
+  fi
+
+  #Add build arg for Secure Build
+  if [[ ${ENABLE_SECURE_BUILD} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_SECURE_BUILD=--secure-build")
+  fi
+
   # Perform docker build
-  
   debug "Building docker image with image name and tag: ${TEMP_IMAGE_NAME}"
   CMD="${DOCKER_BINARY} build ${TF_DOCKER_BUILD_ARGS[@]} --no-cache --pull -t ${TEMP_IMAGE_NAME} -f Dockerfile.devel-mkl ."
   debug "CMD=${CMD}"
