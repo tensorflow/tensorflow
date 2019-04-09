@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1094,7 +1095,7 @@ def resize_images(images,
           method == ResizeMethod.NEAREST_NEIGHBOR):
       return gen_image_ops.resize_nearest_neighbor(
           images_t, new_size, align_corners=align_corners)
-    elif method == ResizeMethodV1.BICUBIC or method == ResizeMethod.BICUBIC:
+    elif method == ResizeMetho+dV1.BICUBIC or method == ResizeMethod.BICUBIC:
       return gen_image_ops.resize_bicubic(
           images_t, new_size, align_corners=align_corners)
     elif method == ResizeMethodV1.AREA or method == ResizeMethod.AREA:
@@ -1110,7 +1111,6 @@ def resize_images(images,
       preserve_aspect_ratio=preserve_aspect_ratio,
       name=name,
       skip_resize_if_same=True)
-
 
 @tf_export('image.resize', v1=[])
 def resize_images_v2(images,
@@ -1242,6 +1242,61 @@ def resize_images_v2(images,
       preserve_aspect_ratio=preserve_aspect_ratio,
       name=name,
       skip_resize_if_same=False)
+
+@tf_export('image.build_sprite')
+def build_sprite_image(images, size):
+  """
+  Builds a sprite image out of all the images passed in the arg. It will
+  output an image with the same height and width.
+  If there are lesser number of images it adds blank images in the end.
+
+  Args:
+    images: 4-D Tensor of shape `[batch, height, width, channels]`
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.
+      The new size for the images.
+
+  Raises:
+    ValueError: if the shape of `images` is incompatible with the
+      shape arguments to this function
+    ValueError: if `size` has invalid shape or type.
+    ValueError: if an unsupported resize method is specified.
+
+  Returns:
+    A Tensor '[new_dim, new_dim, channels]'.
+  """
+  images = ops.convert_to_tensor(images, dtype=dtypes.float32)
+  images_shape = images.get_shape()
+  if images_shape.ndims != 4:
+    raise ValueError('\'image\' must have 4 dimensions.')
+  images = resize_images(images, size)
+  images_shape = images.get_shape()
+  images_shape = math_ops.cast(images_shape, dtype=dtypes.float32)
+  dim = gen_math_ops.ceil(gen_math_ops.sqrt(images_shape[0]))
+  images_shape = math_ops.cast(images_shape, dtype=dtypes.int32)
+
+  the_dim = dim * dim - math_ops.cast(images_shape[0], dtype=dtypes.float32)
+  if the_dim is not 0:
+    first = math_ops.cast(the_dim, dtype=dtypes.int32)
+    shapa = [first,
+             images_shape[1],
+             images_shape[2],
+             images_shape[3]
+            ]
+    temp = array_ops.zeros(shape=shapa)
+    images = array_ops.concat([images, temp], axis=0)
+
+  final = []
+  n = int(session.Session().run(dim))
+  for iterator in range(n):
+    temp = [images[(iterator * n) + i] for i in range(n)]
+    row = array_ops.concat(temp, axis=1)
+    if iterator == 0:
+      final = row
+    else:
+      final = array_ops.concat([final, row], axis=0)
+
+  return ops.convert_to_tensor(images, dtype=dtypes.float32)
+
 
 
 def _resize_image_with_pad_common(image, target_height, target_width,
