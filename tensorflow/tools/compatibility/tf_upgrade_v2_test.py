@@ -1338,13 +1338,6 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
-  def test_contrib_rnn_cell(self):
-    text = "tf.contrib.rnn.RNNCell"
-    expected = "tf.compat.v1.nn.rnn_cell.RNNCell"
-    # pylint: enable=line-too-long
-    _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(expected, new_text)
-
   def test_flags_bare(self):
     _, _, errors, _ = self._upgrade("tf.flags")
     self.assertIn("tf.flags has been removed", errors[0])
@@ -1378,12 +1371,21 @@ def _log_prob(self, x):
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
-  def test_contrib_rnn(self):
-    api_symbols = ["BasicLSTMCell", "BasicRNNCell", "GRUCell", "LSTMCell",
-                   "MultiRNNCell"]
+  def test_contrib_rnn_cell(self):
+    api_symbols = ["RNNCell", "BasicLSTMCell", "BasicRNNCell", "GRUCell",
+                   "LSTMCell", "MultiRNNCell"]
     for symbol in api_symbols:
       text = "tf.contrib.rnn." + symbol
       expected_text = "tf.compat.v1.nn.rnn_cell." + symbol
+      _, _, _, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+  def test_contrib_rnn_function(self):
+    api_symbols = ["static_rnn", "static_state_saving_rnn",
+                   "static_bidirectional_rnn"]
+    for symbol in api_symbols:
+      text = "tf.contrib.rnn." + symbol
+      expected_text = "tf.compat.v1.nn." + symbol
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 

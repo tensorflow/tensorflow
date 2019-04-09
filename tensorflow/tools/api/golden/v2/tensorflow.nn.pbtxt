@@ -301,10 +301,6 @@ tf_module {
     argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "static_state_saving_rnn"
-    argspec: "args=[\'cell\', \'inputs\', \'state_saver\', \'state_name\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
     name: "sufficient_statistics"
     argspec: "args=[\'x\', \'axes\', \'shift\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }

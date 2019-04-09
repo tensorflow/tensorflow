@@ -841,6 +841,8 @@ renames = {
         'tf.compat.v1.nn.static_bidirectional_rnn',
     'tf.nn.static_rnn':
         'tf.compat.v1.nn.static_rnn',
+    'tf.nn.static_state_saving_rnn':
+        'tf.compat.v1.nn.static_state_saving_rnn',
     'tf.nn.uniform_candidate_sampler':
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':

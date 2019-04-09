@@ -623,6 +623,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.nn.rnn_cell.LSTMCell",
         "tf.contrib.rnn.MultiRNNCell":
             "tf.compat.v1.nn.rnn_cell.MultiRNNCell",
+        "tf.contrib.rnn.static_rnn":
+            "tf.compat.v1.nn.static_rnn",
+        "tf.contrib.rnn.static_state_saving_rnn":
+            "tf.compat.v1.nn.static_state_saving_rnn",
+        "tf.contrib.rnn.static_bidirectional_rnn":
+            "tf.compat.v1.nn.static_bidirectional_rnn",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":
