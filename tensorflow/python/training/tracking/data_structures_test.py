@@ -640,6 +640,11 @@ class MappingTests(test.TestCase):
     self.assertIsNot(root.a, copied)
     self.assertIs(root.a["a"], copied["a"])
 
+    copied = root.a.copy()
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a["a"], copied["a"])
+
     # Dirtiness should be inherited
     util.list_objects(root.a)
     orig_dict["b"] = []

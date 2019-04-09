@@ -657,6 +657,9 @@ class _DictWrapper(Mapping, collections.MutableMapping):
     super(_DictWrapper, self).__init__(wrapped_dict)
     self._update_snapshot()
 
+  def copy(self):
+    return copy.copy(self)
+
   # pylint: disable=protected-access
   def __copy__(self):
     copied = super(_DictWrapper, self).__copy__()
