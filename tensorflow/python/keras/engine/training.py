@@ -1328,7 +1328,7 @@ class Model(network.Network):
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
     if self.run_eagerly:
-      if (isinstance(inputs, iterator_ops.EagerIterator) or
+      if (isinstance(inputs, iterator_ops.IteratorV2) or
           (isinstance(inputs, dataset_ops.DatasetV2))):
         inputs = training_utils.cast_if_floating_dtype(inputs)
       elif isinstance(inputs, collections.Sequence):
@@ -1804,7 +1804,7 @@ class Model(network.Network):
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
-                          iterator_ops.EagerIterator)):
+                          iterator_ops.IteratorV2)):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None and ds_batch_size != static_batch_size:
@@ -2605,7 +2605,7 @@ class Model(network.Network):
 
   def _unpack_validation_data(self, validation_data):
     if (isinstance(validation_data, (iterator_ops.Iterator,
-                                     iterator_ops.EagerIterator,
+                                     iterator_ops.IteratorV2,
                                      dataset_ops.DatasetV2))):
       val_x = validation_data
       val_y = None

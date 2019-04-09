@@ -32,6 +32,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -40,6 +41,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
@@ -237,6 +239,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       for t in threads:
         t.join()
 
+  @test_util.deprecated_graph_mode_only
   def testSimpleSharedResource(self):
     components = (np.array(1, dtype=np.int64),
                   np.array([1, 2, 3], dtype=np.int64),
@@ -833,14 +836,6 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       self.assertIn(
           iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE, str(warning.message))
 
-  def testEagerIteratorAsync(self):
-    with context.eager_mode(), context.execution_mode(context.ASYNC):
-      val = 0
-      dataset = dataset_ops.Dataset.range(10)
-      for foo in dataset:
-        self.assertEqual(val, foo.numpy())
-        val += 1
-
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
@@ -887,6 +882,66 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
           dataset_ops.Dataset.from_tensors(37.0))
       next_element = iterator.get_next(name="overridden_name")
       self.assertEqual("overridden_name", next_element.op.name)
+
+  @parameterized.named_parameters(
+      ("Async", context.ASYNC),
+      ("Sync", context.SYNC),
+  )
+  def testIteratorEagerIteration(self, execution_mode):
+    with context.eager_mode(), context.execution_mode(execution_mode):
+      val = 0
+      dataset = dataset_ops.Dataset.range(10)
+      iterator = iter(dataset)
+      for foo in iterator:
+        self.assertEqual(val, foo.numpy())
+        val += 1
+
+  @test_util.run_v2_only
+  def testIteratorV2Function(self):
+
+    queue = data_flow_ops.FIFOQueue(10, dtypes.int64)
+
+    @def_function.function
+    def fn():
+      dataset = dataset_ops.Dataset.range(10)
+      iterator = iter(dataset)
+      for _ in range(10):
+        queue.enqueue(next(iterator))
+
+    fn()
+
+    for i in range(10):
+      self.assertEqual(queue.dequeue().numpy(), i)
+
+  @test_util.run_v2_only
+  def testIteratorV2FunctionError(self):
+    # In this test we verify that a function that raises an error ends up
+    # properly deallocating the iterator resource.
+
+    queue = data_flow_ops.FIFOQueue(10, dtypes.int64)
+    queue.enqueue(0)
+
+    def init_fn(n):
+      return n
+
+    def next_fn(_):
+      ds = dataset_ops.Dataset.range(0)
+      return next(iter(ds))
+
+    def finalize_fn(n):
+      queue.enqueue(0)
+      return n
+
+    @def_function.function
+    def fn():
+      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
+      iterator = iter(dataset)
+      next(iterator)
+
+    with self.assertRaises(errors.OutOfRangeError):
+      fn()
+
+    self.assertEqual(queue.size().numpy(), 2)
 
 
 if __name__ == "__main__":
