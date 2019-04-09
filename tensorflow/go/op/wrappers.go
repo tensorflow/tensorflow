@@ -8552,6 +8552,26 @@ func MakeIterator(scope *Scope, dataset tf.Output, iterator tf.Output) (o *tf.Op
 // Returns A handle to the iterator that can be passed to a "MakeIterator" or
 // "IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
 // resource sharing by name, and does not keep a reference to the resource
+// container.A variant deleter that should be passed into the op that deletes the iterator.
+func AnonymousIteratorV2(scope *Scope, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output, deleter tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AnonymousIteratorV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// A container for an iterator resource.
+//
+// Returns A handle to the iterator that can be passed to a "MakeIterator" or
+// "IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
+// resource sharing by name, and does not keep a reference to the resource
 // container.
 func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -22637,6 +22657,26 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// A container for an iterator resource.
+//
+// Arguments:
+//	handle: A handle to the iterator to delete.
+//	deleter: A variant deleter.
+//
+// Returns the created operation.
+func DeleteIterator(scope *Scope, handle tf.Output, deleter tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DeleteIterator",
+		Input: []tf.Input{
+			handle, deleter,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Quantized Batch normalization.
