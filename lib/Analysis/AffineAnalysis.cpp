@@ -517,8 +517,11 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
 }
 
 // Returns the number of outer loop common to 'src/dstDomain'.
-static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
-                                  const FlatAffineConstraints &dstDomain) {
+// Loops common to 'src/dst' domains are added to 'commonLoops' if non-null.
+static unsigned
+getNumCommonLoops(const FlatAffineConstraints &srcDomain,
+                  const FlatAffineConstraints &dstDomain,
+                  SmallVectorImpl<AffineForOp> *commonLoops = nullptr) {
   // Find the number of common loops shared by src and dst accesses.
   unsigned minNumLoops =
       std::min(srcDomain.getNumDimIds(), dstDomain.getNumDimIds());
@@ -528,8 +531,12 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
         !isForInductionVar(dstDomain.getIdValue(i)) ||
         srcDomain.getIdValue(i) != dstDomain.getIdValue(i))
       break;
+    if (commonLoops != nullptr)
+      commonLoops->push_back(getForInductionVarOwner(srcDomain.getIdValue(i)));
     ++numCommonLoops;
   }
+  if (commonLoops != nullptr)
+    assert(commonLoops->size() == numCommonLoops);
   return numCommonLoops;
 }
 
@@ -628,7 +635,9 @@ static void computeDirectionVector(
     FlatAffineConstraints *dependenceDomain,
     llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
   // Find the number of common loops shared by src and dst accesses.
-  unsigned numCommonLoops = getNumCommonLoops(srcDomain, dstDomain);
+  SmallVector<AffineForOp, 4> commonLoops;
+  unsigned numCommonLoops =
+      getNumCommonLoops(srcDomain, dstDomain, &commonLoops);
   if (numCommonLoops == 0)
     return;
   // Compute direction vectors for requested loop depth.
@@ -658,6 +667,7 @@ static void computeDirectionVector(
   // on eliminated constraint system.
   dependenceComponents->resize(numCommonLoops);
   for (unsigned j = 0; j < numCommonLoops; ++j) {
+    (*dependenceComponents)[j].op = commonLoops[j].getOperation();
     auto lbConst = dependenceDomain->getConstantLowerBound(j);
     (*dependenceComponents)[j].lb =
         lbConst.getValueOr(std::numeric_limits<int64_t>::min());
@@ -855,4 +865,38 @@ bool mlir::checkMemrefAccessDependence(
   LLVM_DEBUG(llvm::dbgs() << "Dependence polyhedron:\n");
   LLVM_DEBUG(dependenceConstraints->dump());
   return true;
+}
+
+/// Gathers dependence components for dependences between all ops in loop nest
+/// rooted at 'forOp' at loop depths in range [1, maxLoopDepth].
+void mlir::getDependenceComponents(
+    AffineForOp forOp, unsigned maxLoopDepth,
+    std::vector<llvm::SmallVector<DependenceComponent, 2>> *depCompsVec) {
+  // Collect all load and store ops in loop nest rooted at 'forOp'.
+  SmallVector<Operation *, 8> loadAndStoreOpInsts;
+  forOp.getOperation()->walk([&](Operation *opInst) {
+    if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>())
+      loadAndStoreOpInsts.push_back(opInst);
+  });
+
+  unsigned numOps = loadAndStoreOpInsts.size();
+  for (unsigned d = 1; d <= maxLoopDepth; ++d) {
+    for (unsigned i = 0; i < numOps; ++i) {
+      auto *srcOpInst = loadAndStoreOpInsts[i];
+      MemRefAccess srcAccess(srcOpInst);
+      for (unsigned j = 0; j < numOps; ++j) {
+        auto *dstOpInst = loadAndStoreOpInsts[j];
+        MemRefAccess dstAccess(dstOpInst);
+
+        FlatAffineConstraints dependenceConstraints;
+        llvm::SmallVector<DependenceComponent, 2> depComps;
+        // TODO(andydavis,bondhugula) Explore whether it would be profitable
+        // to pre-compute and store deps instead of repeatedly checking.
+        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
+                                        &dependenceConstraints, &depComps)) {
+          depCompsVec->push_back(depComps);
+        }
+      }
+    }
+  }
 }

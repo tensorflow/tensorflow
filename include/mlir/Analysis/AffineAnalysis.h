@@ -76,12 +76,14 @@ struct MemRefAccess {
 };
 
 // DependenceComponent contains state about the direction of a dependence as an
-// interval [lb, ub].
+// interval [lb, ub] for an AffineForOp.
 // Distance vectors components are represented by the interval [lb, ub] with
 // lb == ub.
 // Direction vectors components are represented by the interval [lb, ub] with
 // lb < ub. Note that ub/lb == None means unbounded.
 struct DependenceComponent {
+  // The AffineForOp Operation associated with this dependence component.
+  Operation *op;
   // The lower bound of the dependence distance.
   llvm::Optional<int64_t> lb;
   // The upper bound of the dependence distance (inclusive).
@@ -104,6 +106,14 @@ bool checkMemrefAccessDependence(
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
     llvm::SmallVector<DependenceComponent, 2> *dependenceComponents,
     bool allowRAR = false);
+
+/// Returns in 'depCompsVec', dependence components for dependences between all
+/// load and store ops in loop nest rooted at 'forOp', at loop depths in range
+/// [1, maxLoopDepth].
+void getDependenceComponents(
+    AffineForOp forOp, unsigned maxLoopDepth,
+    std::vector<llvm::SmallVector<DependenceComponent, 2>> *depCompsVec);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_AFFINE_ANALYSIS_H

@@ -968,8 +968,8 @@ static unsigned getMaxLoopDepth(ArrayRef<Operation *> loadOpInsts,
 }
 
 // Compute loop interchange permutation:
-// *) Computes dependence components between all op pairs in 'ops' for loop
-//    depths in range [1, 'maxLoopDepth'].
+// *) Computes dependence components between all op pairs of ops in loop nest
+//    rooted at 'loops[0]', for loop depths in range [1, 'maxLoopDepth'].
 // *) Classifies the outermost 'maxLoopDepth' loops surrounding 'ops' as either
 //    parallel or sequential.
 // *) Computes the loop permutation which sinks sequential loops deeper into
@@ -979,37 +979,24 @@ static unsigned getMaxLoopDepth(ArrayRef<Operation *> loadOpInsts,
 //    dependence componenent lexicographically negative.
 // TODO(andydavis) Move this function to LoopUtils.
 static bool
-computeLoopInterchangePermutation(ArrayRef<Operation *> ops,
-                                  unsigned maxLoopDepth,
+computeLoopInterchangePermutation(ArrayRef<AffineForOp> loops,
                                   SmallVectorImpl<unsigned> *loopPermMap) {
-  // Gather dependence components for dependences between all ops in 'ops'
-  // at loop depths in range [1, maxLoopDepth].
-  // TODO(andydavis) Refactor this loop into a LoopUtil utility function:
-  // mlir::getDependenceComponents().
-  // TODO(andydavis) Split this loop into two: first check all dependences,
-  // and construct dep vectors. Then, scan through them to detect the parallel
-  // ones.
+  assert(loops.size() > 1);
+  // Gather dependence components for dependences between all ops in loop nest
+  // rooted at 'loops[0]', at loop depths in range [1, maxLoopDepth].
+  unsigned maxLoopDepth = loops.size();
   std::vector<llvm::SmallVector<DependenceComponent, 2>> depCompsVec;
+  getDependenceComponents(loops[0], maxLoopDepth, &depCompsVec);
+  // Mark loops as either parallel or sequential.
   llvm::SmallVector<bool, 8> isParallelLoop(maxLoopDepth, true);
-  unsigned numOps = ops.size();
-  for (unsigned d = 1; d <= maxLoopDepth; ++d) {
-    for (unsigned i = 0; i < numOps; ++i) {
-      auto *srcOpInst = ops[i];
-      MemRefAccess srcAccess(srcOpInst);
-      for (unsigned j = 0; j < numOps; ++j) {
-        auto *dstOpInst = ops[j];
-        MemRefAccess dstAccess(dstOpInst);
-
-        FlatAffineConstraints dependenceConstraints;
-        llvm::SmallVector<DependenceComponent, 2> depComps;
-        // TODO(andydavis,bondhugula) Explore whether it would be profitable
-        // to pre-compute and store deps instead of repeatedly checking.
-        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
-                                        &dependenceConstraints, &depComps)) {
-          isParallelLoop[d - 1] = false;
-          depCompsVec.push_back(depComps);
-        }
-      }
+  for (unsigned i = 0, e = depCompsVec.size(); i < e; ++i) {
+    llvm::SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
+    assert(depComps.size() >= maxLoopDepth);
+    for (unsigned j = 0; j < maxLoopDepth; ++j) {
+      DependenceComponent &depComp = depComps[j];
+      assert(depComp.lb.hasValue() && depComp.ub.hasValue());
+      if (depComp.lb.getValue() != 0 || depComp.ub.getValue() != 0)
+        isParallelLoop[j] = false;
     }
   }
 
@@ -1071,13 +1058,9 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
   if (loops.size() < 2)
     return;
 
-  // Merge loads and stores into the same array.
-  SmallVector<Operation *, 2> memOps(node->loads.begin(), node->loads.end());
-  memOps.append(node->stores.begin(), node->stores.end());
-
   // Compute loop permutation in 'loopPermMap'.
   llvm::SmallVector<unsigned, 4> loopPermMap;
-  if (!computeLoopInterchangePermutation(memOps, loops.size(), &loopPermMap))
+  if (!computeLoopInterchangePermutation(loops, &loopPermMap))
     return;
 
   int loopNestRootIndex = -1;
