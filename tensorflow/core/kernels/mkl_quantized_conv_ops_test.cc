@@ -96,6 +96,90 @@ class QuantizedConv2DTest : public OpsTestBase {
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
+
+  void RunQuantizedDepthwiseConv2DOp(const bool& bias_enabled) {
+    const int depth = 2;
+    const int image_width = 2;
+    const int image_height = 3;
+    const int image_batch_count = 1;
+    // The image matrix is ('first/second' channel):
+    // | 1/2  |  3/4  |
+    // | 5/6  |  7/8  |
+    // | 9/10 | 11/12 |
+    AddInputFromArray<quint8>(
+        TensorShape({image_batch_count, image_height, image_width, depth}),
+        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+
+    // The filter matrix is:
+    // | 1/2 |  7/8  | 13/14 |
+    // | 3/4 |  9/10 | 15/16 |
+    // | 5/6 | 11/12 | 17/18 |
+    const int filter_size = 3;
+    const int filter_count = 1;
+    AddInputFromArray<qint8>(
+        TensorShape({filter_size, filter_size, depth, filter_count}),
+        {1, 2, 7, 8, 13, 14, 3, 4, 9, 10, 15, 16, 5, 6, 11, 12, 17, 18});
+
+    if (bias_enabled) {
+      // Bias -> float
+      AddInputFromArray<float>(TensorShape({depth}), {1.0f, 1.0f});
+    }
+
+    // Image -> uint8
+    AddInputFromArray<float>(TensorShape({1}), {0.0f});
+    AddInputFromArray<float>(TensorShape({1}), {255.0f});
+
+    // Filter -> int8 with symmetric range
+    AddInputFromArray<float>(TensorShape({1}), {-127.0f});
+    AddInputFromArray<float>(TensorShape({1}), {127.0f});
+
+    if (bias_enabled) {
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    }
+
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+
+    TF_ASSERT_OK(RunOpKernel());
+
+    // We're sliding two 3x3 filters across the 3x2 image, with accesses outside
+    // the input set to zero because we're using the 'SAME' padding mode.
+    // This means we should end up with this matrix:
+    // | 228/300 | 132/180 |
+    // | 482/596 | 266/344 |
+    // | 372/452 | 180/236 |
+    //
+    // Similarly, after adding a bias of 1.0f across each channel, we should end up
+    // with this matrix:
+    // | 229/301 | 133/181 |
+    // | 483/597 | 267/345 |
+    // | 373/453 | 181/237 |
+
+    // Output -> qint32
+    Tensor expected(DT_QINT32, TensorShape({image_batch_count, image_height,
+                                            image_width, depth}));
+    if (bias_enabled) {
+      test::FillValues<qint32>(
+          &expected, {229, 301, 133, 181, 483, 597, 267, 345, 373, 453, 181, 237});
+    } else {
+      test::FillValues<qint32>(
+          &expected, {228, 300, 132, 180, 482, 596, 266, 344, 372, 452, 180, 236});
+    }
+
+    const Tensor& output = *GetOutput(0);
+    const Tensor& output_mkl_metadata = *GetOutput(3);
+
+    ConvMklToTF conv_comp;
+    Tensor output_quantized;
+    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                     output_quantized);
+
+    test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  }
 };
 
 // Output -> float
@@ -481,68 +565,7 @@ TEST_F(QuantizedConv2DTest, DepthwiseConv2D) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-
-  const int depth = 2;
-  const int image_width = 2;
-  const int image_height = 3;
-  const int image_batch_count = 1;
-  // The image matrix is ('first/second' channel):
-  // | 1/2  |  3/4  |
-  // | 5/6  |  7/8  |
-  // | 9/10 | 11/12 |
-  AddInputFromArray<quint8>(
-      TensorShape({image_batch_count, image_height, image_width, depth}),
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-
-  // The filter matrix is:
-  // | 1/2 |  7/8  | 13/14 |
-  // | 3/4 |  9/10 | 15/16 |
-  // | 5/6 | 11/12 | 17/18 |
-  const int filter_size = 3;
-  const int filter_count = 1;
-  AddInputFromArray<qint8>(
-      TensorShape({filter_size, filter_size, depth, filter_count}),
-      {1, 2, 7, 8, 13, 14, 3, 4, 9, 10, 15, 16, 5, 6, 11, 12, 17, 18});
-
-  // Image -> uint8
-  AddInputFromArray<float>(TensorShape({1}), {0.0f});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-
-  // Filter -> int8 with symmetric range
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
-
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-
-  TF_ASSERT_OK(RunOpKernel());
-
-  // We're sliding two 3x3 filters across the 3x2 image, with accesses outside
-  // the input set to zero because we're using the 'SAME' padding mode.
-  // This means we should end up with this matrix:
-  // | 228/300 | 132/180 |
-  // | 482/596 | 266/344 |
-  // | 372/452 | 180/236 |
-
-  // Output -> qint32
-  Tensor expected(DT_QINT32, TensorShape({image_batch_count, image_height,
-                                          image_width, depth}));
-  test::FillValues<qint32>(
-      &expected, {228, 300, 132, 180, 482, 596, 266, 344, 372, 452, 180, 236});
-
-  const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
-
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  RunQuantizedDepthwiseConv2DOp(false);
 }
 
 TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBias) {
@@ -574,73 +597,7 @@ TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBias) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-
-  const int depth = 2;
-  const int image_width = 2;
-  const int image_height = 3;
-  const int image_batch_count = 1;
-  // The image matrix is ('first/second' channel):
-  // | 1/2  |  3/4  |
-  // | 5/6  |  7/8  |
-  // | 9/10 | 11/12 |
-  AddInputFromArray<quint8>(
-      TensorShape({image_batch_count, image_height, image_width, depth}),
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-
-  // The filter matrix is:
-  // | 1/2 |  7/8  | 13/14 |
-  // | 3/4 |  9/10 | 15/16 |
-  // | 5/6 | 11/12 | 17/18 |
-  const int filter_size = 3;
-  const int filter_count = 1;
-  AddInputFromArray<qint8>(
-      TensorShape({filter_size, filter_size, depth, filter_count}),
-      {1, 2, 7, 8, 13, 14, 3, 4, 9, 10, 15, 16, 5, 6, 11, 12, 17, 18});
-
-  // Bias -> float
-  AddInputFromArray<float>(TensorShape({depth}), {1.0f, 1.0f});
-
-  // Image -> uint8
-  AddInputFromArray<float>(TensorShape({1}), {0.0f});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-
-  // Filter -> int8 with symmetric range
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
-
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-
-  TF_ASSERT_OK(RunOpKernel());
-
-  // We're sliding two 3x3 filters across the 3x2 image, with accesses outside
-  // the input set to zero because we're using the 'SAME' padding mode.
-  // After adding a bias of 1.0f across each channel, we should end up with
-  // this matrix:
-  // | 229/301 | 133/181 |
-  // | 483/597 | 267/345 |
-  // | 373/453 | 181/237 |
-
-  // Output -> qint32
-  Tensor expected(DT_QINT32, TensorShape({image_batch_count, image_height,
-                                          image_width, depth}));
-  test::FillValues<qint32>(
-      &expected, {229, 301, 133, 181, 483, 597, 267, 345, 373, 453, 181, 237});
-
-  const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
-
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  RunQuantizedDepthwiseConv2DOp(true);
 }
 
 TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasAndRelu) {
@@ -672,73 +629,7 @@ TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasAndRelu) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-
-  const int depth = 2;
-  const int image_width = 2;
-  const int image_height = 3;
-  const int image_batch_count = 1;
-  // The image matrix is ('first/second' channel):
-  // | 1/2  |  3/4  |
-  // | 5/6  |  7/8  |
-  // | 9/10 | 11/12 |
-  AddInputFromArray<quint8>(
-      TensorShape({image_batch_count, image_height, image_width, depth}),
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-
-  // The filter matrix is:
-  // | 1/2 |  7/8  | 13/14 |
-  // | 3/4 |  9/10 | 15/16 |
-  // | 5/6 | 11/12 | 17/18 |
-  const int filter_size = 3;
-  const int filter_count = 1;
-  AddInputFromArray<qint8>(
-      TensorShape({filter_size, filter_size, depth, filter_count}),
-      {1, 2, 7, 8, 13, 14, 3, 4, 9, 10, 15, 16, 5, 6, 11, 12, 17, 18});
-
-  // Bias -> float
-  AddInputFromArray<float>(TensorShape({depth}), {1.0f, 1.0f});
-
-  // Image -> uint8
-  AddInputFromArray<float>(TensorShape({1}), {0.0f});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-
-  // Filter -> int8 with symmetric range
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
-
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-
-  TF_ASSERT_OK(RunOpKernel());
-
-  // We're sliding two 3x3 filters across the 3x2 image, with accesses outside
-  // the input set to zero because we're using the 'SAME' padding mode.
-  // After adding a bias of 1.0f and computing ReLU across each channel, we
-  // should end up with this matrix:
-  // | 229/301 | 133/181 |
-  // | 483/597 | 267/345 |
-  // | 373/453 | 181/237 |
-
-  // Output -> qint32
-  Tensor expected(DT_QINT32, TensorShape({image_batch_count, image_height,
-                                          image_width, depth}));
-  test::FillValues<qint32>(
-      &expected, {229, 301, 133, 181, 483, 597, 267, 345, 373, 453, 181, 237});
-
-  const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_metadata = *GetOutput(3);
-
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                   output_quantized);
-
-  test::ExpectTensorEqual<qint32>(expected, output_quantized);
+  RunQuantizedDepthwiseConv2DOp(true);
 }
 }  // namespace tensorflow
 #endif  // INTEL_MKL

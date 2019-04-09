@@ -824,7 +824,8 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2D")
     .Output("mkl_max_output: uint8")
     .Attr("Tinput: quantizedtype")
     .Attr("Tfilter: quantizedtype")
-    // Additional attribute "T" for enabling MKL to TF conversion
+    // In order to enable MKL to TF conversion, _MklToTf op requires the
+    // attribute "T" to be specified.
     .Attr("T: quantizedtype")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
@@ -838,7 +839,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2D")
       ShapeHandle unused, channel;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
@@ -988,9 +989,12 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-      for (int i = 3; i < 9; ++i) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
-      }
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

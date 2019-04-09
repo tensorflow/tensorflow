@@ -379,13 +379,8 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
         DCHECK_EQ(post_op_param.param.size(), 3);
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
-        key_creator.AddAsKey(post_op_param.name);
-        key_creator.AddAsKey(post_op_param.param[0]);
       } else if (post_op_param.name == "output_scale") {
-        key_creator.AddAsKey(post_op_param.name);
-        for (auto const& param : post_op_param.param) {
-          key_creator.AddAsKey(param);
-        }
+        continue;
       } else {
         return string("not_a_key");
       }
@@ -2086,8 +2081,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<quint8>("out_type"),
     NoOp);
 
-// Register a templatized implementation of
-// MklQuantizedConv2DWithBiasSumAndRelu.
+// Register a templatized implementation of MklQuantizedConv2DWithBiasSumAndRelu.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSumAndRelu")
         .Device(DEVICE_CPU)

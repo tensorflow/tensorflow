@@ -2884,9 +2884,10 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
-      // TODO(bhavanis): Need to use c->WithRankAtMost(...) for 7th input?
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+      // Since activations are not requantized per channel, `min_output`
+      // and `max_output` are scalars.
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
