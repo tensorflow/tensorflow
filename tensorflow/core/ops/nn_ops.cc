@@ -1937,7 +1937,7 @@ REGISTER_OP("_MklRelu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 MKL version of Relu operator. Uses MKL DNN APIs to implement Relu operator.
@@ -1953,7 +1953,7 @@ REGISTER_OP("_MklReluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
@@ -1968,7 +1968,7 @@ REGISTER_OP("_MklRelu6")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 MKL version of Relu6 operator. Uses MKL DNN APIs to implement Relu6 operator.
@@ -1984,7 +1984,7 @@ REGISTER_OP("_MklRelu6Grad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 MKL version of Relu6Grad operator. Uses MKL DNN APIs to compute rectified
@@ -1999,7 +1999,7 @@ REGISTER_OP("_MklLeakyRelu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .Attr("alpha: float = 0.2")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
@@ -2017,7 +2017,7 @@ REGISTER_OP("_MklLeakyReluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .Attr("alpha: float = 0.2")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
@@ -2033,7 +2033,7 @@ REGISTER_OP("_MklElu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 MKL version of Elu operator. Uses MKL DNN APIs to implement Elu operator.
@@ -2048,7 +2048,7 @@ REGISTER_OP("_MklEluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 MKL version of EluGrad operator. Uses MKL DNN APIs to compute Elu
