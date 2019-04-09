@@ -111,6 +111,36 @@ class FusedMatMulOpTest : public OpsTestBase {
     RunAndFetch(root, "with_bias", output, allow_gpu_device);
   }
 
+  void RunMatMulWithBiasAndActivation(const Tensor& lhs_data,
+                                      const Tensor& rhs_data,
+                                      const Tensor& bias_data,
+                                      const string& activation_type,
+                                      Tensor* output,
+                                      bool allow_gpu_device = false) {
+    Scope root = tensorflow::Scope::NewRootScope();
+
+    ops::MatMul matmul = ops::MatMul(
+        root.WithOpName("matmul"),
+        ops::Const(root.WithOpName("lhs"), Input::Initializer(lhs_data)),
+        ops::Const(root.WithOpName("rhs"), Input::Initializer(rhs_data)));
+
+    ops::BiasAdd with_bias = ops::BiasAdd(
+        root.WithOpName("with_bias"), matmul,
+        ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
+
+    if (activation_type == "Relu") {
+      ops::Relu(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "Relu6") {
+      ops::Relu6(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "Elu") {
+      ops::Elu(root.WithOpName("with_activation"), with_bias);
+    } else {
+      ops::Identity(root.WithOpName("with_activation"), with_bias);
+    }
+
+    RunAndFetch(root, "with_activation", output, allow_gpu_device);
+  }
+
   void RunFusedMatMulOp(const Tensor& lhs_data, const Tensor& rhs_data,
                         const std::vector<Tensor>& args_data,
                         const std::vector<string>& fused_ops, Tensor* output,
@@ -195,6 +225,27 @@ class FusedMatMulOpTest : public OpsTestBase {
 
     VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
   }
+
+  // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
+  // to FusedMatMul.
+  void VerifyConv2DWithBiasAndActivation(int m, int k, int n,
+                                         const string& activation) {
+    const BiasAddGraphRunner run_default =
+        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
+                            const Tensor& bias_data, Tensor* out) {
+          RunMatMulWithBiasAndActivation(input_data, filter_data, bias_data,
+                                         activation, out);
+        };
+
+    const BiasAddGraphRunner run_fused =
+        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
+                            const Tensor& bias_data, Tensor* out) {
+          RunFusedMatMulOp(input_data, filter_data, {bias_data},
+                           {"BiasAdd", activation}, out);
+        };
+
+    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+  }
 };
 
 // MatMul with BatchNorm can be tested only with `T=float`, because default
@@ -202,11 +253,8 @@ class FusedMatMulOpTest : public OpsTestBase {
 
 template <typename T>
 class FusedMatMulWithBiasOpTest : public FusedMatMulOpTest<T> {};
-template <typename T>
-class FusedMatMulWithBatchNormOpTest : public FusedMatMulOpTest<T> {};
 
 TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest);
-TYPED_TEST_SUITE_P(FusedMatMulWithBatchNormOpTest);
 
 // -------------------------------------------------------------------------- //
 // MatMul + BiasAdd + {Activation}                                            //
@@ -228,17 +276,39 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
   this->VerifyMatMulWithBias(1, 256, 1);
 }
 
-// -------------------------------------------------------------------------- //
-// MatMul + BiasAdd + {Activation}                                            //
-// -------------------------------------------------------------------------- //
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256WithActivation) {
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, activation);
+  }
+}
 
-// TODO(ezhulenev): Add tests for FusedBatchNorm.
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(1, 256, 256, activation);
+  }
+}
 
-REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,  //
-                            MatMul256x256x256,          //
-                            MatMul1x256x256,            //
-                            MatMul256x256x1,            //
-                            MatMul1x256x1);
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(256, 256, 1, activation);
+  }
+}
+
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(1, 256, 1, activation);
+  }
+}
+
+REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,        //
+                            MatMul256x256x256,                //
+                            MatMul1x256x256,                  //
+                            MatMul256x256x1,                  //
+                            MatMul1x256x1,                    //
+                            MatMul256x256x256WithActivation,  //
+                            MatMul1x256x256WithActivation,    //
+                            MatMul256x256x1WithActivation,    //
+                            MatMul1x256x1WithActivation);
 
 // TODO(ezhulenev): Add support for more data types.
 using FusedBiasAddDataTypes = ::testing::Types<float>;
@@ -271,16 +341,26 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
   }                                                                            \
   BENCHMARK(BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE);
 
+#ifdef GOOGLE_CUDA
+
 #define BM_Matmul(M, K, N, TA, TB)                                       \
   BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, cpu);                   \
   BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, cpu); \
   BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, gpu);                   \
   BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, gpu); \
-/* Uncomment to enable benchmarks for double/complex128: */              \
-// BM_MatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu);                   \
+  /* Uncomment to enable benchmarks for double/complex128: */            \
+  // BM_MatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu);                   \
 // BM_MatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu); \
 // BM_MatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu);                   \
 // BM_MatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, gpu);
+
+#else
+
+#define BM_Matmul(M, K, N, TA, TB)                     \
+  BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, cpu); \
+  BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, cpu);
+
+#endif  // GOOGLE_CUDA
 
 // Batch size of 1 included for inference.
 // Typical fully connected layers

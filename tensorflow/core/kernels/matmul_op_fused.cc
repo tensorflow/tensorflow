@@ -78,6 +78,18 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
         out.device(d) =
             lhs.contract(rhs, dim_pair, WithBiasAdd<T>(bias_add_args));
         break;
+      case FusedComputationType::kBiasAddWithRelu:
+        out.device(d) =
+            lhs.contract(rhs, dim_pair, WithBiasAddAndRelu<T>(bias_add_args));
+        break;
+      case FusedComputationType::kBiasAddWithRelu6:
+        out.device(d) =
+            lhs.contract(rhs, dim_pair, WithBiasAddAndRelu6<T>(bias_add_args));
+        break;
+      case FusedComputationType::kBiasAddWithElu:
+        out.device(d) =
+            lhs.contract(rhs, dim_pair, WithBiasAddAndElu<T>(bias_add_args));
+        break;
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
         break;
@@ -99,7 +111,10 @@ class FusedMatMulOp : public OpKernel {
 
     using FCT = FusedComputationType;
     if (std::is_same<Device, CPUDevice>::value) {
-      patterns = {{FCT::kBiasAdd, {"BiasAdd"}}};
+      patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
+                  {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+                  {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
+                  {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}}};
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(
@@ -142,7 +157,7 @@ class FusedMatMulOp : public OpKernel {
       return;
     }
 
-    if (a.NumElements() == 0 || b.NumElements() == 0) {
+    if (a.NumElements() == 0 && b.NumElements() == 0) {
       // If a has shape [x, 0] and b has shape [0, y], the
       // output shape is [x, y] where x and y are non-zero, so we fill
       // the output with zeros.
