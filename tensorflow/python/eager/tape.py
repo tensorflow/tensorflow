@@ -66,7 +66,7 @@ def watch_variable(tape, variable):
   if context:
     variables = [strategy.extended.value_container(variable)]
   else:
-    variables = strategy.unwrap(variable)
+    variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
 
@@ -82,7 +82,7 @@ def variable_accessed(variable):
   if context:
     variables = [strategy.extended.value_container(variable)]
   else:
-    variables = strategy.unwrap(variable)
+    variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
@@ -104,7 +104,7 @@ def variables_accessed(variables):
   else:
     for variable in variables:
       if variable.trainable:
-        accessed.extend(strategy.unwrap(variable))
+        accessed.extend(strategy.experimental_local_results(variable))
 
   for var in accessed:
     pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
