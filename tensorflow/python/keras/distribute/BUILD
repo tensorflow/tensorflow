@@ -316,7 +316,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/keras/distribute:multi_worker_test",
+        "//tensorflow/python/keras/distribute:multi_worker_test_main_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute:distribute_config",
