@@ -304,7 +304,6 @@ cc_library(
     srcs = [
         "kernels/datastream/feeds.cc",
         "kernels/ipu_kernels.cc",
-        "kernels/ipu_kernels_common.cc",
         "kernels/popnn/lstm.cc",
         "kernels/popnn/norm.cc",
         "kernels/popnn/pooling.cc",
