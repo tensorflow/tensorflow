@@ -403,6 +403,7 @@ class Function(object):
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
+    context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
     if self._created_variables:

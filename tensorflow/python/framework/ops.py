@@ -847,6 +847,7 @@ class _EagerTensorBase(Tensor):
       device_name = ctx.device_name
     # pylint: disable=protected-access
     try:
+      ctx.ensure_initialized()
       new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -1614,7 +1615,7 @@ struct LambdaFactory {
     switch (op) {
       case OP_CATEGORY::RSQRT: {
         VLOG(2) << "RSQRT GETS DONE";
-        return [](T t) -> T { return 1.0 / sqrt(t); };
+        return [](T t) -> T { return 1.0 / std::sqrt(t); };
       }
       case OP_CATEGORY::NEG:
         return [](T t) -> T { return -t; };
@@ -1633,7 +1634,7 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
     case OP_CATEGORY::RSQRT: {
       VLOG(2) << "RSQRT GETS DONE";
       return [](Eigen::half t) {
-        return Eigen::half(1.0 / sqrt(static_cast<float>(t)));
+        return Eigen::half(1.0 / std::sqrt(static_cast<float>(t)));
       };
     }
     case OP_CATEGORY::NEG:

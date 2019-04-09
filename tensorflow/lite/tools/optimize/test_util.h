@@ -60,6 +60,9 @@ extern const char* kConstInputAddModel;
 // 10] as output.
 extern const char* kFloatConcatMax5Max10Max10;
 
+// Test model with a custom op.
+extern const char* kModelWithCustomOp;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

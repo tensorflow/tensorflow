@@ -1905,8 +1905,11 @@ PyObject* MaybeGetDTypeForAttr(const string& attr,
     PyObject* item = PyTuple_GET_ITEM(
         op_exec_info->args, kFastPathExecuteInputStartIndex + input_info.i);
     if (input_info.is_list) {
-      for (int i = 0; i < PySequence_Fast_GET_SIZE(item); i++) {
-        auto* dtype = MaybeGetDType(PySequence_Fast_GET_ITEM(item, i));
+      tensorflow::Safe_PyObjectPtr fast_item(
+          PySequence_Fast(item, "Unable to allocate"));
+      for (int i = 0; i < PySequence_Fast_GET_SIZE(fast_item.get()); i++) {
+        auto* dtype =
+            MaybeGetDType(PySequence_Fast_GET_ITEM(fast_item.get(), i));
         if (dtype != nullptr) return dtype;
       }
     } else {

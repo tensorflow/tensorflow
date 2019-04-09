@@ -1572,6 +1572,13 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testPywrapTensorflowWarning(self):
+    text = "tf.pywrap_tensorflow.foo()"
+    expected = "tf.pywrap_tensorflow.foo()"
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("`tf.pywrap_tensorflow` will not be distributed", errors[0])
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

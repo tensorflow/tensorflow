@@ -137,11 +137,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "d1535b8bd6ac41a0f899b906c1b5ef375136475e34dd53fb6775eb287487eef7",
-        strip_prefix = "abseil-cpp-666fc1266bccfd8e6eaaa084e7b42580bb8eb199",
+        sha256 = "9171f04d7deefcc88f3a80482f9e56b6c3c77ed568aca7a15dee1da90272093a",
+        strip_prefix = "abseil-cpp-044da8a29c923506af0f0b46bc46f43c1e1300b5",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/666fc1266bccfd8e6eaaa084e7b42580bb8eb199.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/666fc1266bccfd8e6eaaa084e7b42580bb8eb199.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/044da8a29c923506af0f0b46bc46f43c1e1300b5.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/044da8a29c923506af0f0b46bc46f43c1e1300b5.tar.gz",
         ],
     )
 
@@ -370,12 +370,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         },
     )
 
+    # 5902e759108d14ee8e6b0b07653dac2f4e70ac73 is based on 3.7.1 with a fix for BUILD file.
     PROTOBUF_URLS = [
-        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz",
-        "https://github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz",
+        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
+        "https://github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
     ]
-    PROTOBUF_SHA256 = "2244b0308846bb22b4ff0bcc675e99290ff9f1115553ae9671eba1030af31bc0"
-    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1.2"
+    PROTOBUF_SHA256 = "1c020fafc84acd235ec81c6aac22d73f23e85a700871466052ff231d69c1b17a"
+    PROTOBUF_STRIP_PREFIX = "protobuf-5902e759108d14ee8e6b0b07653dac2f4e70ac73"
 
     tf_http_archive(
         name = "protobuf_archive",

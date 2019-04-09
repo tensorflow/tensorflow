@@ -511,13 +511,7 @@ void Graph::RemoveEdge(const Edge* e) {
 }
 
 void Graph::RecycleEdge(const Edge* e) {
-  Edge* del = const_cast<Edge*>(e);
-  del->src_ = nullptr;
-  del->dst_ = nullptr;
-  del->id_ = -1;
-  del->src_output_ = kControlSlot - 1;
-  del->dst_input_ = kControlSlot - 1;
-  free_edges_.push_back(del);
+  free_edges_.push_back(const_cast<Edge*>(e));
 }
 
 const Edge* Graph::AddControlEdge(Node* source, Node* dest,

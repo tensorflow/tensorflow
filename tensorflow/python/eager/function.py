@@ -312,6 +312,7 @@ class _EagerDefinedFunction(object):
       outputs: the tensors in the graph which will be outputs to the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
+    context.ensure_initialized()
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 

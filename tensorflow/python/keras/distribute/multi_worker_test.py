@@ -254,7 +254,7 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
   def worker_fn(strategy):
     with ops.Graph().as_default():
       batch_size = 64
-      steps = 10
+      steps = 5
 
       with strategy.scope():
         train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
@@ -353,7 +353,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph
         batch_size = 64
-        steps = 10
+        steps = 5
         train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
         with strategy.scope():
           model = _get_model((28, 28, 1))
@@ -408,7 +408,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       with test.mock.patch.object(dc, '_run_std_server',
                                   self._make_mock_run_std_server()):
         batch_size = 64
-        steps = 10
+        steps = 5
         strategy = strategy_cls()
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph

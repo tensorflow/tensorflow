@@ -423,12 +423,16 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
-        int64 start = Env::Default()->NowNanos();
+        int64 start = ctx->env()->NowNanos();
         Status s =
             current_iterator_->GetNext(ctx, out_tensors, end_of_sequence);
 
-        histograms_[branch_index_].Add(
-            static_cast<double>(Env::Default()->NowNanos() - start));
+        if (experiment_counter_ > 0) {
+          // Ignore the first experiment when benchmarking. It may be an outlier
+          // due to session set up time and other overheads.
+          histograms_[branch_index_].Add(
+              static_cast<double>(ctx->env()->NowNanos() - start));
+        }
         return s;
       }
 

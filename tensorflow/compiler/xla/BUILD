@@ -287,6 +287,7 @@ tf_cc_test(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",
     ],
 )

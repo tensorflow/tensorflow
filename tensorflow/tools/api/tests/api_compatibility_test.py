@@ -373,8 +373,10 @@ class ApiCompatibilityTest(test.TestCase):
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self._checkBackwardsCompatibility(tf.compat.v1, golden_file_pattern,
-                                      api_version)
+    self._checkBackwardsCompatibility(
+        tf.compat.v1, golden_file_pattern, api_version,
+        additional_private_map={'tf': ['pywrap_tensorflow']},
+        omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):
     api_version = 2

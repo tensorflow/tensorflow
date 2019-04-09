@@ -61,9 +61,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_gpu_only
   def testPushPopGPU(self, max_num_elements):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testPushPop(max_num_elements)
 
@@ -161,9 +160,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_gpu_only
   def testStackGPU(self, max_num_elements):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStack(max_num_elements)
 
@@ -254,9 +252,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testStackWithUninitializedTensors(self):
     self._testStackWithUninitializedTensors()
 
+  @test_util.run_gpu_only
   def testStackWithUninitializedTensorsGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStackWithUninitializedTensors()
 
@@ -270,9 +267,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testStackWithUninitializedTensorsInferShape(self):
     self._testStackWithUninitializedTensorsInferShape()
 
+  @test_util.run_gpu_only
   def testStackWithUninitializedTensorsInferShapeGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStackWithUninitializedTensorsInferShape()
 
@@ -422,9 +418,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGatherWithUninitializedTensors(self):
     self._testGatherWithUninitializedTensors()
 
+  @test_util.run_gpu_only
   def testGatherWithUninitializedTensorsGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testGatherWithUninitializedTensors()
 
@@ -438,9 +433,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGatherWithUninitializedTensorsInferShape(self):
     self._testGatherWithUninitializedTensorsInferShape()
 
+  @test_util.run_gpu_only
   def testGatherWithUninitializedTensorsInferShapeGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testGatherWithUninitializedTensorsInferShape()
 
@@ -553,9 +547,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(e, 1.0)
     self.assertAllEqual(list_ops.tensor_list_length(l), 0)
 
+  @test_util.run_gpu_only
   def testFromTensorGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testTensorListFromTensor()
 
@@ -568,9 +561,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(t), [3.0, 2.0])
 
+  @test_util.run_gpu_only
   def testGetSetGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testGetSet()
 
@@ -583,9 +575,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(t, [3.0, 0.0])
 
+  @test_util.run_gpu_only
   def testGetSetReservedGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testGetSetReserved()
 
@@ -678,9 +669,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 1.0)
 
+  @test_util.run_gpu_only
   def testCPUGPUCopy(self):
-    if not context.num_gpus():
-      return
     t = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     with context.device("gpu:0"):
@@ -695,9 +685,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             list_ops.tensor_list_pop_back(
                 l_cpu, element_dtype=dtypes.float32)[1]), 2.0)
 
+  @test_util.run_gpu_only
   def testCPUGPUCopyNested(self):
-    if not context.num_gpus():
-      return
     t = constant_op.constant([1.0, 2.0])
     child_l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     l = list_ops.empty_tensor_list(
@@ -836,9 +825,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(element_shape), -1)
 
   def testSerializeListWithMaxNumElements(self):
-    if context.num_gpus():
+    if test_util.is_gpu_available():
       # TODO(b/119151861): Enable on GPU.
       return
+
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
       with ops.device("/job:worker"):

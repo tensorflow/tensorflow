@@ -31444,6 +31444,77 @@ func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// TensorStridedSliceUpdateAttr is an optional argument to TensorStridedSliceUpdate.
+type TensorStridedSliceUpdateAttr func(optionalAttr)
+
+// TensorStridedSliceUpdateBeginMask sets the optional begin_mask attribute to value.
+// If not specified, defaults to 0
+func TensorStridedSliceUpdateBeginMask(value int64) TensorStridedSliceUpdateAttr {
+	return func(m optionalAttr) {
+		m["begin_mask"] = value
+	}
+}
+
+// TensorStridedSliceUpdateEndMask sets the optional end_mask attribute to value.
+// If not specified, defaults to 0
+func TensorStridedSliceUpdateEndMask(value int64) TensorStridedSliceUpdateAttr {
+	return func(m optionalAttr) {
+		m["end_mask"] = value
+	}
+}
+
+// TensorStridedSliceUpdateEllipsisMask sets the optional ellipsis_mask attribute to value.
+// If not specified, defaults to 0
+func TensorStridedSliceUpdateEllipsisMask(value int64) TensorStridedSliceUpdateAttr {
+	return func(m optionalAttr) {
+		m["ellipsis_mask"] = value
+	}
+}
+
+// TensorStridedSliceUpdateNewAxisMask sets the optional new_axis_mask attribute to value.
+// If not specified, defaults to 0
+func TensorStridedSliceUpdateNewAxisMask(value int64) TensorStridedSliceUpdateAttr {
+	return func(m optionalAttr) {
+		m["new_axis_mask"] = value
+	}
+}
+
+// TensorStridedSliceUpdateShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
+// If not specified, defaults to 0
+func TensorStridedSliceUpdateShrinkAxisMask(value int64) TensorStridedSliceUpdateAttr {
+	return func(m optionalAttr) {
+		m["shrink_axis_mask"] = value
+	}
+}
+
+// Assign `value` to the sliced l-value reference of `input`.
+//
+// The values of `value` are assigned to the positions in the tensor `input` that
+// are selected by the slice parameters. The slice parameters `begin` `end`
+// `strides` etc. work exactly as in `StridedSlice`.
+//
+// NOTE this op currently does not support broadcasting and so `value`'s shape
+// must be exactly the shape produced by the slice of `input`.
+//
+// Returns the created operation.
+func TensorStridedSliceUpdate(scope *Scope, input tf.Output, begin tf.Output, end tf.Output, strides tf.Output, value tf.Output, optional ...TensorStridedSliceUpdateAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorStridedSliceUpdate",
+		Input: []tf.Input{
+			input, begin, end, strides, value,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 //
 // The regularized incomplete beta integral is defined as:

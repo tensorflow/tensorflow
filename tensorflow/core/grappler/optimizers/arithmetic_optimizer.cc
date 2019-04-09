@@ -2231,6 +2231,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     if (a_is_foldable) deps_to_forward.push_back(a);
     if (b_is_foldable) deps_to_forward.push_back(b);
     ForwardControlDependencies(new_op, deps_to_forward);
+    *simplified_node_name = new_op->name();
 
     return Status::OK();
   }

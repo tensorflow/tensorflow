@@ -329,6 +329,7 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
+        "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
         "unique",

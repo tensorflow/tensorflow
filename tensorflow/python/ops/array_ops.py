@@ -861,22 +861,36 @@ def strided_slice(input_,
       """Closure that holds all the arguments to create an assignment."""
 
       if var is None:
-        raise ValueError("Sliced assignment is only supported for variables")
+        if name is None:
+          name = parent_name + "_strided_slice_update"
 
-      if name is None:
-        name = parent_name + "_assign"
+        return gen_array_ops.tensor_strided_slice_update(
+            input=var,
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=val,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
+      else:
+        if name is None:
+          name = parent_name + "_assign"
 
-      return var._strided_slice_assign(
-          begin=begin,
-          end=end,
-          strides=strides,
-          value=val,
-          name=name,
-          begin_mask=begin_mask,
-          end_mask=end_mask,
-          ellipsis_mask=ellipsis_mask,
-          new_axis_mask=new_axis_mask,
-          shrink_axis_mask=shrink_axis_mask)
+        return var._strided_slice_assign(
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=val,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
 
     op.assign = assign
   return op
@@ -3698,9 +3712,12 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
   if batch_dims == 0:
-    # TODO(lespeholt): Use ResourceVariable.gather_nd when params is a
-    # ResourceVariable (faster and more memory efficient.)
-    return gen_array_ops.gather_nd(params, indices, name=name)
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.gather_nd(indices, name=name)
+    except AttributeError:
+      return gen_array_ops.gather_nd(params, indices, name=name)
   else:
     return batch_gather_nd(
         params, indices, batch_dims=batch_dims, name=name)
