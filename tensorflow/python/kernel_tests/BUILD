@@ -1068,6 +1068,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
     ],
 )
 

@@ -2218,7 +2218,7 @@ tf_module {
   }
   member_method {
     name: "string_split"
-    argspec: "args=[\'source\', \'sep\', \'skip_empty\', \'delimiter\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    argspec: "args=[\'source\', \'sep\', \'skip_empty\', \'delimiter\', \'result_type\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'SparseTensor\'], "
   }
   member_method {
     name: "string_strip"
