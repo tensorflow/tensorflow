@@ -153,8 +153,8 @@ class QuantizedConv2DTest : public OpsTestBase {
     // | 482/596 | 266/344 |
     // | 372/452 | 180/236 |
     //
-    // Similarly, after adding a bias of 1.0f across each channel, we should end up
-    // with this matrix:
+    // Similarly, after adding a bias of 1.0f across each channel, we should end
+    // up with this matrix:
     // | 229/301 | 133/181 |
     // | 483/597 | 267/345 |
     // | 373/453 | 181/237 |
@@ -163,11 +163,11 @@ class QuantizedConv2DTest : public OpsTestBase {
     Tensor expected(DT_QINT32, TensorShape({image_batch_count, image_height,
                                             image_width, depth}));
     if (bias_enabled) {
-      test::FillValues<qint32>(
-          &expected, {229, 301, 133, 181, 483, 597, 267, 345, 373, 453, 181, 237});
+      test::FillValues<qint32>(&expected, {229, 301, 133, 181, 483, 597, 267,
+                                           345, 373, 453, 181, 237});
     } else {
-      test::FillValues<qint32>(
-          &expected, {228, 300, 132, 180, 482, 596, 266, 344, 372, 452, 180, 236});
+      test::FillValues<qint32>(&expected, {228, 300, 132, 180, 482, 596, 266,
+                                           344, 372, 452, 180, 236});
     }
 
     const Tensor& output = *GetOutput(0);
