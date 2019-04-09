@@ -856,6 +856,25 @@ REGISTER_OP("SparseMatMul")
     .Attr("Tb: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MatMulShape);
 
+REGISTER_OP("_FusedMatMul")
+    .Input("a: T")
+    .Input("b: T")
+    .Input("args: num_args * T")
+    .Output("product: T")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {float}")
+    .Attr("num_args: int >= 0")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ----------- //
+    .Attr("epsilon: float = 0.0001")
+    // --------------------------------------------- //
+    .SetShapeFn(shape_inference::MatMulShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
+
 // --------------------------------------------------------------------------
 
 // For operations where the output is a reduction function along some
