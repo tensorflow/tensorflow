@@ -220,7 +220,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
 template class MklPoolingBwdPrimitive<float>;
 template class MklPoolingBwdPrimitive<bfloat16>;
 
-#endif
+#endif  // !INTEL_MKL_ML_ONLY
 
 // Initialization for TensorFlow format
 void MklPoolParameters::Init(OpKernelContext* context,
