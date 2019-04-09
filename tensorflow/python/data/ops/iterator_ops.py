@@ -711,6 +711,7 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
 
 
+@tf_export("data.experimental.get_next_as_optional")
 def get_next_as_optional(iterator):
   """Returns an `Optional` that contains the next value from the iterator.
 
