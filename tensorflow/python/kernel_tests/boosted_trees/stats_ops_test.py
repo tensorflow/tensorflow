@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -330,15 +332,34 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testMakeStatsSummarySimple(self):
     """Simple test for MakeStatsSummary."""
-    with self.cached_session():
-      self.assertAllClose([[[[1., 5.], [2., 6.]], [[3., 7.], [4., 8.]]]],
-                          boosted_trees_ops.make_stats_summary(
-                              node_ids=[0, 0, 1, 1],
-                              gradients=[[1.], [2.], [3.], [4.]],
-                              hessians=[[5.], [6.], [7.], [8.]],
-                              bucketized_features_list=[[0, 1, 0, 1]],
-                              max_splits=2,
-                              num_buckets=2).eval())
+    expected_stats_summary = np.asarray([1., 5., 2., 6., 3., 7., 4., 8.])
+    self.assertAllClose(
+        expected_stats_summary.reshape((1, 2, 2, 2)),
+        boosted_trees_ops.make_stats_summary(
+            node_ids=[0, 0, 1, 1],
+            gradients=[[1.], [2.], [3.], [4.]],
+            hessians=[[5.], [6.], [7.], [8.]],
+            bucketized_features_list=[[0, 1, 0, 1]],
+            max_splits=2,
+            num_buckets=2))
+
+  @test_util.run_deprecated_v1
+  def testAggregateStatsSimple(self):
+    # Get the same result as MakeStatsSummary Op.
+    expected_stats_summary = np.asarray([1., 5., 2., 6., 3., 7., 4., 8.])
+    # shape=[max_splits, num_buckets, feature_dim, stats_dim]
+    expected_stats_summary = np.reshape(expected_stats_summary, (2, 2, 1, 2))
+    # Reshape feature dim and bucket id axes
+    expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
+    self.assertAllClose(
+        expected_stats_summary,
+        boosted_trees_ops.boosted_trees_aggregate_stats(
+            node_ids=[0, 0, 1, 1],
+            gradients=[[1.], [2.], [3.], [4.]],
+            hessians=[[5.], [6.], [7.], [8.]],
+            feature=[[0], [1], [0], [1]],
+            max_splits=2,
+            num_buckets=2))
 
   def testMakeStatsSummaryAccumulate(self):
     """Tests that Summary actually accumulates."""
@@ -361,6 +382,30 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
               [[-.33, .58], [0., 0.], [.3, .4], [0., 0.]],  # node 2
           ]],
           self.evaluate(result))
+
+  def testAggregateStatsAccumulate(self):
+    """Tests that Summary actually accumulates."""
+    max_splits = 3
+    num_buckets = 4
+    node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
+    gradients = [[.1], [.2], [.3], [-.4], [-.05], [.06], [.07], [.08]]
+    hessians = [[.2], [.3], [.4], [.5], [.06], [.07], [.08], [.09]]
+
+    # Tests a single feature.
+    bucketized_features = [[3], [1], [2], [0], [1], [2], [0], [1]]
+    result = boosted_trees_ops.boosted_trees_aggregate_stats(
+        node_ids, gradients, hessians, bucketized_features, max_splits,
+        num_buckets)
+    # shape=[max_splits, num_buckets, feature_dim, stats_dim]
+    # Get the same result as MakeStatsSummary Op.
+    expected_stats_summary = [
+        [[[0., 0.]], [[.08, .09]], [[0., 0.]], [[0., 0.]]],
+        [[[0., 0.]], [[.15, .36]], [[.06, .07]], [[.1, .2]]],
+        [[[-.33, .58]], [[0., 0.]], [[.3, .4]], [[0., 0.]]],
+    ]
+    # Swap feature dim and bucket id axis
+    expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
+    self.assertAllClose(expected_stats_summary, result)
 
   def testMakeStatsSummaryMultipleFeatures(self):
     """Tests that MakeStatsSummary works for multiple features."""
@@ -391,6 +436,60 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
               ],  # feature 1
           ],
           self.evaluate(result))
+
+  def testAggregatesSummaryMultipleDimensionFeature(self):
+    """Tests that MakeStatsSummary works for multiple features."""
+    expected_stats_summary = np.asarray(
+        [[0, 0, 0, 0, .08, .09, 0, 0, 0, 0, .08, .09, 0, 0, 0, 0],
+         [0, 0, .3, .5, .15, .36, 0, 0, .06, .07, -.05, .06, .1, .2, .06, .07],
+         [-.33, .58, .3, .4, 0, 0, 0, 0, .3, .4, -.4, .5, 0, 0, .07, .08]])
+    with self.cached_session():
+      max_splits = 3
+      num_buckets = 4
+      node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
+      gradients = [[.1], [.2], [.3], [-.4], [-.05], [.06], [.07], [.08]]
+      hessians = [[.2], [.3], [.4], [.5], [.06], [.07], [.08], [.09]]
+
+      # Tests multiple features.
+      bucketized_features = [[3, 0], [1, 0], [2, 0], [0, 2], [1, 2], [2, 3],
+                             [0, 3], [1, 2]]
+      result = boosted_trees_ops.boosted_trees_aggregate_stats(
+          node_ids, gradients, hessians, bucketized_features, max_splits,
+          num_buckets)
+      # Reshape to [max_splits, num_buckets, feature_dim, stats_dim]
+      expected_stats_summary = np.reshape(expected_stats_summary, (3, 4, 2, 2))
+      # Swap feature_dim and bucket_id axis
+      expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
+      self.assertAllClose(expected_stats_summary, result)
+
+  def testAggregateStatsMultiClass(self):
+    """Tests that Summary actually accumulates."""
+    with self.cached_session():
+      max_splits = 3
+      num_buckets = 4
+      node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
+      gradients = [[.1, .2], [.2, .4], [.3, .6], [-.4, -.8], [-.05, -.1],
+                   [.06, .12], [.07, .14], [.08, .16]]
+      hessians = [[.2, .6], [.3, .9], [.4, 1.2], [.5, 1.5], [.06, .18],
+                  [.07, .21], [.08, .24], [.09, .27]]
+
+      # Tests a single feature.
+      bucketized_features = [[3], [1], [2], [0], [1], [2], [0], [1]]
+      result = boosted_trees_ops.boosted_trees_aggregate_stats(
+          node_ids, gradients, hessians, bucketized_features, max_splits,
+          num_buckets)
+      # shape=[max_splits, num_buckets, feature_dim, stats_dim]
+      expected_stats_summary = [
+          [[[0., 0., 0., 0.]], [[.08, .16, .09, .27]], [[0., 0., 0., 0.]],
+           [[0., 0., 0., 0.]]],
+          [[[0., 0., 0., 0.]], [[.15, 0.3, .36, 1.08]], [[.06, 0.12, .07,
+                                                          0.21]],
+           [[.1, .2, .2, .6]]],
+          [[[-.33, -.66, .58, 1.74]], [[0., 0., 0., 0.]], [[.3, .6, .4, 1.2]],
+           [[0., 0., 0., 0.]]],
+      ]
+      expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
+      self.assertAllClose(expected_stats_summary, result)
 
   def _verify_precision(self, length):
     with self.cached_session():

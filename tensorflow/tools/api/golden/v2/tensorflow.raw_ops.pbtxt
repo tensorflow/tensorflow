@@ -441,6 +441,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BoostedTreesAggregateStats"
+    argspec: "args=[\'node_ids\', \'gradients\', \'hessians\', \'feature\', \'max_splits\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BoostedTreesBucketize"
     argspec: "args=[\'float_values\', \'bucket_boundaries\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
