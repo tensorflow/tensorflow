@@ -1484,7 +1484,6 @@ XLA_TEST_F(DotOperationTestNoConstantFolding,
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
-
 void DOT_ReorderContracting(int num_iters) {
   tensorflow::testing::StopTiming();
 
