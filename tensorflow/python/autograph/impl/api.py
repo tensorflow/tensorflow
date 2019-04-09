@@ -246,6 +246,10 @@ def converted_call(f, owner, options, args, kwargs):
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return _call_unconverted(f, args, kwargs)
 
+  if _is_known_loaded_type(f, 'functools', '_lru_cache_wrapper'):
+    logging.log(2, 'Permanently whitelisted: %s: lru_cache', f)
+    return _call_unconverted(f, args, kwargs)
+
   # Constructors are permanently whitelisted.
   # TODO(mdan): Toggle as experimental feature instead.
   # TODO(b/124016764): Remove this limitation.
