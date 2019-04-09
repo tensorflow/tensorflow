@@ -18,7 +18,6 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 #include <algorithm>
-#include <cfenv>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -2799,21 +2798,25 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+inline float RoundToNearest(float value) {
+  auto floor_val = std::floor(value);
+  auto diff = value - floor_val;
+  if ((diff < 0.5f) || ((diff == 0.5f) && (int(floor_val) % 2 == 0))) {
+    return floor_val;
+  } else {
+    return floor_val += 1.0f;
+  }
+}
+
 inline void Round(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  auto save_round = std::fegetround();
-  if (save_round < 0) {
-    save_round = FE_TONEAREST;
-  }
-  std::fesetround(FE_TONEAREST);
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     // Note that this implementation matches that of tensorFlow tf.round
     // and corresponds to the bankers rounding method.
-    output_data[offset] = std::rint(input_data[offset]);
+    output_data[offset] = RoundToNearest(input_data[offset]);
   }
-  std::fesetround(save_round);
 }
 
 template <typename T, typename CoordsT = int32>
