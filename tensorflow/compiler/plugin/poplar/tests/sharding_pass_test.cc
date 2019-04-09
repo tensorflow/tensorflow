@@ -239,6 +239,12 @@ main {
     const auto& sharding = inst->sharding();
     EXPECT_TRUE(sharding.HasUniqueDevice());
   }
+
+  auto subcomp = module->GetComputationWithName("subcomp");
+  insts = subcomp->instructions();
+  for (auto* inst : insts) {
+    EXPECT_FALSE(inst->has_sharding());
+  }
 }
 
 TEST_F(ShardingPassTest, TestAddShardingTuplesBefore) {
@@ -1289,6 +1295,13 @@ main {
             comp2->parameter_instruction(0)->sharding());
   EXPECT_NE(comp1->parameter_instruction(0)->sharding(),
             comp3->parameter_instruction(0)->sharding());
+  EXPECT_TRUE(comp1->root_instruction()->has_sharding());
+  EXPECT_TRUE(comp2->root_instruction()->has_sharding());
+  EXPECT_TRUE(comp3->root_instruction()->has_sharding());
+  EXPECT_EQ(comp1->root_instruction()->sharding(),
+            comp2->root_instruction()->sharding());
+  EXPECT_EQ(comp1->root_instruction()->sharding(),
+            comp3->root_instruction()->sharding());
 }
 
 TEST_F(ShardingPassTest, TestConditionalAsSwitchCopyToSubcomp) {

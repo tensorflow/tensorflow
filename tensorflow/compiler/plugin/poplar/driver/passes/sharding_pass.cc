@@ -250,7 +250,6 @@ bool CopyShardingFromOperands(HloInstruction* inst) {
 
 bool CopyShardingFromCalledSubcomp(HloInstruction* inst) {
   switch (inst->opcode()) {
-    // TODO - is this really 'called in sequential context' ?
     case HloOpcode::kCall:
     case HloOpcode::kWhile:
     case HloOpcode::kConditional: {
@@ -561,6 +560,28 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
           }
         }
 
+        // Patch up GTE sharding again.  Changing the parameter sharding can
+        // alter the inputs to a GTE.
+        for (auto* inst : comp->MakeInstructionPostOrder()) {
+          if (inst->opcode() == HloOpcode::kGetTupleElement) {
+            CopyGteShardingFromOperand(inst);
+          }
+        }
+
+        // Note: after this point, only nodes which do not proceed GTE
+        // instructions can be modified.
+
+        // Ensure that all conditional subcomps have the same output sharding
+        for (auto cs : call_graph_node.caller_callsites()) {
+          auto* caller = cs.instruction();
+          if (caller->opcode() == HloOpcode::kConditional) {
+            auto sharding = comp->root_instruction()->sharding();
+            for (auto* c : caller->called_computations()) {
+              SetSharding(c->root_instruction(), sharding);
+            }
+          }
+        }
+
         // Ensure that the root sharding of a while/repeat body matches the
         // input
         for (auto cs : call_graph_node.caller_callsites()) {
@@ -576,6 +597,17 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
           if (body == call_graph_node.computation()) {
             SetSharding(body->root_instruction(),
                         body->parameter_instruction(0)->sharding());
+          }
+        }
+
+        // Ensure that the callers of this computation have the same sharding as
+        // its root
+        for (auto cs : call_graph_node.caller_callsites()) {
+          if (cs.context() == CallContext::kSequential) {
+            auto* caller = cs.instruction();
+            if (comp->root_instruction()->shape() == caller->shape()) {
+              SetSharding(caller, comp->root_instruction()->sharding());
+            }
           }
         }
 
