@@ -173,6 +173,7 @@ tf_cuda_library(
     name = "trt_resources",
     srcs = [
         "utils/trt_int8_calibrator.cc",
+        "utils/trt_lru_cache.cc",
         "utils/trt_resources.cc",
     ],
     hdrs = [
