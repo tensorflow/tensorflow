@@ -29,6 +29,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import autograph
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -55,6 +56,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -2164,6 +2166,18 @@ class TensorFlowOpLayer(Layer):
         inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
       c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
+
+      # Record the gradient because custom-made ops don't go through the
+      # code-gen'd eager call path
+      op_type = compat.as_str(op.op_def.name)
+      attr_names = [compat.as_str(attr.name) for attr in op.op_def.attr]
+      attrs = []
+      for attr_name in attr_names:
+        attrs.append(attr_name)
+        attrs.append(op.get_attr(attr_name))
+      attrs = tuple(attrs)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs,
+                              op.name)
 
       if len(op.outputs) == 1:
         return op.outputs[0]
