@@ -193,7 +193,6 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -203,6 +202,7 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
+        "no_rocm",
     ],
     deps = [
         ":xla_test",
@@ -303,7 +303,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

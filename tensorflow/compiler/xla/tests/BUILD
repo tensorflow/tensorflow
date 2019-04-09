@@ -423,7 +423,6 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -532,7 +531,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -991,7 +989,6 @@ xla_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -1152,7 +1149,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -1228,7 +1224,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-        "no_rocm",	
     ],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [],
@@ -1888,7 +1883,6 @@ xla_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
