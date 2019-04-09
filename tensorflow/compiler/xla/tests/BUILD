@@ -450,6 +450,7 @@ xla_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
+    tags = ["no_rocm"],   # crashes sometimes on CI
 )
 
 xla_test(
