@@ -1145,12 +1145,7 @@ def set_tf_nccl_install_path(environ_cp):
                                            nccl2_path_from_ldconfig)
     if nccl2_path_from_ldconfig:
       nccl2_path_from_ldconfig = nccl2_path_from_ldconfig.group(1)
-      if (os.path.exists('%s.%s' % (nccl2_path_from_ldconfig, tf_nccl_version))
-          or (nccl2_path_from_ldconfig.endswith('.so')
-            and os.path.exists(nccl2_path_from_ldconfig))):
-        if (nccl2_path_from_ldconfig.endswith('.so')
-            and os.path.exists(nccl2_path_from_ldconfig)):
-          print('NCCL library is not versioned, using anyway')
+      if os.path.exists('%s.%s' % (nccl2_path_from_ldconfig, tf_nccl_version)):
         nccl_install_path = os.path.dirname(nccl2_path_from_ldconfig)
         print('NCCL libraries found in ' + nccl2_path_from_ldconfig)
 
