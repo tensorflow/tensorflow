@@ -70,7 +70,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloGroupNormStatsFactoryFunc(
                       attribute_map.GetAttributeAsInt("num_groups"));
 
   TF_ASSIGN_OR_RETURN(float epsilon,
-                      attribute_map.GetAttributeAsInt("epsilon"));
+                      attribute_map.GetAttributeAsFloat("epsilon"));
 
   TF_ASSIGN_OR_RETURN(int feature_index,
                       attribute_map.GetAttributeAsInt("feature_index"));
