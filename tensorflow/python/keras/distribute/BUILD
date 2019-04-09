@@ -17,6 +17,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -75,6 +76,20 @@ distribute_py_test(
     ],
     deps = [
         ":distribute_strategy_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "distributed_training_utils_test",
+    srcs = ["distributed_training_utils_test.py"],
+    full_precision = True,
+    main = "distributed_training_utils_test.py",
+    deps = [
+        ":distribute",
+        ":distribute_strategy_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/keras:callbacks",
     ],
 )
 
