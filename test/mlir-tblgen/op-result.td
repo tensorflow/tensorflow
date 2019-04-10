@@ -56,6 +56,17 @@ def ValueAttrResultTypeOp : Op<"value_attr_as_result_type", [FirstAttrDerivedRes
 // CHECK: void ValueAttrResultTypeOp::build(Builder *, OperationState *tblgen_state, Value *x, FloatAttr attr)
 // CHECK: tblgen_state->addTypes({attr.getType()});
 
+def VariadicResultAloneOp : Op<"variadic_alone_op", []> {
+  let results = (outs Variadic<I32>:$x);
+}
+
+// CHECK-LABEL: VariadicResultAloneOp definitions
+
+// CHECK-LABEL: void VariadicResultAloneOp::build
+// CHECK-SAME:  ArrayRef<Type> x
+// CHECK-NOT:   assert
+// CHECK:       tblgen_state->addTypes(x);
+
 def VariadicResultOp : Op<"variadic_op", []> {
   let results = (outs I32:$x, Variadic<I32>:$y);
 }

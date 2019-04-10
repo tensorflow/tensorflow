@@ -229,8 +229,7 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
     assert(strides[idx] > 0);
     auto val = linearIndex / strides[idx];
     res.push_back(val);
-    assert((val >= 0 && val < shape[idx]) &&
-           "delinearization is out of bounds");
+    assert(val < shape[idx] && "delinearization is out of bounds");
     linearIndex %= strides[idx];
   }
   // Sanity check.

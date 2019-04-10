@@ -696,16 +696,18 @@ void OpEmitter::genBuilder() {
   auto &body = m.body();
 
   // Result types
-  body << "  assert(resultTypes.size()" << (hasVariadicResult ? " >= " : " == ")
-       << numNonVariadicResults
-       << "u && \"mismatched number of return types\");\n"
-       << "  " << builderOpState << "->addTypes(resultTypes);\n";
+  if (!(hasVariadicResult && numNonVariadicResults == 0))
+    body << "  assert(resultTypes.size()"
+         << (hasVariadicResult ? " >= " : " == ") << numNonVariadicResults
+         << "u && \"mismatched number of return types\");\n";
+  body << "  " << builderOpState << "->addTypes(resultTypes);\n";
 
   // Operands
-  body << "  assert(operands.size()" << (hasVariadicOperand ? " >= " : " == ")
-       << numNonVariadicOperands
-       << "u && \"mismatched number of parameters\");\n"
-       << "  " << builderOpState << "->addOperands(operands);\n\n";
+  if (!(hasVariadicOperand && numNonVariadicOperands == 0))
+    body << "  assert(operands.size()" << (hasVariadicOperand ? " >= " : " == ")
+         << numNonVariadicOperands
+         << "u && \"mismatched number of parameters\");\n";
+  body << "  " << builderOpState << "->addOperands(operands);\n\n";
 
   // Attributes
   body << "  for (const auto& pair : attributes)\n"

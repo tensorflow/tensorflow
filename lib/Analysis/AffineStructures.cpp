@@ -928,7 +928,7 @@ static void eliminateFromConstraint(FlatAffineConstraints *constraints,
 static void shiftColumnsToLeft(FlatAffineConstraints *constraints,
                                unsigned colStart, unsigned colLimit,
                                bool isEq) {
-  assert(colStart >= 0 && colLimit <= constraints->getNumIds());
+  assert(colLimit <= constraints->getNumIds());
   if (colLimit <= colStart)
     return;
 
