@@ -321,17 +321,11 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   op_params.output_shift = -output_shift;
   switch (test_param.output_rounding) {
     case DepthwiseConvOutputRounding::kUpward:
-      reference_ops::depthwise_conv::DepthwiseConvBasicKernel<
-          DepthwiseConvOutputRounding::kAwayFromZero>::Run(op_params,
-                                                           input_shape,
-                                                           input_data,
-                                                           filter_shape,
-                                                           filter_data,
-                                                           bias_shape,
-                                                           bias_data,
-                                                           output_shape,
-                                                           reference_output_data
-                                                               .data());
+      reference_ops::depthwise_conv::
+          DepthwiseConvBasicKernel<DepthwiseConvOutputRounding::kUpward>::Run(
+              op_params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape,
+              reference_output_data.data());
       break;
     case DepthwiseConvOutputRounding::kAwayFromZero:
       reference_ops::DepthwiseConv(
@@ -372,8 +366,8 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   int diff_median_tolerance = 0;
   // The tolerance that we apply to means is tight, but we allow for a rounding
   // difference in one pixel, and loosen by another 1% for float comparison.
-  float mean_tolerance = std::max(2e-5f, 1.01f * 3.f / output_buffer_size *
-                                             std::sqrt(1.f * depth_multiplier));
+  float mean_tolerance = std::max(
+      1e-5f, 1.01f / output_buffer_size * std::sqrt(1.f * depth_multiplier));
   if (test_param.loose_tolerance) {
     mean_tolerance = 500.f;
     diff_mean_tolerance = 256;
