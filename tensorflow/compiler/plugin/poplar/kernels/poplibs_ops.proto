@@ -4,6 +4,7 @@ message PoplibsOp {
 	  Popnn = 1;
 	  Popops = 2;
 	  Poprand = 3;
+    Poputil = 4;
   }
   required Lib lib = 1;
 
@@ -24,6 +25,7 @@ message PoplibsOp {
     TanhGrad = 13;
     Sigmoid = 14;
     SigmoidGrad = 15;
+    Remap = 16;
   }
   required Op op = 2;
 }

@@ -106,6 +106,7 @@ cc_library(
         "driver/tools/custom_ops/norm.cc",
         "driver/tools/custom_ops/pooling.cc",
         "driver/tools/custom_ops/relu.cc",
+        "driver/tools/custom_ops/remap.cc",
         "driver/tools/custom_ops/sigmoid.cc",
         "driver/tools/custom_ops/tanh.cc",
         "driver/tools/custom_ops/truncated_normal.cc",
@@ -154,6 +155,7 @@ cc_library(
         "driver/tools/custom_ops/norm.h",
         "driver/tools/custom_ops/pooling.h",
         "driver/tools/custom_ops/relu.h",
+        "driver/tools/custom_ops/remap.h",
         "driver/tools/custom_ops/sigmoid.h",
         "driver/tools/custom_ops/tanh.h",
         "driver/tools/custom_ops/truncated_normal.h",
@@ -209,6 +211,7 @@ cc_library(
         "driver/ops/custom_ops/popnn/sigmoid.cc",
         "driver/ops/custom_ops/popnn/tanh.cc",
         "driver/ops/custom_ops/poprand/random.cc",
+        "driver/ops/custom_ops/poputil/remap.cc",
         "driver/ops/dot_graph_caching.cc",
         "driver/ops/graph_caching_util.cc",
         "driver/ops/map_ops.cc",
@@ -321,6 +324,7 @@ cc_library(
         "kernels/popnn/tanh.cc",
         "kernels/poprand/random.cc",
         "kernels/popops/all_reduce.cc",
+        "kernels/poputil/remap.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -406,6 +410,29 @@ tf_custom_op_py_library(
 )
 
 cc_library(
+    name = "poputil_ops",
+    srcs = [
+        "ops/poputil/remap.cc",
+    ],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "poputil_ops_wrapper_py",
+    out = "ops/gen_poputil_ops.py",
+    deps = [":poputil_ops"],
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_custom_op_py_library(
+    name = "poputil_ops_py",
+    kernels = [":poputil_ops"],
+    deps = [":poputil_ops_wrapper_py"],
+    srcs_version = "PY2AND3",
+)
+
+cc_library(
     name = "pop_datastream_ops",
     srcs = ["ops/datastream/feeds.cc"],
     deps = ["//tensorflow/core:framework"],
@@ -440,6 +467,7 @@ cc_library(
         ":ipu_ops",
         ":popnn_ops",
         ":popops_ops",
+        ":poputil_ops",
         ":pop_datastream_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
