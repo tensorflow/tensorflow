@@ -13,6 +13,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "distribute",
     srcs = [
+        "__init__.py",
         "distributed_training_utils.py",
     ],
     srcs_version = "PY2AND3",
@@ -329,6 +330,7 @@ cuda_py_test(
     name = "multi_worker_callback_test",
     srcs = ["multi_worker_callback_test.py"],
     additional_deps = [
+        ":distribute",
         ":multi_worker_test_main_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
