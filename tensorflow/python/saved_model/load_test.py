@@ -1157,6 +1157,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
   def test_partial(self, cycles):
+    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
+    self.skipTest("Partial does not work for serialization.")
+
     def f(x, y):
       return x + y
 
@@ -1171,7 +1174,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(), [1.0])
 
   def test_partial_with_non_tensor_defaults(self, cycles):
-    def f(x, y=3):
+    def f(x, y):
       return x + y
 
     func = def_function.function(functools.partial(f, y=5))
@@ -1184,6 +1187,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(1), 6)
 
   def test_partial_with_positional(self, cycles):
+    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
+    self.skipTest("Partial does not work for serialization.")
+
     def f(x, y):
       return x + y
 
@@ -1196,39 +1202,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertAllEqual(root.f(1), 6)
 
-  def test_partial_with_positional_captured_tensors(self, cycles):
-    def f(x, y):
-      return x + y
-
-    tensor = constant_op.constant(5) + constant_op.constant(7)
-    func = def_function.function(functools.partial(f, tensor))
-
-    root = tracking.AutoTrackable()
-    root.f = func
-    self.assertAllEqual(root.f(1), 13)
-
-    root = self.cycle(root, cycles)
-    self.assertAllEqual(root.f(1), 13)
-
-  def test_partial_keyword_hiding_default(self, cycles):
-    def f(x=3, training=True, y=7):
-      if training:
-        return x + y
-      else:
-        return x + y + 2
-
-    func = def_function.function(functools.partial(f, y=6))
-
-    root = tracking.AutoTrackable()
-    root.f = func
-    self.assertEqual(root.f().numpy(), 9)
-    self.assertEqual(root.f(training=False).numpy(), 11)
-
-    root = self.cycle(root, cycles)
-    self.assertEqual(root.f().numpy(), 9)
-    self.assertEqual(root.f(training=False).numpy(), 11)
-
   def test_partial_with_passed_fn_as_default(self, cycles):
+    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
+    self.skipTest("Partial does not work for serialization.")
+
     def f(x, y):
       return x(3) + y
 
