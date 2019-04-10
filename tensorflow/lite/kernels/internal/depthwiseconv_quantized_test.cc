@@ -711,11 +711,18 @@ TEST(TestDepthwiseConv, TestGenericKernel) {
 }
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
-TEST(TestDepthwiseConv, TestKernel3x3Filter) {
+TEST(TestDepthwiseConv, TestKernel3x3FilterAway) {
   const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
                                   DepthwiseConvOutputRounding::kAwayFromZero);
+  }
+}
+TEST(TestDepthwiseConv, TestKernel3x3FilterUpward) {
+  const int kTestsToRun = 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
+                                  DepthwiseConvOutputRounding::kUpward);
   }
 }
 #endif
@@ -731,16 +738,6 @@ TEST(TestDepthwiseConv, TestGenericKernel3x3Filter) {
   }
 }
 
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
-TEST(TestDepthwiseConv, TestNeon3x3Filter) {
-  const int kTestsToRun = 3 * 1000;
-  for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
-                                  DepthwiseConvOutputRounding::kAwayFromZero);
-  }
-}
-#endif
-
 class DepthwiseConvTest : public ::testing::TestWithParam<TestParamTuple> {};
 
 TEST_P(DepthwiseConvTest, NeonDot3x3) {
@@ -752,7 +749,7 @@ TEST_P(DepthwiseConvTest, NeonDot3x3) {
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 INSTANTIATE_TEST_SUITE_P(
-    Neon3x3Kernel, DepthwiseConvTest,
+    Neon3x3KernelAway, DepthwiseConvTest,
     testing::Combine(
         Values(DepthwiseConvImplementation::kUseNeon3x3),  // forced_invocation
         Values(1000),                                      // tests_to_run
@@ -761,6 +758,19 @@ INSTANTIATE_TEST_SUITE_P(
         Values(false),  // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kAwayFromZero),  // output_rounding
         Values(false)                                        // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+
+INSTANTIATE_TEST_SUITE_P(
+    Neon3x3KernelUpward, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::kUseNeon3x3),  // forced_invocation
+        Values(1000),                                      // tests_to_run
+        Bool(),                                            // test_stride
+        Values(false),                                     // test_pad
+        Values(false),                                 // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 #endif
