@@ -445,17 +445,22 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
   return main_seq;
 }
 
-StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
-                                              const HloInstruction* inst,
-                                              const xla::Shape& output,
-                                              TensorMap& tensor_map) {
+StatusOr<poplar::program::Program> CreateConditionalOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
 
-  if (inst->operand(0)->shape().element_type() != PRED) {
-    return xla::FailedPrecondition("Only predicates are supported.");
+  bool is_switch;
+  if (inst->operand(0)->shape().element_type() == PRED) {
+    is_switch = false;
+  } else if (inst->operand(0)->shape().element_type() == S32) {
+    is_switch = true;
+    return xla::FailedPrecondition("Switch not implemented.");
+  } else {
+    return xla::FailedPrecondition("Unsupported condition input type.");
   }
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
