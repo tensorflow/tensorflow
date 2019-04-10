@@ -12,6 +12,13 @@ def OpB : Op<"op_b", []> {
   let results = (outs I32:$result);
 }
 
+def MyRule : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
+
+// Test rewrite rule naming
+// ---
+
+// CHECK: struct MyRule : public RewritePattern
+
 def : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 
 // Test basic structure generated from Pattern
@@ -31,5 +38,7 @@ def : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 // CHECK: void rewrite(Operation *op, std::unique_ptr<PatternState> state,
 // CHECK:              PatternRewriter &rewriter) const override
 
+
 // CHECK: void populateWithGenerated(MLIRContext *context, OwningRewritePatternList *patterns)
+// CHECK:   patterns->push_back(llvm::make_unique<MyRule>(context));
 // CHECK:   patterns->push_back(llvm::make_unique<GeneratedConvert0>(context));

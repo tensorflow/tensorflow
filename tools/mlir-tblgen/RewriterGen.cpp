@@ -774,25 +774,38 @@ void PatternEmitter::emit(StringRef rewriteName, Record *p,
 
 static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
   emitSourceFileHeader("Rewriters", os);
+
   const auto &patterns = recordKeeper.getAllDerivedDefinitions("Pattern");
+  auto numPatterns = patterns.size();
 
   // We put the map here because it can be shared among multiple patterns.
   RecordOperatorMap recordOpMap;
 
-  // Ensure unique patterns simply by appending unique suffix.
-  std::string baseRewriteName = "GeneratedConvert";
-  int rewritePatternCount = 0;
+  std::vector<std::string> rewriterNames;
+  rewriterNames.reserve(numPatterns);
+
+  std::string baseRewriterName = "GeneratedConvert";
+  int rewriterIndex = 0;
+
   for (Record *p : patterns) {
-    PatternEmitter::emit(baseRewriteName + llvm::utostr(rewritePatternCount++),
-                         p, &recordOpMap, os);
+    std::string name;
+    if (p->isAnonymous()) {
+      // If no name is provided, ensure unique rewriter names simply by
+      // appending unique suffix.
+      name = baseRewriterName + llvm::utostr(rewriterIndex++);
+    } else {
+      name = p->getName();
+    }
+    PatternEmitter::emit(name, p, &recordOpMap, os);
+    rewriterNames.push_back(std::move(name));
   }
 
   // Emit function to add the generated matchers to the pattern list.
   os << "void populateWithGenerated(MLIRContext *context, "
      << "OwningRewritePatternList *patterns) {\n";
-  for (unsigned i = 0; i != rewritePatternCount; ++i) {
-    os.indent(2) << "patterns->push_back(llvm::make_unique<" << baseRewriteName
-                 << i << ">(context));\n";
+  for (const auto &name : rewriterNames) {
+    os << "  patterns->push_back(llvm::make_unique<" << name
+       << ">(context));\n";
   }
   os << "}\n";
 }
