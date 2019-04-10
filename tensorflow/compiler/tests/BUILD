@@ -193,7 +193,6 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -203,7 +202,7 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
-	"no_rocm",
+        "no_rocm",
     ],
     deps = [
         ":xla_test",
@@ -235,7 +234,7 @@ tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -282,7 +281,7 @@ tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -304,7 +303,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -491,7 +490,6 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:function",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -754,7 +752,6 @@ tf_xla_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:standard_ops",
     ],
-    tags = ["no_rocm"],  # times out on some runs
 )
 
 tf_xla_py_test(
@@ -771,7 +768,6 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -989,7 +985,6 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -1090,7 +1085,7 @@ tf_xla_py_test(
     srcs = ["sort_ops_test.py"],
     shard_count = 1,
     # Times out in fastbuild mode.
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1156,7 +1151,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["no_rocm"],
     shard_count = 5,
 )
 
@@ -1272,7 +1266,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
