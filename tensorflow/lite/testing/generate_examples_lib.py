@@ -3973,7 +3973,7 @@ def make_sparse_to_dense_tests(options):
   """Make a set of tests to do sparse to dense."""
 
   test_parameters = [{
-      "value_dtype": [tf.float32, tf.int32],
+      "value_dtype": [tf.float32, tf.int32, tf.int64],
       "index_dtype": [tf.int32, tf.int64],
       "value_count": [1, 3, 6, 8],
       "dense_shape": [[15], [3, 10], [4, 4, 4, 4], [7, 10, 9]],
