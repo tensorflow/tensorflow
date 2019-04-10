@@ -525,8 +525,12 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
 // indices.
 // TODO(tmorris): Use this method in more ops.
 Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
-                   int* trt_axis) {
-  const int tf_nb_dims = trt_nb_dims + 1;
+                   int* trt_axis, bool is_weights=false) {
+  int tf_nb_dims = trt_nb_dims;
+  if (!is_weights) {
+    tf_nb_dims = trt_nb_dims + 1;
+  }
+    
   // Check bounds.
   if (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims) {
     return errors::InvalidArgument(
@@ -536,13 +540,16 @@ Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
   // Make negative axis positive.
   if (tf_axis < 0) tf_axis += tf_nb_dims;
   // Don't allow axis to be the batch dimension.
-  if (tf_axis == 0) {
+  if (tf_axis == 0 && !is_weights) {
     return errors::Unimplemented(
         "TensorRT does not allow manipulation of the batch dimension, at ",
         node_name);
   }
   // Remove batch dimension.
-  *trt_axis = tf_axis - 1;
+  *trt_axis = tf_axis;
+  if (!is_weights){
+    *trt_axis = tf_axis - 1;
+  }
   return Status::OK();
 }
 
@@ -3800,20 +3807,37 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
 Status ConvertGather(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(
-      *params, {{"params", false}, {"indices", false}, {"axis", true}}));
+
+  if (inputs.size() != 3) {
+    return errors::InvalidArgument("GatherV2 got ", inputs.size(),
+                                   " inputs but expected 3, at ", node_def.name());
+  }
+  if (!inputs.at(2).is_weights()) {
+    return errors::Unimplemented("The input \"axis\" for GatherV2",
+                                 " must be a constant, at ", node_def.name());
+  }
+  if (!inputs.at(1).is_tensor()) {
+    return errors::Unimplemented(
+        "The input \"indecies\" for GatherV2,"
+        " must be a tensor, at ", node_def.name());
+  }
+
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32},
       /*dtype_attr_name=*/"Tparams"));
+
   absl::Span<const int> axis = inputs.at(2).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
                                    node_def.name());
   }
+  if (inputs.at(0).is_weights() && axis[0] != 0){
+    return errors::Unimplemented("The input axis must be a zero,"
+                                 " in case of params is a weights");
+  }
   int trt_axis = 0;
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
-                                 node_def.name(), &trt_axis));
-  const TRT_TensorOrWeights& params_tensor = inputs.at(0);
+                                 node_def.name(), &trt_axis, inputs.at(0).is_weights()));
   const TRT_TensorOrWeights& indices_tensor = inputs.at(1);
   if (indices_tensor.batch_size() != 1) {
     return errors::InvalidArgument("Only indices with batch 1 are supported.");
@@ -3821,15 +3845,24 @@ Status ConvertGather(OpConverterParams* params) {
   // Both input are tensors, and the TF gather result will have rank:
   // (params.nbDims + 1) + (indices.nbDims + 1) - 1,
   // where "+ 1" adds the batch dim.
-  const int tf_gather_output_rank = params_tensor.GetTrtDims().nbDims +
-                                    indices_tensor.GetTrtDims().nbDims + 1;
+  const int tf_gather_output_rank =
+      inputs.at(0).GetTrtDims().nbDims + indices_tensor.GetTrtDims().nbDims + 1;
   if (tf_gather_output_rank > nvinfer1::Dims::MAX_DIMS + 1) {
     return errors::InvalidArgument(
         "Result of gather has dimension greater than ",
         nvinfer1::Dims::MAX_DIMS + 1);
   }
   if (params->validation_only) return Status::OK();
+  nvinfer1::ITensor* params_input;
+  // convert weights to tensor
+  if (inputs.at(0).is_tensor()) {
+    params_input = inputs.at(0).tensor();
+  } else {
+    params_input = params->converter->CreateConstantLayer(
+        inputs.at(0).weights(), inputs.at(0).GetTrtDims());
+  }
 
+  const TRT_TensorOrWeights params_tensor(params_input);
   // Note on how IGatherLayer works: if both the data and indices tensors have
   // a batch size dimension of size N, it performs:
   // for batchid in xrange(N):
@@ -3847,8 +3880,8 @@ Status ConvertGather(OpConverterParams* params) {
   if (trt_gather_output_dims.nbDims != tf_gather_output_rank - 2) {
     return errors::Internal(
         "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
-        tf_gather_output_rank - 2,
-        ", actual nbDims: ", trt_gather_output_dims.nbDims);
+        tf_gather_output_rank - 2, ", actual nbDims: ",
+        trt_gather_output_dims.nbDims);
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
@@ -3862,7 +3895,6 @@ Status ConvertGather(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       TRT_TensorOrWeights(gather_output), trt_gather_output_dims,
       /*validation_only=*/false, &output_tensor));
-
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }

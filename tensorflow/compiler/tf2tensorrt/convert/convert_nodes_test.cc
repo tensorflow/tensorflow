@@ -3845,35 +3845,47 @@ void TestConvertGather(OpConverterTest* test) {
     int axis;
     std::vector<int> expected_output_dims;
     std::vector<int> expected_output;
+    bool params_is_tensor;
   };
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
-  const int kGatherOKCases = 7;
+  const int kGatherOKCases = 10;
   const std::vector<CType> params_input = {CType(1), CType(2), CType(3),
                                            CType(4), CType(5), CType(6)};
   TestParams ok_params[kGatherOKCases] = {
       // Vector indices, and output rank is rank(params).
-      TestParams{{1, 2, 3}, {}, {0}, 3, {1, 2, 1}, {1, 4}},
-      TestParams{{1, 2, 3}, {}, {1}, 2, {1, 1, 3}, {4, 5, 6}},
+      TestParams{{1, 2, 3}, {}, {0}, 3, {1, 2, 1}, {1, 4}, true},
+      TestParams{{1, 2, 3}, {}, {1}, 2, {1, 1, 3}, {4, 5, 6}, true},
       // Indices with rank>1, and output rank is rank(params)+rank(indices)-1.
-      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1, 1}, {1, 4}},
-      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1, 1}, {2, 5}},
-      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1, 1}, {3, 6}},
+      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1, 1}, {1, 4}, true},
+      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1, 1}, {2, 5}, true},
+      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1, 1}, {3, 6}, true},
       TestParams{
-          {1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 1, 3}, {3, 1, 2, 6, 4, 5}},
+          {1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 1, 3}, {3, 1, 2, 6, 4, 5}, true},
       TestParams{{3, 2},
                  {2, 2},
                  {0, 0, 1, 0},
                  2,
                  {3, 1, 2, 2},
-                 {1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5}},
+                 {1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5},
+                 true},
+      TestParams{{1, 2, 3}, {}, {0}, 0, {1, 2, 3}, {1, 2, 3, 4, 5, 6}, false},
+      TestParams{{3, 2}, {2}, {0, 1}, 0, {1, 2, 2}, {1, 2, 3, 4}, false},
+      TestParams{{2, 3}, {1, 2}, {0, 1}, 0, {1, 1, 2, 3}, {1, 2, 3, 4, 5, 6}, false}
   };
 
   // Ok.
   for (int i = 0; i < kGatherOKCases; i++) {
+    //for (const bool params_is_tensor : {true, false}) {
     test->Reset();
-    test->AddTestTensor("params", ok_params[i].params_dims, 1,
-                        TfDataTypeToTrt(dtype));
+    if (ok_params[i].params_is_tensor) {
+      test->AddTestTensor("params", ok_params[i].params_dims, 1,
+                          TfDataTypeToTrt(dtype));
+    } else {
+      test->AddTestWeights<CType>("params", ok_params[i].params_dims,
+                                  params_input);
+    }
+
     test->AddTestTensor("indices", ok_params[i].indices_dims, 1,
                         nvinfer1::DataType::kINT32);
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
@@ -3889,9 +3901,13 @@ void TestConvertGather(OpConverterTest* test) {
         ok_params[i].expected_output.begin(),
         ok_params[i].expected_output.end());
 
-    const DataVec input_data{
-        {"params", test::AsTensor<CType>(params_input)},
-        {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    DataVec input_data;
+    if (ok_params[i].params_is_tensor) {
+      input_data = {{"params", test::AsTensor<CType>(params_input)},
+                    {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    } else {
+      input_data = {{"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    }
     DataVec output_data{
         {"my_gather",
          ConstructTensor<CType>(ok_params[i].expected_output.size())}};
@@ -3947,6 +3963,18 @@ TEST_F(OpConverterTest, ConvertGather) {
                                "TensorRT does not allow manipulation of the "
                                "batch dimension, at my_gather");
   }
+  {
+    // Axis is not equal zero and params is a weights
+    Reset();
+    AddTestWeights<int32>("params", {3}, {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input axis must be a zero,"
+                               " in case of params is a weights");
+ }
+
+
 
   Reset();
   TestConvertGather<DT_FLOAT>(this);
