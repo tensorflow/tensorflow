@@ -492,6 +492,108 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.verify_compat_v1_rename_correctness(
         initializers, ns_prefix="keras.initializers")
 
+  def testContribXavierInitializer(self):
+    text = "tf.contrib.layers.xavier_initializer()\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=\"uniform\")\n",
+    )
+
+    text = "slim.xavier_initializer(True or False)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if True or False else "
+        "\"truncated_normal\"))\n",
+    )
+
+    text = "slim.xavier_initializer(uniform=(True or False))\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if True or False else "
+        "\"truncated_normal\"))\n",
+    )
+
+    text = "tf.contrib.layers.xavier_initializer_conv2d(False, 12)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+        "seed=12)\n",
+    )
+
+    text = ("tf.contrib.layers.xavier_initializer_conv2d("
+            "False, 12, tf.float32)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+        "seed=12, "
+        "dtype=tf.float32)\n",
+    )
+
+    text = ("tf.contrib.layers.xavier_initializer("
+            "False, 12, dtypes=tf.float32)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+        "mode=\"fan_avg\", "
+        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+        "seed=12, "
+        "dtypes=tf.float32)\n",
+    )
+
+  def testVarianceScalingInitializer(self):
+    text = ("tf.contrib.layers.variance_scaling_initializer("
+            "mode=(\"FAN\" + \"_AVG\"))\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=2.0, "
+        "mode=(\"FAN\" + \"_AVG\").lower())\n",
+    )
+
+    text = ("slim.variance_scaling_initializer("
+            "uniform=(True or False), mode=(\"FAN\" + \"_AVG\"))\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=2.0, "
+        "distribution=(\"uniform\" if True or False else \"truncated_normal\"),"
+        " mode=(\"FAN\" + \"_AVG\").lower())\n",
+    )
+
+    text = "tf.contrib.layers.variance_scaling_initializer(factor=1.0)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0)\n",
+    )
+
+    text = ("tf.contrib.layers.variance_scaling_initializer("
+            "12.0, \"FAN_AVG\", True, dtypes=tf.float32)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.compat.v1.keras.initializers.VarianceScaling(12.0, "
+        "(\"FAN_AVG\").lower(), "
+        "(\"uniform\" if True else \"truncated_normal\"), "
+        "dtypes=tf.float32)\n",
+    )
+
   def testMetrics(self):
     metrics = [
         "accuracy",
@@ -701,6 +803,74 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(
         new_text,
         "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
+    )
+
+  def testContribL1(self):
+    text = "tf.contrib.layers.l1_regularizer(scale)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l1(scale)\n",
+    )
+    self.assertNotIn("Dropping scope", unused_report)
+
+    text = "tf.contrib.layers.l1_regularizer(scale, scope)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l1(scale)\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+    text = (
+        "slim.l1_regularizer(  # Stuff before\n"
+        "                    scale=.4,"
+        "                    scope=\"foo\")\n"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l1(  # Stuff before\n"
+        "                    l=.4)\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+  def testContribL2(self):
+    text = "tf.contrib.layers.l2_regularizer(scale)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(0.5 * (scale))\n",
+    )
+    self.assertNotIn("Dropping scope", unused_report)
+
+    text = "tf.contrib.layers.l2_regularizer(scale, scope)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(0.5 * (scale))\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+    text = (
+        "slim.l2_regularizer(  # Stuff before\n"
+        "                    scale=.4,"
+        "                    scope=\"foo\")\n"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(  # Stuff before\n"
+        "                    l=0.5 * (.4))\n",
+    )
+    self.assertIn("Dropping scope", unused_report)
+
+  def testContribL2Expr(self):
+    text = "tf.contrib.layers.l2_regularizer(1 - func(3 + 4.), scope=\"foo\")\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.keras.regularizers.l2(0.5 * (1 - func(3 + 4.)))\n",
     )
 
   def testMathCountNonZeroChanges(self):
