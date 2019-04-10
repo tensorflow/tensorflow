@@ -74,8 +74,8 @@ TEST(LowerIfOpTest, Simple) {
   // single input `A`.
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 1);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
   Node* written_if;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   TF_ASSERT_OK(
@@ -189,8 +189,8 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
 
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 0);
-  auto initial_val = ops::_Arg(root.WithOpName("initial_val"), DT_INT32, 1);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
+  auto initial_val = ops::Placeholder(root.WithOpName("initial_val"), DT_INT32);
 
   auto var = ops::VarHandleOp(root.WithOpName("var"), DT_INT32, {});
   auto init = ops::AssignVariableOp(root.WithOpName("init"), var, initial_val);
@@ -218,8 +218,6 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   TF_ASSERT_OK(Rewrite(&graph));
 
   // Verify the resultant graph has switch, merge and function call nodes.
-  // TODO(ezhulenev): Inlining functions with empty outputs leads to undefined
-  // graph execution.
   int switch_count = 0;
   int merge_count = 0;
   int node_called_if_count = 0;
@@ -233,6 +231,7 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   ASSERT_EQ(switch_count, 2);
   // One merge for the else/then branch (`branch_executed` node).
   ASSERT_EQ(merge_count, 1);
+  // We keep a NoOp with the same name as original If node.
   ASSERT_EQ(node_called_if_count, 1);
 
   // Verify execution.
@@ -278,8 +277,8 @@ TEST(LowerIfOpTest, DoNotInlineLoweredFunction) {
   // single input `A`.
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 1);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
   Node* written_if;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   AttrValue tb;

@@ -437,16 +437,22 @@ class TensorArrayTest(test.TestCase):
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
-      # Test writing the wrong datatype
-      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
-          not context.executing_eagerly()):
-        error_msg = ("Invalid data types; op elements string but list elements "
-                     "float")
-      else:
-        error_msg = (
-            "TensorArray dtype is (float|float32) but Op is trying to write "
-            "dtype string")
-      with self.assertRaisesOpError(error_msg):
+      # TODO(b/129870929): Remove the last 2 checks (runtime checks) after
+      # back back from preferred_dtype= to dtype= in convert_to_tensor.  Also
+      # restrict error check to only TypeError.
+      error_msg_regex = (
+          "("
+          "Expected float32, got 'wrong_type_scalar' of type 'str' instead."
+          "|"
+          "Cannot convert provided value to EagerTensor. Provided value: "
+          "wrong_type_scalar Requested dtype: float"
+          "|"
+          "TensorArray dtype is float.* but Op is trying to write dtype string"
+          "|"
+          "Invalid data types; op elements string but list elements float"
+          ")")
+      with self.assertRaisesRegexp(
+          (TypeError, errors.InvalidArgumentError), error_msg_regex):
         self.evaluate(ta.write(0, "wrong_type_scalar").flow)
 
       if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
@@ -1677,6 +1683,31 @@ class TensorArrayTest(test.TestCase):
       v0, v1 = sess.run([r0, r1], feed_dict={value: [-3, 100]})
       self.assertAllEqual(v0, -3)
       self.assertAllEqual(v1, 100)
+
+
+class TensorArrayBenchmark(test.Benchmark):
+
+  def _benchmarkWriteInWhile(self):
+    ops.reset_default_graph()
+
+    def write():
+      size = 10000
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+      ta = control_flow_ops.while_loop(
+          lambda i, _: i < size,
+          lambda i, ta: (i + 1, ta.write(i, 0.)), [0, ta],
+          parallel_iterations=1)[1]
+      return ta.stack()
+
+    op = write()
+    self.run_op_benchmark(session_lib.Session(), op)
+
+  def benchmarkWriteInWhile(self):
+    self._benchmarkWriteInWhile()
+
+  @test_util.enable_control_flow_v2
+  def benchmarkWriteInWhileWithControlFlowV2(self):
+    self._benchmarkWriteInWhile()
 
 
 if __name__ == "__main__":

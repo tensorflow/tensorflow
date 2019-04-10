@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
@@ -209,6 +210,25 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.trainable_variables), 0)
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
+
+  def test_supports_distributed_variables(self):
+    device_map = distributed_values.SingleDeviceMap("/CPU:0")
+    mirrored = distributed_values.MirroredVariable(
+        None, device_map, [variables.Variable(1.)],
+        variables.VariableAggregation.SUM)
+    tpu = distributed_values.TPUMirroredVariable(
+        strategy=None,
+        device_map=device_map,
+        values=[variables.Variable(42.)],
+        aggregation=None)
+    aggregating = distributed_values.AggregatingVariable(
+        strategy=None, v=variables.Variable(1.), aggregation=None)
+
+    m = module.Module()
+    m.a = mirrored
+    m.b = tpu
+    m.c = aggregating
+    self.assertEqual(m.variables, (mirrored, tpu, aggregating))
 
 
 class ModuleTrackingTest(test.TestCase):
@@ -407,11 +427,11 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     child = parent.c
 
     self.assertEqual(
-        list(parent._flatten(recursive=False, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(parent._flatten(predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
 
   def test_attribute_traversal_key(self):
@@ -428,7 +448,7 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     mod.decoder = mod.encoder
 
     state_dict = dict(
-        mod._flatten(with_path=True, predicate=module._IS_VARIABLE))
+        mod._flatten(with_path=True, predicate=module._is_variable))
 
     self.assertEqual(state_dict,
                      {("w",): mod.w,
@@ -458,8 +478,10 @@ class LayerModule(module.Module):
       indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
       return indexes.get(name, 2), name
 
-    return list(self._flatten(predicate=module._IS_VARIABLE,
-                              attribute_traversal_key=key_function))
+    return list(
+        self._flatten(
+            predicate=module._is_variable,
+            attribute_traversal_key=key_function))
 
 
 class MemberType(object):
@@ -476,9 +498,7 @@ class SimpleModule(module.Module):
     if create_child:
       self.c = SimpleModule(create_child=False)
 
-
-IS_MEMBER = lambda v: isinstance(v, MemberType)
-IS_MODULE = lambda v: isinstance(v, module.Module)
+is_member = lambda v: isinstance(v, MemberType)
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

@@ -322,7 +322,13 @@ class XlaBuilder {
   // functions section in this file.
 
   XlaOp Parameter(int64 parameter_number, const Shape& shape,
-                  const string& name);
+                  const string& name,
+                  const std::vector<bool>& replicated_at_leaf_buffers);
+  XlaOp Parameter(int64 parameter_number, const Shape& shape,
+                  const string& name) {
+    std::vector<bool> empty_bools;
+    return Parameter(parameter_number, shape, name, empty_bools);
+  }
 
   XlaOp ConstantLiteral(const LiteralSlice& literal);
 
@@ -708,7 +714,8 @@ class XlaBuilder {
   XlaBuilder* parent_builder_{nullptr};
 
   friend XlaOp Parameter(XlaBuilder* builder, int64 parameter_number,
-                         const Shape& shape, const string& name);
+                         const Shape& shape, const string& name,
+                         const std::vector<bool>& replicated_at_leaf_buffers);
   friend XlaOp ConstantLiteral(XlaBuilder* builder,
                                const LiteralSlice& literal);
 
@@ -1045,6 +1052,11 @@ class XlaScopedShardingAssignment {
 // passed to the computation.
 XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
                 const string& name);
+
+// Same as above, but with leaf buffer replication annotation.
+XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
+                const string& name,
+                const std::vector<bool>& replicated_at_leaf_buffers);
 
 // Enqueues a constant with the value of the given literal onto the
 // computation.
@@ -1931,7 +1943,11 @@ XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
 
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values) {
-  return ConstantLiteral(builder, LiteralUtil::CreateR1<NativeT>(values));
+  BorrowingLiteral literal(
+      reinterpret_cast<const char*>(values.begin()),
+      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
+                           {static_cast<int64>(values.size())}));
+  return ConstantLiteral(builder, literal);
 }
 
 template <typename NativeT>

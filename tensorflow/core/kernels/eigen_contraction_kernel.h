@@ -128,10 +128,15 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
   static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
   static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
 
+  static constexpr int kComputeStrideFromBlockDimensions = -1;
+
   EIGEN_DONT_INLINE
   void operator()(const OutputMapper& output, const float* blockA,
                   const float* blockB, const IndexType rows,
-                  const IndexType depth, const IndexType cols, float alpha) {
+                  const IndexType depth, const IndexType cols, float alpha,
+                  int ldA = kComputeStrideFromBlockDimensions,
+                  int ldB = kComputeStrideFromBlockDimensions,
+                  char transposeA = 'N', char transposeB = 'N') {
     static const int max_index = (std::numeric_limits<int>::max)();
 
     eigen_assert(max_index >= rows);
@@ -143,11 +148,8 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     const int n = static_cast<int>(cols);
     const int k = static_cast<int>(depth);
 
-    const char transposeA = 'N';
-    const char transposeB = 'N';
-
-    const int ldA = m;
-    const int ldB = k;
+    ldA = ldA == kComputeStrideFromBlockDimensions ? m : ldA;
+    ldB = ldB == kComputeStrideFromBlockDimensions ? k : ldB;
     const int ldC = static_cast<int>(output.stride());
 
     const float beta = 1.0;
@@ -235,13 +237,160 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
   StorageIndex nc_;
 };
 
+// If the Lhs or Rhs Tensor expressions are already evaluated and have access to
+// raw data, we can skip packing step and setup pointers and a stride to the
+// underlying memory buffer and pass them directly to Gemm.
+template <typename Scalar, typename StorageIndex>
+struct ColMajorBlock {
+  bool is_direct_access;
+
+  // Valid iff `is_direct_access == false`
+  Scalar* packed_data;
+
+  // Valid iff `is_direct_access == true`
+  Scalar* raw_data;
+  StorageIndex stride;
+  char transpose;
+};
+
+template <typename DataMapper>
+struct DirectColMajorAccess {
+  enum { value = false };
+
+  template <typename Scalar, typename StorageIndex>
+  static bool block(const typename DataMapper::SubMapper& data_mapper,
+                    const StorageIndex rows, const StorageIndex cols,
+                    const StorageIndex num_kernels,
+                    ColMajorBlock<Scalar, StorageIndex>* block) {
+    eigen_assert(false && "Not implemented");
+    return false;
+  }
+};
+
+// If we have an access to raw memory of the contraction input, we can safely
+// skip packing if:
+//   (1) Packing is a no-op.
+//   (2) Packed block will be used just once.
+//
+// If a packed block is used many times, it's more efficient to pack it into
+// contiguous block of memory to reduce pressure on TLB.
+//
+// TODO(ezhulenev): Add support for more tensor expressions that matters.
+#define REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_EXPR)                          \
+  template <typename Scalar, typename StorageIndex, int Side, typename Device, \
+            typename nocontract_t, typename contract_t, int packet_size,       \
+            int Alignment>                                                     \
+  struct DirectColMajorAccess<TensorContractionInputMapper<                    \
+      Scalar, StorageIndex, Side, TensorEvaluator<TENSOR_EXPR, Device>,        \
+      nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/true,    \
+      /*inner_dim_reordered=*/false, Alignment>> {                             \
+    enum { value = true };                                                     \
+                                                                               \
+    using DataMapper = TensorContractionInputMapper<                           \
+        Scalar, StorageIndex, Side, TensorEvaluator<TENSOR_EXPR, Device>,      \
+        nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/true,  \
+        /*inner_dim_reordered=*/false, Alignment>;                             \
+                                                                               \
+    static bool block(const typename DataMapper::SubMapper& data_mapper,       \
+                      const StorageIndex rows, const StorageIndex cols,        \
+                      const StorageIndex num_kernels,                          \
+                      ColMajorBlock<Scalar, StorageIndex>* block) {            \
+      static_assert(DataMapper::DirectOffsets == true,                         \
+                    "DataMapper must support direct offsets");                 \
+                                                                               \
+      const StorageIndex vert_offset = data_mapper.vert_offset();              \
+      const StorageIndex horiz_offset = data_mapper.horiz_offset();            \
+      const StorageIndex stride =                                              \
+          Side == Lhs ? data_mapper.base_mapper().stride()                     \
+                      : data_mapper.base_mapper().nocontract_strides()[0];     \
+      const Scalar* data = data_mapper.base_mapper().tensor().data();          \
+      data = Side == Lhs ? data : data + vert_offset + horiz_offset * stride;  \
+                                                                               \
+      const bool is_no_op_packing = stride == rows;                            \
+      const StorageIndex adressable_mem = (stride * cols * sizeof(Scalar));    \
+      const bool use_direct_access =                                           \
+          is_no_op_packing || num_kernels == 1 /* used once */ ||              \
+          ((num_kernels == 2) && (adressable_mem < (256 << 10) /* 256 kb */)); \
+                                                                               \
+      if (use_direct_access) {                                                 \
+        block->is_direct_access = true;                                        \
+        block->raw_data = const_cast<Scalar*>(data);                           \
+        block->stride = stride;                                                \
+        block->transpose = 'N';                                                \
+        return true;                                                           \
+      }                                                                        \
+      return false;                                                            \
+    }                                                                          \
+  }
+
+#define SIMPLE_TENSOR const Tensor<Scalar, 2, Eigen::ColMajor, StorageIndex>
+
+#define TENSOR_MAP_ROWMAJOR                                               \
+  const TensorMap<Tensor<const Scalar, 2, Eigen::RowMajor, StorageIndex>, \
+                  Eigen::Aligned>
+
+#define TENSOR_MAP_COLMAJOR                                               \
+  const TensorMap<Tensor<const Scalar, 2, Eigen::ColMajor, StorageIndex>, \
+                  Eigen::Aligned>
+
+#define TENSOR_MAP_CONST_ROWMAJOR                                   \
+  const TensorMap<Tensor<Scalar, 2, Eigen::RowMajor, StorageIndex>, \
+                  Eigen::Aligned>
+
+#define TENSOR_MAP_CONST_COLMAJOR                                   \
+  const TensorMap<Tensor<Scalar, 2, Eigen::ColMajor, StorageIndex>, \
+                  Eigen::Aligned>
+
+// This is reshaped convolution filter from `eigen_spatial_convolutions.h`.
+#define TENSOR_RESHAPE                                                        \
+  const TensorReshapingOp<                                                    \
+      const Eigen::DSizes<StorageIndex, 2>,                                   \
+      const TensorMap<Tensor<const Scalar, 4, Eigen::RowMajor, StorageIndex>, \
+                      Eigen::Aligned>>
+
+REGISTER_DIRECT_COL_MAJOR_ACCESS(SIMPLE_TENSOR);
+REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_ROWMAJOR);
+REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_COLMAJOR);
+REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_CONST_ROWMAJOR);
+REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_CONST_COLMAJOR);
+REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_RESHAPE);
+
+#undef SIMPLE_TENSOR
+#undef TENSOR_MAP_ROWMAJOR
+#undef TENSOR_MAP_COLMAJOR
+#undef TENSOR_MAP_CONST_ROWMAJOR
+#undef TENSOR_MAP_CONST_COLMAJOR
+#undef TENSOR_RESHAPE
+#undef REGISTER_DIRECT_COL_MAJOR_ACCESS
+
 template <typename StorageIndex, typename OutputMapper, typename LhsMapper,
           typename RhsMapper>
 struct TensorContractionKernel<float, float, float, StorageIndex, OutputMapper,
                                LhsMapper, RhsMapper> {
+  TensorContractionKernel(StorageIndex m, StorageIndex k, StorageIndex n,
+                          StorageIndex bm, StorageIndex bk, StorageIndex bn)
+      : m(m),
+        k(k),
+        n(n),
+        bm(bm),
+        bk(bk),
+        bn(bn),
+        nm0(bm > 0 ? divup(m, bm) : 0),
+        nn0(bn > 0 ? divup(n, bn) : 0) {}
+
   // For now mkldnn has only mkldnn_sgemm (gemm for floats).
   using Scalar = float;
   using Traits = typename internal::gebp_traits<Scalar, Scalar>;
+
+  using LhsBlock = ColMajorBlock<Scalar, StorageIndex>;
+  using RhsBlock = ColMajorBlock<Scalar, StorageIndex>;
+
+  // Packed Lhs/Rhs block memory allocator.
+  typedef TensorContractionBlockMemAllocator<Scalar, Scalar> BlockMemAllocator;
+  typedef typename BlockMemAllocator::BlockMemHandle BlockMemHandle;
+
+  using DirectLhsAccess = DirectColMajorAccess<LhsMapper>;
+  using DirectRhsAccess = DirectColMajorAccess<RhsMapper>;
 
   using LhsPacker =
       gemm_pack_colmajor_block<Scalar, StorageIndex,
@@ -265,39 +414,133 @@ struct TensorContractionKernel<float, float, float, StorageIndex, OutputMapper,
                   Traits::nr,
                   /*ConjugateLhs*/ false, /*ConjugateRhs*/ false>;
 
-  EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void packLhs(
-      Scalar* lhsBlock, const typename LhsMapper::SubMapper& data_mapper,
+  template <typename Device>
+  EIGEN_DEVICE_FUNC BlockMemHandle allocate(Device& d, LhsBlock* lhs_block,
+                                            RhsBlock* rhs_block) {
+    return BlockMemAllocator::allocate(d, bm, bk, bn, &lhs_block->packed_data,
+                                       &rhs_block->packed_data);
+  }
+
+  template <typename Device>
+  EIGEN_DEVICE_FUNC BlockMemHandle allocateSlices(
+      Device& d, const int num_lhs, const int num_rhs, const int num_slices,
+      std::vector<LhsBlock>* lhs_blocks, std::vector<RhsBlock>* rhs_blocks) {
+    eigen_assert(num_slices > 0);
+    std::vector<std::vector<Scalar*>> lhs_mem(num_slices);
+    std::vector<std::vector<Scalar*>> rhs_mem(num_slices);
+
+    BlockMemHandle block_mem = BlockMemAllocator::allocateSlices(
+        d, bm, bk, bn, num_lhs, num_rhs, num_slices, lhs_mem.data(),
+        rhs_mem.data());
+
+    for (Index x = 0; x < num_slices; x++) {
+      if (num_lhs > 0) lhs_blocks[x].resize(num_lhs);
+      for (Index m = 0; m < num_lhs; m++) {
+        lhs_blocks[x][m].packed_data = lhs_mem[x][m];
+      }
+      if (num_rhs > 0) rhs_blocks[x].resize(num_rhs);
+      for (Index n = 0; n < num_rhs; n++) {
+        rhs_blocks[x][n].packed_data = rhs_mem[x][n];
+      }
+    }
+
+    return block_mem;
+  }
+
+  template <typename Device>
+  EIGEN_DEVICE_FUNC void deallocate(Device& d, BlockMemHandle handle) {
+    BlockMemAllocator::deallocate(d, handle);
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE void packLhs(
+      LhsBlock* lhsBlock, const typename LhsMapper::SubMapper& data_mapper,
       const StorageIndex depth, const StorageIndex rows) {
     if (UseCustomContractionKernels()) {
-      LhsPacker()(lhsBlock, data_mapper, rows, depth);
+      const bool is_direct_access =
+          DirectLhsAccess::value &&
+          DirectLhsAccess::block(data_mapper, rows, depth, nn0, lhsBlock);
+
+      if (!is_direct_access) {
+        lhsBlock->is_direct_access = false;
+        LhsPacker()(lhsBlock->packed_data, data_mapper, rows, depth);
+      }
     } else {
-      EigenLhsPacker()(lhsBlock, data_mapper, depth, rows, /*stride*/ 0,
+      lhsBlock->is_direct_access = false;
+      EigenLhsPacker()(lhsBlock->packed_data, data_mapper, depth, rows,
+                       /*stride*/ 0,
                        /*offset*/ 0);
     }
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void packRhs(
-      Scalar* rhsBlock, const typename RhsMapper::SubMapper& data_mapper,
+  EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE void packRhs(
+      RhsBlock* rhsBlock, const typename RhsMapper::SubMapper& data_mapper,
       const StorageIndex depth, const StorageIndex cols) {
     if (UseCustomContractionKernels()) {
-      RhsPacker()(rhsBlock, data_mapper, depth, cols);
+      const bool is_direct_access =
+          DirectRhsAccess::value &&
+          DirectRhsAccess::block(data_mapper, depth, cols, nm0, rhsBlock);
+
+      if (!is_direct_access) {
+        rhsBlock->is_direct_access = false;
+        RhsPacker()(rhsBlock->packed_data, data_mapper, depth, cols);
+      }
     } else {
-      EigenRhsPacker()(rhsBlock, data_mapper, depth, cols);
+      rhsBlock->is_direct_access = false;
+      EigenRhsPacker()(rhsBlock->packed_data, data_mapper, depth, cols);
     }
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void invoke(
-      const OutputMapper& output_mapper, const Scalar* lhsBlock,
-      const Scalar* rhsBlock, const StorageIndex rows, const StorageIndex depth,
-      const StorageIndex cols, const Scalar alpha) {
+  EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE void invoke(
+      const OutputMapper& output_mapper, const LhsBlock& lhsBlock,
+      const RhsBlock& rhsBlock, const StorageIndex rows,
+      const StorageIndex depth, const StorageIndex cols, const Scalar alpha) {
     if (UseCustomContractionKernels()) {
-      GemmKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha);
+      if ((DirectLhsAccess::value && lhsBlock.is_direct_access) &&
+          (DirectRhsAccess::value && rhsBlock.is_direct_access)) {
+        GemmKernel()(output_mapper, lhsBlock.raw_data, rhsBlock.raw_data, rows,
+                     depth, cols, alpha, /*ldA=*/lhsBlock.stride,
+                     /*ldB=*/rhsBlock.stride, /*transposeA=*/lhsBlock.transpose,
+                     /*transposeB=*/rhsBlock.transpose);
+
+      } else if (DirectLhsAccess::value && lhsBlock.is_direct_access) {
+        GemmKernel()(output_mapper, lhsBlock.raw_data, rhsBlock.packed_data,
+                     rows, depth, cols, alpha, /*ldA=*/lhsBlock.stride,
+                     /*ldB=*/GemmKernel::kComputeStrideFromBlockDimensions,
+                     /*transposeA=*/lhsBlock.transpose, /*transposeB=*/'N');
+
+      } else if (DirectRhsAccess::value && rhsBlock.is_direct_access) {
+        GemmKernel()(output_mapper, lhsBlock.packed_data, rhsBlock.raw_data,
+                     rows, depth, cols, alpha,
+                     /*ldA=*/GemmKernel::kComputeStrideFromBlockDimensions,
+                     /*ldB=*/rhsBlock.stride,
+                     /*transposeA=*/'N', /*transposeB=*/rhsBlock.transpose);
+
+      } else {
+        GemmKernel()(output_mapper, lhsBlock.packed_data, rhsBlock.packed_data,
+                     rows, depth, cols, alpha);
+      }
     } else {
-      GebpKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha,
-                   /*strideA*/ -1, /*strideB*/ -1,
+      GebpKernel()(output_mapper, lhsBlock.packed_data, rhsBlock.packed_data,
+                   rows, depth, cols, alpha,
+                   /*strideA*/ GemmKernel::kComputeStrideFromBlockDimensions,
+                   /*strideB*/ GemmKernel::kComputeStrideFromBlockDimensions,
                    /*offsetA*/ 0, /*offsetB*/ 0);
     }
   }
+
+ private:
+  // These are dimensions of the original Tensors, and selected block sizes. The
+  // actual block sizes passed to all function above might be smaller because of
+  // the partial blocks at the end.
+  const StorageIndex m;
+  const StorageIndex k;
+  const StorageIndex n;
+  const StorageIndex bm;
+  const StorageIndex bk;
+  const StorageIndex bn;
+  // Number of kernels for each dimension.
+  const StorageIndex nm0;
+  const StorageIndex nn0;
 };
 
 #endif  // defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)

@@ -516,7 +516,7 @@ class EncodeProtoOp : public OpKernel {
 
     // Check the arguments for consistency.
     TensorShape common_prefix;
-    int message_count;
+    int message_count = 0;
     for (int i = 0; i < field_descs_.size(); i++) {
       const Tensor& v = values[i];
 

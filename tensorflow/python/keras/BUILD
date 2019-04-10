@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -135,7 +136,6 @@ py_library(
         "engine/__init__.py",
         "engine/base_layer.py",
         "engine/base_layer_utils.py",
-        "engine/distributed_training_utils.py",
         "engine/input_layer.py",
         "engine/input_spec.py",
         "engine/network.py",
@@ -166,11 +166,13 @@ py_library(
         ":optimizers",
         ":regularizers",
         ":saving",
+        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
@@ -975,6 +977,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -1166,7 +1169,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 16,
+    shard_count = 20,
     tags = ["notsan"],
 )
 
@@ -1278,6 +1281,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
     tags = [
         "no-internal-py3",
     ],
@@ -1295,6 +1299,19 @@ tf_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+)
+
+tf_py_test(
+    name = "control_flow_test",
+    size = "medium",
+    srcs = ["engine/control_flow_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 8,
 )
 
 tf_py_test(
@@ -1403,41 +1420,4 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
-)
-
-py_library(
-    name = "distribute_strategy_test_lib",
-    srcs = [
-        "distribute_strategy_test.py",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-# TODO(b/129155953): Fix the flakiness and re-enable distribute_strategy_test_tpu target.
-cuda_py_test(
-    name = "distribute_strategy_test",
-    srcs = ["distribute_strategy_test.py"],
-    additional_deps = [
-        ":distribute_strategy_test_lib",
-    ],
-    main = "distribute_strategy_test.py",
-    shard_count = 32,
-    tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_windows_gpu",
-        "notsan",
-    ],
 )

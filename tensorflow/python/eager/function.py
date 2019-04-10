@@ -344,6 +344,7 @@ class _EagerDefinedFunction(object):
     function_def.ParseFromString(compat.as_bytes(proto_data))
     with ops.init_scope():
       if context.executing_eagerly():
+        context.ensure_initialized()
         context.add_function(fn)
     self.definition = function_def
     self.name = compat.as_bytes(function_def.signature.name)
@@ -575,7 +576,8 @@ class ConcreteFunction(object):
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
-    tape.variables_accessed(self._func_graph.variables)
+    for v in self._func_graph.variables:
+      resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
     variables_used = set([])
@@ -585,8 +587,7 @@ class ConcreteFunction(object):
         # pass its handle only once.
         if arg.handle in variables_used:
           continue
-        if arg.trainable:
-          tape.variable_accessed(arg)
+        resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
         variables_used.add(arg.handle)
       elif isinstance(arg, ops.Tensor):
@@ -788,6 +789,11 @@ class ConcreteFunction(object):
     """Constructs the backprop function object for this function."""
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
+    # Keep track of the forward graph so that if the backwards graph
+    # tries to capture tensors those will be correctly captured first in
+    # the forward graph. This is an edge case that can only happen with
+    # tf.custom_gradient.
+    backwards_graph._forward_func_graph = self._func_graph  # pylint: disable=protected-access
     forward_function_name = _forward_name(self._func_graph.name)
     outputs = [x for x in self._func_graph.outputs
                if gradients_util.IsTrainable(x)]
@@ -995,6 +1001,8 @@ class FunctionSpec(object):
 
     if self._is_method:
       # Remove `self`: default arguments shouldn't be matched to it.
+      # TODO(b/127938157): Should this error out if there is no arg to
+      # be removed?
       args = fullargspec.args[1:]
     else:
       args = fullargspec.args

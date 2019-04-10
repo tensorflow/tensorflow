@@ -41,6 +41,7 @@ from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: 
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
+from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
@@ -217,9 +218,15 @@ class TFLiteConverterV2(object):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(frozen_func.graph.as_graph_def(),
-                                         input_tensors, output_tensors,
-                                         frozen_func.graph)
+    is_only_flex_enabled = set(
+        [OpsSet.SELECT_TF_OPS]) == self.target_spec.supported_ops
+    config = _get_grappler_config(enable_layout_optimizer=is_only_flex_enabled)
+    graph_def = _run_graph_optimizations(
+        frozen_func.graph.as_graph_def(),
+        input_tensors,
+        output_tensors,
+        config,
+        graph=frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
@@ -571,7 +578,8 @@ class TFLiteConverter(object):
                             model_file,
                             input_arrays=None,
                             input_shapes=None,
-                            output_arrays=None):
+                            output_arrays=None,
+                            custom_objects=None):
     """Creates a TFLiteConverter class from a tf.keras model file.
 
     Args:
@@ -584,13 +592,15 @@ class TFLiteConverter(object):
           None}). (default None)
       output_arrays: List of output tensors to freeze graph with. Uses output
         arrays from SignatureDef when none are provided. (default None)
+      custom_objects: Dict mapping names (strings) to custom classes or
+        functions to be considered during model deserialization. (default None)
 
     Returns:
       TFLiteConverter class.
     """
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file)
+    keras_model = _keras.models.load_model(model_file, custom_objects)
     sess = _keras.backend.get_session()
 
     # Get input and output tensors.
@@ -715,8 +725,11 @@ class TFLiteConverter(object):
       optimized_graph = self._graph_def
     else:
       try:
+        is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == self.target_ops
+        config = _get_grappler_config(
+            enable_layout_optimizer=is_only_flex_enabled)
         optimized_graph = _run_graph_optimizations(
-            self._graph_def, self._input_tensors, self._output_tensors)
+            self._graph_def, self._input_tensors, self._output_tensors, config)
       except Exception:
         optimized_graph = self._graph_def
 

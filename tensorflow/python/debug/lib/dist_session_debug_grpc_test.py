@@ -91,7 +91,10 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   def tearDownClass(cls):
     for key in cls.server_procs:
       cls.server_procs[key].terminate()
-    cls.debug_server.stop_server().wait()
+    try:
+      cls.debug_server.stop_server().wait()
+    except ValueError:
+      pass
     cls.debug_server_thread.join()
 
   def setUp(self):

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import traceback
 import weakref
 
 from tensorflow.python.eager import context
@@ -35,6 +36,7 @@ from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
@@ -114,10 +116,8 @@ class _GraphTensorArray(object):
 
     if clear_after_read is None:
       clear_after_read = True
-    self._dynamic_size = None
-    dynamic_size = dynamic_size or False
-
-    self._dtype = dtype
+    self._dynamic_size = dynamic_size or False
+    self._dtype = dtypes.as_dtype(dtype).base_dtype
 
     # Used to keep track of what tensors the TensorArray should be
     # colocated with.  We choose to colocate the TensorArray with the
@@ -137,7 +137,7 @@ class _GraphTensorArray(object):
       self._element_shape = []
     else:
       self._infer_shape = True
-      self._element_shape = [tensor_shape.TensorShape(element_shape)]
+      self._element_shape = [tensor_shape.as_shape(element_shape)]
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
@@ -155,7 +155,7 @@ class _GraphTensorArray(object):
               size=size,
               element_shape=element_shape,
               identical_element_shapes=infer_shape,
-              dynamic_size=dynamic_size,
+              dynamic_size=self._dynamic_size,
               clear_after_read=clear_after_read,
               tensor_array_name=tensor_array_name,
               name=scope)
@@ -176,6 +176,13 @@ class _GraphTensorArray(object):
   @property
   def handle(self):
     return self._handle
+
+  @property
+  def element_shape(self):
+    if self._element_shape:
+      return self._element_shape[0]
+    else:
+      return tensor_shape.unknown_shape(None)
 
   def _merge_element_shape(self, shape):
     """Changes the element shape of the array given a shape to merge with.
@@ -229,6 +236,7 @@ class _GraphTensorArray(object):
         colocate_with_first_write_call=self._colocate_with_first_write_call)
     ta._element_shape = self._element_shape
     ta._colocate_with = self._colocate_with
+    ta._dynamic_size = self._dynamic_size
     return ta
 
   def grad(self, source, flow=None, name=None):
@@ -270,7 +278,10 @@ class _GraphTensorArray(object):
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayWrite", [self._handle, index, value]):
-      value = ops.convert_to_tensor(value, name="value")
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+      _check_dtypes(value, self._dtype)
       if self._infer_shape:
         self._merge_element_shape(value.shape)
       with self._maybe_colocate_with(value):
@@ -288,6 +299,7 @@ class _GraphTensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
+      ta._dynamic_size = self._dynamic_size
       return ta
 
   def stack(self, name=None):
@@ -301,7 +313,7 @@ class _GraphTensorArray(object):
     if self._element_shape:
       element_shape = self._element_shape[0]
     else:
-      element_shape = tensor_shape.TensorShape(None)
+      element_shape = tensor_shape.unknown_shape(None)
     value = gen_data_flow_ops.tensor_array_gather_v3(
         handle=self._handle,
         indices=indices,
@@ -343,7 +355,10 @@ class _GraphTensorArray(object):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayScatter",
                         [self._handle, value, indices]):
-      value = ops.convert_to_tensor(value, name="value")
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+      _check_dtypes(value, self._dtype)
       if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
       with self._maybe_colocate_with(value):
@@ -361,6 +376,7 @@ class _GraphTensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
+      ta._dynamic_size = self._dynamic_size
       return ta
 
   @tf_should_use.should_use_result
@@ -368,7 +384,7 @@ class _GraphTensorArray(object):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArraySplit",
                         [self._handle, value, lengths]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = ops.convert_to_tensor(value, dtype=self._dtype, name="value")
       with self._maybe_colocate_with(value):
         lengths_64 = math_ops.cast(lengths, dtypes.int64)
         if self._infer_shape and not context.executing_eagerly():
@@ -392,6 +408,7 @@ class _GraphTensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
+      ta._dynamic_size = self._dynamic_size
       return ta
 
   def size(self, name=None):
@@ -471,7 +488,7 @@ class _GraphTensorArrayV2(object):
       raise ValueError("Cannot provide both a flow and element_shape "
                        "at the same time")
 
-    self._dtype = dtype
+    self._dtype = dtypes.as_dtype(dtype).base_dtype
 
     # Record the current static shape for the array elements. The element
     # shape is defined either by `element_shape` or the shape of the tensor
@@ -482,7 +499,7 @@ class _GraphTensorArrayV2(object):
       self._element_shape = []
     else:
       self._infer_shape = True
-      self._element_shape = [tensor_shape.TensorShape(element_shape)]
+      self._element_shape = [tensor_shape.as_shape(element_shape)]
     with ops.name_scope(name, "TensorArrayV2", [size, flow]) as scope:
       if flow is None:
         self._flow = list_ops.tensor_list_reserve(
@@ -504,6 +521,13 @@ class _GraphTensorArrayV2(object):
   @property
   def dtype(self):
     return self._dtype
+
+  @property
+  def element_shape(self):
+    if self._element_shape:
+      return self._element_shape[0]
+    else:
+      return tensor_shape.unknown_shape(None)
 
   @property
   def handle(self):
@@ -546,7 +570,7 @@ class _GraphTensorArrayV2(object):
       if self._element_shape:
         element_shape = self._element_shape[0]
       else:
-        element_shape = tensor_shape.TensorShape(None)
+        element_shape = tensor_shape.unknown_shape(None)
       value = list_ops.tensor_list_get_item(
           input_handle=self._flow,
           index=index,
@@ -561,7 +585,10 @@ class _GraphTensorArrayV2(object):
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Write", [self._flow, index, value]):
-      value = ops.convert_to_tensor(value, name="value")
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+      _check_dtypes(value, self._dtype)
       if self._infer_shape:
         self._merge_element_shape(value.shape)
       flow_out = list_ops.tensor_list_set_item(
@@ -578,7 +605,7 @@ class _GraphTensorArrayV2(object):
       if self._element_shape:
         element_shape = self._element_shape[0]
       else:
-        element_shape = tensor_shape.TensorShape(None)
+        element_shape = tensor_shape.unknown_shape(None)
       value = list_ops.tensor_list_stack(
           input_handle=self._flow,
           element_dtype=self._dtype,
@@ -592,7 +619,7 @@ class _GraphTensorArrayV2(object):
     if self._element_shape:
       element_shape = self._element_shape[0]
     else:
-      element_shape = tensor_shape.TensorShape(None)
+      element_shape = tensor_shape.unknown_shape(None)
     value = list_ops.tensor_list_gather(
         input_handle=self._flow,
         indices=indices,
@@ -621,7 +648,10 @@ class _GraphTensorArrayV2(object):
   def unstack(self, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayUnstack", [self._flow, value]):
-      value = ops.convert_to_tensor(value, name="value")
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+      _check_dtypes(value, self._dtype)
       if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
       flow_out = list_ops.tensor_list_from_tensor(
@@ -633,7 +663,10 @@ class _GraphTensorArrayV2(object):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayScatter",
                         [self._flow, value, indices]):
-      value = ops.convert_to_tensor(value, name="value")
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+      _check_dtypes(value, self._dtype)
       if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
       element_shape = self._element_shape[0] if self._element_shape else None
@@ -645,7 +678,10 @@ class _GraphTensorArrayV2(object):
   def split(self, value, lengths, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArraySplit", [self._flow, value, lengths]):
-      value = ops.convert_to_tensor(value, name="value")
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+      _check_dtypes(value, self._dtype)
       lengths_64 = math_ops.cast(lengths, dtypes.int64)
       if self._infer_shape and not context.executing_eagerly():
         clengths = tensor_util.constant_value(lengths_64)
@@ -730,10 +766,10 @@ class _EagerTensorArray(object):
     # a Tensor
     self._flow = constant_op.constant(0, dtype=dtypes.int32)
     self._infer_shape = infer_shape
-    self._element_shape = element_shape
+    self._element_shape = tensor_shape.as_shape(element_shape)
     self._colocate_with_first_write_call = colocate_with_first_write_call
 
-    self._dtype = dtype
+    self._dtype = dtypes.as_dtype(dtype).base_dtype
     self._dynamic_size = dynamic_size or False
     self._clear_after_read = (
         True if clear_after_read is None else clear_after_read)
@@ -756,6 +792,13 @@ class _EagerTensorArray(object):
   def handle(self):
     """For compatibility; handles are not meaningful when eager is enabled."""
     return self._handle
+
+  @property
+  def element_shape(self):
+    if not self._element_shape:
+      return tensor_shape.unknown_shape(None)
+    else:
+      return
 
   def identity(self):
     """See TensorArray."""
@@ -831,14 +874,17 @@ class _EagerTensorArray(object):
       self._tensor_array.extend([None for _ in range(index - size + 1)])
 
     if not isinstance(value, ops.EagerTensor):
-      value = ops.convert_to_tensor(value)
+      # TODO(b/129870929): Fix after all callers provide proper init dtype.
+      value = ops.convert_to_tensor(
+          value, preferred_dtype=self._dtype, name="value")
+    _check_dtypes(value, self._dtype)
 
     if self._infer_shape:
-      if self._element_shape is None:
-        self._element_shape = value.shape
-      elif not self._element_shape.is_compatible_with(value.shape):
+      if not self._element_shape.is_compatible_with(value.shape):
         raise ValueError("Incompatible shape for value (%s), expected (%s)" %
-                         (value.shape.as_list(), self._element_shape.as_list()))
+                         (value.shape, self._element_shape))
+      else:
+        self._element_shape = self._element_shape.merge_with(value.shape)
 
     if self._dtype != value.dtype:
       raise errors_impl.InvalidArgumentError(
@@ -914,8 +960,10 @@ class _EagerTensorArray(object):
 
   def split(self, value, lengths, name=None):
     """See TensorArray."""
-    # error checking to match graph-mode errors
-    value = ops.convert_to_tensor(value)
+    # TODO(b/129870929): Fix after all callers provide proper init dtype.
+    value = ops.convert_to_tensor(
+        value, preferred_dtype=self._dtype, name="value")
+    _check_dtypes(value, self._dtype)
     lengths = ops.convert_to_tensor(lengths)
     sum_lengths = math_ops.reduce_sum(lengths)
     if lengths.shape.ndims != 1:
@@ -1017,13 +1065,19 @@ class TensorArray(object):
       ValueError: if both handle and tensor_array_name are provided.
       TypeError: if handle is provided but is not a Tensor.
     """
-    if context.executing_eagerly():
+    if (context.executing_eagerly() and
+        (flow is None or flow.dtype != dtypes.variant)):
+      # It is possible to create a Variant-style TensorArray even in eager mode,
+      # and this is fine but can have performance implications in eager.
+      # An example of when this happens is if a tf.function returns a
+      # TensorArray in its output; its flow variant object is returned to Eager.
+      # This can be wrapped back up in a Variant-style TensorArray.
       implementation = _EagerTensorArray
+    elif (flow is not None and flow.dtype == dtypes.variant or
+          control_flow_util.EnableControlFlowV2(ops.get_default_graph())):
+      implementation = _GraphTensorArrayV2
     else:
-      if control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
-        implementation = _GraphTensorArrayV2
-      else:
-        implementation = _GraphTensorArray
+      implementation = _GraphTensorArray
     self._implementation = implementation(
         dtype,
         size=size,
@@ -1055,8 +1109,22 @@ class TensorArray(object):
     return self._implementation.handle
 
   @property
+  def element_shape(self):
+    """The `tf.TensorShape` of elements in this TensorArray."""
+    return self._implementation.element_shape
+
+  @property
+  def dynamic_size(self):
+    """Python bool; if `True` the TensorArray can grow dynamically."""
+    return self._implementation._dynamic_size
+
+  @property
   def _dynamic_size(self):
     return self._implementation._dynamic_size
+
+  @_dynamic_size.setter
+  def _dynamic_size(self, dynamic_size):
+    self._implementation._dynamic_size = dynamic_size
 
   @property
   def _infer_shape(self):
@@ -1244,6 +1312,21 @@ class TensorArray(object):
 
 def build_ta_with_new_flow(old_ta, flow):
   """Builds a TensorArray with a new `flow` tensor."""
+  if not context.executing_eagerly():
+    # Sometimes we get old_ta as the implementation, sometimes it's the
+    # TensorArray wrapper object.
+    impl = (old_ta._implementation if isinstance(old_ta, TensorArray)
+            else old_ta)
+    if (not isinstance(impl, _GraphTensorArrayV2) and
+        control_flow_util.EnableControlFlowV2(ops.get_default_graph())):
+      raise NotImplementedError("Attempting to build a graph-mode TF2-style "
+                                "TensorArray from either an eager-mode "
+                                "TensorArray or a TF1-style TensorArray.  "
+                                "This is not currently supported.  You may be "
+                                "attempting to capture a TensorArray "
+                                "inside a tf.function or tf.data map function. "
+                                "Instead, construct a new TensorArray inside "
+                                "the function.")
   ta = TensorArray(
       dtype=old_ta.dtype,
       dynamic_size=old_ta._dynamic_size,
@@ -1256,3 +1339,13 @@ def build_ta_with_new_flow(old_ta, flow):
   return ta
 
 # pylint: enable=protected-access
+
+
+def _check_dtypes(value, dtype):
+  if value.dtype != dtype:
+    logging.error(
+        "Error: Input value {} has dtype {}, but expected dtype {}.  "
+        "This leads to undefined behavior and will be an error "
+        "in future versions of TensorFlow.  Traceback:\n{}".format(
+            value, str(value.dtype), str(dtype),
+            "".join(traceback.format_stack())))

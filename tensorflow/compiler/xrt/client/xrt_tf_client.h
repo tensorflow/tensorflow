@@ -326,7 +326,7 @@ XrtTensorHandle EnqueueConst(XrtTfContext* context, int device_id,
 
 // Helpers for building AttrValue protos. We have our own versions of these
 // to avoid depending on TF framework code.
-AttrValue MakeAttrValue(absl::string_view s);
+AttrValue MakeAttrValue(std::string s);
 AttrValue MakeAttrValue(int64 i);
 AttrValue MakeBoolAttrValue(bool b);
 AttrValue MakeAttrValue(DataType dtype);

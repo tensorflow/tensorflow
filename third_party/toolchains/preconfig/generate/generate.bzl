@@ -53,7 +53,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = No
     docker_toolchain_autoconfig(
         name = name,
         base = base,
-        bazel_version = "0.21.0",
+        bazel_version = "0.23.2",
         config_repos = config_repos,
         env = env,
         mount_project = "$(mount_project)",

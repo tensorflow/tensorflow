@@ -255,7 +255,7 @@ typedef struct {
 
 // A union of pointers that points to memory for a given tensor.
 typedef union {
-  int* i32;
+  int32_t* i32;
   int64_t* i64;
   float* f;
   char* raw;

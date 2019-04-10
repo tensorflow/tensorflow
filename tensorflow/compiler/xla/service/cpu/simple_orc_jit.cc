@@ -153,7 +153,10 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
   }
 
   if (func_addr == nullptr) {
-    LOG(ERROR) << "Unable to resolve runtime symbol: " << name;
+    LOG(ERROR)
+        << "Unable to resolve runtime symbol: `" << name
+        << "'.  Hint: if the symbol a custom call target, make sure you've "
+           "registered it with the JIT using REGISTER_CUSTOM_CALL_TARGET.";
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
@@ -242,6 +245,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
   REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
+  REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
+  REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));

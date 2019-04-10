@@ -27,10 +27,9 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -278,6 +277,8 @@ class GraphConverter(object):
   # use it here (b/124792963).
   def _convert_saved_model_v2(self):
     """Convert the input SavedModel in 2.0 format."""
+    assert context.executing_eagerly()
+
     self._saved_model = load.load(self._input_saved_model_dir,
                                   self._input_saved_model_tags)
     func = self._saved_model.signatures[self._input_saved_model_signature_key]
@@ -287,43 +288,17 @@ class GraphConverter(object):
 
     # Add a collection 'train_op' so that Grappler knows the outputs.
     fetch_collection = meta_graph_pb2.CollectionDef()
-    for array in func.inputs + func.outputs:
+    for array in frozen_func.inputs + frozen_func.outputs:
       fetch_collection.node_list.value.append(array.name)
     self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
         fetch_collection)
 
     # Run TRT optimizer in Grappler to convert the graph.
     self._run_conversion()
-
-    def _get_tensor(graph, tensors):
-      new_tensors = []
-      for tensor in tensors:
-        new_tensor = graph.get_tensor_by_name(tensor.name)
-        new_tensor.set_shape(tensor.shape)
-        new_tensors.append(new_tensor)
-      return new_tensors
-
-    # TODO(laigd): do we need to use different name e.g. "trt_func_graph"?
-    converted_graph = func_graph.FuncGraph(func.graph.name)
-    with converted_graph.as_default():
-      importer.import_graph_def(self._converted_graph_def, name="")
-
-    converted_graph.inputs = _get_tensor(converted_graph, func.graph.inputs)
-    converted_graph.outputs = _get_tensor(converted_graph, func.graph.outputs)
-    converted_graph.structured_outputs = func.graph.structured_outputs
-    converted_graph.structured_input_signature = (
-        func.graph.structured_input_signature)
-
-    # pylint: disable=protected-access
-    # TODO(laigd): should we set up the signature as well?
-    self._converted_func = function.ConcreteFunction(
-        converted_graph, attrs=None, signature=None)
-    self._converted_func.add_to_graph()
-    self._converted_func._arg_keywords = func._arg_keywords
-    self._converted_func._num_positional_args = func._num_positional_args
-    self._converted_func._captured_inputs = func._captured_inputs
-    self._converted_func.graph.variables = func.graph.variables
-    # pylint: enable=protected-access
+    self._converted_func = wrap_function.function_from_graph_def(
+        self._converted_graph_def,
+        [tensor.name for tensor in frozen_func.inputs],
+        [tensor.name for tensor in frozen_func.outputs])
 
   def convert(self):
     """Run the conversion.
@@ -665,9 +640,10 @@ class TrtGraphConverter(GraphConverter):
     # Check input arguments.
     supported_precision_modes = TrtPrecisionMode.supported_precision_modes()
     if precision_mode not in supported_precision_modes:
-      raise ValueError(("precision mode '{}' is not supported."
-                        "It should be one of {}").format(
-                            precision_mode, supported_precision_modes))
+      raise ValueError(
+          ("precision mode '{}' is not supported."
+           "It should be one of {}").format(precision_mode,
+                                            supported_precision_modes))
 
     if cached_engine_batches:
       if not isinstance(cached_engine_batches, list):

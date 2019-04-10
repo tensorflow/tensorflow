@@ -34,7 +34,7 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 GraphOptimizer::~GraphOptimizer() {}
 
 void GraphOptimizer::Optimize(
-    FunctionLibraryRuntime* runtime, Env* env, Device* device,
+    FunctionLibraryRuntime* runtime, Env* env, const Device* device,
     std::unique_ptr<Graph>* graph,
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
@@ -115,7 +115,8 @@ void GraphOptimizer::Optimize(
 }
 
 void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              Device* device, std::unique_ptr<Graph>* graph,
+                              const Device* device,
+                              std::unique_ptr<Graph>* graph,
                               const Options& options) {
   Optimize(runtime, env, device, graph, options.shape_map,
            options.cse_consider_fn, options.cf_consider_fn);

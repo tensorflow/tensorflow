@@ -85,6 +85,7 @@ def get_all_v2_names():
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
+  visitor.do_not_descend_map['tf.compat'] = ['v1']
   traverse.traverse(tf.compat.v2, visitor)
   return v2_names
 

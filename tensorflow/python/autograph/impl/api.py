@@ -172,7 +172,10 @@ def _call_unconverted(f, args, kwargs):
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
-  return f(*args, **kwargs)
+  if kwargs is not None:
+    return f(*args, **kwargs)
+  else:
+    return f(*args)
 
 
 def _is_known_loaded_type(f, module_name, entity_name):
@@ -224,7 +227,10 @@ def converted_call(f, owner, options, args, kwargs):
     f = getattr(owner, f)
 
   if inspect_utils.isbuiltin(f):
-    return py_builtins.overload_of(f)(*args, **kwargs)
+    if kwargs:
+      return py_builtins.overload_of(f)(*args, **kwargs)
+    else:
+      return py_builtins.overload_of(f)(*args)
 
   if _is_known_loaded_type(f, 'weakref', 'ref'):
     logging.log(2, 'Permanently whitelisted: %s: weakref', f)
@@ -238,6 +244,10 @@ def converted_call(f, owner, options, args, kwargs):
         ' by AutoGraph. The function will be called without transformation.'
         ' You may however apply AutoGraph before the decorator.'.format(f))
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
+    return _call_unconverted(f, args, kwargs)
+
+  if _is_known_loaded_type(f, 'functools', '_lru_cache_wrapper'):
+    logging.log(2, 'Permanently whitelisted: %s: lru_cache', f)
     return _call_unconverted(f, args, kwargs)
 
   # Constructors are permanently whitelisted.
@@ -275,14 +285,14 @@ def converted_call(f, owner, options, args, kwargs):
       new_kwargs = {}
       if f.keywords is not None:
         new_kwargs.update(f.keywords)
-      new_kwargs.update(kwargs)
+      if kwargs is not None:
+        new_kwargs.update(kwargs)
       kwargs = new_kwargs
       f = f.func
 
     if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
       # Regular functions
       target_entity = f
-      arg_map_target = f
       f_self = inspect_utils.getmethodself(f)
 
       # TODO(b/119246461): This may be more elegantly handled using __get__?
@@ -297,36 +307,32 @@ def converted_call(f, owner, options, args, kwargs):
       # conversion with an experimental flag, this branch is dead code.
       # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
-      arg_map_target = f.__init__
       effective_args = args
 
     elif hasattr(f, '__call__') and hasattr(f, '__class__'):
       # Callable objects
       target_entity = f.__call__
-      arg_map_target = f.__call__
       effective_args = (f,) + args
 
     else:
       target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
-    arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
-    arg_types = {}
-    for name, arg in arg_values.items():
-      arg_class = arg.__class__
-      arg_types[name] = (arg_class.__name__, arg_class)
-
     converted_f = to_graph(
         target_entity,
         recursive=options.recursive,
-        arg_values=arg_values,
-        arg_types=arg_types,
+        arg_values=None,
+        arg_types=None,
         experimental_optional_features=options.optional_features)
 
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
-      callargs = tf_inspect.getcallargs(converted_f, *effective_args, **kwargs)
+      if kwargs is not None:
+        callargs = tf_inspect.getcallargs(
+            converted_f, *effective_args, **kwargs)
+      else:
+        callargs = tf_inspect.getcallargs(converted_f, *effective_args)
       formatted_callargs = '\n'.join(
           '    {}: {}'.format(k, v) for k, v in callargs.items())
       logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
@@ -342,14 +348,19 @@ def converted_call(f, owner, options, args, kwargs):
       raise
 
     logging.warn(
-        'Entity %s could not be transformed and will be staged without change.'
+        'Entity %s could not be transformed and will be executed as-is.'
+        ' Some features (e.g. tensor-dependent conditionals and loops) may not'
+        ' work as expected.'
         ' Error details can be found in the logs when running with the env'
         ' variable AUTOGRAPH_VERBOSITY >= 1. Please report this to the'
         ' AutoGraph team. Cause: %s', target_entity, e)
 
     return _call_unconverted(f, args, kwargs)
 
-  result = converted_f(*effective_args, **kwargs)
+  if kwargs is not None:
+    result = converted_f(*effective_args, **kwargs)
+  else:
+    result = converted_f(*effective_args)
 
   return result
 
@@ -423,12 +434,15 @@ def to_graph(entity,
     ValueError: If the entity could not be converted.
   """
   try:
+    # TODO(b/129431421): Remove these args.
+    del arg_values
+    del arg_types
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
             recursive=recursive,
             optional_features=experimental_optional_features),
         autograph_module=tf_inspect.getmodule(to_graph))
-    return conversion.convert(entity, program_ctx, arg_values, arg_types)
+    return conversion.convert(entity, program_ctx)
   except (ValueError, AttributeError, KeyError, NameError, AssertionError) as e:
     errors.report_internal_error(entity, e)
 
@@ -467,6 +481,8 @@ def to_code(entity,
   Returns:
     The converted code as string.
   """
+  # TODO(b/129431421): Remove this arg.
+  del indentation
   source = tf_inspect.getsource(
       to_graph(
           entity,

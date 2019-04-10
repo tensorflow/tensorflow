@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
+#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -246,26 +248,28 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void Relu(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float lower = 0;
-    const float clamped = val < lower ? lower : val;
+    const T val = input_data[i];
+    const T lower = 0;
+    const T clamped = val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
 
-inline void Relu1(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float upper = 1;
-    const float lower = -1;
-    const float clamped = val > upper ? upper : val < lower ? lower : val;
+    const T val = input_data[i];
+    const T upper = 1;
+    const T lower = -1;
+    const T clamped = val > upper ? upper : val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
@@ -2743,6 +2747,45 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
   }
 }
 
+template <typename input_type, typename output_type>
+inline void Requantize(const input_type* input_data, int32_t size,
+                       int32_t effective_scale_multiplier,
+                       int32_t effective_scale_shift, int32_t input_zeropoint,
+                       int32_t output_zeropoint, output_type* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Requantize");
+  const bool same_scale =
+      (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
+  if (same_scale) {
+    const bool mixed_type_int8_uint8 =
+        std::is_same<input_type, int8_t>::value &&
+        std::is_same<output_type, uint8_t>::value;
+    const bool mixed_type_uint8_int8 =
+        std::is_same<input_type, uint8_t>::value &&
+        std::is_same<output_type, int8_t>::value;
+    const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
+    // Fast path to do requantization for the case when just a shift of 128 is
+    // needed.
+    if ((mixed_type_int8_uint8 && zero_point_diff == -128) ||
+        (mixed_type_uint8_int8 && zero_point_diff == 128)) {
+      for (int i = 0; i < size; ++i) {
+        output_data[i] = input_data[i] ^ 0x80;
+      }
+    }
+  }
+  static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
+  static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
+  for (int i = 0; i < size; ++i) {
+    const int32_t input = input_data[i] - input_zeropoint;
+    const int32_t output =
+        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
+                                      effective_scale_shift) +
+        output_zeropoint;
+    const int32_t clamped_output =
+        std::max(std::min(output, kMaxOutput), kMinOutput);
+    output_data[i] = static_cast<output_type>(clamped_output);
+  }
+}
+
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
@@ -3205,6 +3248,7 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
   Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
       output_data);
 }
+
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                          const RuntimeShape& unextended_input_shape,
@@ -3260,8 +3304,9 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
 
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
-                  const RuntimeShape& input_shape, const T* input_data,
-                  const RuntimeShape& output_shape, T* output_data) {
+                  const RuntimeShape& input_shape,
+                  const RuntimeShape& output_shape,
+                  SequentialTensorWriter<T>* writer) {
   const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
   // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
   TFLITE_DCHECK_LE(op_params.begin_count, 4);
@@ -3286,16 +3331,31 @@ inline void Slice(const tflite::SliceParams& op_params,
                          ? ext_shape.Dims(3) - start_d
                          : start_d + op_params.size[size_count - 1];
 
-  T* out_ptr = output_data;
   for (int in_b = start_b; in_b < stop_b; ++in_b) {
     for (int in_h = start_h; in_h < stop_h; ++in_h) {
       for (int in_w = start_w; in_w < stop_w; ++in_w) {
         for (int in_d = start_d; in_d < stop_d; ++in_d) {
-          *out_ptr++ = input_data[Offset(ext_shape, in_b, in_h, in_w, in_d)];
+          writer->Write(Offset(ext_shape, in_b, in_h, in_w, in_d));
         }
       }
     }
   }
+}
+
+template <typename T>
+inline void Slice(const tflite::SliceParams& op_params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+template <typename T>
+inline void Slice(const tflite::SliceParams& op_params,
+                  const RuntimeShape& input_shape, const TfLiteTensor* input,
+                  const RuntimeShape& output_shape, TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  return Slice(op_params, input_shape, output_shape, &writer);
 }
 
 template <typename T>

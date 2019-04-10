@@ -21,7 +21,6 @@ import functools
 import weakref
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -506,10 +505,8 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
-    if not context.num_gpus():
-      self.skipTest("Needs multiple devices")
-
     a = []
 
     @def_function.function()

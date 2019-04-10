@@ -89,6 +89,17 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
     flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
   except (TypeError, ValueError):
     return False
+  try:
+    # Verify that no input elements were dropped during flattening.
+    repacked = nest.pack_sequence_as(expected_structure, flatten_inputs)
+    # TODO(b/129422719): Namedtuple subclasses re-created through
+    # saved_model.load don't compare equal in type to the original in
+    # assert_same_structure. Fix that and we can take out check_types=False
+    # here.
+    nest.assert_same_structure(inputs, repacked, check_types=False)
+  except (TypeError, ValueError):
+    return False
+
   for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
     if isinstance(expected, tensor_spec.TensorSpec):
       if allow_conversion:
@@ -105,23 +116,36 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
   return True
 
 
-def _deserialize_function_spec(function_spec_proto, coder):
+def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
   """Deserialize a FunctionSpec object from its proto representation."""
   typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+
+  # Convert a method function into a non method.
+  if function_spec_proto.is_method:
+    if not typeless_fullargspec.args:
+      raise NotImplementedError(
+          "Missing support to deserialize a method function without a named "
+          "'self' argument.")
+    args = typeless_fullargspec.args[1:]
+  else:
+    args = typeless_fullargspec.args
+
   fullargspec = tf_inspect.FullArgSpec(
-      args=typeless_fullargspec.args,
+      args=args,
       varargs=typeless_fullargspec.varargs,
       varkw=typeless_fullargspec.varkw,
       defaults=typeless_fullargspec.defaults,
       kwonlyargs=typeless_fullargspec.kwonlyargs,
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
-  is_method = function_spec_proto.is_method
   args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
   kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
-  return function_lib.FunctionSpec(fullargspec, is_method, args_to_prepend,
-                                   kwargs_to_include, input_signature)
+  return function_lib.FunctionSpec(fullargspec=fullargspec,
+                                   is_method=False,
+                                   args_to_prepend=args_to_prepend,
+                                   kwargs_to_include=kwargs_to_include,
+                                   input_signature=input_signature)
 
 
 # TODO(allenl): The fact that we can't derive ConcreteFunction calling
@@ -178,8 +202,19 @@ def recreate_function(saved_function, concrete_functions):
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
-  function_spec = _deserialize_function_spec(saved_function.function_spec,
-                                             coder)
+
+  # Note: handling method functions is tricky since make_decorator does not
+  # allows control of "ismethod". Additionally since restored functions do
+  # not behave as methods i.e. they always use the same captured tensors
+  # independent of the object they are bound to, there is little value on
+  # propagating that correctly.
+  #
+  # Ideally this conversion should happen at serialization time. But since
+  # there are SavedModels which have "ismethod" populated and have an extra
+  # argument that they expect to be ignored, we do it at deserialization.
+  function_spec = _deserialize_function_spec_as_nonmethod(
+      saved_function.function_spec,
+      coder)
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function."""

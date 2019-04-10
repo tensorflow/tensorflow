@@ -1238,25 +1238,6 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Positive) {
             "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
 }
 
-TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Positive) {
-  InitGraph(
-      "node { name: 'A' op: 'QuantizedInput'}"
-      "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Input'}"
-      "node { name: 'D' op: 'Dequantize'"
-      " attr { key: 'T'             value { type: DT_QUINT8 } }"
-      " attr { key: 'mode'          value { s: 'SCALED' } }"
-      " input: ['A', 'B', 'C']}"
-      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(QuantizedInput);B(Input);C(Input);D(_MklDequantize);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E;"
-            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
-}
-
 TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Const_Input) {
   InitGraph(
       "node { name: 'A' op: 'Const' "

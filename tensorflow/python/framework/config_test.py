@@ -60,8 +60,7 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     config.set_device_policy('silent')
     config.set_intra_op_parallelism_threads(2)
 
-    # Excute a dummy op to ensure that the context has been initialized
-    constant_op.constant(1)
+    context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
       cpu_tensor = constant_op.constant(1, dtype=dtype)
@@ -125,7 +124,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         config.get_gpu_per_process_memory_fraction(),
         context.context().gpu_per_process_memory_fraction)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_gpu_per_process_memory_fraction(0.5)
 
@@ -145,7 +145,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         config.get_gpu_per_process_memory_growth(),
         context.context().gpu_per_process_memory_growth)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_gpu_per_process_memory_growth(True)
 
@@ -156,7 +157,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         config.get_intra_op_parallelism_threads(),
         context.context().intra_op_parallelism_threads)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_intra_op_parallelism_threads(1)
 
@@ -167,7 +169,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         config.get_inter_op_parallelism_threads(),
         context.context().inter_op_parallelism_threads)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_inter_op_parallelism_threads(1)
 
@@ -221,7 +224,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         context.get_log_device_placement(),
         context.context().log_device_placement)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
     with self.assertRaises(RuntimeError):

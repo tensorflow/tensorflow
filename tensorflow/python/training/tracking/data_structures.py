@@ -489,6 +489,15 @@ class _ListWrapper(List, collections.MutableSequence,
     super(_ListWrapper, self).extend(values)
     self._update_snapshot()
 
+  def __imul__(self, y):
+    if y <= 0:
+      self._self_non_append_mutation = True
+      self._storage *= y
+      return self
+
+    # Relies on super() calling append, which updates the snapshot.
+    return super(_ListWrapper, self).__imul__(y)
+
   def __eq__(self, other):
     return self._storage == getattr(other, "_storage", other)
 
@@ -656,6 +665,9 @@ class _DictWrapper(Mapping, collections.MutableMapping):
     self._external_modification = False
     super(_DictWrapper, self).__init__(wrapped_dict)
     self._update_snapshot()
+
+  def copy(self):
+    return copy.copy(self)
 
   # pylint: disable=protected-access
   def __copy__(self):

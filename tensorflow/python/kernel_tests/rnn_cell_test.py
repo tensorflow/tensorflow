@@ -2425,6 +2425,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
         gpu_stats = ds.node_stats
     return cpu_stats, gpu_stats
 
+  @test_util.run_v1_only("b/124229375")
   def testRNNOnCPUCellOnGPU(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
@@ -2447,6 +2448,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     # Scatters happen to get initial input into TensorArray
     _assert_in("TensorArrayScatter", cpu_stats, gpu_stats)
 
+  @test_util.run_v1_only("b/124229375")
   def testRNNOnCPUCellOnCPU(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
@@ -2463,6 +2465,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     # All TensorArray operations happen on CPU
     _assert_in("TensorArray", cpu_stats, gpu_stats)
 
+  @test_util.run_v1_only("b/124229375")
   def testInputOnGPUCellNotDeclared(self):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
@@ -2887,6 +2890,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         gpu_stats = ds.node_stats
     return cpu_stats, gpu_stats
 
+  @test_util.run_v1_only("b/124229375")
   def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
     if not test.is_gpu_available():
       # Can't perform this test w/o a GPU
@@ -3349,4 +3353,10 @@ class DropoutWrapperTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  # TODO(b/129895139): We can remove this once we have have a process-global
+  # auto-tuning cache for GEMMs.  Without b/129895139 it is possible for the
+  # forward and backward passes to pick different GEMM algorithms when run under
+  # XLA.
+  os.environ["XLA_FLAGS"] = ("--xla_gpu_disable_autotune=true" +
+                             os.environ.get("XLA_FLAGS", ""))
   test.main()

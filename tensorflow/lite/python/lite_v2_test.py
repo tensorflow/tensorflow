@@ -80,24 +80,6 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
-  def testSizeNone(self):
-    # Test with a shape of None
-    input_data = constant_op.constant(1., shape=None)
-    root = tracking.AutoTrackable()
-    root.v1 = variables.Variable(3.)
-    root.f = def_function.function(lambda x: root.v1 * x)
-    concrete_func = root.f.get_concrete_function(input_data)
-
-    # Convert model.
-    converter = lite.TFLiteConverterV2.from_concrete_function(concrete_func)
-    tflite_model = converter.convert()
-
-    # Check values from converted model.
-    expected_value = root.f(input_data)
-    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
-    self.assertEqual(expected_value.numpy(), actual_value)
-
-  @test_util.run_v2_only
   def testConstSavedModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
     input_data = constant_op.constant(1., shape=[1])

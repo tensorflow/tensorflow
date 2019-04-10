@@ -37,6 +37,7 @@ from tensorflow.python.ops import io_ops
 
 
 def _create_tensor(value, device=None, dtype=None):
+  context.ensure_initialized()
   ctx = context.context()
   if device is None:
     device = ctx.device_name
@@ -61,6 +62,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("tf.Tensor", repr(t))
 
   def testBadConstructorArgs(self):
+    context.ensure_initialized()
     ctx = context.context()
     handle = ctx._handle
     device = ctx.device_name
@@ -76,9 +78,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError,
                                  "Expecting a DataType value for dtype. Got"):
       ops.EagerTensor(1, context=handle, device=device, dtype="1")
+
     # Following errors happen when trying to copy to GPU.
-    if not context.context().num_gpus():
+    if not test_util.is_gpu_available():
       self.skipTest("No GPUs found")
+
     with ops.device("/device:GPU:0"):
       device = ctx.device_name
       # Bad context.
@@ -269,9 +273,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     for list_element, tensor_element in zip(l, t):
       self.assertAllEqual(list_element, tensor_element.numpy())
 
+  @test_util.run_gpu_only
   def testStringTensorOnGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with ops.device("/device:GPU:0"):
       with self.assertRaisesRegexp(
           RuntimeError, "Can't copy Tensor with type string to device"):

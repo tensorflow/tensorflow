@@ -35,6 +35,12 @@ class ResourceMgr;
 namespace data {
 
 class CapturedFunction;
+class InstantiatedCapturedFunction;
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
@@ -116,6 +122,7 @@ class CapturedFunction {
   struct Params {
     bool use_inter_op_parallelism = true;
     bool is_multi_device_function = false;
+    std::shared_ptr<FunctionLibraryDefinition> lib_def = nullptr;
   };
 
   // Creates a new instance using a list of named attributes, fetching captured
@@ -129,6 +136,14 @@ class CapturedFunction {
   static Status Create(const NameAttrList& func, OpKernelContext* ctx,
                        std::vector<Tensor>&& captured_inputs, Params params,
                        std::unique_ptr<CapturedFunction>* out_function);
+
+  // Adds the definition of this captured function into the given graph,
+  // returning its captured inputs and types through the respective output
+  // arguments.
+  Status AddToGraph(SerializationContext* ctx,
+                    DatasetBase::DatasetGraphDefBuilder* b,
+                    std::vector<Node*>* other_arguments,
+                    DataTypeVector* other_arguments_types) const;
 
   // Instantiates this function for use in the given context, providing an
   // InstantiatedCapturedFunction that can be used to execute functions.
@@ -147,6 +162,10 @@ class CapturedFunction {
   // Indicates whether the function is multi-device.
   bool is_multi_device_function() const { return is_multi_device_function_; }
 
+  // Returns the transitive set of function definition required to instantiate
+  // this function.
+  const FunctionLibraryDefinition* lib_def() const { return lib_def_.get(); }
+
   // Indicates whether the function should use inter op parallelism.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
@@ -158,6 +177,7 @@ class CapturedFunction {
   const std::vector<Tensor> captured_inputs_;
   const bool use_inter_op_parallelism_;
   const bool is_multi_device_function_;
+  std::shared_ptr<const FunctionLibraryDefinition> lib_def_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

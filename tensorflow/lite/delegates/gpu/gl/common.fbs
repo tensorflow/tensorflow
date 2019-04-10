@@ -1,0 +1,16 @@
+namespace tflite.gpu.gl.data;
+
+table Uint3 {
+  x:uint32;
+  y:uint32;
+  z:uint32;
+}
+
+table Uint2 {
+  x:uint32;
+  y:uint32;
+}
+
+table Uint1 {
+  x:uint32;
+}

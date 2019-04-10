@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -492,15 +493,7 @@ HloInstructionProto HloCollectiveInstruction::ToProto() const {
 
 std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
-  std::vector<string> result;
-  std::vector<string> replica_group_str;
-  for (const ReplicaGroup& group : replica_groups()) {
-    replica_group_str.push_back(
-        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
-  }
-  result.push_back(
-      StrCat("replica_groups={", StrJoin(replica_group_str, ","), "}"));
-  return result;
+  return {StrCat("replica_groups=", ReplicaGroupsToString(replica_groups()))};
 }
 
 bool HloCollectiveInstruction::IdenticalSlowPath(
@@ -1025,6 +1018,11 @@ HloConstantInstruction::HloConstantInstruction(Literal literal)
     : HloInstruction(HloOpcode::kConstant, literal.shape()),
       literal_(std::move(literal)) {}
 
+HloConstantInstruction::HloConstantInstruction(Literal literal,
+                                               const Shape& shape)
+    : HloInstruction(HloOpcode::kConstant, shape),
+      literal_(std::move(literal)) {}
+
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape) {}
 
@@ -1070,7 +1068,12 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK(literal_.has_value());
-  return absl::make_unique<HloConstantInstruction>(literal_->Clone());
+  // Literal's shape may have no/different tiling info. Use this instruction's
+  // shape instead.
+  CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(literal_->shape(),
+                                                  this->shape()));
+  return absl::make_unique<HloConstantInstruction>(literal_->Clone(),
+                                                   this->shape());
 }
 
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(

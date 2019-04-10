@@ -1271,12 +1271,10 @@ class ControlFlowTest(test.TestCase):
     def nested_while_loop():
       return build_nested_while()[0]
 
-    # TODO(b/117840611): calling nested_while_loop fails in eager
-    if not context.executing_eagerly():
-      with self.captureWritesToStream(sys.stderr) as printed:
-        self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
-                       filter_test_messages(printed.contents()))
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.assertEqual(self.evaluate(nested_while_loop()), 2)
+    self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
+                     filter_test_messages(printed.contents()))
 
     # wrap_function should prune.
     def pruned_while():
@@ -1291,11 +1289,9 @@ class ControlFlowTest(test.TestCase):
       return build_nested_while()[0]
     pruned_nested_while = wrap_function.wrap_function(pruned_nested_while, [])
 
-    # TODO(b/117840611): calling nested_while_loop fails in eager
-    if not context.executing_eagerly():
-      with self.captureWritesToStream(sys.stderr) as printed:
-        self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.assertEqual(self.evaluate(pruned_nested_while()), 2)
+    self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
@@ -2666,6 +2662,20 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=10)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
+
+  def testWhileGradInControlDeps(self):
+
+    @def_function.function
+    def f():
+      x_init = constant_op.constant(2.)
+      loop_cond = lambda i, x: math_ops.less(i, 2)
+      loop_body = lambda i, x: [i + 1, x**2]
+      _, x = control_flow_ops.while_loop(loop_cond, loop_body, [0, x_init])
+      with ops.control_dependencies([x]):
+        (grad,) = gradients_impl.gradients(x, x_init)
+        return grad
+
+    self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
 
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 

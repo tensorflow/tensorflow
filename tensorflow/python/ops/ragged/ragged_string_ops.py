@@ -22,9 +22,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -400,3 +402,163 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
   else:
     return codepoints
 
+
+@tf_export("strings.split", v1=[])
+def string_split_v2(source, sep=None, maxsplit=-1):
+  """Split elements of `source` based on `sep` into a `RaggedTensor`.
+
+  Let N be the size of source (typically N will be the batch size). Split each
+  element of `source` based on `sep` and return a `SparseTensor` or
+  `RaggedTensor` containing the split tokens. Empty tokens are ignored.
+
+  Example:
+
+  ```python
+  >>> tf.strings.split(['hello world', 'a b c'])
+  <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
+  ```
+
+  If `sep` is given, consecutive delimiters are not grouped together and are
+  deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
+  sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
+  string, consecutive whitespace are regarded as a single separator, and the
+  result will contain no empty strings at the start or end if the string has
+  leading or trailing whitespace.
+
+  Note that the above mentioned behavior matches python's str.split.
+
+  Args:
+    source: `1-D` string `Tensor`, the strings to split.
+    sep: `0-D` string `Tensor`, the delimiter string.
+    maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
+
+  Raises:
+    ValueError: If sep is not a string.
+
+  Returns:
+    A `RaggedTensor` of rank `2`: the strings split according to the delimiter.
+  """
+  sparse_result = string_ops.string_split_v2(source, sep=sep, maxsplit=maxsplit)
+  return ragged_tensor.RaggedTensor.from_value_rowids(
+      values=sparse_result.values,
+      value_rowids=sparse_result.indices[:, 0],
+      nrows=sparse_result.dense_shape[0])
+
+
+@tf_export(v1=["string_split"])
+@deprecation.deprecated_args(None,
+                             "delimiter is deprecated, please use sep instead.",
+                             "delimiter")
+def string_split(source, sep=None, skip_empty=True, delimiter=None,
+                 result_type="SparseTensor"):  # pylint: disable=invalid-name
+  """Split elements of `source` based on `delimiter`.
+
+  Let N be the size of `source` (typically N will be the batch size). Split each
+  element of `source` based on `delimiter` and return a `SparseTensor`
+  or `RaggedTensor` containing the split tokens. Empty tokens are ignored.
+
+  If `sep` is an empty string, each element of the `source` is split
+  into individual strings, each containing one byte. (This includes splitting
+  multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+  treated as a set of delimiters with each considered a potential split point.
+
+  Examples:
+
+  ```python
+  >>> tf.strings.split(['hello world', 'a b c'])
+  tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]],
+                  values=['hello', 'world', 'a', 'b', 'c']
+                  dense_shape=[2, 3])
+
+  >>> tf.strings.split(['hello world', 'a b c'], result_type="RaggedTensor")
+  <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
+  ```
+
+  Args:
+    source: `1-D` string `Tensor`, the strings to split.
+    sep: `0-D` string `Tensor`, the delimiter character, the string should
+      be length 0 or 1. Default is ' '.
+    skip_empty: A `bool`. If `True`, skip the empty strings from the result.
+    delimiter: deprecated alias for `sep`.
+    result_type: The tensor type for the result: one of `"RaggedTensor"` or
+      `"SparseTensor"`.
+
+  Raises:
+    ValueError: If delimiter is not a string.
+
+  Returns:
+    A `SparseTensor` or `RaggedTensor` of rank `2`, the strings split according
+    to the delimiter.  The first column of the indices corresponds to the row
+    in `source` and the second column corresponds to the index of the split
+    component in this row.
+  """
+  sparse_result = string_ops.string_split(
+      source, sep=sep, skip_empty=skip_empty, delimiter=delimiter)
+  if result_type == "SparseTensor":
+    return sparse_result
+  elif result_type == "RaggedTensor":
+    return ragged_tensor.RaggedTensor.from_value_rowids(
+        values=sparse_result.values,
+        value_rowids=sparse_result.indices[:, 0],
+        nrows=sparse_result.dense_shape[0])
+  else:
+    raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
+
+
+# In TensorFlow 1.x, "tf.strings.split" uses the new signature (with maxsplit),
+# but we need to add the result_type argument.
+@tf_export(v1=["strings.split"])
+def strings_split_v1(source, sep=None, maxsplit=-1, result_type="SparseTensor"):
+  """Split elements of `source` based on `sep`.
+
+  Let N be the size of source (typically N will be the batch size). Split each
+  element of `source` based on `sep` and return a `SparseTensor` or
+  `RaggedTensor` containing the split tokens. Empty tokens are ignored.
+
+  Examples:
+
+  ```python
+  >>> tf.strings.split(['hello world', 'a b c'])
+  tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]],
+                  values=['hello', 'world', 'a', 'b', 'c']
+                  dense_shape=[2, 3])
+
+  >>> tf.strings.split(['hello world', 'a b c'], result_type="RaggedTensor")
+  <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
+  ```
+
+  If `sep` is given, consecutive delimiters are not grouped together and are
+  deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
+  sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
+  string, consecutive whitespace are regarded as a single separator, and the
+  result will contain no empty strings at the start or end if the string has
+  leading or trailing whitespace.
+
+  Note that the above mentioned behavior matches python's str.split.
+
+  Args:
+    source: `1-D` string `Tensor`, the strings to split.
+    sep: `0-D` string `Tensor`, the delimiter character.
+    maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
+    result_type: The tensor type for the result: one of `"RaggedTensor"` or
+      `"SparseTensor"`.
+
+  Raises:
+    ValueError: If sep is not a string.
+
+  Returns:
+    A `SparseTensor` of rank `2`, the strings split according to the delimiter.
+    The first column of the indices corresponds to the row in `source` and the
+    second column corresponds to the index of the split component in this row.
+  """
+  sparse_result = string_ops.string_split_v2(
+      source, sep=sep, maxsplit=maxsplit)
+  if result_type == "SparseTensor":
+    return sparse_result
+  elif result_type == "RaggedTensor":
+    return ragged_tensor.RaggedTensor.from_value_rowids(
+        values=sparse_result.values,
+        value_rowids=sparse_result.indices[:, 0],
+        nrows=sparse_result.dense_shape[0])
+  else:
+    raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")

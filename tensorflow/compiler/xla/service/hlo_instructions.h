@@ -650,6 +650,7 @@ class HloSliceInstruction : public HloInstruction {
 class HloConstantInstruction : public HloInstruction {
  public:
   explicit HloConstantInstruction(Literal literal);
+  explicit HloConstantInstruction(Literal literal, const Shape& shape);
   // Used when the literal is too large and dropped.
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
@@ -874,6 +875,13 @@ class HloParameterInstruction : public HloInstruction {
     parameter_replicated_at_leaf_buffers_.emplace(
         parameter_replicated_at_leaf_buffers.begin(),
         parameter_replicated_at_leaf_buffers.end());
+  }
+  void set_parameter_replicated_at_leaf_buffers(
+      const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
+    CHECK_EQ(ShapeUtil::GetLeafCount(shape()),
+             parameter_replicated_at_leaf_buffers.size());
+    parameter_replicated_at_leaf_buffers_ =
+        parameter_replicated_at_leaf_buffers;
   }
   const absl::optional<std::vector<bool>>&
   parameter_replicated_at_leaf_buffers() const {

@@ -5,9 +5,7 @@ package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
-load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_cuda", "if_not_windows", "tf_binary_additional_data_deps", "tf_shared_library_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -36,12 +34,12 @@ pkg_tar(
 
 pkg_tar(
     name = "libtensorflow_jni",
-    extension = "tar.gz",
-    files = [
+    srcs = [
         "include/tensorflow/jni/LICENSE",
         "//:LICENSE",
         "//tensorflow/java:libtensorflow_jni",
     ],
+    extension = "tar.gz",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -54,13 +52,17 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    files = tf_binary_additional_srcs(),
+    srcs = ["//tensorflow:tensorflow_framework"],
+    symlinks = {
+        "libtensorflow_framework.so": "libtensorflow_framework.so.%s" % VERSION_MAJOR,
+        "libtensorflow_framework.so.%s" % VERSION_MAJOR: "libtensorflow.so_framework.%s" % VERSION,
+    },
     tags = ["manual"],
 )
 
 pkg_tar(
     name = "cheaders",
-    files = [
+    srcs = [
         "//tensorflow/c:headers",
     ],
     package_dir = "include/tensorflow/c",
@@ -74,7 +76,7 @@ pkg_tar(
 
 pkg_tar(
     name = "eager_cheaders",
-    files = [
+    srcs = [
         "//tensorflow/c/eager:headers",
     ],
     package_dir = "include/tensorflow/c/eager",
@@ -88,14 +90,12 @@ pkg_tar(
 
 pkg_tar(
     name = "clib",
-    files = select({
-        "//tensorflow:windows": [
-            "//tensorflow:tensorflow.dll",
-            "//tensorflow:tensorflow_dll_import_lib",
-        ],
-        "//conditions:default": ["//tensorflow:libtensorflow.so"],
-    }),
+    srcs = ["//tensorflow"],
     package_dir = "lib",
+    symlinks = {
+        "lib/libtensorflow.so": "lib/libtensorflow.so.%s" % VERSION_MAJOR,
+        "lib/libtensorflow.so.%s" % VERSION_MAJOR: "lib/libtensorflow.so.%s" % VERSION,
+    },
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -107,7 +107,7 @@ pkg_tar(
 
 pkg_tar(
     name = "clicenses",
-    files = [
+    srcs = [
         ":include/tensorflow/c/LICENSE",
         "//:LICENSE",
     ],

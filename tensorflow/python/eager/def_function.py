@@ -134,7 +134,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                         if init_from_fn else [initial_value]) as name:
       # pylint: disable=protected-access
       with ops.init_scope():
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         unique_id = "%s_%d" % (handle_name, ops.uid())
         shared_name = context.shared_name(unique_id)
       with ops.name_scope("Initializer"), ops.device(None):
@@ -316,12 +316,16 @@ class Function(object):
         return weak_wrapped_fn().__wrapped__(*args, **kwds)
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
+    return self._defun(tf_decorator.make_decorator(
+        self._python_function,
+        wrapped_fn,
+        decorator_argspec=self._function_spec.fullargspec))
+
+  def _defun(self, fn):
+    """Returns a defun generated from the input function."""
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(
-            self._python_function,
-            wrapped_fn,
-            decorator_argspec=self._function_spec.fullargspec),
+        fn,
         input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)
@@ -399,6 +403,7 @@ class Function(object):
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
+    context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
     if self._created_variables:

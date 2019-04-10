@@ -50,7 +50,7 @@ class TextRnnModel(tf.train.Checkpoint):
     # splitting on spaces.
     normalized_sentences = tf.strings.regex_replace(
         input=sentences, pattern=r"\pP", rewrite="")
-    sparse_tokens = tf.strings.split(normalized_sentences, " ")
+    sparse_tokens = tf.strings.split(normalized_sentences, " ").to_sparse()
 
     # Deal with a corner case: there is one empty sentence.
     sparse_tokens, _ = tf.sparse.fill_empty_rows(sparse_tokens, tf.constant(""))
@@ -190,5 +190,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-  tf.enable_v2_behavior()
   app.run(main)

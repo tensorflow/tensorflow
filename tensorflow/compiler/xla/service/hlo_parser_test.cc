@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -2261,6 +2262,13 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, ParseReplicaGroups) {
+  const string original = "{{0,1},{2,3}}";
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                          ParseReplicaGroupsOnly(original));
+  EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
 }
 
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {

@@ -385,6 +385,26 @@ class ListWrapperTest(test.TestCase):
     l[2:] = 1, 2, 3, 4
     self.assertEqual(l, [1, 2, 1, 2, 3, 4])
 
+  def testIMulNegative(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l *= -1
+    self.assertEqual(l, [1, 2, 3, 4] * -1)
+    self.assertUnableToSave(l, "Unable to save")
+
+  def testIMulPositive(self):
+    v = variables.Variable(1.)
+    l = data_structures._ListWrapper([1, 2, 3, 4, v])
+    self.assertEqual([("4", v)], l._checkpoint_dependencies)
+    root = util.Checkpoint(l=l)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    path = root.save(prefix)
+    v.assign(5.)
+    l *= 2
+    self.assertEqual(l, [1, 2, 3, 4, v, 1, 2, 3, 4, v])
+    self.assertEqual([("4", v), ("9", v)], l._checkpoint_dependencies)
+    root.restore(path)
+    self.assertAllClose(1., v.numpy())
+
   def testSort(self):
     l = data_structures._ListWrapper([1, 2, 3, 4])
     l.sort()
@@ -636,6 +656,11 @@ class MappingTests(test.TestCase):
     orig_dict = {"a": [1.]}
     root.a = orig_dict
     copied = copy.copy(root.a)
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a["a"], copied["a"])
+
+    copied = root.a.copy()
     self.assertAllEqual([1.], copied["a"])
     self.assertIsNot(root.a, copied)
     self.assertIs(root.a["a"], copied["a"])
