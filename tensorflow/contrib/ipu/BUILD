@@ -14,6 +14,7 @@ py_library(
       "__init__.py",
       "python/autoshard.py",
       "python/autoshard_cnn.py",
+      "python/internal.py",
       "python/ipu_compiler.py",
       "python/ipu_infeed_queue.py",
       "python/ipu_outfeed_queue.py",
@@ -32,6 +33,7 @@ py_library(
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
         "//tensorflow/compiler/plugin/poplar:popnn_ops_py",
         "//tensorflow/compiler/plugin/poplar:popops_ops_py",
+        "//tensorflow/compiler/plugin/poplar:poputil_ops_py",
         "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
@@ -84,6 +86,24 @@ tf_py_test(
     name = "mapping_test",
     size = "small",
     srcs = ["python/tests/mapping_test.py"],
+    additional_deps = [
+        ":ipu",
+        ":test_util",
+        "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
+    name = "remapping_test",
+    size = "small",
+    srcs = ["python/tests/remapping_test.py"],
     additional_deps = [
         ":ipu",
         ":test_util",
@@ -336,6 +356,7 @@ test_suite(
         "ops_test",
         "popnn_normalization_test",
         "popops_cross_replica_sum_test",
+        "remapping_test",
         "replicated_graph_test",
         "sharded_inplace_test",
         "sort_op_test",

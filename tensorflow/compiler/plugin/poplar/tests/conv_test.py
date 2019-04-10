@@ -497,7 +497,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = [
           '__seed*', 'Copy_',
           'DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6',
-          'Relu/fusion.*/Nonlinearity'
+          'Relu/custom-call*/Nonlinearity'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

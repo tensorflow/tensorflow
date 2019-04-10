@@ -17,29 +17,16 @@ inline const HloInstruction* LookThroughBroadcast(const HloInstruction* inst) {
 }
 }  // namespace
 
-static StatusOr<double> DoubleValueOfScalarLiteral(const xla::Literal& lit) {
-  if (ShapeUtil::ElementsIn(lit.shape()) != 1) {
-    return xla::FailedPrecondition("Literal element count != 1");
-  }
-
-  Literal double_lit;
-  TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
-
-  const double* val = static_cast<const double*>(double_lit.untyped_data());
-  return *val;
-}
-
 StatusOr<poplar::program::Program> TruncatedNormal(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
-  poplar::Tensor ref;
-  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
-                                     output_shape, res, tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor ref,
+      AddTensor(graph, std::make_pair(inst, 0), output_shape, res, tensor_map));
 
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type dtype, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
   auto out = poprand::truncatedNormal(graph, nullptr, 0, ref, dtype, 0.0, 1.0,
@@ -66,21 +53,20 @@ StatusOr<poplar::program::Program> RandomNormalScale(
   const HloInstruction* sd2 = root->operand(0)->operand(0)->operand(1);
   CHECK_EQ(sd2->opcode(), HloOpcode::kConstant);
 
-  double mean1_val;
-  TF_ASSIGN_OR_RETURN(mean1_val, DoubleValueOfScalarLiteral(mean1->literal()));
-  double mean2_val;
-  TF_ASSIGN_OR_RETURN(mean2_val, DoubleValueOfScalarLiteral(mean2->literal()));
-  double sd1_val;
-  TF_ASSIGN_OR_RETURN(sd1_val, DoubleValueOfScalarLiteral(sd1->literal()));
-  double sd2_val;
-  TF_ASSIGN_OR_RETURN(sd2_val, DoubleValueOfScalarLiteral(sd2->literal()));
+  TF_ASSIGN_OR_RETURN(double mean1_val,
+                      LiteralScalarToNativeType<double>(mean1->literal()));
+  TF_ASSIGN_OR_RETURN(double mean2_val,
+                      LiteralScalarToNativeType<double>(mean2->literal()));
+  TF_ASSIGN_OR_RETURN(double sd1_val,
+                      LiteralScalarToNativeType<double>(sd1->literal()));
+  TF_ASSIGN_OR_RETURN(double sd2_val,
+                      LiteralScalarToNativeType<double>(sd2->literal()));
 
-  poplar::Tensor ref;
-  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
-                                     output_shape, res, tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor ref,
+      AddTensor(graph, std::make_pair(inst, 0), output_shape, res, tensor_map));
 
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type dtype, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
   auto out =
@@ -108,21 +94,20 @@ StatusOr<poplar::program::Program> RandomUniformScale(
   const HloInstruction* upper = root->operand(0)->operand(0)->operand(1);
   CHECK_EQ(upper->opcode(), HloOpcode::kConstant);
 
-  double shift_val;
-  TF_ASSIGN_OR_RETURN(shift_val, DoubleValueOfScalarLiteral(shift->literal()));
-  double scale_val;
-  TF_ASSIGN_OR_RETURN(scale_val, DoubleValueOfScalarLiteral(scale->literal()));
-  double lower_val;
-  TF_ASSIGN_OR_RETURN(lower_val, DoubleValueOfScalarLiteral(lower->literal()));
-  double upper_val;
-  TF_ASSIGN_OR_RETURN(upper_val, DoubleValueOfScalarLiteral(upper->literal()));
+  TF_ASSIGN_OR_RETURN(double shift_val,
+                      LiteralScalarToNativeType<double>(shift->literal()));
+  TF_ASSIGN_OR_RETURN(double scale_val,
+                      LiteralScalarToNativeType<double>(scale->literal()));
+  TF_ASSIGN_OR_RETURN(double lower_val,
+                      LiteralScalarToNativeType<double>(lower->literal()));
+  TF_ASSIGN_OR_RETURN(double upper_val,
+                      LiteralScalarToNativeType<double>(upper->literal()));
 
-  poplar::Tensor ref;
-  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
-                                     output_shape, res, tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor ref,
+      AddTensor(graph, std::make_pair(inst, 0), output_shape, res, tensor_map));
 
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type dtype, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
   auto out = poprand::uniform(
@@ -142,17 +127,16 @@ StatusOr<poplar::program::Program> RandomNormal(CompilerResources& res,
   const HloInstruction* mean = inst->operand(0);
   const HloInstruction* sd = inst->operand(1);
 
-  double mean_val;
-  TF_ASSIGN_OR_RETURN(mean_val, DoubleValueOfScalarLiteral(mean->literal()));
-  double sd_val;
-  TF_ASSIGN_OR_RETURN(sd_val, DoubleValueOfScalarLiteral(sd->literal()));
+  TF_ASSIGN_OR_RETURN(double mean_val,
+                      LiteralScalarToNativeType<double>(mean->literal()));
+  TF_ASSIGN_OR_RETURN(double sd_val,
+                      LiteralScalarToNativeType<double>(sd->literal()));
 
-  poplar::Tensor ref;
-  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
-                                     output_shape, res, tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor ref,
+      AddTensor(graph, std::make_pair(inst, 0), output_shape, res, tensor_map));
 
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type dtype, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
   auto out = poprand::normal(graph, nullptr, 0, ref, dtype, mean_val, sd_val,
@@ -171,21 +155,20 @@ StatusOr<poplar::program::Program> RandomUniform(CompilerResources& res,
   const HloInstruction* lower = inst->operand(0);
   const HloInstruction* upper = inst->operand(1);
 
-  double lower_val;
-  TF_ASSIGN_OR_RETURN(lower_val, DoubleValueOfScalarLiteral(lower->literal()));
-  double upper_val;
-  TF_ASSIGN_OR_RETURN(upper_val, DoubleValueOfScalarLiteral(upper->literal()));
+  TF_ASSIGN_OR_RETURN(double lower_val,
+                      LiteralScalarToNativeType<double>(lower->literal()));
+  TF_ASSIGN_OR_RETURN(double upper_val,
+                      LiteralScalarToNativeType<double>(upper->literal()));
 
   if (ShapeUtil::ElementIsIntegral(output_shape)) {
     upper_val -= 1.0;
   }
 
-  poplar::Tensor ref;
-  TF_ASSIGN_OR_RETURN(ref, AddTensor(graph, std::make_pair(inst, 0),
-                                     output_shape, res, tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor ref,
+      AddTensor(graph, std::make_pair(inst, 0), output_shape, res, tensor_map));
 
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(output_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type dtype, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
   auto out = poprand::uniform(graph, nullptr, 0, ref, dtype, lower_val,

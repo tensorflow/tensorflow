@@ -51,7 +51,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'Sigmoid/fusion/Nonlinearity']
+      ok = ['__seed*', 'Sigmoid/custom-call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testSigmoidNotInplace(self):
@@ -78,8 +78,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = [
-          '__seed*', 'Sigmoid/fusion/Nonlinearity',
-          'Copy_XLA_Args/arg0.*_to_Sigmoid/fusion.clone/OnTileCopy-0',
+          '__seed*', 'Sigmoid/custom-call/Nonlinearity',
+          'Copy_XLA_Args/arg0.*_to_Sigmoid/custom-call.clone/OnTileCopy-0',
           'add/add.*/AddTo'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -108,7 +108,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'SigmoidGrad/fusion/NonLinearityGrad']
+      ok = ['__seed*', 'SigmoidGrad/custom-call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testRelu(self):
@@ -132,7 +132,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'Relu/fusion/Nonlinearity']
+      ok = ['__seed*', 'Relu/custom-call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testReluNotInPlace(self):
@@ -157,8 +157,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = [
-          '__seed*', 'Relu/fusion/Nonlinearity',
-          'Copy_XLA_Args/arg0.*_to_Relu/fusion.clone/OnTileCopy-0',
+          '__seed*', 'Relu/custom-call/Nonlinearity',
+          'Copy_XLA_Args/arg0.*_to_Relu/custom-call.clone/OnTileCopy-0',
           'add/add.*/AddTo'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -187,7 +187,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['__seed*', 'ReluGrad/fusion/NonLinearityGrad']
+      ok = ['__seed*', 'ReluGrad/custom-call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testMaxPool(self):
@@ -691,7 +691,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
           '__seed*', 'host-exchange-local-copy', 'Copy_',
           'vs/conv2d/Conv2D/convolution.*/Conv_1x1', 'vs/conv2d/BiasAdd',
           'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/',
-          'vs/Relu/fusion/Nonlinearity'
+          'vs/Relu/custom-call/Nonlinearity'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

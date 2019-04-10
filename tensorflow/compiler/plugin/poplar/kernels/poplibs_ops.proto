@@ -4,6 +4,7 @@ message PoplibsOp {
 	  Popnn = 1;
 	  Popops = 2;
 	  Poprand = 3;
+    Poputil = 4;
   }
   required Lib lib = 1;
 
@@ -19,6 +20,16 @@ message PoplibsOp {
 	  MaxPool = 8;
 	  MaxPoolGrad = 9;
 	  TruncatedNormal = 10;
+    Relu = 11;
+    ReluGrad = 12;
+    TanhGrad = 13;
+    Sigmoid = 14;
+    SigmoidGrad = 15;
+    Remap = 16;
+    StatelessRandomUniform = 17;
+    StatelessRandomUniformInt = 18;
+    StatelessRandomNormal = 19;
+    StatelessTruncatedNormal = 20;
   }
   required Op op = 2;
 }

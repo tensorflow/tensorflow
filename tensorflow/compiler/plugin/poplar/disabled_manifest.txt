@@ -20,7 +20,6 @@ Pooling3DTest.testMaxPoolGradSamePadding1_1_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradSamePadding2_1_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradSamePadding2_2_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradSamePadding3_1_3d  # 3D grad_grad
-StatelessRandomOpsTest.testTruncatedNormalIsInRange  # Too slow
 RandomOpsTest.testTruncatedNormalIsInRange  # Too slow
 RandomOpsTest.testShuffle1d # Need to implement 'sort'
 MatrixBandPartTest  # Too slow
@@ -61,7 +60,6 @@ BinaryOpsTest.testNextAfter # Unsigned int
 SelfAdjointEigOpTest # seg fault
 SvdOpTest # Seg fault
 CondTest.testCondConstPropagation # Switch node in cluster
-StatelessRandomOpsTest.testTruncatedNormal # Times out
 SegmentReductionOpsTest.testUnsortedSegmentOps1DIndices1DDataNegativeIndices #Scatter negative indices
 CategoricalTest.testCategoricalIsNotConstant # disable until poplar CPU random works
 RandomOpsTest.testRandomNormalIsNotConstant # disable until poplar CPU random works
@@ -84,3 +82,6 @@ ListOpsTest.testSetDoesNotUpdatePushIndex # Disable due to variants in lists
 ListOpsTest.testSetStackReservedUnknownElementShape # Disable due to variants in lists
 ListOpsTest.testStack # Disable due to variants in lists
 ListOpsTest.testStackWithUninitializedTensors # Disable due to variants in lists
+StatelessRandomOpsTest.testDeterminism # poplibs CPU mode does not obey seed
+StatelessRandomOpsTest.testRandomUniformIsInRange # poplar CPU model random uniform int doesn't obey limits
+StatelessRandomOpsTest.testTruncatedNormal # Tests float64

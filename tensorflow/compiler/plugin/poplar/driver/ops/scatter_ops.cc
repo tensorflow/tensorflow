@@ -43,14 +43,16 @@ StatusOr<poplar::program::Program> CreateScatter(
   TF_ASSIGN_OR_RETURN(poplar::Tensor updates,
                       FindInstructionInput(tensor_map, res, inst, 2, prog));
 
-  ArgVectors args = {{graph.addVariable(operand.elementType(), {})},
-                     {graph.addVariable(operand.elementType(), {})}};
+  popops::UpdateComputationFunc update_computation_func;
+  auto root_inst = update_computation->root_instruction();
+
+  auto tmp = graph.addVariable(operand.elementType(), {});
+  graph.setTileMapping(tmp, 0);
+  ArgVectors args = {{tmp}, {graph.clone(tmp)}};
+
   TF_ASSIGN_OR_RETURN(
       auto update_comp_visitor,
       GetOrCompileSubComputation(res, args, update_computation));
-
-  popops::UpdateComputationFunc update_computation_func;
-  auto root_inst = update_computation->root_instruction();
 
   // Fast path the gradient accumulation case
   if (root_inst->opcode() == HloOpcode::kAdd &&

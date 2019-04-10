@@ -312,6 +312,15 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateTanhOp(CompilerResources& res,
+                                                const HloInstruction* inst,
+                                                const xla::Shape& output_shape,
+                                                TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateTanhGradOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map);
+
 StatusOr<poplar::program::Program> Create2DConvWithReverse(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
@@ -329,10 +338,9 @@ StatusOr<poplar::program::Program> CreateWideConstant(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
-                                              const HloInstruction* inst,
-                                              const xla::Shape& output,
-                                              TensorMap& tensor_map);
+StatusOr<poplar::program::Program> CreateConditionalOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
                                                    const HloInstruction* inst,

@@ -55,10 +55,6 @@ typedef StatusOr<poplar::program::Program> (*CustomCallFn)(
     CompilerResources&, const HloInstruction*, const xla::Shape&, TensorMap&);
 
 static std::map<std::string, CustomCallFn> custom_call_map = {
-    {"relu", CreateReluOp},
-    {"relugrad", CreateReluGradOp},
-    {"sigmoid", CreateSigmoidOp},
-    {"sigmoidgrad", CreateSigmoidGradOp},
     {"conv_biasadd", CreateConvBiasAddOp},
     {"matmul_biasadd", CreateMatMulBiasAddOp},
     {"norm_scale_add", RandomNormalScale},
@@ -81,7 +77,7 @@ const Shape& BaseVisitor::GetOutputShape(HloInstruction* inst) const {
 }
 
 Status BaseVisitor::Unimplemented(HloInstruction* inst) {
-  return xla::Unimplemented("%s (%s) not implemented",  inst->name().c_str(),
+  return xla::Unimplemented("%s (%s) not implemented", inst->name().c_str(),
                             HloOpcodeString(inst->opcode()).c_str());
 }
 
@@ -109,8 +105,8 @@ Status BaseVisitor::HandleCompare(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateComparisonOp(resources_, inst, GetOutputShape(inst),
-                               tensor_map));
+      prog,
+      CreateComparisonOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -407,7 +403,8 @@ Status BaseVisitor::HandleWhile(HloInstruction* inst) {
 Status BaseVisitor::HandleConditional(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateIfOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      prog,
+      CreateConditionalOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
 
   return Status::OK();
