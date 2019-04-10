@@ -1818,7 +1818,7 @@ def grayscale_to_rgb(images, name=None):
     The converted grayscale image(s).
   """
   with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:    
-    _AssertGrayscaleImage(images)
+    images = _AssertGrayscaleImage(images)
     
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
