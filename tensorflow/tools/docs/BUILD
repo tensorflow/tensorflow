@@ -125,7 +125,7 @@ py_binary(
 
 py_test(
     name = "build_docs_test",
-    size = "small",
+    size = "medium",
     srcs = ["build_docs_test.py"],
     srcs_version = "PY2AND3",
     tags = [

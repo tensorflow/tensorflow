@@ -54,7 +54,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): These are limitations of our implementation that could be
   // removed with a bit of effort.
-  TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||

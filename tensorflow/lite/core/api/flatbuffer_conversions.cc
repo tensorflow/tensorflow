@@ -55,10 +55,15 @@ TfLiteStatus FlatBufferIntVectorToArray(
 
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter) {
+  *type = kTfLiteNoType;
   switch (tensor_type) {
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
+    case TensorType_FLOAT16:
+      error_reporter->Report("Unimplemented data type float16 in tensor\n",
+                             tensor_type);
+      return kTfLiteError;
     case TensorType_INT16:
       *type = kTfLiteInt16;
       break;
@@ -83,10 +88,10 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_COMPLEX64:
       *type = kTfLiteComplex64;
       break;
-    default:
-      error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
-                             EnumNameTensorType(tensor_type), tensor_type);
-      return kTfLiteError;
+  }
+  if (*type == kTfLiteNoType) {
+    error_reporter->Report("Unsupported data type %d in tensor\n", tensor_type);
+    return kTfLiteError;
   }
   return kTfLiteOk;
 }

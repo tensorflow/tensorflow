@@ -287,7 +287,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   // TODO(nluehr) revert to 2D array when compiler is ready.
   // This is to mimic the following, but without any constructors:
   //   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
-#ifdef GOOGLE_CUDA
+#ifdef GOOGLE_CUDA || __HIP__
   __shared__ __align__(
       alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
   value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
@@ -344,7 +344,7 @@ __global__ void ColumnReduceKernel(
   // TODO(nluehr) revert to 2D array when compiler is ready.
   // This is to mimic the following, but without constructors:
   //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || __HIP__
   __shared__ __align__(
       alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
   value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
@@ -488,7 +488,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   if (in_size <= 4096) {
     const int num_blocks = 1;
     const int num_threads = 256;
-    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, OUT_T, num_threads>),
+    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, OUT_T, num_threads, Op>),
         dim3(num_blocks), dim3(num_threads), 0, cu_stream, in, out, in_size, op, init);
     return;
   } else if (in_size <= 1 << 18) {
@@ -508,7 +508,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
             DT_INT8, TensorShape({static_cast<int64>(num_blocks * sizeof(T))}),
             &temp_storage));
 
-    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, T*, num_threads>),
+    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, T*, num_threads, Op>),
         dim3(num_blocks), dim3(num_threads), 0, cu_stream,
             in, (T*)temp_storage.flat<int8_t>().data(), in_size, op, init);
 

@@ -2783,6 +2783,7 @@ py_library(
         ":state_ops_gen",
         ":tensor_shape",
         ":util",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
@@ -2995,6 +2996,7 @@ cuda_py_test(
         ":logging_ops",
         ":random_ops_gen",
         "//tensorflow/python/kernel_tests/random:util",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     xla_enable_strict_auto_jit = True,
 )

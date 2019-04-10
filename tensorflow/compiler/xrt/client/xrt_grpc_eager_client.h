@@ -23,7 +23,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_CLIENT_XRT_GRPC_EAGER_CLIENT_H_
 #define TENSORFLOW_COMPILER_XRT_CLIENT_XRT_GRPC_EAGER_CLIENT_H_
 
-#include "net/grpc/public/include/grpcpp/generic/generic_stub.h"
+#include "grpcpp/generic/generic_stub.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"

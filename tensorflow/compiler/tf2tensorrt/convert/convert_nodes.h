@@ -176,7 +176,8 @@ int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 // Class to convert TF compile-time constants (e.g. Const nodes) to TRT weight.
 class TRT_ShapedWeights {
  public:
-  explicit TRT_ShapedWeights(DataType type = DT_FLOAT);
+  explicit TRT_ShapedWeights(
+      nvinfer1::DataType type = nvinfer1::DataType::kFLOAT);
 
   // Copy from another weights.
   //
@@ -211,14 +212,18 @@ class TRT_ShapedWeights {
     return std::vector<T>(span.data(), span.data() + span.size());
   }
 
+  nvinfer1::DataType TrtDType() const { return type_; }
+
   // TODO(aaroey): make these private.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
-  DataType type_;
 
  private:
   // This constructor is only used by TrtWeightStore, which creates the
   // underlying buffer.
-  TRT_ShapedWeights(DataType type, nvinfer1::Dims dims, Tensor tensor);
+  TRT_ShapedWeights(nvinfer1::DataType type, nvinfer1::Dims dims,
+                    Tensor tensor);
+
+  nvinfer1::DataType type_;
 
   // All weights should be stored inside TrtWeightStore to make sure lifetime of
   // all the underlying tensors are available until the engine is built. For
@@ -239,12 +244,13 @@ class TRT_ShapedWeights {
 class TrtWeightStore {
  public:
   // Get a TRT_ShapedWeights with 'type' and 'dims'.
-  TRT_ShapedWeights GetTempWeights(DataType type, const nvinfer1::Dims& dims);
+  TRT_ShapedWeights GetTempWeights(nvinfer1::DataType trt_type,
+                                   const nvinfer1::Dims& dims);
 
   // Get a TRT_ShapedWeights with the same data type and dimensions as
   // 'weights'.
   TRT_ShapedWeights GetTempWeights(const TRT_ShapedWeights& weights) {
-    return GetTempWeights(weights.type_, weights.shape_);
+    return GetTempWeights(weights.TrtDType(), weights.shape_);
   }
 
  private:

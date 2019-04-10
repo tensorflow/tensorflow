@@ -610,7 +610,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -675,7 +674,6 @@ xla_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(

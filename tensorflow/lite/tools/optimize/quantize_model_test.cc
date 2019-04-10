@@ -172,9 +172,12 @@ TEST_F(QuantizeModelTest, FloatInputAndOutput) {
     EXPECT_EQ(dequant_op->outputs[0], output_idx);
     // The input and output types should be float.
     EXPECT_EQ(subgraph->tensors[input_idx]->type, TensorType_FLOAT32);
-    EXPECT_EQ(subgraph->tensors[input_idx]->name, "input_quantize");
+    EXPECT_EQ(subgraph->tensors[input_idx]->name, "input");
     EXPECT_EQ(subgraph->tensors[output_idx]->type, TensorType_FLOAT32);
-    EXPECT_EQ(subgraph->tensors[output_idx]->name, "output_dequantize");
+    EXPECT_EQ(subgraph->tensors[output_idx]->name, "output");
+    // The original input and output has been renamed.
+    EXPECT_EQ(subgraph->tensors[quant_op->outputs[0]]->name, "input_int8");
+    EXPECT_EQ(subgraph->tensors[dequant_op->inputs[0]]->name, "output_int8");
     for (int tensor_idx = 0; tensor_idx < subgraph->tensors.size();
          ++tensor_idx) {
       const auto& tensor = subgraph->tensors[tensor_idx];
@@ -225,20 +228,25 @@ TEST_F(QuantizeModelTest, Uint8InputAndOutput) {
     EXPECT_EQ(quant_op_int8_uint8->outputs[0], output_idx);
     // The input and output types should be uint8.
     EXPECT_EQ(subgraph->tensors[input_idx]->type, TensorType_UINT8);
-    EXPECT_EQ(subgraph->tensors[input_idx]->name, "input_requantize");
+    EXPECT_EQ(subgraph->tensors[input_idx]->name, "input");
     EXPECT_EQ(subgraph->tensors[input_idx]->quantization->scale.size(), 1);
     EXPECT_FLOAT_EQ(subgraph->tensors[input_idx]->quantization->scale[0],
                     0.0392156877);
     EXPECT_EQ(subgraph->tensors[input_idx]->quantization->zero_point.size(), 1);
     EXPECT_EQ(subgraph->tensors[input_idx]->quantization->zero_point[0], 0);
     EXPECT_EQ(subgraph->tensors[output_idx]->type, TensorType_UINT8);
-    EXPECT_EQ(subgraph->tensors[output_idx]->name, "output_requantize");
+    EXPECT_EQ(subgraph->tensors[output_idx]->name, "output");
     EXPECT_EQ(subgraph->tensors[output_idx]->quantization->scale.size(), 1);
     EXPECT_FLOAT_EQ(subgraph->tensors[output_idx]->quantization->scale[0],
                     0.0392156877);
     EXPECT_EQ(subgraph->tensors[output_idx]->quantization->zero_point.size(),
               1);
     EXPECT_EQ(subgraph->tensors[output_idx]->quantization->zero_point[0], 0);
+    // The original input and output has been renamed.
+    EXPECT_EQ(subgraph->tensors[quant_op_uint8_int8->outputs[0]]->name,
+              "input_int8");
+    EXPECT_EQ(subgraph->tensors[quant_op_int8_uint8->inputs[0]]->name,
+              "output_int8");
     for (int tensor_idx = 0; tensor_idx < subgraph->tensors.size();
          ++tensor_idx) {
       const auto& tensor = subgraph->tensors[tensor_idx];

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
+#include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
@@ -122,6 +122,59 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
+void PrintPlatformInfo(const se::Stream* stream) {
+  auto* se = stream->parent();
+  const auto& desc = se->GetDeviceDescription();
+  LOG(ERROR) << "Device: " << desc.name();
+  LOG(ERROR) << "Platform: " << desc.platform_version();
+  LOG(ERROR) << "Driver: " << desc.driver_version();
+  LOG(ERROR) << "Runtime: " << desc.runtime_version();
+
+  auto* dnn = se->AsDnn();
+  if (dnn) {
+    auto dnn_version = dnn->GetVersion();
+    if (dnn_version.ok()) {
+      auto v = dnn_version.ValueOrDie();
+      LOG(ERROR) << "cudnn version: " << v.major_version() << "."
+                 << v.minor_version() << "." << v.patch();
+    }
+  }
+}
+
+// Returns true if the redzones in `allocator`'s allocations are unmodified.
+//
+// If the redzones are modified, logs an error, sets the appropriate failure
+// bits on `result`, and returns false.
+//
+// `name` is a user-friendly name for the set of redzones being checked, e.g.
+// "input/output" or "scratch".
+bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
+                   absl::string_view name, const HloInstruction* instr,
+                   AutotuneResult* result) {
+  Status status = allocator.CheckRedzones(stream);
+  if (status.ok()) {
+    return true;
+  }
+
+  auto* fail = result->mutable_failure();
+  fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+  *fail->mutable_msg() = status.ToString();
+
+  LOG(ERROR) << absl::StreamFormat(
+      "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
+      "cudnn bug. We will skip this algorithm in the future, but your GPU "
+      "state may already be corrupted, leading to incorrect results. Within "
+      "Google, no action is needed on your part. Outside of Google, please "
+      "ensure you're running the latest version of cudnn. If that doesn't fix "
+      "the problem, please file a bug with this full error message and we'll "
+      "contact nvidia.",
+      name);
+  LOG(ERROR) << status.ToString();
+  LOG(ERROR) << "HloInstruction " << instr->ToString();
+  PrintPlatformInfo(stream);
+  return false;
+}
+
 }  // anonymous namespace
 
 // We could have caching here so that we don't redo this work for two identical
@@ -208,10 +261,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     }
   };
 
-  // Allocate space for the input, filter, and output of the convolution.  We
-  // use a ScratchAllocator for this instead of calling allocator_ directly so
-  // that our allocations don't leak.
-  ScratchAllocator input_output_allocator(device_ordinal, allocator);
+  // Allocate space for the input, filter, and output of the convolution.
+  RedzoneAllocator input_output_allocator(device_ordinal, allocator);
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -245,7 +296,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
           .xla_gpu_crash_on_verification_failures();
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
-    ScratchAllocator scratch_allocator(device_ordinal, allocator);
+    RedzoneAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -271,11 +322,18 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     result.mutable_conv()->set_algorithm(alg.algo_id());
     result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
-    int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
-    result.mutable_success()->set_scratch_bytes(scratch_bytes_used);
-    *result.mutable_success()->mutable_run_time() =
-        tensorflow::proto_utils::ToDurationProto(
-            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    int64 scratch_bytes_used =
+        scratch_allocator.TotalAllocatedBytesExcludingRedzones();
+    result.set_scratch_bytes(scratch_bytes_used);
+    *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+        absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+    // Check for writes to redzones.
+    if (!CheckRedzones(input_output_allocator, &stream, "input/output", instr,
+                       &result) ||
+        !CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result)) {
+      continue;
+    }
 
     if (comparator.has_value()) {
       StatusOr<bool> compare_result = comparator->CompareEqual(
@@ -291,15 +349,19 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
         }
         CHECK(!crash_on_checking_failure);
       } else if (!compare_result.ValueOrDie()) {
-        LOG(ERROR) << "Results mismatch between different convolution "
-                      "algorithms. This is likely a bug in convolution, or "
-                      "an excessive loss of precision in convolution. "
-                   << instr->ToString() << " for "
-                   << AlgorithmToString(first_algorithm) << " vs "
-                   << AlgorithmToString(alg);
-        auto* failure = result.mutable_reference_conv();
-        failure->set_algorithm(first_algorithm.algo_id());
-        failure->set_tensor_ops_enabled(first_algorithm.tensor_ops_enabled());
+        LOG(ERROR)
+            << "Results mismatch between different convolution algorithms. "
+               "This is likely a bug/unexpected loss of precision in cudnn.\n"
+            << instr->ToString() << " for "
+            << AlgorithmToString(first_algorithm) << " vs "
+            << AlgorithmToString(alg);
+        PrintPlatformInfo(&stream);
+        auto* fail = result.mutable_failure();
+        fail->set_kind(AutotuneResult::WRONG_RESULT);
+        auto* reference_conv = fail->mutable_reference_conv();
+        reference_conv->set_algorithm(first_algorithm.algo_id());
+        reference_conv->set_tensor_ops_enabled(
+            first_algorithm.tensor_ops_enabled());
       }
     } else {
       auto comp =
@@ -336,35 +398,46 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     }
     *log.mutable_compute_capability() = GetComputeCapability(stream_exec_);
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
+    log.set_device_pci_bus_id(
+        stream_exec_->GetDeviceDescription().pci_bus_id());
     VLOG(2) << "Autotuning result:\n" << log.DebugString();
     tensorflow::Logger::Singleton()->LogProto(log);
   }
 
+  // Crash on miscompares and redzone violations if desired.  Do this after
+  // logging the autotuning results, otherwise we won't get any data!
   for (const auto& result : profile_results) {
-    if (result.has_reference_conv()) {
+    if (result.has_failure()) {
       CHECK(!crash_on_checking_failure);
     }
   }
 
-  auto* profile_results_end = profile_results.data() + profile_results.size();
-
-  const AutotuneResult* best_result = std::min_element(
-      profile_results.data(), profile_results_end,
-      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        // The successful one should have a smaller key, since we are doing
-        // min_element. If they are both unsuccessful, keep the earlier one in
-        // the vector by comparing pointers.
-        return std::make_tuple(!lhs.has_success(),
-                               tensorflow::proto_utils::FromDurationProto(
-                                   lhs.success().run_time()),
-                               &lhs) <
-               std::make_tuple(!rhs.has_success(),
-                               tensorflow::proto_utils::FromDurationProto(
-                                   rhs.success().run_time()),
-                               &rhs);
+  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
+  // error.
+  //
+  // For now, we ignore WRONG_RESULT failures because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
+  // quite severe and can be detected with high accuracy.
+  //
+  // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
+  // in the output of the conv and skip those.
+  //
+  // The successful one should have a smaller key, since we are doing
+  // min_element. If they are both unsuccessful, keep the earlier one in
+  // the vector by comparing pointers.
+  auto result_comparison_key = [](const AutotuneResult& r) {
+    return std::make_tuple(
+        r.has_failure() && r.failure().kind() != AutotuneResult::WRONG_RESULT,
+        tensorflow::proto_utils::FromDurationProto(r.run_time()));
+  };
+  const auto& best_result = absl::c_min_element(
+      profile_results,
+      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+        return result_comparison_key(lhs) < result_comparison_key(rhs);
       });
 
-  if (best_result != profile_results_end && best_result->has_success()) {
+  if (best_result != profile_results.end() && !best_result->has_failure()) {
     return *best_result;
   }
 
@@ -388,7 +461,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   auto best_algo = std::move(best_algo_or).ValueOrDie();
   VLOG(1) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
-          << NumBytesToString(best_algo.success().scratch_bytes())
+          << NumBytesToString(best_algo.scratch_bytes())
           << " of scratch memory: " << instr->ToString()
           << " tensor_ops_enabled: " << best_algo.conv().tensor_ops_enabled();
 
@@ -397,7 +470,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   HloComputation* computation = instr->parent();
   Shape new_call_shape = ShapeUtil::MakeTupleShape(
       {instr->shape().tuple_shapes(0),
-       ShapeUtil::MakeShape(U8, {best_algo.success().scratch_bytes()})});
+       ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()})});
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());

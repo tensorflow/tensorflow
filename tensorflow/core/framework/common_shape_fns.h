@@ -226,6 +226,10 @@ Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
 // Shape function for MatMul-like operations.
 Status MatMulShape(shape_inference::InferenceContext* c);
 
+// Shape function for Batched MatMul-like operations with broadcasting across
+// batch dimensions.
+Status BatchMatMulV2Shape(shape_inference::InferenceContext* c);
+
 // Shape function for BiasAdd-like operations.
 Status BiasAddShape(shape_inference::InferenceContext* c);
 
