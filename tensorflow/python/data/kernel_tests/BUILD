@@ -176,6 +176,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
@@ -195,6 +196,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:session",
     ],
 )
@@ -415,6 +417,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
     ],

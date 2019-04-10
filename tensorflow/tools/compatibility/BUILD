@@ -109,6 +109,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

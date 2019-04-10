@@ -3041,8 +3041,7 @@ class EmbeddingColumn(
         shape=embedding_shape,
         dtype=dtypes.float32,
         trainable=self.trainable,
-        # TODO(rohanj): Make this True when b/118500434 is fixed.
-        use_resource=False,
+        use_resource=True,
         initializer=self.initializer)
 
   def _get_dense_tensor_internal_helper(self, sparse_tensors,

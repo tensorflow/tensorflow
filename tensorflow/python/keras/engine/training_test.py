@@ -662,43 +662,43 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
 
+  @keras_parameterized.run_all_keras_modes
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
 
-    with self.cached_session():
-      a = keras.layers.Input(shape=(4,))
-      layer = keras.layers.BatchNormalization(input_shape=(4,))
-      b = layer(a)
-      model = keras.Model(a, b)
+    a = keras.layers.Input(shape=(4,))
+    layer = keras.layers.BatchNormalization(input_shape=(4,))
+    b = layer(a)
+    model = keras.Model(a, b)
 
-      model.trainable = False
-      assert not model.updates
+    model.trainable = False
+    assert not model.updates
 
-      model.compile('sgd', 'mse')
-      assert not model.updates
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    assert not model.updates
 
-      x1 = model.predict(val_a)
-      model.train_on_batch(val_a, val_out)
-      x2 = model.predict(val_a)
-      self.assertAllClose(x1, x2, atol=1e-7)
+    x1 = model.predict(val_a)
+    model.train_on_batch(val_a, val_out)
+    x2 = model.predict(val_a)
+    self.assertAllClose(x1, x2, atol=1e-7)
 
-      model.trainable = True
-      model.compile('sgd', 'mse')
-      assert model.updates
+    model.trainable = True
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    assert model.updates
 
-      model.train_on_batch(val_a, val_out)
-      x2 = model.predict(val_a)
-      assert np.abs(np.sum(x1 - x2)) > 1e-5
+    model.train_on_batch(val_a, val_out)
+    x2 = model.predict(val_a)
+    assert np.abs(np.sum(x1 - x2)) > 1e-5
 
-      layer.trainable = False
-      model.compile('sgd', 'mse')
-      assert not model.updates
+    layer.trainable = False
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    assert not model.updates
 
-      x1 = model.predict(val_a)
-      model.train_on_batch(val_a, val_out)
-      x2 = model.predict(val_a)
-      self.assertAllClose(x1, x2, atol=1e-7)
+    x1 = model.predict(val_a)
+    model.train_on_batch(val_a, val_out)
+    x2 = model.predict(val_a)
+    self.assertAllClose(x1, x2, atol=1e-7)
 
   def test_logs_passed_to_callbacks(self):
     with self.cached_session():

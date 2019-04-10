@@ -24,6 +24,7 @@ import sys
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -3712,11 +3713,14 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
   if batch_dims == 0:
-    try:
-      # TODO(apassos) find a less bad way of detecting resource variables
-      # without introducing a circular dependency.
-      return params.gather_nd(indices, name=name)
-    except AttributeError:
+    if compat.forward_compatible(2019, 4, 29):
+      try:
+        # TODO(apassos) find a less bad way of detecting resource variables
+        # without introducing a circular dependency.
+        return params.gather_nd(indices, name=name)
+      except AttributeError:
+        return gen_array_ops.gather_nd(params, indices, name=name)
+    else:
       return gen_array_ops.gather_nd(params, indices, name=name)
   else:
     return batch_gather_nd(

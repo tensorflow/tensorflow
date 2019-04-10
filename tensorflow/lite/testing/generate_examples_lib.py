@@ -368,10 +368,6 @@ def toco_convert(
   # Convert ophint ops if presented.
   graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
       graph_def=graph_def)
-  # Warning: `remove_training_nodes` now incorreclty remove all
-  # TF Functions.
-  # TODO(ycling): Investigate. Required for functional control flow.
-  graph_def = tf.graph_util.remove_training_nodes(graph_def)
   graph_def_str = graph_def.SerializeToString()
 
   extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
@@ -749,7 +745,7 @@ def make_elu_tests(options):
 
 @register_make_test_function()
 def make_identity_tests(options):
-  """Make a set of tests to do relu."""
+  """Make a set of tests to do identity."""
 
   # Chose a set of parameters
   test_parameters = [{
@@ -760,16 +756,19 @@ def make_identity_tests(options):
   def build_graph(parameters):
     input_tensor = tf.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-    # Toco crashes when the model has only one single Identity op. As a
-    # workaround for testing, we put MULs before and after the identity.
-    # TODO(b/129197312): Remove the workaround after the issue is fixed.
+    # We add the Multiply before Identity just as a walk-around to make the test
+    # pass when input_shape is scalar.
+    # During graph transformation, TOCO will replace the Identity op with
+    # Reshape when input has shape. However, currently TOCO can't distinguish
+    # between missing shape and scalar shape. As a result, when input has scalar
+    # shape, this conversion still fails.
+    # TODO(b/129197312), remove the walk-around code once the bug is fixed.
     input_doubled = input_tensor * 2.0
     if parameters["use_snapshot"]:
-      identity_output = array_ops.snapshot(input_tensor)
+      identity_output = array_ops.snapshot(input_doubled)
     else:
-      identity_output = tf.identity(input_tensor)
-    out = identity_output * 2.0
-    return [input_tensor], [out]
+      identity_output = tf.identity(input_doubled)
+    return [input_tensor], [identity_output]
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_values = create_tensor_data(

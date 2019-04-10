@@ -348,6 +348,13 @@ def is_whitelisted_for_graph(o):
     logging.log(2, 'Whitelisted: %s: already converted', o)
     return True
 
+  if tf_inspect.isgeneratorfunction(o):
+    logging.warn(
+        'Entity {} appears to be a generator function. It will not be converted'
+        ' by AutoGraph.'.format(o), 1)
+    logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
+    return True
+
   if hasattr(o, '__call__'):
     # Callable objects: whitelisted if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method

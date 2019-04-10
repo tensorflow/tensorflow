@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+
 #include <memory>
 
 #include "absl/memory/memory.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
@@ -251,6 +253,66 @@ class IteratorResource : public ResourceBase {
   const std::vector<PartialTensorShape>& output_shapes() const {
     return output_shapes_;
   }
+
+  // This class is used to guarantee that an anonymous iterator is deleted
+  // (irrespective of whether the DeleteIteratorOp op is called explicitly or
+  // the execution encounters an error before the op runs).
+  //
+  // This is achieved by wrapping an instance of this class into a variant
+  // tensor which is passed as an input to the DeleteIteratorOp. If the
+  // execution encounters an error before the op runs, the tensor will be
+  // destroyed, essentially triggering the iterator deletion.
+  class Deleter {
+   public:
+    Deleter(ResourceHandle handle, ResourceMgr* resource_manager)
+        : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
+
+    Deleter(Deleter&& rhs) : deleter_(std::move(rhs.deleter_)) {
+      VLOG(3) << "IteratorResource::Deleter move constructor called.";
+    }
+
+    Deleter(const Deleter& rhs) : deleter_(rhs.deleter_) {
+      VLOG(3) << "IteratorResource::Deleter copy constructor called.";
+    }
+
+    virtual ~Deleter() {
+      VLOG(3) << "IteratorResource::Deleter destructor called.";
+    }
+
+    void Encode(VariantTensorData*) const {
+      // Not supported.
+    }
+
+    bool Decode(const VariantTensorData&) {
+      return false;  // Not supported.
+    }
+
+   private:
+    // Helper that performs reference counting for the parent class and deletes
+    // the iterator resource when the refcount goes to zero.
+    //
+    // NOTE: The object is borrowing a pointer to the resource manager.
+    // Consequently, the tensor containing this object should not escape the
+    // function in which was created (so that it is guaranteed that the resource
+    // manager will outlive it).
+    struct Helper {
+      Helper(ResourceHandle handle, ResourceMgr* resource_manager)
+          : handle(handle), resource_manager(resource_manager) {}
+
+      Helper(const Helper& rhs) = delete;
+      Helper(Helper&& rhs) = delete;
+
+      ~Helper() {
+        VLOG(3) << "Deleting IteratorResource: " << handle.DebugString();
+        resource_manager->Delete(handle).IgnoreError();
+      }
+
+      ResourceHandle handle;
+      ResourceMgr* resource_manager;  // not owned
+    };
+
+    std::shared_ptr<Helper> deleter_;
+  };
 
  private:
   struct State {
@@ -488,7 +550,9 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 // running them.
 AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
     OpKernelConstruction* context)
-    : OpKernel(context), graph_def_version_(context->graph_def_version()) {
+    : OpKernel(context),
+      graph_def_version_(context->graph_def_version()),
+      op_version_(context->def().op() == "AnonymousIterator" ? 1 : 2) {
   OP_REQUIRES_OK(context, context->GetAttr("output_types", &output_dtypes_));
   OP_REQUIRES_OK(context, context->GetAttr("output_shapes", &output_shapes_));
 }
@@ -527,9 +591,20 @@ void AnonymousIteratorHandleOp::Compute(OpKernelContext* context) {
     OP_REQUIRES_OK(context, mgr->Create<IteratorResource>(
                                 container_name, unique_name, new_resource));
   }
-  OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
-                              context, 0, container_name, unique_name,
-                              MakeTypeIndex<IteratorResource>()));
+  Tensor* handle_t;
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, TensorShape({}), &handle_t));
+  ResourceHandle handle = MakeResourceHandle(
+      context, container_name, unique_name, MakeTypeIndex<IteratorResource>());
+  handle_t->scalar<ResourceHandle>()() = handle;
+
+  if (op_version_ == 2) {
+    Tensor* deleter_t;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, TensorShape({}), &deleter_t));
+    deleter_t->scalar<Variant>()() =
+        IteratorResource::Deleter(handle, context->resource_manager());
+  }
 }
 
 // Static initializers for AnonymousIteratorHandleOp id counting.
@@ -545,6 +620,14 @@ void MakeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
   core::ScopedUnref unref(iterator_resource);
   OP_REQUIRES_OK(ctx, iterator_resource->SetIteratorFromDataset(ctx, dataset));
+}
+
+void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
+  ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+  // The iterator resource is guaranteed to exist because the variant tensor
+  // wrapping the deleter is provided as an unused input to this op, which
+  // guarantees that it has not run yet.
+  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
 }
 
 namespace {
@@ -1164,12 +1247,24 @@ REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU).Priority(2),
 REGISTER_KERNEL_BUILDER(
     Name("MakeIterator").Device(DEVICE_GPU).Priority(1).HostMemory("dataset"),
     MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_CPU).Priority(2),
+                        DeleteIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_GPU).Priority(1),
+                        DeleteIteratorOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_GPU).Priority(1),
     AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIteratorV2").Device(DEVICE_CPU).Priority(2),
+    AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("deleter")
+                            .Priority(1),
+                        AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
 REGISTER_KERNEL_BUILDER(Name("ReduceDataset").Device(DEVICE_CPU),

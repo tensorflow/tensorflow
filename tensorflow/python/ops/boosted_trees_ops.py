@@ -24,6 +24,7 @@ from tensorflow.python.ops import resources
 
 # Re-exporting ops used by other modules.
 # pylint: disable=unused-import
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_aggregate_stats
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_bucketize
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_gains_per_feature as calculate_best_gains_per_feature
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_center_bias as center_bias

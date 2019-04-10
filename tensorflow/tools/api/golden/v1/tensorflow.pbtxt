@@ -1673,6 +1673,10 @@ tf_module {
     argspec: "args=[\'_\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "nondifferentiable_batch_function"
+    argspec: "args=[\'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'allowed_batch_sizes\', \'max_enqueued_batches\', \'autograph\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\'], "
+  }
+  member_method {
     name: "norm"
     argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\', \'None\'], "
   }
@@ -2218,7 +2222,7 @@ tf_module {
   }
   member_method {
     name: "string_split"
-    argspec: "args=[\'source\', \'sep\', \'skip_empty\', \'delimiter\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    argspec: "args=[\'source\', \'sep\', \'skip_empty\', \'delimiter\', \'result_type\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'SparseTensor\'], "
   }
   member_method {
     name: "string_strip"

@@ -520,21 +520,92 @@ class DistributionStrategy(object):
     with self.scope():
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  def reduce(self, reduce_op, value):
+  def reduce(self, reduce_op, value, axis=None):
     """Reduce `value` across replicas.
+
+    Given a per-replica value returned by `experimental_run_v2`, say a
+    per-example loss, the batch will be divided across all the replicas.  This
+    function allows you to aggregate across replicas and optionally also across
+    batch elements.  For example, if you have a global batch size of 8 and 2
+    replicas, values for examples `[0, 1, 2, 3]` will be on replica 0 and
+    `[4, 5, 6, 7]` will be on replica 1. By default, `reduce` will just
+    aggregate across replicas, returning `[0+4, 1+5, 2+6, 3+7]`. This is useful
+    when each replica is computing a scalar or some other value that doesn't
+    have a "batch" dimension (like a gradient). More often you will want to
+    aggregate across the global batch, which you can get by specifying the batch
+    dimension as the `axis`, typically `axis=0`. In this case it would return a
+    scalar `0+1+2+3+4+5+6+7`.
+
+    If there is a last partial batch, you will need to specify an axis so
+    that the resulting shape is consistent across replicas. So if the last
+    batch has size 6 and it is divided into [0, 1, 2, 3] and [4, 5], you
+    would get a shape mismatch unless you specify `axis=0`. If you specify
+    `tf.distribute.ReduceOp.MEAN`, using `axis=0` will use the correct
+    denominator of 6. Contrast this with computing `reduce_mean` to get a
+    scalar value on each replica and this function to average those means,
+    which will weigh some values `1/8` and others `1/4`.
 
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
         be combined.
-      value: A "per replica" value to be combined into a single tensor.
+      value: A "per replica" value, e.g. returned by `experimental_run_v2` to
+        be combined into a single tensor.
+      axis: Optional. Specifies the dimension to reduce along within each
+        replica's tensor. Should typically be set to the batch dimension.
 
     Returns:
       A `Tensor`.
     """
+    # TODO(josh11b): support `value` being a nest.
     _require_cross_replica_or_default_context_extended(self._extended)
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
-    return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
+    if axis is None:
+      return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
+    if reduce_op == reduce_util.ReduceOp.SUM:
+      value = self.experimental_run_v2(
+          lambda v: math_ops.reduce_sum(v, axis=axis), args=(value,))
+      return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
+    if reduce_op != reduce_util.ReduceOp.MEAN:
+      raise TypeError("Expected `reduce_op` to be a `tf.distribute.ReduceOp`, "
+                      "not: %r" % reduce_op)
+    # TODO(josh11b): Support list/tuple and tensor axis values.
+    if not isinstance(axis, six.integer_types):
+      raise TypeError("Expected `axis` to be an integer not: %r" % axis)
+
+    def mean_reduce_helper(v, axis=axis):
+      """Computes the numerator and denominator on each replica."""
+      numer = math_ops.reduce_sum(v, axis=axis)
+      if v.shape.rank is not None:
+        # Note(joshl): We support axis < 0 to be consistent with the
+        # tf.math.reduce_* operations.
+        if axis < 0:
+          if axis + v.shape.rank < 0:
+            raise ValueError(
+                "`axis` = %r out of range for `value` with rank %d" %
+                (axis, v.shape.rank))
+          axis += v.shape.rank
+        elif axis >= v.shape.rank:
+          raise ValueError(
+              "`axis` = %r out of range for `value` with rank %d" %
+              (axis, v.shape.rank))
+        if v.shape[axis] is not None:
+          # By returning a python value in the static shape case, we can
+          # maybe get a fast path for reducing the denominator.
+          return numer, v.shape[axis]
+      elif axis < 0:
+        axis = axis + array_ops.rank(v)
+      denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
+      # reduce is complete?
+      return numer, denom
+
+    numer, denom = self.experimental_run_v2(mean_reduce_helper, args=(value,))
+    # TODO(josh11b): Should batch reduce here instead of doing two.
+    numer = self._extended._reduce(reduce_util.ReduceOp.SUM, numer)  # pylint: disable=protected-access
+    denom = self._extended._reduce(reduce_util.ReduceOp.SUM, denom)  # pylint: disable=protected-access
+    denom = math_ops.cast(denom, numer.dtype)
+    return math_ops.truediv(numer, denom)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED
   def unwrap(self, value):

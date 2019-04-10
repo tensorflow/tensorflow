@@ -57,7 +57,7 @@ tf_class {
   }
   member_method {
     name: "reduce"
-    argspec: "args=[\'self\', \'reduce_op\', \'value\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "scope"

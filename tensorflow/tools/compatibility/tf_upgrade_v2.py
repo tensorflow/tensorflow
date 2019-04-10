@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
+import copy
 import functools
 import sys
 
@@ -602,6 +603,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nest.map_structure",
         "tf.contrib.framework.nest.pack_sequence_as":
             "tf.nest.pack_sequence_as",
+        "tf.contrib.batching.batch_function":
+            "tf.nondifferentiable_batch_function",
         "tf.contrib.util.constant_value":
             "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":
@@ -622,6 +625,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.nn.rnn_cell.LSTMCell",
         "tf.contrib.rnn.MultiRNNCell":
             "tf.compat.v1.nn.rnn_cell.MultiRNNCell",
+        "tf.contrib.rnn.static_rnn":
+            "tf.compat.v1.nn.static_rnn",
+        "tf.contrib.rnn.static_state_saving_rnn":
+            "tf.compat.v1.nn.static_state_saving_rnn",
+        "tf.contrib.rnn.static_bidirectional_rnn":
+            "tf.compat.v1.nn.static_bidirectional_rnn",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":
@@ -1595,6 +1604,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
         "tf.name_scope": _name_scope_transformer,
+        "tf.string_split": _string_split_transformer,
+        "tf.strings.split": _string_split_rtype_transformer,
         "tf.estimator.DNNEstimator":
             functools.partial(
                 _rename_if_arg_found_transformer,
@@ -1667,12 +1678,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "takes input_layer_partitioner, so the call was converted to "
                 "compat.v1."
             ),
-        "tf.string_split": functools.partial(
-            _rename_if_arg_found_transformer, arg_name="skip_empty",
-            arg_ok_predicate=_is_ast_false, remove_if_ok=True,
-            message="tf.string_split's replacement no longer takes the "
-            "skip_empty argument. Since the argument was present, the call was "
-            "converted to compat.v1."),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -2274,3 +2279,82 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
   logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
                "name_scope call with neither name nor default_name cannot be "
                "converted properly."))
+
+
+def _rename_to_compat_v1(node, full_name, logs, reason):
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Renamed %r to %r: %s" % (full_name, new_name, reason)))
+  new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
+  ast.copy_location(new_name_node, node.func)
+  pasta.ast_utils.replace_child(node, node.func, new_name_node)
+  return node
+
+
+def _string_split_transformer(parent, node, full_name, name, logs):
+  """Update tf.string_split arguments: skip_empty, sep, result_type."""
+  # Check the skip_empty parameter: if not false, then use compat.v1.
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "skip_empty":
+      if _is_ast_false(kw.value):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "removed argument skip_empty for tf.string_split."))
+        node.keywords.pop(i)
+        break
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs, "tf.string_split's replacement no longer "
+            "takes the skip_empty argument.")
+
+  # Check the sep parameter: if it might be an empty string, then use compat.v1.
+  sep_is_nonempty_string = False
+  for i, kw in enumerate(node.keywords):
+    if ((kw.arg == "sep" or kw.arg == "delimiter") and
+        isinstance(kw.value, ast.Str) and kw.value.s != ""):
+      sep_is_nonempty_string = True
+  if not sep_is_nonempty_string:
+    return _rename_to_compat_v1(
+        node, full_name, logs,
+        "The semantics for tf.string_split's sep parameter have changed when "
+        "sep is the empty string.")
+
+  # Check the result_type parameter
+  return _string_split_rtype_transformer(parent, node, full_name, name, logs)
+
+
+def _string_split_rtype_transformer(parent, node, full_name, name, logs):
+  """Update tf.strings.split argument: result_type."""
+  # Remove the "result_type" argument.
+  need_to_sparse = True
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "result_type":
+      if (isinstance(kw.value, ast.Str) and
+          kw.value.s in ("RaggedTensor", "SparseTensor")):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Removed argument result_type=%r for function %s" %
+                     (kw.value.s, full_name or name)))
+        node.keywords.pop(i)
+        if kw.value.s == "RaggedTensor":
+          need_to_sparse = False
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs,
+            "%s no longer takes the result_type parameter." % full_name)
+      break
+
+  # If necessary, add a call to .to_sparse() to convert the output of
+  # strings.split from a RaggedTensor to a SparseTensor.
+  if need_to_sparse:
+    if (isinstance(parent, ast.Attribute) and parent.attr == "to_sparse"):
+      return  # Prevent infinite recursion (since child nodes are transformed)
+    logs.append(
+        (ast_edits.INFO, node.lineno, node.col_offset,
+         "Adding call to RaggedTensor.to_sparse() to result of strings.split, "
+         "since it now returns a RaggedTensor."))
+    node = ast.Attribute(value=copy.deepcopy(node), attr="to_sparse")
+    try:
+      node = ast.Call(node, [], [])
+    except TypeError:
+      node = ast.Call(node, [], [], None, None)
+
+  return node

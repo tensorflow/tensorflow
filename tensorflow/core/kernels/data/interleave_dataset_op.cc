@@ -35,6 +35,10 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -58,9 +62,11 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("block_length must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
+    CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     OP_REQUIRES_OK(ctx,
                    CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            /*params=*/{}, &captured_func));
+                                            std::move(params), &captured_func));
 
     *output =
         new Dataset(ctx, input, func_, std::move(captured_func), cycle_length,
@@ -317,6 +323,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),

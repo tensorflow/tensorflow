@@ -17,6 +17,10 @@ tf_class {
     argspec: "args=[\'self\', \'copy_from\', \'seed\', \'algorithm\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "binomial"
+    argspec: "args=[\'self\', \'shape\', \'counts\', \'probs\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
     name: "make_seeds"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
   }

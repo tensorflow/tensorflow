@@ -1169,7 +1169,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 16,
+    shard_count = 20,
     tags = ["notsan"],
 )
 

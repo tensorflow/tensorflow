@@ -41,6 +41,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &interleave_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       interleave_func_.name(), &lib_def_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -75,9 +79,11 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("`prefetch_input_elements` must be >= 0"));
 
     std::unique_ptr<CapturedFunction> captured_func;
+    CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      /*params=*/{}, &captured_func));
+                                      std::move(params), &captured_func));
 
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
@@ -1066,6 +1072,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList interleave_func_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(

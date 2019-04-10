@@ -272,4 +272,81 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesMakeStatsSummary").Device(DEVICE_CPU),
                         BoostedTreesMakeStatsSummaryOp);
 
+class BoostedTreesAggregateStatsOp : public OpKernel {
+ public:
+  explicit BoostedTreesAggregateStatsOp(OpKernelConstruction* const context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
+  }
+
+  void Compute(OpKernelContext* const context) override {
+    // node_ids.
+    const Tensor* node_ids_t;
+    OP_REQUIRES_OK(context, context->input("node_ids", &node_ids_t));
+    const auto node_ids = node_ids_t->vec<int32>();
+
+    // gradients.
+    const Tensor* gradients_t;
+    OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
+    const auto gradients = gradients_t->matrix<float>();
+
+    // hessians.
+    const Tensor* hessians_t;
+    OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
+    const auto hessians = hessians_t->matrix<float>();
+
+    // feature.
+    const Tensor* feature_t;
+    OP_REQUIRES_OK(context, context->input("feature", &feature_t));
+    const auto feature = feature_t->matrix<int32>();
+
+    // Infer batch size, feature dimension and stats dimension.
+    const int64 batch_size = node_ids_t->dim_size(0);
+    const int64 logits_dims = gradients_t->dim_size(1);
+    const int64 hessians_dims = hessians_t->dim_size(1);
+    const int64 stats_dims = logits_dims + hessians_dims;
+    const int64 feature_dims = feature_t->dim_size(1);
+
+    // Allocate temporary stats tensor (Rank 4), upcasting to double.
+    Tensor temp_stats_double_t;
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_DOUBLE,
+                                                   {max_splits_, feature_dims,
+                                                    num_buckets_, stats_dims},
+                                                   &temp_stats_double_t));
+    auto temp_stats_double = temp_stats_double_t.tensor<double, 4>();
+    temp_stats_double.setZero();
+
+    for (int i = 0; i < batch_size; ++i) {
+      const int32 node = node_ids(i);
+      for (int feature_dim = 0; feature_dim < feature_dims; ++feature_dim) {
+        const int32 bucket = feature(i, feature_dim);
+        for (int stat_dim = 0; stat_dim < logits_dims; ++stat_dim) {
+          temp_stats_double(node, feature_dim, bucket, stat_dim) +=
+              gradients(i, stat_dim);
+        }
+        for (int stat_dim = logits_dims; stat_dim < stats_dims; ++stat_dim) {
+          temp_stats_double(node, feature_dim, bucket, stat_dim) +=
+              hessians(i, stat_dim - logits_dims);
+        }
+      }
+    }
+
+    // Copy temp tensor over to output tensor, downcasting to float.
+    Tensor* output_stats_summary_t = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                "stats_summary", temp_stats_double_t.shape(),
+                                &output_stats_summary_t));
+    output_stats_summary_t->tensor<float, 4>() =
+        temp_stats_double.template cast<float>();
+  }
+
+ private:
+  int max_splits_;
+  int num_buckets_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("BoostedTreesAggregateStats").Device(DEVICE_CPU),
+                        BoostedTreesAggregateStatsOp);
+
 }  // namespace tensorflow

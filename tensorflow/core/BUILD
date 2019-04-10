@@ -1497,6 +1497,7 @@ cc_library(
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
+        "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
@@ -1687,6 +1688,7 @@ filegroup(
         ":protos_all_proto_text_srcs",
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
     ] + glob(
         [
             "client/**/*.cc",

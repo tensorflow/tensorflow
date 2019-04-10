@@ -857,6 +857,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",

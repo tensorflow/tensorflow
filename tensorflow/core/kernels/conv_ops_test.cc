@@ -997,8 +997,6 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolution) {
   this->VerifyConv2DWithBias(filter_size, filter_count);
 }
 
-// Relu --------------------------------------------------------------------- //
-
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
   const int filter_count = 12;

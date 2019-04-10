@@ -38,6 +38,7 @@ from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilati
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export_output as export_output_lib
@@ -62,6 +63,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.tpu import _tpu_estimator_embedding
 from tensorflow.python.tpu import error_handling
 from tensorflow.python.tpu import functional as tpu_functional
+from tensorflow.python.tpu import preempted_hook
 from tensorflow.python.tpu import profile_logger
 from tensorflow.python.tpu import session_support
 from tensorflow.python.tpu import tensor_tracer
@@ -2939,6 +2941,9 @@ class TPUEstimator(estimator_lib.Estimator):
                   tpu_init_ops=tpu_init_ops),
               InstallSignalHandlerHook()
           ])
+          if tpu_cluster_resolver.is_running_in_gce():
+            hooks.extend(
+                [preempted_hook.CloudTPUPreemptedHook(self._config.cluster)])
           if self._log_every_n_steps is not None:
             logging_hook_frequency = (  # Divide and round up
                 (self._log_every_n_steps +
@@ -3065,6 +3070,10 @@ class TPUEstimator(estimator_lib.Estimator):
                   session_config=self._session_config,
                   tpu_init_ops=tpu_init_ops)
           ] + input_hooks
+
+          if tpu_cluster_resolver.is_running_in_gce():
+            hooks.extend(
+                [preempted_hook.CloudTPUPreemptedHook(self._config.cluster)])
 
           if eval_hooks:
             hooks.extend(eval_hooks)

@@ -181,6 +181,53 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
       return Status::OK();
     });
 
+// V2 of BoostedTreesMakeStatsSummary. Supports multi-dim dense Tensor and
+// multi class.
+REGISTER_OP("BoostedTreesAggregateStats")
+    .Input("node_ids: int32")
+    .Input("gradients: float")
+    .Input("hessians: float")
+    .Input("feature: int32")
+    .Attr("max_splits: int >= 1")
+    .Attr("num_buckets: int >= 1")
+    .Output("stats_summary: float")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Sets the shape of the output as a Rank 4 Tensor.
+      int max_splits;
+      int num_buckets;
+      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_buckets", &num_buckets));
+
+      shape_inference::ShapeHandle node_ids_shape;
+      shape_inference::ShapeHandle gradients_shape;
+      shape_inference::ShapeHandle hessians_shape;
+      shape_inference::ShapeHandle feature_shape;
+
+      shape_inference::DimensionHandle batch_size = c->Dim(c->input(0), 0);
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &gradients_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &hessians_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &feature_shape));
+
+      // Verify all three inputs have same first dimension, i.e., batch_size.
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(gradients_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(hessians_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+
+      DimensionHandle logits_dim = c->Dim(c->input(1), 1);
+      DimensionHandle hessian_dim = c->Dim(c->input(2), 1);
+      DimensionHandle feature_dim = c->Dim(c->input(3), 1);
+      DimensionHandle stats_dim;
+      TF_RETURN_IF_ERROR(c->Add(logits_dim, hessian_dim, &stats_dim));
+      c->set_output(
+          0, c->MakeShape({max_splits, num_buckets, feature_dim, stats_dim}));
+      return Status::OK();
+    });
+
 // TODO(nponomareva): when/if creating the new op for unbucketized data, rename
 // bucketized_features to features.
 REGISTER_OP("BoostedTreesPredict")

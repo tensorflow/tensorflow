@@ -1177,6 +1177,7 @@ def list_devices():
   Returns:
     Names of the available devices, as a `list`.
   """
+  ensure_initialized()
   return context().devices()
 
 

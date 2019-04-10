@@ -22,6 +22,7 @@ import inspect
 import os
 import tempfile
 
+from absl.testing import parameterized
 import six
 import tensorflow as tf
 # OSS TF V2 import placeholder.
@@ -75,7 +76,7 @@ def get_func_and_args_from_str(call_str):
   return function_name, args
 
 
-class TestUpgrade(test_util.TensorFlowTestCase):
+class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test various APIs that have been changed in 2.0.
 
   We also test whether a converted file is executable. test_file_v1_10.py
@@ -85,6 +86,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
   @classmethod
   def setUpClass(cls):
+    super(TestUpgrade, cls).setUpClass()
     cls.v2_symbols = {}
     cls.v1_symbols = {}
     if hasattr(tf.compat, "v2"):
@@ -1336,13 +1338,6 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
-  def test_contrib_rnn_cell(self):
-    text = "tf.contrib.rnn.RNNCell"
-    expected = "tf.compat.v1.nn.rnn_cell.RNNCell"
-    # pylint: enable=line-too-long
-    _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(expected, new_text)
-
   def test_flags_bare(self):
     _, _, errors, _ = self._upgrade("tf.flags")
     self.assertIn("tf.flags has been removed", errors[0])
@@ -1376,12 +1371,21 @@ def _log_prob(self, x):
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
-  def test_contrib_rnn(self):
-    api_symbols = ["BasicLSTMCell", "BasicRNNCell", "GRUCell", "LSTMCell",
-                   "MultiRNNCell"]
+  def test_contrib_rnn_cell(self):
+    api_symbols = ["RNNCell", "BasicLSTMCell", "BasicRNNCell", "GRUCell",
+                   "LSTMCell", "MultiRNNCell"]
     for symbol in api_symbols:
       text = "tf.contrib.rnn." + symbol
       expected_text = "tf.compat.v1.nn.rnn_cell." + symbol
+      _, _, _, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+  def test_contrib_rnn_function(self):
+    api_symbols = ["static_rnn", "static_state_saving_rnn",
+                   "static_bidirectional_rnn"]
+    for symbol in api_symbols:
+      text = "tf.contrib.rnn." + symbol
+      expected_text = "tf.compat.v1.nn." + symbol
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
@@ -1512,19 +1516,54 @@ def _log_prob(self, x):
     self.assertIn("name_scope call with neither name nor default_name",
                   errors[0])
 
-  def test_string_split(self):
-    text = "tf.string_split('test', delimiter=' ')"
-    expected_text = "tf.strings.split(source='test', sep=' ')"
+  @parameterized.parameters(
+      # Rename parameter: delimiter -> sep and add .to_sparse()
+      ["tf.string_split('test', delimiter=' ')",
+       "tf.strings.split(source='test', sep=' ').to_sparse()"],
+      # Use compat.v1 for skip_empty parameter.
+      ["tf.string_split('test', ' ', True)",
+       "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"],
+      ["tf.string_split('test', ' ', skip_empty=False)",
+       "tf.strings.split(source='test', sep=' ').to_sparse()"],
+      # Split behavior for sep='' changed:
+      ["tf.string_split(x)",
+       "tf.compat.v1.string_split(source=x)"],
+      ["tf.string_split(x, '')",
+       "tf.compat.v1.string_split(source=x, sep='')"],
+      # If sep is a variable, we can't tell if it's empty:
+      ["tf.string_split(x, sep)",
+       "tf.compat.v1.string_split(source=x, sep=sep)"],
+      # If sep is a non-empty string literal, then we don't need compat.v1.
+      ["tf.string_split(x, 'non-empty-sep')",
+       "tf.strings.split(source=x, sep='non-empty-sep').to_sparse()"],
+      # Add to_sparse unless result_type is RaggedTensor:
+      ["tf.string_split(x, ' ')",
+       "tf.strings.split(source=x, sep=' ').to_sparse()"],
+      ["tf.string_split(x, ' ', result_type='SparseTensor')",
+       "tf.strings.split(source=x, sep=' ').to_sparse()"],
+      ["tf.string_split(x, ' ', result_type='RaggedTensor')",
+       "tf.strings.split(source=x, sep=' ')"],
+      ["tf.string_split(x, ' ', result_type=x)",
+       "tf.compat.v1.string_split(source=x, sep=' ', result_type=x)"],
+  )  # pyformat: disable
+  def test_string_split(self, text, expected_text):
+    """Tests for transforming from tf.string_split."""
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
-    text = "tf.string_split('test', ' ', True)"
-    expected_text = "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"  # pylint: disable=line-too-long
-    _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
-
-    text = "tf.string_split('test', ' ', skip_empty=False)"
-    expected_text = "tf.strings.split(source='test', sep=' ')"  # pylint: disable=line-too-long
+  @parameterized.parameters(
+      # Add to_sparse unless result_type is RaggedTensor:
+      ["tf.strings.split(x, sep)",
+       "tf.strings.split(x, sep).to_sparse()"],
+      ["tf.strings.split(x, sep, result_type='SparseTensor')",
+       "tf.strings.split(x, sep).to_sparse()"],
+      ["tf.strings.split(x, sep, result_type='RaggedTensor')",
+       "tf.strings.split(x, sep)"],
+      ["tf.strings.split(x, sep, result_type=x)",
+       "tf.compat.v1.strings.split(x, sep, result_type=x)"],
+  )  # pyformat: disable
+  def test_strings_split(self, text, expected_text):
+    """Tests for transforming from tf.strings.split."""
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 

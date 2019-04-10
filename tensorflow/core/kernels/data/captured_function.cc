@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -32,7 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
 
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
@@ -103,6 +103,31 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
 }  // namespace
 
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+  std::vector<Tensor> return_values;
+
+  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
+                                                            &return_values));
+
+  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
+        TensorShapeUtils::IsScalar(return_values[0].shape()))) {
+    return errors::InvalidArgument(
+        "Function must return a single scalar of dtype DT_VARIANT.");
+  }
+
+  // Retrieve the dataset that was created in `f`.
+  DatasetBase* returned_dataset;
+  TF_RETURN_IF_ERROR(
+      GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
+
+  // Create an iterator for the dataset that was returned by `f`.
+  return returned_dataset->MakeIterator(
+      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+}
+
 /* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
@@ -110,23 +135,24 @@ Status CapturedFunction::Create(
   OpInputList inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
   std::vector<Tensor> captured_inputs(inputs.begin(), inputs.end());
-  return Create(func, ctx, std::move(captured_inputs), params, out_function);
+  return Create(func, ctx, std::move(captured_inputs), std::move(params),
+                out_function);
 }
 
+/* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx,
     std::vector<Tensor>&& captured_inputs, Params params,
     std::unique_ptr<CapturedFunction>* out_function) {
-  const FunctionLibraryDefinition* lib_def =
-      ctx->function_library()->GetFunctionLibraryDefinition();
-  DCHECK(lib_def != nullptr);
-  const FunctionDef* fdef = lib_def->Find(func.name());
-  DCHECK(fdef != nullptr);
-  FunctionLibraryDefinition reachable_lib_def =
-      lib_def->ReachableDefinitions(*fdef);
-  TF_RETURN_IF_ERROR(reachable_lib_def.AddFunctionDef(*fdef));
+  // TODO(b/130248232): Remove this code path once all users of CapturedFunction
+  // are migrated to per-kernel FunctionLibraryDefinition.
+  if (params.lib_def == nullptr) {
+    TF_RETURN_IF_ERROR(CreateFunctionLibraryDefinition(
+        ctx->function_library()->GetFunctionLibraryDefinition(), func.name(),
+        &params.lib_def));
+  }
   *out_function = absl::WrapUnique(new CapturedFunction(
-      func, std::move(captured_inputs), std::move(reachable_lib_def), params));
+      func, std::move(captured_inputs), std::move(params)));
   return Status::OK();
 }
 
@@ -149,7 +175,7 @@ Status CapturedFunction::AddToGraph(
     other_arguments_types->emplace_back(t.dtype());
   }
 
-  TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name(), lib_def_));
+  TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name(), *lib_def_));
 
   return Status::OK();
 }
@@ -160,7 +186,7 @@ Status CapturedFunction::Instantiate(
   // The context's runtime will be used for all subsequent calls.
   FunctionLibraryRuntime* lib = ctx->lib();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  inst_opts.lib_def = &lib_def_;
+  inst_opts.lib_def = lib_def_.get();
   inst_opts.create_kernels_eagerly = true;
   if (!use_inter_op_parallelism_) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
@@ -177,7 +203,7 @@ Status CapturedFunction::Instantiate(
     // We infer the number of non-captured inputs by subtracting the number
     // of captured inputs from the number of input arguments and we infer the
     // input devices from the function library runtime.
-    const FunctionDef* fdef = lib_def_.Find(func_.name());
+    const FunctionDef* fdef = lib_def_->Find(func_.name());
     if (fdef == nullptr) {
       return errors::InvalidArgument(
           "Failed to find function ", func_.name(),
@@ -559,13 +585,12 @@ void InstantiatedCapturedFunction::RunAsync(
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,
                                    std::vector<Tensor> captured_inputs,
-                                   FunctionLibraryDefinition&& lib_def,
                                    Params params)
     : func_(func),
       captured_inputs_(std::move(captured_inputs)),
       use_inter_op_parallelism_(params.use_inter_op_parallelism),
       is_multi_device_function_(params.is_multi_device_function),
-      lib_def_(lib_def) {}
+      lib_def_(std::move(params.lib_def)) {}
 
 }  // namespace data
 }  // namespace tensorflow

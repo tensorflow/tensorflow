@@ -36,6 +36,24 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
+np.random.seed(99)
+EMBED_INPUTS = np.random.randint(0, 10, (6400, 1)).astype(np.int32)
+EMBED_TARGETS = np.random.normal(0, 0.1, (6400, 1)).astype(np.float32)
+IMAGE_INPUTS = np.random.normal(0, 0.1, (6400, 28, 28, 3)).astype(np.float32)
+IMAGE_TARGETS = np.random.randint(0, 10, (6400, 1))
+LSTM_INPUTS = np.random.normal(0, 0.1, (6400, 10, 20)).astype(np.float32)
+LSTM_TARGETS = np.random.normal(0, 0.1, (6400, 1)).astype(np.float32)
+
+
+def get_num_workers():
+  cluster_resolver = TFConfigClusterResolver()
+  cluster_spec = cluster_resolver.cluster_spec().as_dict()
+  if cluster_spec:
+    task_type = cluster_resolver.task_type
+    return int(multi_worker_util.worker_count(cluster_spec, task_type))
+  return 1
+
+
 def batch_and_maybe_shard_dataset(dataset, global_batch_size):
   """Shard the dataset if running in multi-node environment."""
 
@@ -123,12 +141,10 @@ def make_image_model(initial_weights=None):
       loss='sparse_categorical_crossentropy',
       metrics=['sparse_categorical_accuracy'])
 
-  np.random.seed(99)
-  image_inputs = np.random.normal(0, 0.1, (6400, 28, 28, 3)).astype(np.float32)
-  image_targets = np.random.randint(0, 10, (6400, 1))
-  return model, image_inputs, image_targets
+  return model, IMAGE_INPUTS, IMAGE_TARGETS
 
 
+# TODO(b/130243026): Re-enable this test.
 def make_lstm_model(initial_weights=None):
   inputs = keras.layers.Input(shape=(10, 20))
   rnn1_out = keras.layers.LSTM(20, return_sequences=True)(inputs)
@@ -141,16 +157,15 @@ def make_lstm_model(initial_weights=None):
 
   model.compile('adam', 'binary_crossentropy', metrics=['mse'])
 
-  np.random.seed(99)
-  lstm_inputs = np.random.normal(0, 0.1, (6400, 10, 20)).astype(np.float32)
-  lstm_targets = np.random.normal(0, 0.1, (6400, 1)).astype(np.float32)
-  return model, lstm_inputs, lstm_targets
+  return model, LSTM_INPUTS, LSTM_TARGETS
 
 
 def make_embedding_model(initial_weights=None):
-  inputs = keras.layers.Input(shape=(1,), dtype='int32')
+  # TODO(b/130231718): Remove batch_size here.
+  inputs = keras.layers.Input(
+      batch_size=64 // get_num_workers(), shape=(1,), dtype='int32')
   embeddings = keras.layers.Embedding(100, 5)(inputs)
-  outputs = keras.layers.Dense(1)(embeddings)
+  outputs = keras.layers.Dense(1, activation='softmax')(embeddings)
   model = keras.Model(inputs, outputs)
 
   if initial_weights:
@@ -158,10 +173,7 @@ def make_embedding_model(initial_weights=None):
 
   model.compile('rmsprop', 'mae', metrics=['binary_crossentropy'])
 
-  np.random.seed(99)
-  embed_inputs = np.random.randint(0, 10, (6400, 1)).astype(np.int32)
-  embed_targets = np.random.normal(0, 0.1, (6400, 1)).astype(np.float32)
-  return model, embed_inputs, embed_targets
+  return model, EMBED_INPUTS, EMBED_TARGETS
 
 
 class ModelCorrectnessTest(
@@ -179,14 +191,15 @@ class ModelCorrectnessTest(
           strategy_cls=[
               collective_strategy.CollectiveAllReduceStrategy,
           ],
-          make_model=[make_image_model, make_lstm_model, make_embedding_model],
+          make_model=[make_image_model, make_embedding_model],
           required_gpus=[0, 1]))
   def test_correctness(self, strategy_cls, make_model):
 
     def _worker_fn(initial_weights=None, results_without_ds=None):
-      # Make sure Session is cleared at each run so that it can be
-      # configured properly for the DistributionStrategy.
+      # Make sure Session is cleared at each run
+      # so that it can be configured properly for the DistributionStrategy.
       keras.backend._SESSION.session = None
+
       results = {}
       model, inputs, targets = make_model(initial_weights)
 

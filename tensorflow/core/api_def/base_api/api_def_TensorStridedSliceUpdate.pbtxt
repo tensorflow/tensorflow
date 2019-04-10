@@ -7,6 +7,6 @@ are selected by the slice parameters. The slice parameters `begin` `end`
 `strides` etc. work exactly as in `StridedSlice`.
 
 NOTE this op currently does not support broadcasting and so `value`'s shape
-must be exactly the shape produced by the slice of `input`.  
-END 
+must be exactly the shape produced by the slice of `input`.
+END
 }
