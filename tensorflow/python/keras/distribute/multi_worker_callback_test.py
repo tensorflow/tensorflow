@@ -283,6 +283,14 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
         history_after_one_more_epoch.history,
         history_after_model_restoring_and_one_more_epoch.history)
 
+    history_one_more_epoch_without_model_restoring = model.fit(
+        x=train_ds, epochs=1, steps_per_epoch=steps)
+
+    # Ensuring training for another epoch gives different result.
+    test_obj.assertNotAllClose(
+        history_after_model_restoring_and_one_more_epoch.history,
+        history_one_more_epoch_without_model_restoring.history)
+
   @staticmethod
   def callableForTestUnmatchedModelFile(model, test_obj, train_ds, num_epoch,
                                         steps, strategy, saving_filepath):
