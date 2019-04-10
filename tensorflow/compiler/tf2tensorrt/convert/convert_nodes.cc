@@ -3764,6 +3764,14 @@ Status ConvertFCHelper(OpConverterParams* params,
                        nvinfer1::ITensor* tensor_a,
                        TRT_ShapedWeights weights_raw, bool transpose_b,
                        string node_name) {
+  // Reshape input to 3D - this will be a no-op unless using int8 precision.
+  auto input_dim = tensor_a->getDimensions();
+  while (input_dim.nbDims < 3) {
+    input_dim.d[input_dim.nbDims++] = 1;
+  }
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+    TRT_TensorOrWeights(tensor_a), input_dim, /*validation_only=*/false, &tensor_a));
+
   // FC layer will transpose weights, so we need to pre-transpose.
   TRT_ShapedWeights weights(weights_raw.TrtDType());
   if (!transpose_b) {
@@ -3779,21 +3787,15 @@ Status ConvertFCHelper(OpConverterParams* params,
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
 
-  // TODO(pranavm): Use this for the int8 case.
-  // auto input_dim = tensor->getDimensions();
-  // while (input_dim.nbDims != 3) {
-  //   input_dim.d[input_dim.nbDims++] = 1;
-  // }
-  // TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-  //     input_a, input_dim, /*validation_only=*/false, &tensor));
-  // TODO(pranavm): And for the output
-  // auto output_dim = output_tensor->getDimensions();
-  // output_dim.nbDims = 1;
-  // TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-  //     TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
-  //     &output_tensor));
+  // Reshape output to 1D - this will be a no-op unless using int8 precision.
+  auto output_dim = output_tensor->getDimensions();
+  output_dim.nbDims = 1;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+    TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
+    &output_tensor));
+
+  return Status::OK();
 }
 
 Status ConvertMatMulHelper(OpConverterParams* params,
@@ -3801,8 +3803,9 @@ Status ConvertMatMulHelper(OpConverterParams* params,
                            TRT_TensorOrWeights input_b, bool transpose_a, bool transpose_b,
                            string node_name) {
   // If an FC layer can be used and would be faster, use that instead.
-  const bool should_use_fc = !transpose_a && input_a.is_tensor() && input_b.is_weights() && input_a.GetTrtDims().nbDims >= 3;// && input_b.GetTrtDims().nbDims == 2;
-  if (should_use_fc) {
+  const bool should_use_fc = !transpose_a && input_a.is_tensor() && input_b.is_weights() && input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
+  // If int8 is specified, FC must be used, as MM does not support int8 at this time.
+  if (should_use_fc || params->converter->precision_mode() == TrtPrecisionMode::INT8) {
     return ConvertFCHelper(params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
