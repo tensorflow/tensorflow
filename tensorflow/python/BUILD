@@ -2782,7 +2782,7 @@ py_library(
 
 py_library(
     name = "loss_scale",
-    srcs = ["training/loss_scale.py"],
+    srcs = ["training/mixed_precision/experimental/loss_scale.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
@@ -2793,7 +2793,7 @@ py_library(
 
 py_library(
     name = "loss_scale_optimizer",
-    srcs = ["training/loss_scale_optimizer.py"],
+    srcs = ["training/mixed_precision/experimental/loss_scale_optimizer.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":loss_scale",
@@ -2804,7 +2804,7 @@ py_library(
 py_test(
     name = "loss_scale_optimizer_test",
     size = "small",
-    srcs = ["training/loss_scale_optimizer_test.py"],
+    srcs = ["training/mixed_precision/experimental/loss_scale_optimizer_test.py"],
     deps = [
         ":loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:test_util",
@@ -2818,7 +2818,7 @@ py_test(
 py_test(
     name = "loss_scale_test",
     size = "small",
-    srcs = ["training/loss_scale_test.py"],
+    srcs = ["training/mixed_precision/experimental/loss_scale_test.py"],
     deps = [
         ":loss_scale",
         "//tensorflow/python:client_testlib",

@@ -35,7 +35,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @six.add_metaclass(abc.ABCMeta)
-@tf_export(v1=['train.LossScale'])
+@tf_export(v1=['train.mixed_precision.experimental.LossScale'])
 class LossScale(trackable.Trackable):
   """Base class to compute the loss scale.
 
@@ -215,7 +215,7 @@ class LossScale(trackable.Trackable):
       graph_key = graph._graph_key # pylint: disable=protected-access
     return self._weights.get((graph_key, name), None)
 
-@tf_export(v1=['train.FixedLossScale'])
+@tf_export(v1=['train.mixed_precision.experimental.FixedLossScale'])
 class FixedLossScale(LossScale):
   """Loss scale class with a fixed value.
 
@@ -283,7 +283,7 @@ def _assign_if_finite(var, value):
       control_flow_ops.no_op)
 
 
-@tf_export(v1=['train.DynamicLossScale'])
+@tf_export(v1=['train.mixed_precision.experimental.DynamicLossScale'])
 class DynamicLossScale(LossScale):
   """Loss scale class that dynamically adjusts the loss scale.
 

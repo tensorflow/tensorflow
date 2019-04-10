@@ -26,8 +26,8 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
-from tensorflow.python.training import loss_scale as loss_scale_module
-from tensorflow.python.training import loss_scale_optimizer
+from tensorflow.python.training.mixed_precision.experimental import loss_scale as loss_scale_module
+from tensorflow.python.training.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import momentum

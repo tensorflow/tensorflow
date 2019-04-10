@@ -20,13 +20,13 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.training import loss_scale as loss_scale_module
+from tensorflow.python.training.mixed_precision.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training import optimizer
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export(v1=['train.LossScaleOptimizer'])
+@tf_export(v1=['train.mixed_precision.experimental.LossScaleOptimizer'])
 class LossScaleOptimizer(optimizer.Optimizer):
   """An optimizer that applies loss scaling.
 
@@ -170,7 +170,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
 
     # TODO(nluehr) cleanup GraphKeys.TRAIN_OP
     return replica_context.merge_call(
-        self._apply_gradients_cross_replica,
+        self._maybe_apply_gradients_cross_replica,
         args=(grads_and_vars, global_step, name))
 
   def _distributed_apply(self,
@@ -197,10 +197,10 @@ class LossScaleOptimizer(optimizer.Optimizer):
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    self._apply_gradients_cross_replica(distribution, grads_and_vars,
+    self._maybe_apply_gradients_cross_replica(distribution, grads_and_vars,
                                               global_step, name)
 
-  def _apply_gradients_cross_replica(self, distribution, grads_and_vars,
+  def _maybe_apply_gradients_cross_replica(self, distribution, grads_and_vars,
                                            global_step, name):
     """Conditionally apply gradients in cross replica context."""
     name = name if name is not None else self.get_name()
