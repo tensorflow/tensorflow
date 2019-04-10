@@ -137,6 +137,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                   OperatorType::kNotEqual);
   CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
   CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
+  CheckSimpleOperator<TensorFlowIsFiniteOperator>("ISFINITE", OperatorType::kIsfinite);
   CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
   CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",

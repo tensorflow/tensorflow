@@ -45,6 +45,17 @@ class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
   }
 };
 
+class ElementWiseOpIsFiniteModel : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpIsFiniteModel(BuiltinOperator op,
+                             std::initializer_list<int> input_shape) {
+    input_ = AddInput(TensorType_FLOAT32);
+    output_ = AddOutput(TensorType_BOOL);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
+};
+
 class ElementWiseOpBoolModel : public ElementWiseOpBaseModel {
  public:
   ElementWiseOpBoolModel(BuiltinOperator op,
@@ -120,6 +131,16 @@ TEST(ElementWise, Square) {
   m.Invoke();
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, 4.0, 0.25, 9.0})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, IsFinite) {
+  ElementWiseOpIsFiniteModel m(BuiltinOperator_ISFINITE, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1.8976931348623157e+308f, std::nan("2"),
+                                      std::nan("5"), -3.0});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<bool>(m.output()),
+              ElementsAreArray({false, false, false, true}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 

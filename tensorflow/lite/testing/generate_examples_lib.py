@@ -278,7 +278,8 @@ _TF_TYPE_INFO = {
 }
 
 
-def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
+def create_tensor_data(dtype, shape, min_value=-100, max_value=100,
+                       include_nan=False):
   """Build tensor data spreading the range [min_value, max_value)."""
 
   if dtype in _TF_TYPE_INFO:
@@ -286,6 +287,10 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value-min_value)*np.random.random_sample(shape)+min_value
+    #is_finite is supported only for floats
+    if include_nan:
+      mask = np.random.choice([True, False], size=shape)
+      value[mask] = np.nan
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value+1, shape)
   elif dtype == tf.bool:
@@ -858,6 +863,35 @@ def make_elu_tests(options):
     """Build the inputs for the test case."""
     input_values = create_tensor_data(
         np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
+def make_isfinite_tests(options):
+  """Make a set of tests to do (float) tf.is_finite"""
+
+  test_parameters = [
+      {
+          "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                          [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    out = tf.is_finite(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], include_nan=True)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

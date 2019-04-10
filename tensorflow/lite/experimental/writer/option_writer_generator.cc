@@ -181,6 +181,7 @@ class OpOptionData {
     op_to_option_["LOG"] = "";
     op_to_option_["SQRT"] = "";
     op_to_option_["RSQRT"] = "";
+    op_to_option_["ISFINITE"] = "";
     op_to_option_["ELU"] = "";
     op_to_option_["REVERSE_SEQUENCE"] = "";
 

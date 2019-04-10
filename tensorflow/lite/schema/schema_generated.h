@@ -577,11 +577,12 @@ enum BuiltinOperator {
   BuiltinOperator_MATRIX_SET_DIAG = 115,
   BuiltinOperator_ROUND = 116,
   BuiltinOperator_HARD_SWISH = 117,
+  BuiltinOperator_ISFINITE = 118,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_HARD_SWISH
+  BuiltinOperator_MAX = BuiltinOperator_ISFINITE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[117] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[118] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -699,7 +700,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[117] {
     BuiltinOperator_QUANTIZE,
     BuiltinOperator_MATRIX_SET_DIAG,
     BuiltinOperator_ROUND,
-    BuiltinOperator_HARD_SWISH
+    BuiltinOperator_HARD_SWISH,
+    BuiltinOperator_ISFINITE
   };
   return values;
 }
@@ -824,6 +826,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "MATRIX_SET_DIAG",
     "ROUND",
     "HARD_SWISH",
+    "ISFINITE",
     nullptr
   };
   return names;

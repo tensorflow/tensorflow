@@ -2595,6 +2595,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<LogOperator>>("LOG", OperatorType::kLog));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowSqrtOperator>>(
       "SQRT", OperatorType::kSqrt));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowIsFiniteOperator>>(
+      "ISFINITE", OperatorType::kIsfinite));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowRsqrtOperator>>(
       "RSQRT", OperatorType::kRsqrt));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowSquareOperator>>(

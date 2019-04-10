@@ -57,6 +57,7 @@ enum class OperatorType : uint8 {
   kFloorDiv,
   kFloorMod,
   kFullyConnected,
+  kIsfinite,
   kL2Normalization,
   kL2Pool,
   kLstmCell,
@@ -1368,6 +1369,16 @@ struct TensorFlowShapeOperator : Operator {
 // TensorFlow equivalent: Sqrt
 struct TensorFlowSqrtOperator : Operator {
   TensorFlowSqrtOperator() : Operator(OperatorType::kSqrt) {}
+};
+
+// Element-wise IsFinite operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: IsFinite
+struct TensorFlowIsFiniteOperator : Operator {
+  TensorFlowIsFiniteOperator() : Operator(OperatorType::kIsfinite) {}
 };
 
 // Element-wise square (x*x) operator.

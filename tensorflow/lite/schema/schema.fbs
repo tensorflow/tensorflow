@@ -231,6 +231,7 @@ enum BuiltinOperator : byte {
   MATRIX_SET_DIAG = 115,
   ROUND = 116,
   HARD_SWISH = 117,
+  ISFINITE = 118,
 }
 
 // Options for the builtin operators.

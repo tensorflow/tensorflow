@@ -50,6 +50,22 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(input->dims));
 }
 
+template <IsSupportedType>
+TfLiteStatus IsFinitePrepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteBool);
+  if (!IsSupportedType(input->type)) {
+    context->ReportError(context, "Current data type %d is not supported.",
+                         input->type);
+    return kTfLiteError;
+  }
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(input->dims));
+}
+
 template <typename T>
 inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                              T func(T), TfLiteType expected_type) {
@@ -61,6 +77,28 @@ inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
   T* out_data = GetTensorData<T>(output);
   for (int64_t i = 0; i < num_elements; ++i) {
     out_data[i] = func(in_data[i]);
+  }
+  return kTfLiteOk;
+}
+
+template <typename T>
+void IsFiniteOperation(const T* in_data, int64_t num_elements, bool* out_data) {
+  for (int64_t i = 0; i < num_elements; ++i) {
+    out_data[i] = std::isfinite(in_data[i]);
+  }
+}
+
+inline TfLiteStatus IsFiniteEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  const int64_t num_elements = NumElements(input);
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      IsFiniteOperation(GetTensorData<float>(input), num_elements,
+                        GetTensorData<bool>(output));
+    } break;
+    default:
+      return kTfLiteError;
   }
   return kTfLiteOk;
 }
@@ -171,6 +209,14 @@ TfLiteRegistration* Register_LOGICAL_NOT() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsLogicalSupportedType>,
       elementwise::LogicalNotEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_ISFINITE() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::IsFinitePrepare<elementwise::IsNumericSupportedType>,
+      elementwise::IsFiniteEval};
   return &r;
 }
 

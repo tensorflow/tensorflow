@@ -2148,6 +2148,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kNeg:
     case OperatorType::kRsqrt:
     case OperatorType::kSqrt:
+    case OperatorType::kIsfinite:
     case OperatorType::kSquare:
     case OperatorType::kAll:
     case OperatorType::kAssert:
