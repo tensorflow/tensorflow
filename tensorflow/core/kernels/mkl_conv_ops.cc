@@ -379,9 +379,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
         DCHECK_EQ(post_op_param.param.size(), 3);
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
-      } else if (post_op_param.name == "output_scale") {
-        continue;
-      } else {
+      } else if (post_op_param.name != "output_scale") {
         return string("not_a_key");
       }
       key_creator.AddAsKey(post_op_param.name);
