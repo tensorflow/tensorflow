@@ -170,7 +170,6 @@ StatusOr<popops::expr::BinaryOpType> LookupComparisonFn(
              ComparisonDirectionToString(direction)));
 }
 
-
 static dot_graph_caching::MatMulPass GetMatMulPass(
     const HloInstruction* inst, const CompilerAnnotations& annotations) {
   if (IsForward(inst, annotations)) {
@@ -344,7 +343,7 @@ StatusOr<poplar::program::Program> CreateComparisonOp(
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
-  
+
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(
       in0, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
@@ -689,10 +688,10 @@ StatusOr<poplar::program::Program> CreateClampOp(CompilerResources& res,
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateReluOp(CompilerResources& res,
-                                                const HloInstruction* inst,
-                                                const xla::Shape& output_shape,
-                                                TensorMap& tensor_map) {
+StatusOr<poplar::program::Program> CreateNonLinearityOp(
+    CompilerResources& res, const HloInstruction* inst,
+    popnn::NonLinearityType non_linearity_type, const xla::Shape& output_shape,
+    TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
@@ -701,84 +700,83 @@ StatusOr<poplar::program::Program> CreateReluOp(CompilerResources& res,
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor t = inputs[0][0];
-  popnn::reluInPlace(graph, t, seq, GetDebugName(inst));
+  popnn::nonLinearityInPlace(graph, non_linearity_type, t, seq,
+                             GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 
   return seq;
+}
+
+StatusOr<poplar::program::Program> CreateNonLinearityGradOp(
+    CompilerResources& res, const HloInstruction* inst,
+    popnn::NonLinearityType non_linearity_type, const xla::Shape& output_shape,
+    TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  poplar::program::Sequence seq;
+
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
+
+  poplar::Tensor outgrad;
+  TF_ASSIGN_OR_RETURN(outgrad,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
+
+  poplar::Tensor t = popnn::nonLinearityInputGradient(
+      graph, non_linearity_type, out, outgrad, seq, GetDebugName(inst));
+
+  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
+
+  return seq;
+}
+
+StatusOr<poplar::program::Program> CreateReluOp(CompilerResources& res,
+                                                const HloInstruction* inst,
+                                                const xla::Shape& output_shape,
+                                                TensorMap& tensor_map) {
+  return CreateNonLinearityOp(res, inst, popnn::NonLinearityType::RELU,
+                              output_shape, tensor_map);
 }
 
 StatusOr<poplar::program::Program> CreateReluGradOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
-  poplar::Graph& graph = GetGraph(res, inst);
-
-  poplar::program::Sequence seq;
-
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
-
-  poplar::Tensor outgrad;
-  TF_ASSIGN_OR_RETURN(outgrad,
-                      FindInstructionInput(tensor_map, res, inst, 1, seq));
-
-  poplar::Tensor t =
-      popnn::nonLinearityInputGradient(graph, popnn::NonLinearityType::RELU,
-                                       out, outgrad, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
-
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
-
-  return seq;
+  return CreateNonLinearityGradOp(res, inst, popnn::NonLinearityType::RELU,
+                                  output_shape, tensor_map);
 }
 
 StatusOr<poplar::program::Program> CreateSigmoidOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
-  poplar::Graph& graph = GetGraph(res, inst);
-
-  poplar::program::Sequence seq;
-  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
-  CHECK_EQ(inputs.size(), 1);
-  CHECK_EQ(inputs[0].size(), 1);
-  poplar::Tensor t = inputs[0][0];
-
-  popnn::sigmoidInPlace(graph, t, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
-
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
-
-  return seq;
+  return CreateNonLinearityOp(res, inst, popnn::NonLinearityType::SIGMOID,
+                              output_shape, tensor_map);
 }
 
 StatusOr<poplar::program::Program> CreateSigmoidGradOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
-  poplar::Graph& graph = GetGraph(res, inst);
+  return CreateNonLinearityGradOp(res, inst, popnn::NonLinearityType::SIGMOID,
+                                  output_shape, tensor_map);
+}
 
-  poplar::program::Sequence seq;
+StatusOr<poplar::program::Program> CreateTanhOp(CompilerResources& res,
+                                                const HloInstruction* inst,
+                                                const xla::Shape& output_shape,
+                                                TensorMap& tensor_map) {
+  return CreateNonLinearityOp(res, inst, popnn::NonLinearityType::TANH,
+                              output_shape, tensor_map);
+}
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
-
-  poplar::Tensor outgrad;
-  TF_ASSIGN_OR_RETURN(outgrad,
-                      FindInstructionInput(tensor_map, res, inst, 1, seq));
-
-  poplar::Tensor t =
-      popnn::nonLinearityInputGradient(graph, popnn::NonLinearityType::SIGMOID,
-                                       out, outgrad, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
-
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
-
-  return seq;
+StatusOr<poplar::program::Program> CreateTanhGradOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  return CreateNonLinearityGradOp(res, inst, popnn::NonLinearityType::TANH,
+                                  output_shape, tensor_map);
 }
 
 }  // namespace poplarplugin

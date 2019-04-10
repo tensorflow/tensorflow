@@ -55,10 +55,6 @@ typedef StatusOr<poplar::program::Program> (*CustomCallFn)(
     CompilerResources&, const HloInstruction*, const xla::Shape&, TensorMap&);
 
 static std::map<std::string, CustomCallFn> custom_call_map = {
-    {"relu", CreateReluOp},
-    {"relugrad", CreateReluGradOp},
-    {"sigmoid", CreateSigmoidOp},
-    {"sigmoidgrad", CreateSigmoidGradOp},
     {"conv_biasadd", CreateConvBiasAddOp},
     {"matmul_biasadd", CreateMatMulBiasAddOp},
     {"norm_scale_add", RandomNormalScale},

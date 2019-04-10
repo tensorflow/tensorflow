@@ -19,6 +19,11 @@ message PoplibsOp {
 	  MaxPool = 8;
 	  MaxPoolGrad = 9;
 	  TruncatedNormal = 10;
+    Relu = 11;
+    ReluGrad = 12;
+    TanhGrad = 13;
+    Sigmoid = 14;
+    SigmoidGrad = 15;
   }
   required Op op = 2;
 }

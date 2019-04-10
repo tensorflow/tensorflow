@@ -28,9 +28,8 @@ namespace InplaceUtil {
 namespace {
 // Map from name to the number of the first x operands which are inplace
 static std::map<std::string, uint64> fused_inplace_info_map = {
-    {"relu", 1},           {"sigmoid", 1},    {"conv_biasadd", 1},
-    {"matmul_biasadd", 1}, {"bias_apply", 1}, {"conv_scaled_inplace", 1},
-    {"scaled_inplace", 1},
+    {"conv_biasadd", 1},        {"matmul_biasadd", 1}, {"bias_apply", 1},
+    {"conv_scaled_inplace", 1}, {"scaled_inplace", 1},
 };
 
 bool IsNotDependencyOfPeers(HloInstruction* inplace,
