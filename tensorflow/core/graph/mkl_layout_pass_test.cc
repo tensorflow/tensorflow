@@ -2505,6 +2505,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Negative) {
             "A(HalfInput);B(Input);C(Input);D(Input);E(Input);"
             "F(FusedBatchNormV2);G(Zeta)|A->F;A->G;"
             "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
+}
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
   InitGraph(
