@@ -60,6 +60,10 @@ py_test(
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
+        # Temporarily disable the test, because both Cuda and ROCm are failing due to infrastructure
+        # related reasons (Not enough memory to allocatea), causing variable uninitialized
+        "no_rocm",
+        "no_cuda",
     ],
     deps = [
         "//tensorflow:tensorflow_py",
