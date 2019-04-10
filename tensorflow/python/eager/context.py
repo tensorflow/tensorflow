@@ -719,6 +719,7 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
+    self.ensure_initialized()
     pywrap_tensorflow.TFE_ContextAddFunction(self._handle, fn)
 
   def add_function_def(self, fdef):
@@ -730,12 +731,14 @@ class Context(object):
     Args:
       fdef: A FunctionDef protocol buffer message.
     """
+    self.ensure_initialized()
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
   def has_function(self, name):
     """Check if a function `name` is registered."""
+    self.ensure_initialized()
     return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
   def add_post_execution_callback(self, callback):
