@@ -54,21 +54,6 @@ def get_num_workers():
   return 1
 
 
-def batch_and_maybe_shard_dataset(dataset, global_batch_size):
-  """Shard the dataset if running in multi-node environment."""
-
-  cluster_resolver = TFConfigClusterResolver()
-  cluster_spec = cluster_resolver.cluster_spec().as_dict()
-  if cluster_spec:
-    task_type = cluster_resolver.task_type
-    task_id = cluster_resolver.task_id
-    num_workers = int(multi_worker_util.worker_count(cluster_spec, task_type))
-    id_in_cluster = int(
-        multi_worker_util.id_in_cluster(cluster_spec, task_type, task_id))
-    dataset = dataset.shard(num_workers, id_in_cluster)
-  return dataset.batch(global_batch_size)
-
-
 class Bias(keras.layers.Layer):
 
   def build(self, input_shape):
@@ -92,7 +77,7 @@ class SimpleBiasTest(
       x = ops.convert_to_tensor([[0.], [1.], [2.], [0.], [1.], [2.]])
       y = ops.convert_to_tensor([[0.5], [2.], [3.5], [0.5], [2.], [3.5]])
       ds = dataset_ops.Dataset.from_tensor_slices((x, y))
-      ds = batch_and_maybe_shard_dataset(ds, global_batch_size=6)
+      ds = ds.batch(6)
       model = keras.Sequential([Bias(input_shape=(1,))])
       model.compile(
           keras.optimizer_v2.gradient_descent.SGD(0.1), 'mae', metrics=['mae'])
@@ -182,7 +167,7 @@ class ModelCorrectnessTest(
 
   def make_dataset(self, inputs, targets, batch_size=64):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = batch_and_maybe_shard_dataset(dataset, batch_size)
+    dataset = dataset.batch(batch_size)
     return dataset
 
   @combinations.generate(
