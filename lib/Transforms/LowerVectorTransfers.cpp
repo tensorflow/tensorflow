@@ -183,8 +183,9 @@ clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
       auto expr = en.value();
       auto dim = expr.template dyn_cast<AffineDimExpr>();
       // Sanity check.
-      assert(dim || expr.template cast<AffineConstantExpr>().getValue() == 0 &&
-                        "Expected dim or 0 in permutationMap");
+      assert(
+          (dim || expr.template cast<AffineConstantExpr>().getValue() == 0) &&
+          "Expected dim or 0 in permutationMap");
       if (dim && memRefDim == dim.getPosition()) {
         loopIndex = en.index();
         break;

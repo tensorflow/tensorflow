@@ -720,12 +720,12 @@ void AffineForOp::build(Builder *builder, OperationState *result,
                         ArrayRef<Value *> lbOperands, AffineMap lbMap,
                         ArrayRef<Value *> ubOperands, AffineMap ubMap,
                         int64_t step) {
-  assert((!lbMap && lbOperands.empty()) ||
-         lbOperands.size() == lbMap.getNumInputs() &&
-             "lower bound operand count does not match the affine map");
-  assert((!ubMap && ubOperands.empty()) ||
-         ubOperands.size() == ubMap.getNumInputs() &&
-             "upper bound operand count does not match the affine map");
+  assert(((!lbMap && lbOperands.empty()) ||
+          lbOperands.size() == lbMap.getNumInputs()) &&
+         "lower bound operand count does not match the affine map");
+  assert(((!ubMap && ubOperands.empty()) ||
+          ubOperands.size() == ubMap.getNumInputs()) &&
+         "upper bound operand count does not match the affine map");
   assert(step > 0 && "step has to be a positive integer constant");
 
   // Add an attribute for the step.

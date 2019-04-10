@@ -200,11 +200,10 @@ struct IntegerAttrKeyInfo : DenseMapInfo<IntegerAttributeStorage *> {
   static bool isEqual(const KeyTy &lhs, const IntegerAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    assert(lhs.first.isIndex() ||
-           (lhs.first.isa<IntegerType>() &&
-            lhs.first.cast<IntegerType>().getWidth() ==
-                lhs.second.getBitWidth()) &&
-               "mismatching integer type and value bitwidth");
+    assert((lhs.first.isIndex() || (lhs.first.isa<IntegerType>() &&
+                                    lhs.first.cast<IntegerType>().getWidth() ==
+                                        lhs.second.getBitWidth())) &&
+           "mismatching integer type and value bitwidth");
     return lhs.first == rhs->type && lhs.second == rhs->getValue();
   }
 };
