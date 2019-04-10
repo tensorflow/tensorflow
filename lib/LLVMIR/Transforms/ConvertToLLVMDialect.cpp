@@ -489,6 +489,15 @@ struct RemISOpLowering : public OneToOneLLVMOpLowering<RemISOp, LLVM::SRemOp> {
 struct RemIUOpLowering : public OneToOneLLVMOpLowering<RemIUOp, LLVM::URemOp> {
   using Super::Super;
 };
+struct AndOpLowering : public OneToOneLLVMOpLowering<AndOp, LLVM::AndOp> {
+  using Super::Super;
+};
+struct OrOpLowering : public OneToOneLLVMOpLowering<OrOp, LLVM::OrOp> {
+  using Super::Super;
+};
+struct XOrOpLowering : public OneToOneLLVMOpLowering<XOrOp, LLVM::XOrOp> {
+  using Super::Super;
+};
 struct AddFOpLowering : public OneToOneLLVMOpLowering<AddFOp, LLVM::FAddOp> {
   using Super::Super;
 };
@@ -1101,14 +1110,15 @@ protected:
 
     // FIXME: this should be tablegen'ed
     return ConversionListBuilder<
-        AddFOpLowering, AddIOpLowering, AllocOpLowering, BranchOpLowering,
-        CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
-        CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,
-        DimOpLowering, DivISOpLowering, DivIUOpLowering, DivFOpLowering,
-        LoadOpLowering, MemRefCastOpLowering, MulFOpLowering, MulIOpLowering,
-        RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-        SelectOpLowering, StoreOpLowering, SubFOpLowering,
-        SubIOpLowering>::build(&converterStorage, *llvmDialect);
+        AddFOpLowering, AddIOpLowering, AndOpLowering, AllocOpLowering,
+        BranchOpLowering, CallIndirectOpLowering, CallOpLowering,
+        CmpIOpLowering, CondBranchOpLowering, ConstLLVMOpLowering,
+        DeallocOpLowering, DimOpLowering, DivISOpLowering, DivIUOpLowering,
+        DivFOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
+        MulIOpLowering, OrOpLowering, RemISOpLowering, RemIUOpLowering,
+        RemFOpLowering, ReturnOpLowering, SelectOpLowering, StoreOpLowering,
+        SubFOpLowering, SubIOpLowering, XOrOpLowering>::build(&converterStorage,
+                                                              *llvmDialect);
   }
 
   // Convert types using the stored LLVM IR module.

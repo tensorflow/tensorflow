@@ -375,6 +375,12 @@ func @vector_ops(vector<4xf32>, vector<4xi1>, vector<4xi64>) -> vector<4xf32> {
   %7 = divf %arg0, %0 : vector<4xf32>
 // CHECK-NEXT:  %7 = llvm.frem %arg0, %0 : !llvm<"<4 x float>">
   %8 = remf %arg0, %0 : vector<4xf32>
+// CHECK-NEXT:  %8 = llvm.and %arg2, %arg2 : !llvm<"<4 x i64>">
+  %9 = and %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT:  %9 = llvm.or %arg2, %arg2 : !llvm<"<4 x i64>">
+  %10 = or %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT:  %10 = llvm.xor %arg2, %arg2 : !llvm<"<4 x i64>">
+  %11 = xor %arg2, %arg2 : vector<4xi64>
   return %1 : vector<4xf32>
 }
 
@@ -401,6 +407,12 @@ func @ops(f32, f32, i32, i32) -> (f32, i32) {
   %9 = divf %arg0, %arg1 : f32
 // CHECK-NEXT:  %9 = llvm.frem %arg0, %arg1 : !llvm.float
   %10 = remf %arg0, %arg1 : f32
+// CHECK-NEXT: %10 = llvm.and %arg2, %arg3 : !llvm.i32
+  %11 = and %arg2, %arg3 : i32
+// CHECK-NEXT: %11 = llvm.or %arg2, %arg3 : !llvm.i32
+  %12 = or %arg2, %arg3 : i32
+// CHECK-NEXT: %12 = llvm.xor %arg2, %arg3 : !llvm.i32
+  %13 = xor %arg2, %arg3 : i32
 
   return %0, %4 : f32, i32
 }
