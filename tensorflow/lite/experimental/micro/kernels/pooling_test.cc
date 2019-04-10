@@ -293,4 +293,151 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestUint8) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloat) {
+  float output_data[2];
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          0, 6, 2, 4,
+          3, 2, 10, 7
+      },
+      2, 2,             // filter width, filter height
+      2, 2,             // stride width, stride height
+      {
+          // Output values
+          6, 10,
+      },
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActNone, output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu) {
+  float output_data[2];
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          -1, -6, 2, 4,     //
+          -3, -2, 10.5, 7,  //
+      },
+      2, 2,             // filter width, filter height
+      2, 2,             // stride width, stride height
+      {
+          // Output values
+          0.0, 10.5,
+      },
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu, output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
+  float output_data[2];
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          -2.75, -6, 0.2, 0.4,  //
+          -3, -2, -0.3, 0.7,    //
+      },
+      2, 2,             // filter width, filter height
+      2, 2,             // stride width, stride height
+      {
+          // Output values
+          -1.0, 0.7,
+      },
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          -2.75, -6, -2, -4,  //
+          -3, -2, 10, -7,     //
+      },
+      2, 2,             // filter width, filter height
+      2, 2,             // stride width, stride height
+      {
+          // Output values
+          -1.0, 1.0,
+      },
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu6) {
+  float output_data[2];
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          -1.5, -6, 12, 4,  //
+          -3, -2, 10, 7,    //
+      },
+      2, 2,             // filter width, filter height
+      2, 2,             // stride width, stride height
+      {
+          // Output values
+          0.0, 6.0,
+      },
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu6, output_data);
+
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          0, 4.5, 12, 4,  //
+          3, 2, 10, 7,    //
+      },
+      2, 2,             // filter width, filter height
+      2, 2,             // stride width, stride height
+      {
+          // Output values
+          4.5, 6.0,
+      },
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu6, output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingSameStride1) {
+  float output_data[8];
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          0, 6, 2, 4,   //
+          3, 2, 10, 7,  //
+      },
+      2, 2,             // filter width, filter height
+      1, 1,             // stride width, stride height
+      {
+          // Output values
+          6, 10, 10, 7, //
+          3, 10, 10, 7, //
+      },
+      {4, 1, 2, 4, 1},  // Output shape
+      kTfLitePaddingSame, kTfLiteActNone, output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingValidStride1) {
+  float output_data[3];
+  tflite::testing::TestMaxPoolFloat(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          0, 6, 2, 4,   //
+          3, 2, 10, 7,  //
+      },
+      2, 2,             // filter width, filter height
+      1, 1,             // stride width, stride height
+      {
+          // Output values
+          6, 10, 10,
+      },
+      {4, 1, 1, 3, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActNone, output_data);
+}
+
 TF_LITE_MICRO_TESTS_END
