@@ -97,6 +97,41 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
+    .Input("node_id_range: int32")
+    .Input("stats_summary: float32")
+    .Input("l1: float")
+    .Input("l2: float")
+    .Input("tree_complexity: float")
+    .Input("min_node_weight: float")
+    .Attr("logits_dimension: int >= 1")
+    .Attr("split_type: {'inequality'} = 'inequality'")
+    .Output("node_ids: int32")
+    .Output("gains: float32")
+    .Output("feature_dimensions: int32")
+    .Output("thresholds: int32")
+    .Output("left_node_contribs: float32")
+    .Output("right_node_contribs: float32")
+    .Output("split_with_default_directions: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle node_id_range_shape;
+      shape_inference::ShapeHandle unused_shape;
+      // node id range is rank 1 with 2 values.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_id_range_shape));
+      TF_RETURN_IF_ERROR(
+          c->Merge(node_id_range_shape, c->MakeShape({2}), &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_shape));
+      ShapeHandle output_shape = c->MakeShape({c->UnknownDim()});
+      for (int i = 0; i < 7; ++i) {
+        c->set_output(i, output_shape);
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesCreateEnsemble")
     .Input("tree_ensemble_handle: resource")
     .Input("stamp_token: int64")
