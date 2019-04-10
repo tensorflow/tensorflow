@@ -2535,7 +2535,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
       "A:control->DMT/_2:control;A:control->DMT/_3:control;"
       "A:control->DMT/_4:control;A:control->DMT/_5:control;B->H:1;C->H:2;"
       "D->H:3;DMT/_0->H:6;DMT/_1->H:7;DMT/_2->H:8;DMT/_3->H:9;DMT/_4->H:10;"
-      "DMT/_5->H:11;E->H:4;F->H:5;G->I;H->I:1");  
+      "DMT/_5->H:11;E->H:4;F->H:5;G->I;H->I:1");
 }
 
 /////////////////////////////////////////////////////////////////////
