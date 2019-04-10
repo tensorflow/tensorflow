@@ -212,6 +212,19 @@ std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
   return res;
 }
 
+template <typename InCType, typename OutCType>
+struct StaticCaster {
+  OutCType operator() (InCType in) const { return static_cast<OutCType>(in); }
+};
+
+template <typename InCType, typename OutCType>
+std::vector<OutCType> CastTestVector(const std::vector<InCType>& vals) {
+  std::vector<OutCType> res(vals.size());
+  std::transform(vals.begin(), vals.end(), res.begin(),
+                 StaticCaster<InCType, OutCType>());
+  return res;
+}
+
 // Fake ITensor implementation for testing purposes.
 class FakeITensor : public nvinfer1::ITensor {
  public:
@@ -4972,10 +4985,8 @@ void TestConvertDepthToSpace(OpConverterTest* test) {
           /*block_size=*/2,
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{1, 4, 4},
-          /*expected_output=*/{CType(0), CType(4), CType(1), CType(5), CType(8),
-                               CType(12), CType(9), CType(13), CType(2),
-                               CType(6), CType(3), CType(7), CType(10),
-                               CType(14), CType(11), CType(15)},
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15}),
       },
       {
           /*input_shape=*/{2, 2, 4},
@@ -4983,10 +4994,8 @@ void TestConvertDepthToSpace(OpConverterTest* test) {
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{4, 4, 1},
-          /*expected_output=*/{CType(0), CType(1), CType(4), CType(5), CType(2),
-                               CType(3), CType(6), CType(7), CType(8), CType(9),
-                               CType(12), CType(13), CType(10), CType(11),
-                               CType(14), CType(15)},
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0, 1, 4, 5, 2, 3, 6, 7, 8, 9, 12, 13, 10, 11, 14, 15}),
       },
       {
           /*input_shape=*/{16, 1, 1},
@@ -5066,10 +5075,8 @@ void TestConvertSpaceToDepth(OpConverterTest* test) {
           /*block_size=*/2,
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{4, 2, 2},
-          /*expected_output=*/{CType(0), CType(2), CType(8), CType(10),
-                               CType(1), CType(3), CType(9), CType(11),
-                               CType(4), CType(6), CType(12), CType(14),
-                               CType(5), CType(7), CType(13), CType(15)},
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0, 2, 8, 10, 1, 3, 9, 11, 4, 6, 12, 14, 5, 7, 13, 15}),
       },
       {
           /*input_shape=*/{4, 4, 1},
@@ -5077,10 +5084,8 @@ void TestConvertSpaceToDepth(OpConverterTest* test) {
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{2, 2, 4},
-          /*expected_output=*/{CType(0), CType(1), CType(4), CType(5), CType(2),
-                               CType(3), CType(6), CType(7), CType(8), CType(9),
-                               CType(12), CType(13), CType(10), CType(11),
-                               CType(14), CType(15)},
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0, 1, 4, 5, 2, 3, 6, 7, 8, 9, 12, 13, 10, 11, 14, 15}),
       },
       {
           /*input_shape=*/{1, 4, 4},

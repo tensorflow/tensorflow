@@ -4289,7 +4289,6 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
           "Width and height must be divisible by block_size, at ",
           node_def.name());
     }
-
     // First Reshape [C, H, W] -> [C, H/r, r, W/r, r]
     first_shuffle_shape = {/*nbDims=*/5,
                            /*d=*/{num_channels, h / block_size, block_size,
