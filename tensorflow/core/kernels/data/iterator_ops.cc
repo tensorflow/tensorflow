@@ -716,6 +716,10 @@ class ReduceDatasetOp : public AsyncOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
                                      &use_inter_op_parallelism_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       reduce_func_.name(), &lib_def_));
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -735,6 +739,7 @@ class ReduceDatasetOp : public AsyncOpKernel {
       CapturedFunction::Params fn_params;
       fn_params.use_inter_op_parallelism = use_inter_op_parallelism_;
       fn_params.is_multi_device_function = true;
+      fn_params.lib_def = lib_def_;
       OP_REQUIRES_OK_ASYNC(
           ctx,
           CapturedFunction::Create(reduce_func_, ctx, "other_arguments",
@@ -825,6 +830,7 @@ class ReduceDatasetOp : public AsyncOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   bool use_inter_op_parallelism_;
   BackgroundWorker background_worker_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 class OneShotIteratorOp : public AsyncOpKernel {

@@ -334,6 +334,7 @@ tf_kernel_library(
     hdrs = ["generator_dataset_op.h"],
     deps = [
         ":captured_function",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
