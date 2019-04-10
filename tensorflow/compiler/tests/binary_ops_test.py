@@ -962,7 +962,12 @@ class BinaryOpsTest(xla_test.XLATestCase):
         np.array([[[-0.25]], [[4]]], dtype=np.float32),
         np.array([[[8]], [[2]]], dtype=np.float32),
         expected=np.array([[[-2]], [[8]]], dtype=np.float32))
-    self._testBinary(
+
+    if not xla_test.test.is_built_with_rocm():
+      # TODO(rocm)
+      # The folowing subtest invokes the call to "BlasGemmStridedBatched"
+      # That operation is currently not supported on the ROCm platform
+      self._testBinary(
         math_ops.matmul,
         np.array(
             [[[[7, 13], [10, 1]], [[2, 0.25], [20, 2]]],
@@ -990,10 +995,15 @@ class BinaryOpsTest(xla_test.XLATestCase):
         np.array([], dtype=np.float32).reshape((0, 4, 3)),
         expected=np.array([], dtype=np.float32).reshape(0, 2, 3))
 
-    # Regression test for b/31472796.
-    if hasattr(np, "matmul"):
-      x = np.arange(0, 3 * 5 * 2 * 7, dtype=np.float32).reshape((3, 5, 2, 7))
-      self._testBinary(
+    if not xla_test.test.is_built_with_rocm():
+      # TODO(rocm)
+      # The folowing subtest invokes the call to "BlasGemmStridedBatched"
+      # That operation is currently not supported on the ROCm platform
+
+      # Regression test for b/31472796.
+      if hasattr(np, "matmul"):
+        x = np.arange(0, 3 * 5 * 2 * 7, dtype=np.float32).reshape((3, 5, 2, 7))
+        self._testBinary(
           lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
           x, x,
           expected=np.matmul(x, x.transpose([0, 1, 3, 2])))

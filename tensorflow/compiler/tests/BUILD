@@ -202,7 +202,6 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
-        "no_rocm",
     ],
     deps = [
         ":xla_test",
