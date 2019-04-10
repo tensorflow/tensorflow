@@ -6,9 +6,7 @@
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
-
 class DeviceMgr;
-
 class SeastarRendezvousMgr : public BaseRendezvousMgr {
  public:
   explicit SeastarRendezvousMgr(const WorkerEnv* env);
@@ -19,7 +17,6 @@ class SeastarRendezvousMgr : public BaseRendezvousMgr {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(SeastarRendezvousMgr);
 };
-
 }  // namespace tensorflow
 
 #endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_RENDEZVOUS_MGR_H_

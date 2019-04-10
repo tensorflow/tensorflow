@@ -1,7 +1,7 @@
-#include <cstdio>
 #include "boost/asio/ip/address_v4.hpp"
 #include "core/reactor.hh"
 #include "core/channel.hh"
+
 #include "tensorflow/contrib/seastar/seastar_server.h"
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
 #include "tensorflow/contrib/seastar/seastar_tag_factory.h"
@@ -18,11 +18,7 @@ void SeastarServer::start(uint16_t port, SeastarTagFactory* tag_factory) {
     return _listener->accept()
     .then([this, tag_factory] (seastar::connected_socket fd,
                                seastar::socket_address addr) mutable {
-#ifdef SEASTAR_STATISTIC
-      auto conn = new Connection(std::move(fd), tag_factory, addr, &_stat);
-#else
       auto conn = new Connection(std::move(fd), tag_factory, addr);
-#endif
       seastar::do_until([conn] {return conn->_read_buf.eof(); }, [conn] {
         return conn->Read();
       }).then_wrapped([this, conn] (auto&& f) {
@@ -42,20 +38,10 @@ seastar::future<> SeastarServer::stop() {
   return seastar::make_ready_future<>();
 }
 
-#ifdef SEASTAR_STATISTIC
-SeastarServer::Connection::Connection(seastar::connected_socket&& fd,
-    SeastarTagFactory* tag_factory,
-    seastar::socket_address addr,
-    SeastarStat* stat)
-  : _tag_factory(tag_factory),
-    _addr(addr),
-    _stat(stat) {
-#else
 SeastarServer::Connection::Connection(seastar::connected_socket&& fd,
     SeastarTagFactory* tag_factory, seastar::socket_address addr)
   : _tag_factory(tag_factory),
     _addr(addr) {
-#endif
   seastar::ipv4_addr ip_addr(addr);
   boost::asio::ip::address_v4 addr_v4(ip_addr.ip);
   string addr_str = addr_v4.to_string() + ":" + std::to_string(ip_addr.port);
@@ -77,10 +63,6 @@ seastar::future<> SeastarServer::Connection::Read() {
         header.size() != SeastarServerTag::HEADER_SIZE) {
       return seastar::make_ready_future();
     }
-
-#ifdef SEASTAR_STATISTIC
-    _stat->Request();
-#endif
 
     auto tag = _tag_factory->CreateSeastarServerTag(header, _channel);
     auto req_body_size = tag->GetRequestBodySize();

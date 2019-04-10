@@ -1,7 +1,3 @@
-#include <pthread.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/core/common_runtime/device.h"
 

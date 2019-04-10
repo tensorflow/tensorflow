@@ -35,10 +35,10 @@ void InitSeastarClientTag(protobuf::Message* request,
   tag->req_body_buf_.data_ = new char[tag->req_body_buf_.len_]();
   request->SerializeToArray(tag->req_body_buf_.data_, tag->req_body_buf_.len_);
 
-  tag->req_header_buf_.len_ = 32;
-  tag->req_header_buf_.data_ = new char[32]();
+  tag->req_header_buf_.len_ = HEADER_SIZE;
+  tag->req_header_buf_.data_ = new char[HEADER_SIZE];
   
-  memcpy(tag->req_header_buf_.data_, "AAAAAAAA", 8);
+  memcpy(tag->req_header_buf_.data_, "DEADBEEF", 8);
   memcpy(tag->req_header_buf_.data_ + 8, &tag, 8);
   memcpy(tag->req_header_buf_.data_ + 16, &tag->method_, 4);
   // memcpy(tag->req_header_buf_.data_ + 20, &tag->status_, 2);
@@ -81,10 +81,10 @@ void InitSeastarClientTag(protobuf::Message* request,
   request->SerializeToArray(tag->req_body_buf_.data_,
                             tag->req_body_buf_.len_);
 
-  tag->req_header_buf_.len_ = 32;
-  tag->req_header_buf_.data_ = new char[32]();
+  tag->req_header_buf_.len_ = HEADER_SIZE;
+  tag->req_header_buf_.data_ = new char[HEADER_SIZE];
   
-  memcpy(tag->req_header_buf_.data_, "AAAAAAAA", 8);
+  memcpy(tag->req_header_buf_.data_, "DEADBEEF", 8);
   memcpy(tag->req_header_buf_.data_ + 8, &tag, 8);
   memcpy(tag->req_header_buf_.data_ + 16, &tag->method_, 4);
   // Ignore the status segment in request

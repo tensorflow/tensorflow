@@ -1,15 +1,12 @@
-#include <assert.h>
-#include <climits>
-#include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/contrib/seastar/seastar_message.h"
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace {
-
 void SerializeTensorMessage(const Tensor& in, const TensorProto& inp, bool is_dead,
                             SeastarBuf* message_buf, SeastarBuf* tensor_buf)
 {
@@ -36,7 +33,6 @@ void SerializeTensorMessage(const Tensor& in, const TensorProto& inp, bool is_de
   message_buf->data_ = new char[message_buf->len_];
   SeastarMessage::SerializeMessage(sm, message_buf->data_);
 }
-
 } // end of anonymous namespace
 
 void InitSeastarServerTag(protobuf::Message* request,
@@ -52,7 +48,7 @@ void InitSeastarServerTag(protobuf::Message* request,
     }
     tag->resp_header_buf_.data_ = new char[tag->resp_header_buf_.len_]();
 
-    memcpy(tag->resp_header_buf_.data_, "BBBBBBBB", 8);
+    memcpy(tag->resp_header_buf_.data_, "CAFEBABE", 8);
     memcpy(tag->resp_header_buf_.data_ + 8, &tag->client_tag_id_, 8);
     memcpy(tag->resp_header_buf_.data_ + 16, &tag->method_, 4);
     int16_t code = static_cast<int16_t>(s.code());
@@ -94,7 +90,7 @@ void InitSeastarServerTag(protobuf::Message* request,
     }
     tag->resp_header_buf_.data_ = new char[tag->resp_header_buf_.len_]();
 
-    memcpy(tag->resp_header_buf_.data_, "BBBBBBBB", 8);
+    memcpy(tag->resp_header_buf_.data_, "CAFEBABE", 8);
     memcpy(tag->resp_header_buf_.data_ + 8, &tag->client_tag_id_, 8);
     memcpy(tag->resp_header_buf_.data_ + 16, &tag->method_, 4);
     int16_t code = static_cast<int16_t>(s.code());
@@ -207,5 +203,4 @@ seastar::user_packet* SeastarServerTag::ToUserPacketWithTensor() {
   up->_done = [this]() { this->SendRespDone(); };
   return up;
 }
-
 } // end of namespace tensorflow

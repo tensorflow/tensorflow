@@ -1,13 +1,10 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_ENGINE_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_ENGINE_H_
 
-#include "core/app-template.hh"
-#include "core/distributed.hh"
-
-#include <map>
 #include <string>
 #include <thread>
-#include <vector>
+#include "core/app-template.hh"
+#include "core/distributed.hh"
 
 namespace seastar {
 class channel;

@@ -1,16 +1,13 @@
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_
 
+#include <map>
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/lib/core/status.h"
 
-#include <map>
-#include <memory>
-
 namespace tensorflow {
-
 class SeastarServerTag;
 class CallOptions;
 class RecvTensorRequest;

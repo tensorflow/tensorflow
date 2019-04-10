@@ -1,7 +1,6 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_
 #include <map>
-#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -11,7 +10,6 @@
 namespace seastar {
 class channel;
 }
-
 namespace tensorflow {
 class SeastarEngine;
 class SeastarChannelSpec {

@@ -1,6 +1,5 @@
 #include <fstream>
 #include <map>
-#include <stdexcept>
 
 #include "grpc++/grpc++.h"
 #include "grpc++/security/credentials.h"

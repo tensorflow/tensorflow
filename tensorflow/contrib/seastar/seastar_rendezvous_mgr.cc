@@ -1,11 +1,11 @@
 #include "tensorflow/contrib/seastar/seastar_rendezvous_mgr.h"
+#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
+#include "tensorflow/contrib/seastar/seastar_worker_cache.h"
+#include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
-#include "tensorflow/contrib/seastar/seastar_worker_cache.h"
-#include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -16,9 +16,7 @@
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
 namespace {
-
 class SeastarRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   SeastarRemoteRendezvous(const WorkerEnv* env, int64 step_id)
@@ -225,12 +223,12 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
              recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
-  s = RegisterCall(call);
-  if (!s.ok()) {
+  RegisterCall(call);
+  if (!call->status().ok()) {
     LOG(WARNING) << "Rendezvous has been aborted, ignore the rpc call."
                  << ", rendezvous key: " << parsed.FullKey().ToString();
     session()->worker_cache->ReleaseWorker(call->src_worker_, call->wi_);
-    call->done()(s, Args(), Args(), Tensor(), false);
+    call->done()(call->status(), Args(), Args(), Tensor(), false);
     call->wi_ = nullptr;
     get_call_freelist()->Release(call, session()->worker_cache.get());
     return;
@@ -244,8 +242,8 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
     // If StartAbort was called prior to DeregisterCall, then the
     // current status should be bad.
     Status s = call->status();
-    call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     session()->worker_cache->ReleaseWorker(call->src_worker_, call->wi_);
+    call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     call->wi_ = nullptr;
     get_call_freelist()->Release(call, session()->worker_cache.get());
     Unref();

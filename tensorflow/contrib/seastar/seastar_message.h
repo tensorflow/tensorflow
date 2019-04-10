@@ -4,7 +4,6 @@
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
-
 // message for recv tensor response
 struct SeastarMessage {
   bool is_dead_;

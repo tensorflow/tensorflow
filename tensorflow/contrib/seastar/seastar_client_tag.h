@@ -6,11 +6,11 @@
 #include "core/packet_queue.hh"
 #include "core/temporary_buffer.hh"
 
+#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
-#include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 
 namespace tensorflow {
 typedef std::function<void(const Status&)> StatusCallback;

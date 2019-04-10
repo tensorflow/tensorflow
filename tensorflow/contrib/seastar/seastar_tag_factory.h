@@ -6,14 +6,10 @@
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 
-#include <functional>
-
 namespace seastar {
 class channel;
 }
-
 namespace tensorflow {
-
 class SeastarClientTag;
 class SeastarServerTag;
 class SeastarWorkerService;

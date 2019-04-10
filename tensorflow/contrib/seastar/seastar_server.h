@@ -4,11 +4,6 @@
 #include "core/future-util.hh"
 #include "core/shared_ptr.hh"
 #include "net/api.hh"
-#include <sys/time.h>
-
-#ifdef SEASTAR_STATISTIC
-#include "tensorflow/contrib/seastar/seastar_stat.h"
-#endif
 
 namespace seastar {
 class channel;
@@ -30,27 +25,12 @@ private:
     SeastarTagFactory* _tag_factory;
     seastar::socket_address _addr;
 
-#ifdef SEASTAR_STATISTIC
-    SeastarStat* _stat;
-    Connection(seastar::connected_socket&& fd,
-               SeastarTagFactory* tag_factory,
-               seastar::socket_address addr,
-               SeastarStat* stat);
-#else
     Connection(seastar::connected_socket&& fd,
                SeastarTagFactory* tag_factory,
                seastar::socket_address addr);
-#endif  
-
     seastar::future<> Read();
-
     ~Connection();
   };
-
-#ifdef SEASTAR_STATISTIC
-private:
-  SeastarStat _stat;
-#endif
 };
 }
 #endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_H_

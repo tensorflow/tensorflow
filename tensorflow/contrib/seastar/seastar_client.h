@@ -4,13 +4,9 @@
 #include "core/future-util.hh"
 #include "net/api.hh"
 
-#include <iostream>
-#include <string>
-
 namespace seastar {
 class channel;
 }
-
 namespace tensorflow {
 class SeastarTagFactory;
 

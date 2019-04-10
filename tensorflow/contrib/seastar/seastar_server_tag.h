@@ -1,15 +1,15 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_TAG_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_TAG_H_
 
+#include <functional>
 #include "core/channel.hh"
 #include "core/packet_queue.hh"
 #include "core/temporary_buffer.hh"
+
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-
-#include <functional>
 
 namespace tensorflow {
 typedef std::function<void(const Status&)> StatusCallback;

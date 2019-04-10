@@ -1,5 +1,5 @@
-#include <assert.h>
 #include "core/channel.hh"
+
 #include "tensorflow/contrib/seastar/seastar_client_tag.h"
 #include "tensorflow/contrib/seastar/seastar_message.h"
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
