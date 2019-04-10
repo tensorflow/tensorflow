@@ -574,11 +574,13 @@ static_assert(offsetof(DepthwiseConvDotProdParams, four_over_stride) ==
 #endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
-template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
+          int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
 
 template <>
-struct DepthwiseConvWindow<8, 1, 1> {
+struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 1,
+                           1> {
  public:
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
@@ -1512,7 +1514,8 @@ struct DepthwiseConvWindow<8, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvWindow<8, 2, 2> {
+struct DepthwiseConvWindow<DepthwiseConvOutputRounding::kAwayFromZero, 8, 2,
+                           2> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          int64_t input_depth, int64_t input_row_size,
@@ -2546,11 +2549,13 @@ struct DepthwiseConvWindow<8, 2, 2> {
 
 enum class EdgeType { kCorner, kHorizontal, kVertical, kCenter };
 
-template <EdgeType kEdgeType, int kPadWidth, int kPadHeight>
+template <DepthwiseConvOutputRounding output_rounding, EdgeType kEdgeType,
+          int kPadWidth, int kPadHeight>
 struct DepthwiseConvPartial {};
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kCenter, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -2663,7 +2668,8 @@ struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kCorner, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -2828,7 +2834,8 @@ struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kHorizontal, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -3027,7 +3034,8 @@ struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
 };
 
 template <>
-struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
+struct DepthwiseConvPartial<DepthwiseConvOutputRounding::kAwayFromZero,
+                            EdgeType::kVertical, 1, 1> {
   static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
                          const int32* bias_ptr, uint8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
@@ -3287,7 +3295,8 @@ struct ShuffleParams {
         input_height(get_shuffle_input_size(stride_height, output_height)) {}
 };
 
-template <int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32 kStrideWidth,
+          int32 kStrideHeight>
 struct DepthwiseConvThroughDepth {
   // Runs the DepthwiseConvWindow kernels through the depth dimension from
   // |start_depth| to |end_depth|. Keep this not inlined to maintain a small
@@ -3299,7 +3308,7 @@ struct DepthwiseConvThroughDepth {
       int64_t input_depth, int64_t input_row_size, int32 output_window_height,
       int32 output_window_width, const DepthwiseConvParams& params) {
     for (; start_depth <= end_depth - 8; start_depth += 8) {
-      DepthwiseConvWindow<8, kStrideWidth, kStrideHeight>::Run(
+      DepthwiseConvWindow<output_rounding, 8, kStrideWidth, kStrideHeight>::Run(
           input_ptr, filter_ptr, bias_ptr, output_ptr, input_depth,
           input_row_size, output_window_height, output_window_width, &params);
       input_ptr += 8;
@@ -3310,9 +3319,11 @@ struct DepthwiseConvThroughDepth {
   }
 };
 
-template <int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32 kStrideWidth,
+          int32 kStrideHeight>
 struct DepthwiseConvMultiRow {
-  using ConvKernel = DepthwiseConvThroughDepth<kStrideWidth, kStrideHeight>;
+  using ConvKernel =
+      DepthwiseConvThroughDepth<output_rounding, kStrideWidth, kStrideHeight>;
 
   static inline void Run(const uint8* input_data, int32 start_x, int32 end_x,
                          const uint8* filter_data, const int32* bias_data,
@@ -3411,6 +3422,7 @@ struct DepthwiseConvMultiRow {
 //   * Corner edges.
 //   * Horizontal edges.
 //   * Vertical edges.
+template <DepthwiseConvOutputRounding output_rounding>
 inline void DepthwiseConvHandlePadding(const uint8* input_data,
                                        const uint8* filter_data,
                                        const int32* bias_data,
@@ -3419,7 +3431,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   if (params.input_width == 1 && params.input_height == 1) {
     const uint8* filter_ptr =
         filter_data + params.filter_row_size + params.output_depth;
-    DepthwiseConvPartial<EdgeType::kCenter, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kCenter, 1, 1>::Run(
         input_data, filter_ptr, bias_data, output_data, &params);
     return;
   }
@@ -3435,7 +3447,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
       filter_data + params.filter_row_size + params.output_depth;
   uint8* output_ptr = output_data;
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   input_ptr += (params.stride_width - 1) * params.input_depth;
@@ -3444,13 +3456,13 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
        out_x++) {
-    DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kHorizontal, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   // Handle left side.
@@ -3460,7 +3472,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
        out_y++) {
-    DepthwiseConvPartial<EdgeType::kVertical, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kVertical, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_row_size;
     output_ptr += params.output_row_size;
@@ -3475,7 +3487,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_y = out_y_start_corner + 1; out_y < out_y_end_corner;
        out_y++) {
-    DepthwiseConvPartial<EdgeType::kVertical, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kVertical, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_row_size;
     output_ptr += params.output_row_size;
@@ -3487,7 +3499,7 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
   output_ptr =
       output_data + (params.output_height - 1) * params.output_row_size;
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 
   input_ptr += (params.stride_width == 1) ? 0 : params.input_depth;
@@ -3496,13 +3508,13 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
   for (int32 out_x = out_x_start_corner + 1; out_x < out_x_end_corner;
        out_x++) {
-    DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1>::Run(
+    DepthwiseConvPartial<output_rounding, EdgeType::kHorizontal, 1, 1>::Run(
         input_ptr, filter_ptr, bias_data, output_ptr, &params);
     input_ptr += params.stride_width * params.input_depth;
     output_ptr += params.output_depth;
   }
 
-  DepthwiseConvPartial<EdgeType::kCorner, 1, 1>::Run(
+  DepthwiseConvPartial<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
 }
 
@@ -3568,6 +3580,7 @@ inline bool Fast3x3FilterKernelSupported(
   return supported;
 }
 
+template <DepthwiseConvOutputRounding output_rounding>
 inline void DepthwiseConv3x3Filter(
     const DepthwiseParams& rt_params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
@@ -3645,10 +3658,12 @@ inline void DepthwiseConv3x3Filter(
     eight_row_shuffle_params = ShuffleParams(2, 8, 2, 2);
   }
 
-  using conv_multirow_func_t = decltype(&DepthwiseConvMultiRow<1, 1>::Run);
-  conv_multirow_func_t conv_multirow_func = DepthwiseConvMultiRow<1, 1>::Run;
+  using conv_multirow_func_t =
+      decltype(&DepthwiseConvMultiRow<output_rounding, 1, 1>::Run);
+  conv_multirow_func_t conv_multirow_func =
+      DepthwiseConvMultiRow<output_rounding, 1, 1>::Run;
   if (stride_width == 2) {
-    conv_multirow_func = DepthwiseConvMultiRow<2, 2>::Run;
+    conv_multirow_func = DepthwiseConvMultiRow<output_rounding, 2, 2>::Run;
   }
 
   // Allocate maximum memory needed for shuffled input.
@@ -3689,8 +3704,8 @@ inline void DepthwiseConv3x3Filter(
     int32 end_y = row_end;
 
     if (pad_width == 1 && pad_height == 1) {
-      DepthwiseConvHandlePadding(input_ptr, filter_data, bias_data, output_ptr,
-                                 params);
+      DepthwiseConvHandlePadding<output_rounding>(
+          input_ptr, filter_data, bias_data, output_ptr, params);
 
       // Update extents now that the edges have been handled.
       out_x = 1;

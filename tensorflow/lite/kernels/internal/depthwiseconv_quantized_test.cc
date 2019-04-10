@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <sys/types.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -137,14 +138,28 @@ inline void DispatchDepthwiseConv(
           << " output_height = " << output_shape.Dims(1);
 
       // Call kernel optimized for depthwise convolutions using 3x3 filters.
-      optimized_ops::depthwise_conv::DepthwiseConv3x3Filter(
-          params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
-          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
-      return;
-#else
-      break;
+      switch (test_param.output_rounding) {
+        case DepthwiseConvOutputRounding::kAwayFromZero:
+          optimized_ops::depthwise_conv::DepthwiseConv3x3Filter<
+              DepthwiseConvOutputRounding::kAwayFromZero>(
+              params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape, output_data,
+              /*thread_start=*/0,
+              /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
+          return;
+        case DepthwiseConvOutputRounding::kUpward:
+          optimized_ops::depthwise_conv::DepthwiseConv3x3Filter<
+              DepthwiseConvOutputRounding::kAwayFromZero>(
+              params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape, output_data,
+              /*thread_start=*/0,
+              /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
+          return;
+        default:
+          break;
+      }
 #endif
+      break;
     }
     case DepthwiseConvImplementation::kUseNeon3x3DotProduct: {
 #if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
