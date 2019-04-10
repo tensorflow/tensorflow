@@ -1405,7 +1405,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     None, must be consistent with the accumulator's shape (if also provided).
 
     Example:
-      A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+      A tensor [[0, 0], [0, 1], [2, 3]] can be represented
         indices: [1,2]
         values: [[0,1],[2,3]]
         shape: [3, 2]
