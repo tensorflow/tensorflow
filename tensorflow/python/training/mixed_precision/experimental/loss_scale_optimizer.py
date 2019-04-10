@@ -170,7 +170,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
 
     # TODO(nluehr) cleanup GraphKeys.TRAIN_OP
     return replica_context.merge_call(
-        self._maybe_apply_gradients_cross_replica,
+        self._distributed_apply,
         args=(grads_and_vars, global_step, name))
 
   def _distributed_apply(self,
@@ -197,28 +197,19 @@ class LossScaleOptimizer(optimizer.Optimizer):
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    self._maybe_apply_gradients_cross_replica(distribution, grads_and_vars,
-                                              global_step, name)
-
-  def _maybe_apply_gradients_cross_replica(self, distribution, grads_and_vars,
-                                           global_step, name):
-    """Conditionally apply gradients in cross replica context."""
     name = name if name is not None else self.get_name()
     grads = [g for g, _ in grads_and_vars]
     loss_scale_update_op, should_apply_grads = (
         self._loss_scale.update(grads))
     maybe_apply_op = smart_cond.smart_cond(
         should_apply_grads,
-        lambda: self._apply_gradients_cross_replica(distribution,
-                                                    grads_and_vars,
-                                                    global_step,
-                                                    name+'-wrapped'),
+        lambda: self._apply_gradients(distribution, grads_and_vars,
+                                      global_step, name+'-wrapped'),
         control_flow_ops.no_op)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op,
                                   name=name)
 
-  def _apply_gradients_cross_replica(self, distribution, grads_and_vars,
-                                     global_step, name):
+  def _apply_gradients(self, distribution, grads_and_vars, global_step, name):
     """Unconditionally apply gradients in cross replica context."""
     update_ops = distribution.extended.call_for_each_replica(
         self._optimizer.apply_gradients,
