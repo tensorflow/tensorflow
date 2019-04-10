@@ -57,7 +57,7 @@ LIBS := \
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
-CCFLAGS := ${CXXFLAGS}
+CFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
 CFLAGS :=
 LDOPTS := -L/usr/local/lib
@@ -206,7 +206,7 @@ $(OBJDIR)%.o: %.cc
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)

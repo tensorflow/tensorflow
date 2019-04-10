@@ -4,7 +4,7 @@ ifeq ($(TARGET), linux)
     -fPIC \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -pthread
-  CCFLAGS += \
+  CFLAGS += \
     -fPIC \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -pthread    
