@@ -25,19 +25,83 @@ from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.distribute import multi_worker_test
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
-get_strategy_object = multi_worker_test.get_strategy_object
-_mnist_synthetic_dataset = multi_worker_test._mnist_synthetic_dataset
-_get_model = multi_worker_test._get_model
+
+# TODO(b/130219403): Investigate why this test cannot depend on
+# multi_worker_test. Once resolved, depend on it for the following 3 functions.
+def _mnist_synthetic_dataset(batch_size, steps_per_epoch):
+  # train dataset
+  x_train = array_ops.ones([batch_size * steps_per_epoch, 28, 28, 1],
+                           dtype=dtypes.float32)
+  y_train = array_ops.ones([batch_size * steps_per_epoch, 1],
+                           dtype=dtypes.int32)
+  train_ds = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
+  train_ds = train_ds.repeat()
+  # train_ds = train_ds.shuffle(100)
+  train_ds = train_ds.batch(64, drop_remainder=True)
+
+  # eval dataset
+  x_test = random_ops.random_uniform([10000, 28, 28, 1], dtype=dtypes.float32)
+  y_test = random_ops.random_uniform([10000, 1],
+                                     minval=0,
+                                     maxval=9,
+                                     dtype=dtypes.int32)
+  eval_ds = dataset_ops.Dataset.from_tensor_slices((x_test, y_test))
+  eval_ds = eval_ds.repeat()
+  eval_ds = eval_ds.batch(64, drop_remainder=True)
+
+  return train_ds, eval_ds
+
+
+def _get_model(input_shape):
+  # Define a deterministically-initialized CNN model to recognize MNIST digits,
+  # commented out several layers to simplify it.
+  model = keras.models.Sequential()
+  model.add(
+      keras.layers.Conv2D(
+          32,
+          kernel_size=(3, 3),
+          activation='relu',
+          input_shape=input_shape,
+          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
+  model.add(keras.layers.BatchNormalization())
+  model.add(keras.layers.Flatten())
+  model.add(
+      keras.layers.Dense(
+          10,
+          activation='softmax',
+          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
+
+  # TODO(yuefengz): optimizer with slot variables doesn't work because of
+  # optimizer's bug.
+  # TODO(yuefengz): we should not allow non-v2 optimizer.
+  model.compile(
+      loss=keras.losses.sparse_categorical_crossentropy,
+      optimizer=gradient_descent.SGD(learning_rate=0.001),
+      metrics=['accuracy'])
+  return model
+
+
+def get_strategy_object(strategy_cls):
+  if strategy_cls == mirrored_strategy.MirroredStrategy:
+    return strategy_cls(mirrored_strategy.all_local_devices())
+  else:
+    # CollectiveAllReduceStrategy and ParameterServerStrategy.
+    return strategy_cls()
 
 
 def generate_callback_test_function(custom_callable):
