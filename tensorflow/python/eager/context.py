@@ -392,9 +392,10 @@ class Context(object):
     """
     if not server_def:
       raise ValueError("server_def is None.")
-    if not self._context_handle:
-      self._server_def = server_def
-    else:
+
+    self._server_def = server_def
+
+    if self._context_handle:
       server_def_str = server_def.SerializeToString()
       pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
                                                 keep_alive_secs, server_def_str)
