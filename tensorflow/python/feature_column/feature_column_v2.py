@@ -1605,9 +1605,9 @@ def categorical_column_with_vocabulary_file_v2(key,
 
   Example with `default_value`:
   File `'/us/states.txt'` contains 51 lines - the first line is `'XX'`, and the
-  other 50 each have a 2-character U.S. state abbreviation. Both a literal `'XX'`
-  in input, and other values missing from the file, will be assigned ID 0. All
-  others are assigned the corresponding line number 1-50.
+  other 50 each have a 2-character U.S. state abbreviation. Both a literal 
+  `'XX'` in input, and other values missing from the file, will be assigned 
+  ID 0. All others are assigned the corresponding line number 1-50.
 
   ```python
   states = categorical_column_with_vocabulary_file(
