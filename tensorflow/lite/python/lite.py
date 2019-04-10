@@ -57,9 +57,11 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
+from tensorflow.python.keras.saving import saving_utils as _saving_utils
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
+from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -150,11 +152,11 @@ class TFLiteConverterV2(object):
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When false any unknown operation is an error. When true, custom ops are
       created for any op that is unknown. The developer will need to provide
-      these to the TensorFlow Lite runtime with a custom resolver. (default
-      False)
+      these to the TensorFlow Lite runtime with a custom resolver.
+      (default False)
     target_spec: Experimental flag, subject to change. Specification of target
       device.
-    optimizations: Experimental flag, subject to change, A list of optimizations
+    optimizations: Experimental flag, subject to change. A list of optimizations
       to apply when converting the model. The converter applies the
       optimizations by giving priority to the optimizations specified earlier in
       the list. E.g. `[optimize.OPTIMIZE_FOR_SIZE,
@@ -168,42 +170,107 @@ class TFLiteConverterV2(object):
   Example usage:
 
     ```python
-    # Converting a GraphDef from a ConcreteFunction.
-    converter = lite.TFLiteConverter.from_concrete_function(func)
+    # Converting a SavedModel to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
-    open("converted_model.tflite", "wb").write(tflite_model)
+
+    # Converting a tf.Keras model to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_keras_model(model)
+    tflite_model = converter.convert()
+
+    # Converting ConcreteFunctions to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_concrete_functions([func])
+    tflite_model = converter.convert()
     ```
   """
 
-  def __init__(self, func):
+  def __init__(self, funcs, trackable_obj=None):
     """Constructor for TFLiteConverter.
 
     Args:
-      func: TensorFlow ConcreteFunction.
+      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+        duplicate elements.
+      trackable_obj: tf.AutoTrackable object associated with `funcs`. A
+        reference to this object needs to be maintained so that Variables do not
+        get garbage collected since functions have a weak reference to
+        Variables. This is only required when the tf.AutoTrackable object is not
+        maintained by the user (e.g. `from_saved_model`).
     """
-    self._func = func
+    self._funcs = funcs
+    self._trackable_obj = trackable_obj
     self.allow_custom_ops = False
     self.target_spec = TargetSpec()
     self.representative_dataset = None
     self.optimizations = []
 
   @classmethod
-  def from_concrete_function(cls, func):
-    """Creates a TFLiteConverter class from a ConcreteFunction.
+  def from_concrete_functions(cls, funcs):
+    """Creates a TFLiteConverter object from ConcreteFunctions.
 
     Args:
-      func: TensorFlow ConcreteFunction.
+      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+        duplicate elements.
 
     Returns:
-      TFLiteConverter class.
+      TFLiteConverter object.
+
+    Raises:
+      Invalid input type.
     """
-    if not isinstance(func, _function.ConcreteFunction):
-      message = "This function takes in a ConcreteFunction."
-      if isinstance(func, _def_function.Function):
-        message += (" To get the ConcreteFunction from a Function,"
-                    " call from_concrete_function.")
-      raise ValueError(message)
-    return cls(func)
+    for func in funcs:
+      if not isinstance(func, _function.ConcreteFunction):
+        message = "This function takes in a list of ConcreteFunction."
+        if isinstance(func, _def_function.Function):
+          message += (" To get the ConcreteFunction from a Function,"
+                      " call from_concrete_function.")
+        raise ValueError(message)
+    return cls(funcs)
+
+  @classmethod
+  def from_saved_model(cls, saved_model_dir, signature_keys=None, tags=None):
+    """Creates a TFLiteConverter object from a SavedModel directory.
+
+    Args:
+      saved_model_dir: SavedModel directory to convert.
+      signature_keys: List of keys identifying SignatureDef containing inputs
+        and outputs. Elements should not be duplicated. By default the
+        `signatures` attribute of the MetaGraphdef is used. (default
+        saved_model.signatures)
+      tags: Set of tags identifying the MetaGraphDef within the SavedModel to
+        analyze. All tags in the tag set must be present. (default set(SERVING))
+
+    Returns:
+      TFLiteConverter object.
+
+    Raises:
+      Invalid signature keys.
+    """
+    saved_model = _load(saved_model_dir, tags)
+    if not signature_keys:
+      signature_keys = saved_model.signatures
+
+    funcs = []
+    for key in signature_keys:
+      if key not in saved_model.signatures:
+        raise ValueError("Invalid signature key '{}' found. Valid keys are "
+                         "'{}'.".format(key, ",".join(saved_model.signatures)))
+      funcs.append(saved_model.signatures[key])
+
+    return cls(funcs, saved_model)
+
+  @classmethod
+  def from_keras_model(cls, model):
+    """Creates a TFLiteConverter object from a Keras model.
+
+    Args:
+      model: tf.Keras.Model
+
+    Returns:
+      TFLiteConverter object.
+    """
+    func = _saving_utils.trace_model_call(model)
+    concrete_func = func.get_concrete_function()
+    return cls([concrete_func])
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -213,11 +280,18 @@ class TFLiteConverterV2(object):
 
     Raises:
       ValueError:
+        Multiple concrete functions are specified.
         Input shape is not specified.
-        None value for dimension in input_tensor.
+        Invalid quantization parameters.
     """
+    # TODO(b/130297984): Add support for converting multiple function.
+    if len(self._funcs) != 1:
+      raise ValueError("This converter can only convert a single "
+                       "ConcreteFunction. Converting multiple functions is "
+                       "under development.")
+
     frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-        self._func)
+        self._funcs[0])
     input_tensors = [
         tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
