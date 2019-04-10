@@ -5005,6 +5005,16 @@ void TestConvertDepthToSpace(OpConverterTest* test) {
           /*expected_output_dims=*/{1, 4, 4},
           /*expected_output=*/InitTestVector<CType>(16),
       },
+      {
+          /*input_shape=*/{2, 2, 8},
+          /*input_value=*/InitTestVector<CType>(32),
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{4, 4, 2},
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0,  1,  2,  3,  8,  9,  10, 11, 4,  5,  6,  7,  12, 13, 14, 15,
+               16, 17, 18, 19, 24, 25, 26, 27, 20, 21, 22, 23, 28, 29, 30, 31}),
+      },
   };
 
   TestConvertDepthSpaceShuffle<ops::DepthToSpace, dtype, CType>(test, params);
@@ -5094,6 +5104,16 @@ void TestConvertSpaceToDepth(OpConverterTest* test) {
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{16, 1, 1},
           /*expected_output=*/InitTestVector<CType>(16),
+      },
+      {
+          /*input_shape=*/{4, 4, 2},
+          /*input_value=*/InitTestVector<CType>(32),
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{2, 2, 8},
+          /*expected_output=*/CastTestVector<int, CType>(
+              {0,  1,  2,  3,  8,  9,  10, 11, 4,  5,  6,  7,  12, 13, 14, 15,
+               16, 17, 18, 19, 24, 25, 26, 27, 20, 21, 22, 23, 28, 29, 30, 31}),
       },
   };
 
