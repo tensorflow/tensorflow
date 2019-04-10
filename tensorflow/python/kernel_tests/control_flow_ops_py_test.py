@@ -758,6 +758,29 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(
           self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 1)
 
+  def testCondAccessTrueBranchTensorInFalseBranchRaises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def true_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="true_branch")
+        return inputs["c"]
+
+      def false_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      pred = constant_op.constant(True)
+      return control_flow_ops.cond(
+          pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+      f()
+
   def testCondListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
