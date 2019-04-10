@@ -100,10 +100,14 @@ struct LocalDevice::EigenThreadPoolInfo {
     Eigen::ThreadPoolInterface* threadpool =
         eigen_worker_threads_.workers->AsEigenThreadPool();
     if (threadpool == nullptr) {
+      // This fallback code path is not executed since ThreadPool's current
+      // implementation of AsEigenThreadPool() always returns a non-null
+      // pointer.
       eigen_threadpool_wrapper_ = absl::make_unique<EigenThreadPoolWrapper>(
           eigen_worker_threads_.workers);
+      threadpool = eigen_threadpool_wrapper_.get();
     }
-    if (allocator) {
+    if (allocator != nullptr) {
       eigen_allocator_.reset(new EigenAllocator(allocator));
     }
     eigen_device_.reset(new Eigen::ThreadPoolDevice(
