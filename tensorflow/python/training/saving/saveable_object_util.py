@@ -189,10 +189,9 @@ def saveable_objects_for_op(op, name):
       # pylint: enable=protected-access
       yield ResourceVariableSaveable(variable, "", name)
     else:
-      with ops.init_scope():
-        if context.executing_eagerly():
-          raise ValueError("Can only save/restore ResourceVariables when "
-                           "executing eagerly, got type: %s." % type(op))
+      if context.executing_eagerly():
+        raise ValueError("Can only save/restore ResourceVariables when "
+                         "executing eagerly, got type: %s." % type(op))
 
       variable = ops.internal_convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
