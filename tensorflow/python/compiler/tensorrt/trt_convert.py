@@ -441,7 +441,7 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 class TrtGraphConverter(GraphConverter):
   """A GraphConverter for TRT transformation."""
 
-  _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF_TRT_Calibration"
+  _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF-TRT-Calibration"
 
   @classmethod
   def get_tensorrt_rewriter_config(
