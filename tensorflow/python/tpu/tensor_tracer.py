@@ -818,6 +818,11 @@ class TensorTracer(object):
           self._included_op_full_names.add(op.name)
           return True
 
+      for optype_re in self._included_optype_re_list:
+        if optype_re.match(op.type):
+          self._included_op_full_names.add(op.name)
+          return True
+
       if check_after > 0:
         for out_tensor in op.outputs:
           for consumer in out_tensor.consumers():
