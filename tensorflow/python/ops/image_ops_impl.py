@@ -230,7 +230,9 @@ def _CheckAtLeast3DImage(image, require_static=True):
         check_ops.assert_positive(
             array_ops.shape(image),
             ["all dims of 'image.shape' "
-             'must be > 0.'])
+             'must be > 0.']),
+        check_ops.assert_greater_equal(array_ops.rank(image), 3,
+            message="'image' must be at least three-dimensional.")
     ]
   else:
     return []
@@ -291,7 +293,9 @@ def _CheckGrayscaleImage(image, require_static=True):
   if not image_shape.is_fully_defined():
       return [
           check_ops.assert_equal(array_ops.shape(image)[-1], 1,
-              message="Last dimension of a grayscale image should be size 1.")
+              message="Last dimension of a grayscale image should be size 1."),
+          check_ops.assert_greater_equal(array_ops.rank(image), 3,
+            message="A grayscale image must be at least three-dimensional.")
       ]
   else:
       return []
