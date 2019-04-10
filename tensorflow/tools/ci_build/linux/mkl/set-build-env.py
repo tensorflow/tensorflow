@@ -27,7 +27,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 import subprocess
 from argparse import ArgumentParser
 
@@ -120,7 +119,7 @@ class BuildEnvSetter:
       # handle python2 vs 3 (bytes vs str type)
       if isinstance(gcc_output, bytes):
         gcc_output = gcc_output.decode('utf-8')
-      print ("gcc version: {}".format(gcc_output))
+      print("gcc version: {}".format(gcc_output))
       gcc_info = gcc_output.split('.')
       if gcc_info[0] < min_gcc_major_version:
         print("Your MAJOR version of GCC is too old: {}; "
@@ -212,7 +211,7 @@ class BuildEnvSetter:
       self.set_build_args()
       self.write_build_args()
     else:
-      print ("Error.")
+      print("Error.")
 
 envSetter = BuildEnvSetter()
 
