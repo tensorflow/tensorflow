@@ -56,15 +56,15 @@ enum class OperationProperty {
   /// This bit is set for an operation if it is a commutative operation: that
   /// is a binary operator (two inputs) where "a op b" and "b op a" produce the
   /// same results.
-  Commutative = 0b01,
+  Commutative = 0x1,
 
   /// This bit is set for operations that have no side effects: that means that
   /// they do not read or write memory, or access any hidden state.
-  NoSideEffect = 0b10,
+  NoSideEffect = 0x2,
 
   /// This bit is set for an operation if it is a terminator: that means
   /// an operation at the end of a block.
-  Terminator = 0b100,
+  Terminator = 0x4,
 };
 
 /// This is a "type erased" representation of a registered operation.  This
