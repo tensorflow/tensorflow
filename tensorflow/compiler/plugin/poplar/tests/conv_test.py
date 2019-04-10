@@ -261,10 +261,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = [
-          '__seed*', 'host-exchange-local-copy-', 'Copy_',
-          'Conv2DBackpropFilter/convolution.*/Conv_8x8'
-      ]
+      ok = ['__seed*', 'Copy_', 'Conv2DBackpropFilter/convolution.*/Conv_8x8']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDepthwiseConv3x2(self):
