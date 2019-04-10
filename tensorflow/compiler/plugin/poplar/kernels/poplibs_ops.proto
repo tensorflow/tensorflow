@@ -26,6 +26,10 @@ message PoplibsOp {
     Sigmoid = 14;
     SigmoidGrad = 15;
     Remap = 16;
+    StatelessRandomUniform = 17;
+    StatelessRandomUniformInt = 18;
+    StatelessRandomNormal = 19;
+    StatelessTruncatedNormal = 20;
   }
   required Op op = 2;
 }
