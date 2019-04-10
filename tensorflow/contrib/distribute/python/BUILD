@@ -144,6 +144,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "nomsan",  # TODO(b/130299192)
     ],
 )
 
