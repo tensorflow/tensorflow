@@ -320,7 +320,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
