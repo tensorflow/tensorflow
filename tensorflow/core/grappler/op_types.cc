@@ -211,6 +211,8 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   return false;
 }
 
+bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
+
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
 
 bool IsEnter(const NodeDef& node) {
@@ -411,6 +413,8 @@ bool IsReduction(const NodeDef& node) {
 }
 
 bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
+
+bool IsRelu6(const NodeDef& node) { return node.op() == "Relu6"; }
 
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
