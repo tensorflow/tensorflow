@@ -30,13 +30,20 @@ namespace poplarplugin {
  *
  * The sharding represents the IPU where the output tensor of an operation is
  * located. This will be in the same place as the operation vertices are
- * located. Operations which output a tuple of tensors (batchnorm training)
- * will have a tuple of sharding values, although they will all be the same.
+ * located.
  *
- * Plumbing ops and flow control ops (call, while, conditional, tuple, GTE) can
- * have a 'single' or 'tuple' type sharding info, indicating where the tensors
- * are that they produce.
- *
+ * Some rules:
+ *   - while/repeat bodies must have equivalent input and output sharding
+ *   - while/repeat body and predicates must have the same input sharding
+ *   - conditional computations must have the same output sharding
+ *   - all callsites must match their called computation output sharding
+ *   - all GTE instructions must match the sharding of the selected part of
+ *     their operand
+ *   - 'plumbing' ops (call, while, conditional, tuple, GTE) can have a 'single'
+ *     or 'tuple' type sharding info, indicating where the tensors are that they
+ *     produce.
+ *   - operations which output a tuple of tensors (batchnorm training) will have
+ *     a tuple of sharding values, although they will all be the same.
  */
 class ShardingPass : public HloModulePass {
  public:

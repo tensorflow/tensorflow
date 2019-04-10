@@ -45,7 +45,6 @@ class PopopsTruncatedNormalOp : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopopsTruncatedNormalOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx), IpuOpKernel() {
-    AddRequiredAttributesToMap();
   }
 
   ~PopopsTruncatedNormalOp() override{};
@@ -69,14 +68,6 @@ class PopopsTruncatedNormalOp : public XlaOpKernel, IpuOpKernel {
   }
 
  private:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
   TF_DISALLOW_COPY_AND_ASSIGN(PopopsTruncatedNormalOp);
 };
 

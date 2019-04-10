@@ -115,7 +115,6 @@ class PoolingOp : public XlaOpKernel, IpuOpKernel {
       : XlaOpKernel(ctx),
         num_spatial_dims_(num_spatial_dims),
         op_type_(op_type) {
-    AddRequiredAttributesToMap();
     if (ctx->num_inputs() == 1) {
       std::vector<int32> ksize_int;
       std::vector<int32> stride_int;
@@ -249,14 +248,6 @@ class PoolingOp : public XlaOpKernel, IpuOpKernel {
   }
 
  protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
   const int num_spatial_dims_;
   std::vector<int64> ksize_;
   std::vector<int64> stride_;
@@ -321,7 +312,6 @@ class MaxPoolGradOp : public XlaOpKernel, IpuOpKernel {
  public:
   MaxPoolGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
-    AddRequiredAttributesToMap();
     if (ctx->num_inputs() == 3) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
@@ -414,14 +404,6 @@ class MaxPoolGradOp : public XlaOpKernel, IpuOpKernel {
   }
 
  protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
   const int num_spatial_dims_;
   std::vector<int64> ksize_;
   std::vector<int64> stride_;
@@ -459,7 +441,6 @@ class AvgPoolGradOp : public XlaOpKernel, IpuOpKernel {
  public:
   AvgPoolGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
-    AddRequiredAttributesToMap();
     OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
     OP_REQUIRES(ctx, ksize_.size() == num_dims(),
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -531,14 +512,6 @@ class AvgPoolGradOp : public XlaOpKernel, IpuOpKernel {
   }
 
  protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
   const int num_spatial_dims_;
   std::vector<int64> ksize_;
   std::vector<int64> stride_;

@@ -44,7 +44,6 @@ namespace tensorflow {
 class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnLstmLayerOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    AddRequiredAttributesToMap();
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_channels", &num_channels_));
     attribute_map_.AddAttribute("num_channels", num_channels_);
     bool is_training;
@@ -141,17 +140,6 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
     ctx->SetOutput(3, intermediates);
   }
 
- protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override {
-    return {0, 1, 2, 3, 4};
-  }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
  private:
   int32 num_channels_;
 
@@ -163,7 +151,6 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnLstmLayerBackpropOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    AddRequiredAttributesToMap();
     int32 num_channels;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_channels", &num_channels));
     attribute_map_.AddAttribute("num_channels", num_channels);
@@ -224,15 +211,6 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
     ctx->SetOutput(3, kernel_backprop);
     ctx->SetOutput(4, biases_backprop);
   }
-
- protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PopnnLstmLayerBackpropOp);

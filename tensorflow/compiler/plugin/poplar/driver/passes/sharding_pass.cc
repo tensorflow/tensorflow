@@ -89,7 +89,7 @@ bool HasShardingForOperand(const HloInstruction* inst, int operand) {
       if (operand == 0) {
         sharding_inst = inst->operand(0);
       } else {
-        auto* comp = inst->branch_computation(0);
+        auto* comp = inst->branch_computation(operand - 1);
         sharding_inst = comp->parameter_instruction(0);
       }
       break;
@@ -211,8 +211,10 @@ bool CopyGteShardingFromOperand(HloInstruction* inst) {
       s = HloSharding::SingleTuple(operand->shape(), s);
     }
     auto subsharding = s.GetSubSharding(operand->shape(), {tuple_index});
-    SetSharding(inst, subsharding);
-    return true;
+    if (!inst->has_sharding() || inst->sharding() != subsharding) {
+      SetSharding(inst, subsharding);
+      return true;
+    }
   }
 
   return false;
@@ -248,7 +250,6 @@ bool CopyShardingFromOperands(HloInstruction* inst) {
 
 bool CopyShardingFromCalledSubcomp(HloInstruction* inst) {
   switch (inst->opcode()) {
-    // TODO - is this really 'called in sequential context' ?
     case HloOpcode::kCall:
     case HloOpcode::kWhile:
     case HloOpcode::kConditional: {
@@ -508,7 +509,7 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
         // in order to propagate sharding upwards through the graph.
         for (auto* inst : comp->MakeInstructionPostOrder()) {
           if (inst->opcode() == HloOpcode::kGetTupleElement) {
-            CopyGteShardingFromOperand(inst);
+            made_progress |= CopyGteShardingFromOperand(inst);
           }
         }
 
@@ -539,20 +540,73 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
           }
         }
 
-        // Apply parameter sharding to peer computations
+        // Apply parameter sharding to predicate and body of a while
         for (auto cs : call_graph_node.caller_callsites()) {
           auto* caller = cs.instruction();
-          auto comp_params = comp->parameter_instructions();
-          for (auto* c : caller->called_computations()) {
-            auto c_params = c->parameter_instructions();
-            if (c_params.size() != comp_params.size()) {
-              return xla::FailedPrecondition(
-                  "Unequal parameter count on computations %s (%d) and %s (%d)",
-                  comp->name().c_str(), comp_params.size(), c->name().c_str(),
-                  c_params.size());
+          if (caller->opcode() == HloOpcode::kWhile) {
+            auto comp_params = comp->parameter_instructions();
+            for (auto* c : caller->called_computations()) {
+              auto c_params = c->parameter_instructions();
+              if (c_params.size() != comp_params.size()) {
+                return xla::FailedPrecondition(
+                    "Unequal parameter count on %s (%d) and %s (%d)",
+                    comp->name().c_str(), comp_params.size(), c->name().c_str(),
+                    c_params.size());
+              }
+              for (auto p = 0; p < c_params.size(); p++) {
+                SetSharding(c_params[p], comp_params[p]->sharding());
+              }
             }
-            for (auto p = 0; p < c_params.size(); p++) {
-              SetSharding(c_params[p], comp_params[p]->sharding());
+          }
+        }
+
+        // Patch up GTE sharding again.  Changing the parameter sharding can
+        // alter the inputs to a GTE.
+        for (auto* inst : comp->MakeInstructionPostOrder()) {
+          if (inst->opcode() == HloOpcode::kGetTupleElement) {
+            CopyGteShardingFromOperand(inst);
+          }
+        }
+
+        // Note: after this point, only nodes which do not proceed GTE
+        // instructions can be modified.
+
+        // Ensure that all conditional subcomps have the same output sharding
+        for (auto cs : call_graph_node.caller_callsites()) {
+          auto* caller = cs.instruction();
+          if (caller->opcode() == HloOpcode::kConditional) {
+            auto sharding = comp->root_instruction()->sharding();
+            for (auto* c : caller->called_computations()) {
+              SetSharding(c->root_instruction(), sharding);
+            }
+          }
+        }
+
+        // Ensure that the root sharding of a while/repeat body matches the
+        // input
+        for (auto cs : call_graph_node.caller_callsites()) {
+          auto* caller = cs.instruction();
+          HloComputation* body = nullptr;
+          if (caller->opcode() == HloOpcode::kWhile) {
+            body = caller->while_body();
+          }
+          if (IsRepeatLoop(caller)) {
+            body = caller->to_apply();
+          }
+
+          if (body == call_graph_node.computation()) {
+            SetSharding(body->root_instruction(),
+                        body->parameter_instruction(0)->sharding());
+          }
+        }
+
+        // Ensure that the callers of this computation have the same sharding as
+        // its root
+        for (auto cs : call_graph_node.caller_callsites()) {
+          if (cs.context() == CallContext::kSequential) {
+            auto* caller = cs.instruction();
+            if (comp->root_instruction()->shape() == caller->shape()) {
+              SetSharding(caller, comp->root_instruction()->sharding());
             }
           }
         }

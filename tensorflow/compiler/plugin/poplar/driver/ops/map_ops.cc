@@ -8,6 +8,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/custom_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/visitor_inline_call.h"
@@ -266,7 +267,7 @@ StatusOr<poplar::program::Program> CreateCustomCallOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
-  if (IsPoplibsCustomOp(inst)) {
+  if (IsPoplibsHloCustomOp(inst)) {
     VLOG(1) << "Processing " << inst->custom_call_target()
             << " as Poplibs call";
     return CreatePoplibsOp(graph, res, inst, output, tensor_map);

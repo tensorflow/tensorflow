@@ -14,6 +14,7 @@
 // ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/custom_op_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/scheduler.h"
@@ -575,7 +576,7 @@ ENTRY c1 {
   p0 = s32[20] parameter(0)
   p1 = s32[20] parameter(1)
 
-  c = s32[20] custom-call(p0, p1), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"allocating_indexes\":[],\"layout_dependencies\":{\"keys\":[],\"values\":[]},\"num_inplace_operands\":0}\n"
+  c = s32[20] custom-call(p0, p1), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
 
   ROOT t = (s32[20]) tuple(c)
 }
@@ -592,6 +593,9 @@ ENTRY c1 {
   auto* module0 = module.ValueOrDie().get();
 
   CompilerAnnotations annotations(module0);
+
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -647,7 +651,8 @@ HloModule top
 ENTRY c1 {
   p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
   p0_0 = s32[20] get-tuple-element(p0), index=0
-  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"allocating_indexes\":[],\"layout_dependencies\":{\"keys\":[],\"values\":[]},\"num_inplace_operands\":0}\n"
+
+  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
 
   ROOT a = s32[20] add(p0_0, c)
 }
@@ -664,6 +669,9 @@ ENTRY c1 {
   auto* module0 = module.ValueOrDie().get();
 
   CompilerAnnotations annotations(module0);
+
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());

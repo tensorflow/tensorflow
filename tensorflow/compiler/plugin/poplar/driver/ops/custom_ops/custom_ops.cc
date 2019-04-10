@@ -47,10 +47,9 @@ StatusOr<poplar::Tensor> AllocatePoplibsOpTensor(
   const HloInstruction* inst = tensor_target.tgt;
   auto custom_call = Cast<HloCustomCallInstruction>(inst);
   TF_ASSIGN_OR_RETURN(auto op_def, PoplibsOpManager::GetOp(custom_call));
-  auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
-  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
-                      op_def->Allocator(graph, res, name, tensor_target,
-                                        attribute_map, tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor out,
+      op_def->Allocator(graph, res, name, tensor_target, tensor_map));
   return out;
 }
 
@@ -59,10 +58,9 @@ StatusOr<poplar::program::Program> CreatePoplibsOp(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   auto custom_call = Cast<HloCustomCallInstruction>(inst);
   TF_ASSIGN_OR_RETURN(auto op_def, PoplibsOpManager::GetOp(custom_call));
-  auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
-  TF_ASSIGN_OR_RETURN(poplar::program::Program prog,
-                      op_def->Creator(graph, res, inst, output_shape,
-                                      tensor_map, attribute_map));
+  TF_ASSIGN_OR_RETURN(
+      poplar::program::Program prog,
+      op_def->Creator(graph, res, inst, output_shape, tensor_map));
   return prog;
 }
 

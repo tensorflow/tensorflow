@@ -182,10 +182,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = [
-          '__seed*', 'Copy_', 'Conv3DBackpropInputV2/fusion*/WeightTranspose',
-          'Conv3DBackpropInputV2/fusion*/Conv_2x2x2'
-      ]
+      ok = ['__seed*', 'Copy_', 'Conv3DBackpropInputV2/fusion*/Conv_2x2x2']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -226,6 +223,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
-                                os.environ.get('TF_XLA_FLAGS', ''))
+  os.environ['TF_XLA_FLAGS'] = (
+      '--tf_xla_min_cluster_size=1 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

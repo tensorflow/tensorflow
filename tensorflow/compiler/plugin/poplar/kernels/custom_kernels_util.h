@@ -41,15 +41,6 @@ std::string GetPoplibsCustomOpTargetString(PoplibsOp::Lib lib,
 absl::optional<std::pair<PoplibsOp::Lib, PoplibsOp::Op>> GetPoplibsCustomOp(
     const HloInstruction* inst);
 
-// Returns true if inst is a call to a custom op for Poplibs
-const bool IsPoplibsCustomOp(const HloInstruction* inst);
-// Returns true if inst is a call to a custom op for Poplibs of a certain type.
-const bool IsPoplibsCustomOp(const HloInstruction* inst, PoplibsOp::Lib lib,
-                             PoplibsOp::Op op);
-// Returns true if inst is a call to a custom op for Poplibs which is
-// elementwise.
-const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst);
-
 namespace IPUCustomKernelsUtil {
 
 class AttributeMap {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/classification_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
@@ -194,19 +195,10 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           break;
         }
         case HloOpcode::kCustomCall: {
-          if (IsPoplibsCustomOp(user)) {
-            // Each custom Poplibs ops is required to have an
-            // `allocating_indexes` attribute which tells us which operands are
-            // allocating.
-            auto attribute_map = IPUCustomKernelsUtil::AttributeMap(user);
-            auto statusor =
-                attribute_map.GetAttributeFlatHashSet("allocating_indexes");
-            if (!statusor.ok()) {
-              LOG(FATAL) << "Custom Poplibs op " << user->ToString()
-                         << " is missing \'allocating_indexes\' field.";
-            }
-            absl::flat_hash_set<int64> allocating_indexes =
-                statusor.ValueOrDie();
+          if (IsPoplibsHloCustomOp(user)) {
+            auto poplar_inst = Cast<HloPoplarInstruction>(user);
+            auto allocating_indexes = poplar_inst->AllocatingIndices();
+
             if (allocating_indexes.count(op_index)) {
               auto t = TensorTarget(user, op_index, path);
               auto i = tensor_allocation_map.find(src);

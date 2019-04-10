@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/custom_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
@@ -966,7 +967,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           break;
         }
         case HloOpcode::kCustomCall: {
-          if (IsPoplibsCustomOp(tgt)) {
+          if (IsPoplibsHloCustomOp(tgt)) {
             TF_ASSIGN_OR_RETURN(out, AllocatePoplibsOpTensor(
                                          graph, resources, name, target->second,
                                          shape, tensor_map));

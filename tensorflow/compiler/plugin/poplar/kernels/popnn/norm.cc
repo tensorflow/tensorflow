@@ -61,7 +61,6 @@ void GetAndSetNormOpts(OpKernelConstruction* ctx,
 class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnGroupNorm(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    AddRequiredAttributesToMap();
     GetAndSetNormOpts(ctx, attribute_map_, num_groups_, data_format_);
   }
 
@@ -152,16 +151,6 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
     }
   }
 
- protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    // Scale and offset layouts depend on the passed in activations.
-    return {{1, 0}, {2, 0}};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
  private:
   int32 num_groups_;
   TensorFormat data_format_;
@@ -173,7 +162,6 @@ REGISTER_IPU_OP("PopnnGroupNormTraining", PopnnGroupNorm);
 class PopnnGroupNormGrad : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnGroupNormGrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    AddRequiredAttributesToMap();
     GetAndSetNormOpts(ctx, attribute_map_, num_groups_, data_format_);
   }
 
@@ -220,15 +208,6 @@ class PopnnGroupNormGrad : public XlaOpKernel, IpuOpKernel {
     ctx->SetOutput(2, beta_backprop);
   }
 
- protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
-
  private:
   int32 num_groups_;
   TensorFormat data_format_;
@@ -240,7 +219,6 @@ class PopnnGroupNormStatistics : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnGroupNormStatistics(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    AddRequiredAttributesToMap();
     GetAndSetNormOpts(ctx, attribute_map_, num_groups_, data_format_);
   }
 
@@ -284,15 +262,6 @@ class PopnnGroupNormStatistics : public XlaOpKernel, IpuOpKernel {
     ctx->SetOutput(0, mean);
     ctx->SetOutput(1, inv_std_dev);
   }
-
- protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 0; }
 
  private:
   int32 num_groups_;

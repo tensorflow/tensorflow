@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/meta_graph.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
@@ -185,17 +186,9 @@ static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
     case HloOpcode::kBatchNormTraining:
       return true;
     case HloOpcode::kCustomCall: {
-      if (IsPoplibsCustomOp(target)) {
-        auto attribute_map = IPUCustomKernelsUtil::AttributeMap(target);
-        auto statusor =
-            attribute_map.GetAttributeFlatHashMap("layout_dependencies");
-        if (!statusor.ok()) {
-          LOG(FATAL) << "Custom Poplibs op " << target->ToString()
-                     << " is missing \'layout_dependencies\' field.";
-        }
-
-        absl::flat_hash_map<int64, int64> layout_dependencies =
-            statusor.ValueOrDie();
+      if (IsPoplibsHloCustomOp(target)) {
+        auto poplar_inst = Cast<HloPoplarInstruction>(target);
+        auto layout_dependencies = poplar_inst->LayoutDependencies();
         return layout_dependencies.size();
       }
       break;
@@ -229,18 +222,9 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
       }
       return absl::nullopt;
     case HloOpcode::kCustomCall: {
-      if (IsPoplibsCustomOp(target)) {
-        auto attribute_map = IPUCustomKernelsUtil::AttributeMap(target);
-        auto statusor =
-            attribute_map.GetAttributeFlatHashMap("layout_dependencies");
-        if (!statusor.ok()) {
-          LOG(FATAL) << "Custom Poplibs op " << target->ToString()
-                     << " is missing \'layout_dependencies\' field.";
-        }
-        // A Poplibs Custom op is layout sensative if the layout_producer is at
-        // the right index.
-        absl::flat_hash_map<int64, int64> layout_dependencies =
-            statusor.ValueOrDie();
+      if (IsPoplibsHloCustomOp(target)) {
+        auto poplar_inst = Cast<HloPoplarInstruction>(target);
+        auto layout_dependencies = poplar_inst->LayoutDependencies();
         auto itr = layout_dependencies.find(op_idx);
         if (itr != layout_dependencies.end() &&
             target->operand(itr->second) == layout_producer) {
