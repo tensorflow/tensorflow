@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import itertools
 import json
 import os
 
@@ -129,6 +130,14 @@ class Network(base_layer.Layer):
       return self.layer1(inputs)
   ```
   """
+
+  # See tf.Module for the usage of this property.
+  # The key of _layer_call_argspecs is a layer. tf.Module._flatten will fail to
+  # flatten the key since it is trying to convert Trackable/Layer to a string.
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+      ('_layer_call_argspecs',),
+      base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES
+  ))
 
   def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called
     # Signature detection
