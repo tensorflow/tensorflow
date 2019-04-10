@@ -46,6 +46,14 @@ StatusOr<poplar::program::Program> CreateScatter(
   popops::UpdateComputationFunc update_computation_func;
   auto root_inst = update_computation->root_instruction();
 
+  auto tmp = graph.addVariable(operand.elementType(), {});
+  graph.setTileMapping(tmp, 0);
+  ArgVectors args = {{tmp}, {graph.clone(tmp)}};
+
+  TF_ASSIGN_OR_RETURN(
+      auto update_comp_visitor,
+      GetOrCompileSubComputation(res, args, update_computation));
+
   // Fast path the gradient accumulation case
   if (root_inst->opcode() == HloOpcode::kAdd &&
       root_inst->operand_count() == 2 &&
@@ -59,12 +67,6 @@ StatusOr<poplar::program::Program> CreateScatter(
       return b;
     };
   } else {
-    ArgVectors args = {{graph.addVariable(operand.elementType(), {})},
-                       {graph.addVariable(operand.elementType(), {})}};
-    TF_ASSIGN_OR_RETURN(
-        auto update_comp_visitor,
-        GetOrCompileSubComputation(res, args, update_computation));
-
     // Handle the general case
     update_computation_func =
         [&](poplar::Graph& g, poplar::Tensor& a, poplar::Tensor& b,
