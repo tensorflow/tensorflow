@@ -6239,7 +6239,6 @@ inline void DepthwiseConv3x3Filter(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, int thread_start, int thread_end, int thread_dim) {
-  gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
   DepthwiseConvParams params;
 
   const int32 stride_width = rt_params.stride_width;
