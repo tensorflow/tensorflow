@@ -74,15 +74,22 @@ class Optimize(enum.Enum):
   # Optimize for size.
   #
   # Optimizations that reduce the size of the model.
-  # The model size will be reduced. Optimizations can include quantizing the
-  # weights of the floating point model.
+  # The model size will be reduced.
+  # Current behavior:
+  # - If RepresentativeDataset is not provided, weights will be quantized and
+  #   activations will remain float.
+  # - If RepresentativeDataset is provided, weights and activations will be
+  #   quantized.
   OPTIMIZE_FOR_SIZE = "OPTIMIZE_FOR_SIZE"
 
   # Optimize for latency.
   #
   # Optimizations that reduce the latency of the model.
-  # The model latency will be reduced. Optimizations can include quantizing the
-  # weights of the floating point model.
+  # Current behavior:
+  # - If RepresentativeDataset is not provided, weights will be quantized and
+  #   activations will remain float.
+  # - If RepresentativeDataset is provided, weights and activations will be
+  #   quantized.
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
 
   def __str__(self):
@@ -285,18 +292,32 @@ class TFLiteConverterV2(object):
 
 @_tf_export(v1=["lite.TFLiteConverter"])
 class TFLiteConverter(object):
-  """Convert a TensorFlow model into `output_format` using TOCO.
+  """Convert a TensorFlow model into `output_format`.
 
   This is used to convert from a TensorFlow GraphDef or SavedModel into either a
   TFLite FlatBuffer or graph visualization.
 
   Attributes:
-
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8}`. (default tf.float32)
+      Must be `{tf.float32, tf.uint8}`. If `optimzations` are provided, this
+      parameter is ignored. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays in the case of quantization.
-      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
+      for a different type for input arrays.
+      If an integer type is provided and `optimizations` are not used,
+      `quantized_inputs_stats` must be provided.
+      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
+      model from a quantization-aware trained input model, then
+      `inference_input_type` defaults to tf.uint8.
+      In all other cases, `inference_input_type` defaults to tf.float32.
+      Must be `{tf.float32, tf.uint8, tf.int8}`
+    inference_output_type: Target data type of real-number output arrays. Allows
+      for a different type for output arrays.
+      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
+      model from a quantization-aware trained output model, then
+      `inference_output_type` defaults to tf.uint8.
+      In all other cases, `inference_output_type` must be tf.float32, an error
+      will be thrown otherwise.
+      Must be `{tf.float32, tf.uint8, tf.int8}`
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
@@ -403,6 +424,7 @@ class TFLiteConverter(object):
     self._output_tensors = output_tensors
     self.inference_type = constants.FLOAT
     self.inference_input_type = None
+    self.inference_output_type = None
     self.output_format = constants.TFLITE
     self.quantized_input_stats = {}
     self.default_ranges_stats = None
@@ -693,9 +715,6 @@ class TFLiteConverter(object):
         raise ValueError(
             "Provide an input generator for representative_dataset")
 
-    # TODO(shashishekhar): For now use optimizations order is ignored.
-    # Both size and latency optimizations decide whether to apply post
-    # training optimizations.
     post_training_optimize = bool(
         len(set(self.optimizations) & set([Optimize.OPTIMIZE_FOR_LATENCY,
                                            Optimize.OPTIMIZE_FOR_SIZE])))
@@ -703,9 +722,35 @@ class TFLiteConverter(object):
     weights_only_quantize_flag = (
         post_training_optimize and (self.representative_dataset is None))
 
+    toco_inference_input_type = self.inference_input_type
+    if post_training_optimize:
+      # Post training optimizations require that TOCO outputs a float model.
+      if self.inference_type != constants.FLOAT:
+        raise ValueError(
+            "`optimizations` require that `inference_type` is set to float.")
+      toco_inference_input_type = constants.FLOAT
+      # Set up default values.
+      if self.inference_input_type is None:
+        self.inference_input_type = constants.FLOAT
+      if self.inference_output_type is None:
+        self.inference_output_type = constants.FLOAT
+
+    if weights_only_quantize_flag:
+      # Currently, weight only quantization requires float inputs and outputs.
+      if (self.inference_input_type != constants.FLOAT or
+          self.inference_output_type != constants.FLOAT):
+        raise ValueError(
+            "Provide an inference_input_type and inference_output_type of type "
+            "tf.float32.")
+
+    if not post_training_optimize and self.inference_output_type is not None:
+      raise ValueError(
+          "inference_output_type is currently not supported if optimizations "
+          "are not enabled.")
+
     converter_kwargs = {
         "inference_type": self.inference_type,
-        "inference_input_type": self.inference_input_type,
+        "inference_input_type": toco_inference_input_type,
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "output_format": self.output_format,
         "quantized_input_stats": quantized_stats,
@@ -750,7 +795,8 @@ class TFLiteConverter(object):
     if self.representative_dataset and post_training_optimize:
       calibrate_quantize = _calibrator.Calibrator(result)
       result = calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen)
+          self.representative_dataset.input_gen, self.inference_input_type,
+          self.inference_output_type)
 
     return result
 
