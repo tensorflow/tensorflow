@@ -223,35 +223,25 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       # 3-D input with batch dimension.
       x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 1, 2])
     
-      # this is the error message we expect the function to raise
-      err_msg = "Last dimension of a grayscale image should be size 1."
-        
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      try:
+
+      # this is the error message we expect the function to raise
+      err_msg = "Last dimension of a grayscale image should be size 1"
+      with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
     # tests if an exception is raised if a two dimensional
     # input is used, i.e. the images have shape [height, width]
     with self.cached_session(use_gpu=True):
       # 2-D input without batch dimension.
       x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2])
-    
-      # this is the error message we expect the function to raise
-      err_msg = "A grayscale image must be at least three-dimensional."
-        
+      
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      try:
+
+      # this is the error message we expect the function to raise
+      err_msg = "A grayscale image must be at least three-dimensional"
+      with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
       
   @test_util.run_deprecated_v1
   def testShapeInference(self):
