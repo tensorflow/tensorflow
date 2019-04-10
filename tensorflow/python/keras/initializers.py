@@ -193,8 +193,14 @@ def get(identifier):
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    config = {'class_name': str(identifier), 'config': {}}
-    return deserialize(config)
+    identifier = str(identifier)
+    # We have to special-case functions that return classes.
+    # TODO(omalleyt): Turn these into classes or class aliases.
+    special_cases = ['he_normal', 'he_uniform', 'lecun_normal', 'lecun_uniform']
+    if identifier in special_cases:
+      # Treat like a class.
+      return deserialize({'class_name': identifier, 'config': {}})
+    return deserialize(identifier)
   elif callable(identifier):
     return identifier
   else:

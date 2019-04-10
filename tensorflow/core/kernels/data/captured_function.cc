@@ -16,11 +16,14 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -30,7 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
 
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
@@ -68,7 +70,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     }
 
     void RecordExecutorStarted() override {
-      start_time_ns_ = Env::Default()->NowNanos();
+      start_time_ns_ = absl::GetCurrentTimeNanos();
     }
 
     void RecordComputeStarted() override {}
@@ -76,7 +78,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     void RecordComputeEnded() override {}
 
     void RecordExecutorEnded() override {
-      end_time_ns_ = Env::Default()->NowNanos();
+      end_time_ns_ = absl::GetCurrentTimeNanos();
     }
 
     bool TrackAllocations() const override { return false; }
@@ -101,24 +103,80 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
 }  // namespace
 
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+  std::vector<Tensor> return_values;
+
+  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
+                                                            &return_values));
+
+  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
+        TensorShapeUtils::IsScalar(return_values[0].shape()))) {
+    return errors::InvalidArgument(
+        "Function must return a single scalar of dtype DT_VARIANT.");
+  }
+
+  // Retrieve the dataset that was created in `f`.
+  DatasetBase* returned_dataset;
+  TF_RETURN_IF_ERROR(
+      GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
+
+  // Create an iterator for the dataset that was returned by `f`.
+  return returned_dataset->MakeIterator(
+      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+}
+
 /* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
     Params params, std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
-  std::vector<Tensor> arguments(inputs.begin(), inputs.end());
-  *out_function = absl::WrapUnique(
-      new CapturedFunction(func, std::move(arguments), params));
-  return Status::OK();
+  std::vector<Tensor> captured_inputs(inputs.begin(), inputs.end());
+  return Create(func, ctx, std::move(captured_inputs), std::move(params),
+                out_function);
 }
 
+/* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx,
     std::vector<Tensor>&& captured_inputs, Params params,
     std::unique_ptr<CapturedFunction>* out_function) {
-  *out_function = absl::WrapUnique(
-      new CapturedFunction(func, std::move(captured_inputs), params));
+  // TODO(b/130248232): Remove this code path once all users of CapturedFunction
+  // are migrated to per-kernel FunctionLibraryDefinition.
+  if (params.lib_def == nullptr) {
+    TF_RETURN_IF_ERROR(CreateFunctionLibraryDefinition(
+        ctx->function_library()->GetFunctionLibraryDefinition(), func.name(),
+        &params.lib_def));
+  }
+  *out_function = absl::WrapUnique(new CapturedFunction(
+      func, std::move(captured_inputs), std::move(params)));
+  return Status::OK();
+}
+
+Status CapturedFunction::AddToGraph(
+    SerializationContext* ctx, DatasetBase::DatasetGraphDefBuilder* b,
+    std::vector<Node*>* other_arguments,
+    DataTypeVector* other_arguments_types) const {
+  other_arguments->reserve(captured_inputs_.size());
+  other_arguments_types->reserve(captured_inputs_.size());
+  for (const Tensor& t : captured_inputs_) {
+    Node* node;
+    DatasetBase* input;
+    Status s = GetDatasetFromVariantTensor(t, &input);
+    if (s.ok()) {
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+    } else {
+      TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+    }
+    other_arguments->emplace_back(node);
+    other_arguments_types->emplace_back(t.dtype());
+  }
+
+  TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name(), *lib_def_));
+
   return Status::OK();
 }
 
@@ -128,7 +186,7 @@ Status CapturedFunction::Instantiate(
   // The context's runtime will be used for all subsequent calls.
   FunctionLibraryRuntime* lib = ctx->lib();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  inst_opts.overlay_lib = ctx->function_library().get();
+  inst_opts.lib_def = lib_def_.get();
   inst_opts.create_kernels_eagerly = true;
   if (!use_inter_op_parallelism_) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
@@ -145,8 +203,7 @@ Status CapturedFunction::Instantiate(
     // We infer the number of non-captured inputs by subtracting the number
     // of captured inputs from the number of input arguments and we infer the
     // input devices from the function library runtime.
-    const FunctionDef* fdef =
-        lib->GetFunctionLibraryDefinition()->Find(func_.name());
+    const FunctionDef* fdef = lib_def_->Find(func_.name());
     if (fdef == nullptr) {
       return errors::InvalidArgument(
           "Failed to find function ", func_.name(),
@@ -252,7 +309,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, Tensor* val) const override {
-    if (index < args_.size() && args_[index].IsInitialized()) {
+    if (index < args_.size()) {
       // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
       // order to be able to `std::move(args_[index])` into `*val`.
       *val = args_[index];
@@ -260,11 +317,8 @@ class OwnedArgsCallFrame : public CallFrameBase {
     } else if (index < args_.size() + captured_inputs_->size()) {
       *val = (*captured_inputs_)[index - args_.size()];
       return Status::OK();
-    } else if (index >= args_.size() + captured_inputs_->size()) {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
     } else {
-      return errors::Internal("Attempted to get argument ", index,
-                              " more than once.");
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
   }
 
@@ -288,17 +342,14 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, Tensor* val) const override {
-    if (index < args_.size() && args_[index].IsInitialized()) {
+    if (index < args_.size()) {
       *val = args_[index];
       return Status::OK();
     } else if (index < args_.size() + captured_inputs_->size()) {
       *val = (*captured_inputs_)[index - args_.size()];
       return Status::OK();
-    } else if (index >= args_.size() + captured_inputs_->size()) {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
     } else {
-      return errors::Internal("Attempted to get argument ", index,
-                              " more than once.");
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
   }
 
@@ -503,15 +554,19 @@ void InstantiatedCapturedFunction::RunAsync(
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        // TODO(shivaniagrawal): add the dataset name containing this function,
-        // make it dataset()->node_name() + captured_func_->func().name().
+        // TODO(b/129085499) Utilize the `node_name` which would be unique than
+        // the prefix for the function execution time statistics.
+        // prefix_with_func_name would then be node_name + func_name.
         if (stats_aggregator) {
-          string prefix_with_func_name = strings::StrCat(
-              str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
-              "::", captured_func_->func().name());
+          string prefix_end =
+              str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
+          string prefix_with_func_name =
+              strings::StrCat(prefix_end, stats_utils::kDelimiter,
+                              captured_func_->func().name());
           stats_aggregator->AddToHistogram(
               stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-              {static_cast<float>(stats_collector->processing_time())});
+              {static_cast<float>(stats_collector->processing_time())},
+              model->NumElements(prefix));
         }
         if (model) {
           model->AddProcessingTime(prefix, stats_collector->processing_time());
@@ -534,7 +589,8 @@ CapturedFunction::CapturedFunction(const NameAttrList& func,
     : func_(func),
       captured_inputs_(std::move(captured_inputs)),
       use_inter_op_parallelism_(params.use_inter_op_parallelism),
-      is_multi_device_function_(params.is_multi_device_function) {}
+      is_multi_device_function_(params.is_multi_device_function),
+      lib_def_(std::move(params.lib_def)) {}
 
 }  // namespace data
 }  // namespace tensorflow

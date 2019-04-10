@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 
 // Set true for greater intelligibility of debug mode log messages.
@@ -315,6 +316,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
 
     if (my_rank >= 0 && my_rank != source_rank) {
       // Begin by receiving the value.
+      tracing::ScopedActivity activity("ReceiveValue", std::to_string(si));
       int recv_from_rank = TreeRecvFrom(*col_params_, si);
       Notification note;
       DispatchRecv(si, recv_from_rank, my_rank, col_ctx_->output,
@@ -327,67 +329,70 @@ void HierarchicalTreeBroadcaster::RunTree() {
     }
 
     // Then forward value to all descendent devices.
-    if (my_rank >= 0 && status_.ok()) {
-      std::vector<int> send_to_ranks;
-      TreeSendTo(*col_params_, si, &send_to_ranks);
-      for (int i = 0; i < send_to_ranks.size(); ++i) {
-        int target_rank = send_to_ranks[i];
-        {
-          mutex_lock l(mu);
-          ++pending_count;
-        }
-        DispatchSend(si, target_rank, my_rank,
-                     (is_source_ ? col_ctx_->input : col_ctx_->output),
-                     [this, &mu, &pending_count, &all_done](const Status& s) {
-                       mutex_lock l(mu);
-                       status_.Update(s);
-                       --pending_count;
-                       if (pending_count == 0) {
-                         all_done.notify_all();
-                       }
-                     });
-      }
-    }
-
-    // For the original source device, we copy input to output if they are
-    // different.
-    // If there is only 1 subdiv, we do this in that subdiv.  If there is more
-    // than 1 subdiv, then the original source device will participate in 2
-    // subdivs - the global inter-task broadcast and one local intra-task
-    // broadcast.  In this case, we perform the copy in the second subdiv for
-    // this device.
-    if (status_.ok() && is_source_ && (1 == num_subdivs || 0 != si)) {
-      VLOG(2) << "copying input to output for device=" << col_ctx_->device_name
-              << " subdiv=" << si;
-      if (col_ctx_->input != col_ctx_->output &&
-          (DMAHelper::base(col_ctx_->input) !=
-           DMAHelper::base(col_ctx_->output))) {
-        {
-          mutex_lock l(mu);
-          ++pending_count;
-        }
-        DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
-        CollectiveRemoteAccessLocal::MemCpyAsync(
-            op_dev_ctx, op_dev_ctx, col_ctx_->device, col_ctx_->device,
-            col_ctx_->op_ctx->input_alloc_attr(0),
-            col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
-            col_ctx_->output, 0, /*stream_index*/
-            [this, &mu, &pending_count, &all_done](const Status& s) {
-              mutex_lock l(mu);
-              status_.Update(s);
-              --pending_count;
-              if (0 == pending_count) {
-                all_done.notify_all();
-              }
-            });
-      }
-    }
-
-    // Then wait for all pending actions to complete.
     {
-      mutex_lock l(mu);
-      if (pending_count > 0) {
-        all_done.wait(l);
+      tracing::ScopedActivity activity("ForwardValue", std::to_string(si));
+      if (my_rank >= 0 && status_.ok()) {
+        std::vector<int> send_to_ranks;
+        TreeSendTo(*col_params_, si, &send_to_ranks);
+        for (int i = 0; i < send_to_ranks.size(); ++i) {
+          int target_rank = send_to_ranks[i];
+          {
+            mutex_lock l(mu);
+            ++pending_count;
+          }
+          DispatchSend(si, target_rank, my_rank,
+                       (is_source_ ? col_ctx_->input : col_ctx_->output),
+                       [this, &mu, &pending_count, &all_done](const Status& s) {
+                         mutex_lock l(mu);
+                         status_.Update(s);
+                         --pending_count;
+                         if (pending_count == 0) {
+                           all_done.notify_all();
+                         }
+                       });
+        }
+      }
+
+      // For the original source device, we copy input to output if they are
+      // different.
+      // If there is only 1 subdiv, we do this in that subdiv.  If there is more
+      // than 1 subdiv, then the original source device will participate in 2
+      // subdivs - the global inter-task broadcast and one local intra-task
+      // broadcast.  In this case, we perform the copy in the second subdiv for
+      // this device.
+      if (status_.ok() && is_source_ && (1 == num_subdivs || 0 != si)) {
+        VLOG(2) << "copying input to output for device="
+                << col_ctx_->device_name << " subdiv=" << si;
+        if (col_ctx_->input != col_ctx_->output &&
+            (DMAHelper::base(col_ctx_->input) !=
+             DMAHelper::base(col_ctx_->output))) {
+          {
+            mutex_lock l(mu);
+            ++pending_count;
+          }
+          DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
+          CollectiveRemoteAccessLocal::MemCpyAsync(
+              op_dev_ctx, op_dev_ctx, col_ctx_->device, col_ctx_->device,
+              col_ctx_->op_ctx->input_alloc_attr(0),
+              col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
+              col_ctx_->output, 0, /*stream_index*/
+              [this, &mu, &pending_count, &all_done](const Status& s) {
+                mutex_lock l(mu);
+                status_.Update(s);
+                --pending_count;
+                if (0 == pending_count) {
+                  all_done.notify_all();
+                }
+              });
+        }
+      }
+
+      // Then wait for all pending actions to complete.
+      {
+        mutex_lock l(mu);
+        if (pending_count > 0) {
+          all_done.wait(l);
+        }
       }
     }
   }

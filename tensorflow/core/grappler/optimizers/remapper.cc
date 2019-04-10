@@ -78,16 +78,16 @@ struct Conv2DWithBiasAdd {
   const NodeDef* bias_add = nullptr;
 };
 
-// Conv2D node followed by a BiasAdd and Relu.
-struct Conv2DWithBiasAddAndRelu {
-  Conv2DWithBiasAddAndRelu() = default;
-  Conv2DWithBiasAddAndRelu(const NodeDef* conv2d, const NodeDef* bias_add,
-                           const NodeDef* relu)
-      : conv2d(conv2d), bias_add(bias_add), relu(relu) {}
+// Conv2D node followed by a BiasAdd and Activation.
+struct Conv2DWithBiasAddAndActivation {
+  Conv2DWithBiasAddAndActivation() = default;
+  Conv2DWithBiasAddAndActivation(const NodeDef* conv2d, const NodeDef* bias_add,
+                                 const NodeDef* activation)
+      : conv2d(conv2d), bias_add(bias_add), activation(activation) {}
 
   const NodeDef* conv2d = nullptr;
   const NodeDef* bias_add = nullptr;
-  const NodeDef* relu = nullptr;
+  const NodeDef* activation = nullptr;
 };
 
 // Conv2D node followed by a Squeeze and BiasAdd.
@@ -114,20 +114,21 @@ struct Conv2DWithBatchNorm {
   float epsilon = 0.0;
 };
 
-// Conv2D node followed by a FusedBatchNorm and Relu.
-struct Conv2DWithBatchNormAndRelu {
-  Conv2DWithBatchNormAndRelu() = default;
-  Conv2DWithBatchNormAndRelu(const NodeDef* conv2d,
-                             const NodeDef* fused_batch_norm,
-                             const NodeDef* relu, float epsilon = 0.0)
+// Conv2D node followed by a FusedBatchNorm and Activation.
+struct Conv2DWithBatchNormAndActivation {
+  Conv2DWithBatchNormAndActivation() = default;
+  Conv2DWithBatchNormAndActivation(const NodeDef* conv2d,
+                                   const NodeDef* fused_batch_norm,
+                                   const NodeDef* activation,
+                                   float epsilon = 0.0)
       : conv2d(conv2d),
         fused_batch_norm(fused_batch_norm),
-        relu(relu),
+        activation(activation),
         epsilon(epsilon) {}
 
   const NodeDef* conv2d = nullptr;
   const NodeDef* fused_batch_norm = nullptr;
-  const NodeDef* relu = nullptr;
+  const NodeDef* activation = nullptr;
   float epsilon = 0.0;
 };
 
@@ -194,7 +195,7 @@ bool IsCpuCompatible(const Pattern& matched) {
 
 // Checks if we can rewrite a pattern to the `_FusedConv2D` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
-                     const Conv2DWithBiasAddAndRelu& matched) {
+                     const Conv2DWithBiasAddAndActivation& matched) {
   const std::vector<OpInfo::TensorProperties>& input_props =
       ctx.graph_properties.GetInputProperties(matched.conv2d->name());
   const TensorShapeProto& filter_shape =
@@ -224,6 +225,10 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 template <typename Pattern>
 bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
   return IsCpuCompatible(matched) || IsGpuCompatible(ctx, matched);
+}
+
+bool IsSupportedActivation(const NodeDef& node) {
+  return IsRelu(node) || IsRelu6(node) || IsElu(node);
 }
 
 bool FindConv2DWithBias(const RemapperContext& ctx, const NodeDef* bias_add,
@@ -259,31 +264,34 @@ bool FindConv2DWithBias(const RemapperContext& ctx, const NodeDef* bias_add,
   return true;
 }
 
-bool FindConv2DWithBiasAndRelu(const RemapperContext& ctx, const NodeDef* relu,
-                               Conv2DWithBiasAddAndRelu* matched) {
+bool FindConv2DWithBiasAndActivation(const RemapperContext& ctx,
+                                     const NodeDef* activation,
+                                     Conv2DWithBiasAddAndActivation* matched) {
   if (!EigenSupportsContractionOutputKernel()) return false;
 
-  // Root of the pattern must be a Relu.
-  if (!relu || !IsRelu(*relu) || HasControlFaninOrFanout(ctx.graph_view, relu))
+  // Root of the pattern must be an activation node.
+  if (!activation || !IsSupportedActivation(*activation) ||
+      HasControlFaninOrFanout(ctx.graph_view, activation))
     return false;
 
-  // And input to Relu must match Conv2DWithBiasAdd pattern.
-  const auto input_port = GraphView::InputPort(relu, 0);
+  // And input to the activation node must match Conv2DWithBiasAdd pattern.
+  const auto input_port = GraphView::InputPort(activation, 0);
   const auto bias_add = ctx.graph_view.GetRegularFanin(input_port);
 
   Conv2DWithBiasAdd base;
   if (!FindConv2DWithBias(ctx, bias_add.node, &base,
                           /*check_device_compatible=*/false) ||
       !HasSingleFanoutNode(ctx.graph_view, base.bias_add) ||
-      !HaveSameDataType(relu, base.bias_add) ||
+      !HaveSameDataType(activation, base.bias_add) ||
       IsInPreserveSet(ctx, base.bias_add))
     return false;
 
   // Check that data type and data format are supported on assigned device.
-  const Conv2DWithBiasAddAndRelu pattern{base.conv2d, base.bias_add, relu};
+  const Conv2DWithBiasAddAndActivation pattern{base.conv2d, base.bias_add,
+                                               activation};
   if (!IsDeviceCompatible(ctx, pattern)) return false;
 
-  // We successfully found a Conv2D+BiasAdd+Relu pattern.
+  // We successfully found a Conv2D+BiasAdd+Activation pattern.
   *matched = pattern;
 
   return true;
@@ -387,16 +395,17 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx,
   return true;
 }
 
-bool FindConv2DWithBatchNormAndRelu(const RemapperContext& ctx,
-                                    const NodeDef* node,
-                                    Conv2DWithBatchNormAndRelu* matched) {
+bool FindConv2DWithBatchNormAndActivation(
+    const RemapperContext& ctx, const NodeDef* node,
+    Conv2DWithBatchNormAndActivation* matched) {
   if (!EigenSupportsContractionOutputKernel()) return false;
 
-  // Root of the pattern must be a Relu.
-  if (!node || !IsRelu(*node) || HasControlFaninOrFanout(ctx.graph_view, node))
+  // Root of the pattern must be an activation node.
+  if (!node || !IsSupportedActivation(*node) ||
+      HasControlFaninOrFanout(ctx.graph_view, node))
     return false;
 
-  // And input to Relu must match Conv2DWithBatchNorm pattern.
+  // And input to the activation node must match Conv2DWithBatchNorm pattern.
   const auto input_port = GraphView::InputPort(node, 0);
   const auto batch_norm = ctx.graph_view.GetRegularFanin(input_port);
 
@@ -407,10 +416,10 @@ bool FindConv2DWithBatchNormAndRelu(const RemapperContext& ctx,
       IsInPreserveSet(ctx, base.fused_batch_norm))
     return false;
 
-  // We successfully found a Conv2D+FusedBatchNorm+Relu pattern.
+  // We successfully found a Conv2D+FusedBatchNorm+Activation pattern.
   matched->conv2d = base.conv2d;
   matched->fused_batch_norm = base.fused_batch_norm;
-  matched->relu = node;
+  matched->activation = node;
   matched->epsilon = base.epsilon;
 
   return true;
@@ -511,19 +520,19 @@ void AddFusedConv2DNode(
 }
 
 void AddFusedConv2DNode(
-    const RemapperContext& ctx, const Conv2DWithBiasAddAndRelu& matched,
+    const RemapperContext& ctx, const Conv2DWithBiasAddAndActivation& matched,
     GraphDef* optimized_graph,
     absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
   DCHECK(IsDeviceCompatible(ctx, matched))
       << "Unsupported fused Conv2D pattern";
 
-  VLOG(2) << "Fuse Conv2D with BiasAdd and Relu: "
-          << " relu=" << matched.relu->name()
+  VLOG(2) << "Fuse Conv2D with BiasAdd and " << matched.activation->op() << ":"
+          << " activation=" << matched.activation->name()
           << " bias_add=" << matched.bias_add->name()
           << " conv2d=" << matched.conv2d->name();
 
   NodeDef* fused_conv2d = optimized_graph->add_node();
-  fused_conv2d->set_name(matched.relu->name());
+  fused_conv2d->set_name(matched.activation->name());
   fused_conv2d->set_op(kFusedConv2D);
   fused_conv2d->set_device(matched.conv2d->device());
   fused_conv2d->add_input(matched.conv2d->input(0));    // 0: input
@@ -531,9 +540,9 @@ void AddFusedConv2DNode(
   fused_conv2d->add_input(matched.bias_add->input(1));  // 2: bias
 
   CopyConv2DAttributes(matched.conv2d, fused_conv2d);
-  SetFusedConv2DAttributes(fused_conv2d, {"BiasAdd", "Relu"});
+  SetFusedConv2DAttributes(fused_conv2d, {"BiasAdd", matched.activation->op()});
 
-  invalidated_nodes->insert(matched.relu);
+  invalidated_nodes->insert(matched.activation);
   invalidated_nodes->insert(matched.bias_add);
   invalidated_nodes->insert(matched.conv2d);
 }
@@ -601,15 +610,15 @@ void AddFusedConv2DNode(
 }
 
 void AddFusedConv2DNode(
-    const Conv2DWithBatchNormAndRelu& matched, GraphDef* optimized_graph,
+    const Conv2DWithBatchNormAndActivation& matched, GraphDef* optimized_graph,
     absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
-  VLOG(2) << "Fuse Conv2D with BatchNorm and Relu: relu="
-          << matched.relu->name()
+  VLOG(2) << "Fuse Conv2D with BatchNorm and " << matched.activation->op()
+          << ": activation=" << matched.activation->name()
           << " batch_norm=" << matched.fused_batch_norm->name()
           << " conv2d=" << matched.conv2d->name();
 
   NodeDef* fused_conv2d = optimized_graph->add_node();
-  fused_conv2d->set_name(matched.relu->name());
+  fused_conv2d->set_name(matched.activation->name());
   fused_conv2d->set_op(kFusedConv2D);
   fused_conv2d->set_device(matched.conv2d->device());
   fused_conv2d->add_input(matched.conv2d->input(0));            // 0: input
@@ -620,10 +629,11 @@ void AddFusedConv2DNode(
   fused_conv2d->add_input(matched.fused_batch_norm->input(4));  // 5: variance
 
   CopyConv2DAttributes(matched.conv2d, fused_conv2d);
-  SetFusedConv2DAttributes(fused_conv2d, {"FusedBatchNorm", "Relu"},
+  SetFusedConv2DAttributes(fused_conv2d,
+                           {"FusedBatchNorm", matched.activation->op()},
                            /*num_args=*/4, /*epsilon=*/matched.epsilon);
 
-  invalidated_nodes->insert(matched.relu);
+  invalidated_nodes->insert(matched.activation);
   invalidated_nodes->insert(matched.fused_batch_norm);
   invalidated_nodes->insert(matched.conv2d);
 }
@@ -778,9 +788,9 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   // clang-format off
   FusedBatchNorm              fused_batch_norm;
   Conv2DWithBiasAdd           conv2d_with_bias;
-  Conv2DWithBiasAddAndRelu    conv2d_with_bias_and_relu;
+  Conv2DWithBiasAddAndActivation    conv2d_with_bias_and_activation;
   Conv2DWithBatchNorm         conv2d_with_batch_norm;
-  Conv2DWithBatchNormAndRelu  conv2d_with_batch_norm_and_relu;
+  Conv2DWithBatchNormAndActivation  conv2d_with_batch_norm_and_activation;
   Conv2DWithSqueezeAndBiasAdd conv2d_with_squeeze_and_bias;
   // clang-format on
 
@@ -795,7 +805,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   RemapperContext ctx(topo_sorted_item);
 
   // Skip nodes that were invalidated by a remapper, e.g. do not process BiasAdd
-  // and Relu nodes that were fused into a Conv2D node.
+  // and Activation nodes that were fused into a Conv2D node.
   absl::flat_hash_set<const NodeDef*> invalidated_nodes;
 
   optimized_graph->mutable_node()->Reserve(topo_sorted_item.graph.node_size());
@@ -810,9 +820,10 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
       continue;
     }
 
-    // Remap Conv2D+BiasAdd+Relu into the _FusedConv2D.
-    if (FindConv2DWithBiasAndRelu(ctx, &node, &conv2d_with_bias_and_relu)) {
-      AddFusedConv2DNode(ctx, conv2d_with_bias_and_relu, optimized_graph,
+    // Remap Conv2D+BiasAdd+Activation into the _FusedConv2D.
+    if (FindConv2DWithBiasAndActivation(ctx, &node,
+                                        &conv2d_with_bias_and_activation)) {
+      AddFusedConv2DNode(ctx, conv2d_with_bias_and_activation, optimized_graph,
                          &invalidated_nodes);
       continue;
     }
@@ -835,10 +846,10 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
       continue;
     }
 
-    // Remap Conv2D+FusedBatchNorm+Relu into the _FusedConv2D;
-    if (FindConv2DWithBatchNormAndRelu(ctx, &node,
-                                       &conv2d_with_batch_norm_and_relu)) {
-      AddFusedConv2DNode(conv2d_with_batch_norm_and_relu, optimized_graph,
+    // Remap Conv2D+FusedBatchNorm+Activation into the _FusedConv2D;
+    if (FindConv2DWithBatchNormAndActivation(
+            ctx, &node, &conv2d_with_batch_norm_and_activation)) {
+      AddFusedConv2DNode(conv2d_with_batch_norm_and_activation, optimized_graph,
                          &invalidated_nodes);
       continue;
     }

@@ -529,6 +529,25 @@ TEST_F(OperatorTest, BuiltinSparseToDense) {
   EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
 }
 
+TEST_F(OperatorTest, VersioningSpareToDense) {
+  SparseToDenseOperator op;
+  op.inputs = {"indices", "output_shape", "input_values", "default_value"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model int32_model;
+  Array& int32_array = int32_model.GetOrCreateArray(op.inputs[2]);
+  int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
+  EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
+
+  Model int64_model;
+  Array& int64_array = int64_model.GetOrCreateArray(op.inputs[2]);
+  int64_array.data_type = ArrayDataType::kInt64;
+  OperatorSignature int64_signature = {.op = &op, .model = &int64_model};
+  EXPECT_EQ(base_op->GetVersion(int64_signature), 2);
+}
+
 TEST_F(OperatorTest, BuiltinPack) {
   PackOperator op;
   op.values_count = 3;
@@ -712,6 +731,13 @@ TEST_F(OperatorTest, BuiltinMatrixDiag) {
           GetOperator("MATRIX_DIAG", OperatorType::kMatrixDiag), op);
 }
 
+TEST_F(OperatorTest, BuiltinMatrixSetDiag) {
+  MatrixSetDiagOperator op;
+  std::unique_ptr<toco::MatrixSetDiagOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag), op);
+}
+
 // Test version for a simple Op with 2 versions and the input type controls the
 // version.
 template <typename Op>
@@ -810,6 +836,18 @@ TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
 
 TEST_F(OperatorTest, VersioningSliceTest) {
   SimpleVersioningTest<SliceOperator>();
+
+  // Check that a string input results in a version 3 op.
+  SliceOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model string_model;
+  Array& string_array = string_model.GetOrCreateArray(op.inputs[0]);
+  string_array.data_type = ArrayDataType::kString;
+  OperatorSignature string_signature = {.op = &op, .model = &string_model};
+  EXPECT_EQ(base_op->GetVersion(string_signature), 3);
 }
 
 TEST_F(OperatorTest, VersioningLogisticTest) {

@@ -23,14 +23,15 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
+@test_util.with_control_flow_v2
 class CondTest(xla_test.XLATestCase):
 
-  @test_util.enable_control_flow_v2
   def testCondAndTensorArrayInDefun(self):
     with self.cached_session(), self.test_scope():
       xla_context = control_flow_ops.XLAControlFlowContext()
@@ -47,6 +48,34 @@ class CondTest(xla_test.XLATestCase):
 
       output_t = f()
       self.assertAllEqual(self.evaluate(output_t), [5.])
+
+      xla_context.Exit()
+
+  def testCondConstPropagation(self):
+    with self.cached_session() as sess, self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+
+      x = array_ops.placeholder(dtypes.float32)
+      p = array_ops.placeholder(dtypes.int32)
+
+      # TODO(b/129021699): Wrapping this in a tf.function does not work.
+      def if_true():
+        # This emits a StridedSlice op which expects the index to be a
+        # compile-time const.
+        return x[p]
+
+      def if_false():
+        return 5.
+
+      output = control_flow_ops.cond(
+          constant_op.constant(True), if_true, if_false)
+
+      self.assertAllEqual(
+          sess.run(output, feed_dict={
+              x: [0., 1., 2.],
+              p: 1
+          }), 1.)
 
       xla_context.Exit()
 

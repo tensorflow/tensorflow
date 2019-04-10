@@ -35,6 +35,7 @@ TF_SRC_DIR = "tensorflow"
 VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
+TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
 DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel" % TF_SRC_DIR
 GPU_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-gpu" % TF_SRC_DIR
 CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-mkl" % TF_SRC_DIR
@@ -218,6 +219,16 @@ def update_readme(old_version, new_version):
                          "%s-" % pep_440_str, README_MD)
 
 
+def update_tensorflow_bzl(old_version, new_version):
+  """Update tensorflow.bzl."""
+  old_mmp = "%s.%s.%s" % (old_version.major, old_version.minor,
+                          old_version.patch)
+  new_mmp = "%s.%s.%s" % (new_version.major, new_version.minor,
+                          new_version.patch)
+  replace_string_in_line('VERSION = "%s"' % old_mmp,
+                         'VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
+
+
 def major_minor_change(old_version, new_version):
   """Check if a major or minor change occurred."""
   major_mismatch = old_version.major != new_version.major
@@ -323,6 +334,7 @@ def main():
   update_setup_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
   update_dockerfiles(old_version, new_version)
+  update_tensorflow_bzl(old_version, new_version)
 
   # Print transition details.
   print("Major: %s -> %s" % (old_version.major, new_version.major))

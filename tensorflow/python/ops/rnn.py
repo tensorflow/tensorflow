@@ -256,6 +256,7 @@ def _rnn_step(
     """Run RNN step.  Pass through either no or some past state."""
     new_output, new_state = call_cell()
 
+    nest.assert_same_structure(zero_output, new_output)
     nest.assert_same_structure(state, new_state)
 
     flat_new_state = nest.flatten(new_state)
@@ -274,6 +275,7 @@ def _rnn_step(
     # steps.  This is faster when max_seq_len is equal to the number of unrolls
     # (which is typical for dynamic_rnn).
     new_output, new_state = call_cell()
+    nest.assert_same_structure(zero_output, new_output)
     nest.assert_same_structure(state, new_state)
     new_state = nest.flatten(new_state)
     new_output = nest.flatten(new_output)
@@ -1401,7 +1403,10 @@ def static_rnn(cell,
     return (outputs, state)
 
 
-@tf_export("nn.static_state_saving_rnn")
+@deprecation.deprecated(
+    None, "Please use `keras.layers.RNN(cell, stateful=True)`, "
+    "which is equivalent to this API")
+@tf_export(v1=["nn.static_state_saving_rnn"])
 def static_state_saving_rnn(cell,
                             inputs,
                             state_saver,

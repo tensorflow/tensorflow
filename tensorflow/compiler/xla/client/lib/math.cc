@@ -639,4 +639,9 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
   });
 }
 
+XlaOp Logistic(XlaOp x) {
+  auto half = xla::ScalarLike(x, 0.5);
+  return half + half * xla::Tanh(half * x);
+}
+
 }  // namespace xla

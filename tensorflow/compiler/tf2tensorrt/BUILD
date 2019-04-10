@@ -15,7 +15,6 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
-    "tf_custom_op_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
@@ -174,6 +173,7 @@ tf_cuda_library(
     name = "trt_resources",
     srcs = [
         "utils/trt_int8_calibrator.cc",
+        "utils/trt_lru_cache.cc",
         "utils/trt_resources.cc",
     ],
     hdrs = [
@@ -288,10 +288,13 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
+        ":trt_op_kernels",
+        ":trt_op_libs",
         ":trt_conversion",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",

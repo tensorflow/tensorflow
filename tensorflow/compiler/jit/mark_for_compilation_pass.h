@@ -41,9 +41,8 @@ class MarkForCompilationPass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
-  Status RunImpl(const GraphOptimizationPassOptions& options,
-                 const std::function<bool(const Node*, const DeviceType&)>&
-                     is_compilable_fn = {});
+  Status RunForTest(const GraphOptimizationPassOptions& options,
+                    bool disable_deadness_analysis);
 
   friend class MarkForCompilationPassTestHelper;
 };

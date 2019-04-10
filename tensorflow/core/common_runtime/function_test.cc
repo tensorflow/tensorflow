@@ -145,8 +145,7 @@ TEST_F(FunctionTest, WXPlusB) {
 
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
-  void Init(const std::vector<FunctionDef>& flib,
-            thread::ThreadPool* default_thread_pool = nullptr) {
+  void Init(const std::vector<FunctionDef>& flib) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -161,7 +160,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, default_thread_pool, nullptr /* cluster_flr */));
+        opts));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -404,17 +403,17 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 }
 
-TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDef) {
   Init({});
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();
   *proto.add_function() = test::function::XTimesFour();
   *proto.add_function() = test::function::XTimes16();
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+  std::unique_ptr<FunctionLibraryDefinition> lib_def(
       new FunctionLibraryDefinition(OpRegistry::Global(), proto));
 
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.overlay_lib = overlay_lib.get();
+  options.lib_def = lib_def.get();
 
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
@@ -434,19 +433,16 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
                                 {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 
-  // Ensure that the use of the overlay has not leaked into the base library.
+  // Ensure that the function is still not installed in the base library.
   HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
                              {} /* options */, {x}, {&y}),
            "Not found: Function XTimesTwo is not defined.");
 }
 
-TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLibAndDelayedInstantiation) {
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDefAndDelayedInstantiation) {
   using FDH = ::tensorflow::FunctionDefHelper;
 
   Init({});
-
-  FunctionDef xt4_override = test::function::XTimesTwo();
-  xt4_override.mutable_signature()->set_name("XTimesFour");
 
   // Call XTimesFour via PartitionedCall which delays functions instantiation
   // to the first call to Compute/ComputeAsync.
@@ -465,28 +461,30 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLibAndDelayedInstantiation) {
   *lib.add_function() = test::function::XTimesTwo();
   *lib.add_function() = test::function::XTimesFour();
   *lib.add_function() = my_xt4;
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+  std::unique_ptr<FunctionLibraryDefinition> lib_def(
       new FunctionLibraryDefinition(OpRegistry::Global(), lib));
 
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.overlay_lib = overlay_lib.get();
+  options.lib_def = lib_def.get();
 
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
 
-  // When we instantiate with default library overlay we should get x*4.
+  // When we instantiate with `options` we should get x*4.
   TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
 
-  // Overlay library that overrides default XTimesFour with XTimesTwo body.
+  // Create options that override XTimesFour body with XTimesTwo body.
+  FunctionDef xt4_override = test::function::XTimesTwo();
+  xt4_override.mutable_signature()->set_name("XTimesFour");
   FunctionDefLibrary lib_override;
   *lib_override.add_function() = xt4_override;
   *lib_override.add_function() = my_xt4;
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib_override(
+  std::unique_ptr<FunctionLibraryDefinition> lib_def_override(
       new FunctionLibraryDefinition(OpRegistry::Global(), lib_override));
+  options.lib_def = lib_def_override.get();
 
-  // We should call the XTimesFour override which is actually x*2.
-  options.overlay_lib = overlay_lib_override.get();
+  // When we instantiate with `options` we should get x*2.
   TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }

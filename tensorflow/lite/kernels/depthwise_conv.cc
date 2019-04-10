@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/gemm_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -66,6 +67,7 @@ struct OpData {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  gemm_support::IncrementUsageCounter(context);
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
@@ -73,6 +75,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
+  gemm_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -230,17 +233,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
 
-  void (*depthwise_conv)(const DepthwiseParams&, const RuntimeShape&,
-                         const uint8*, const RuntimeShape&, const uint8*,
-                         const RuntimeShape&, const int32*, const RuntimeShape&,
-                         uint8*);
-
-  if (kernel_type == kReference) {
-    depthwise_conv = &reference_ops::DepthwiseConv;
-  } else {
-    depthwise_conv = &optimized_ops::DepthwiseConv;
-  }
-
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -257,11 +249,20 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.output_shift = -data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  depthwise_conv(op_params, GetTensorShape(input),
-                 GetTensorData<uint8_t>(input), GetTensorShape(filter),
-                 GetTensorData<uint8_t>(filter), GetTensorShape(bias),
-                 GetTensorData<int32_t>(bias), GetTensorShape(output),
-                 GetTensorData<uint8_t>(output));
+  if (kernel_type == kReference) {
+    reference_ops::DepthwiseConv(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  } else {
+    gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+    optimized_ops::DepthwiseConv(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<uint8_t>(output), gemm_context);
+  }
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
@@ -278,7 +279,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
   op_params.depth_multiplier = params->depth_multiplier;
-  op_params.input_offset = input->params.zero_point;
+  op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = 0;
   op_params.output_offset = output->params.zero_point;
 

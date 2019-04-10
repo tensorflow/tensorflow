@@ -134,7 +134,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                         if init_from_fn else [initial_value]) as name:
       # pylint: disable=protected-access
       with ops.init_scope():
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         unique_id = "%s_%d" % (handle_name, ops.uid())
         shared_name = context.shared_name(unique_id)
       with ops.name_scope("Initializer"), ops.device(None):
@@ -316,12 +316,16 @@ class Function(object):
         return weak_wrapped_fn().__wrapped__(*args, **kwds)
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
+    return self._defun(tf_decorator.make_decorator(
+        self._python_function,
+        wrapped_fn,
+        decorator_argspec=self._function_spec.fullargspec))
+
+  def _defun(self, fn):
+    """Returns a defun generated from the input function."""
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(
-            self._python_function,
-            wrapped_fn,
-            decorator_argspec=self._function_spec.fullargspec),
+        fn,
         input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)
@@ -399,6 +403,7 @@ class Function(object):
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
+    context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
     if self._created_variables:
@@ -762,7 +767,8 @@ def function(func=None,
   assert (h().numpy() == f(x, y).numpy()).all()
 
   # Data-dependent control flow is also captured in the graph. Supported
-  # control flow statements include `if`, `for`, `break`, `continue`, `return`.
+  # control flow statements include `if`, `for`, `while`, `break`, `continue`,
+  # `return`.
   @tf.function
   def g(x):
     if tf.reduce_sum(x) > 0:
@@ -784,7 +790,13 @@ def function(func=None,
   ```
 
   Note that unlike other TensorFlow operations, we don't convert python
-  numerical inputs to tensors.
+  numerical inputs to tensors. Moreover, a new graph is generated for each
+  distinct python numerical value, for example calling `g(2)` and `g(3)` will
+  generate two new graphs (while only one is generated if you call
+  `g(tf.constant(2))` and `g(tf.constant(3))`). Therefore, python numerical
+  inputs should be restricted to arguments that will have few distinct values,
+  such as hyperparameters like the number of layers in a neural network. This
+  allows TensorFlow to optimize each variant of the neural network.
 
   _Referencing `tf.Variable`s_
 

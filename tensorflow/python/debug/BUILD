@@ -43,11 +43,11 @@ py_library(
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "debug_pip",
+    data = [":grpc_tensorflow_server"],
     deps = [
         ":cli_test_utils",
         ":debug_py",
         ":grpc_debug_test_server",
-        ":grpc_tensorflow_server",
         ":grpc_tensorflow_server_lib",
         ":offline_analyzer_lib",
         ":session_debug_testlib",

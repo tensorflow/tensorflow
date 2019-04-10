@@ -51,6 +51,13 @@ class DatasetOpsTestBase : public ::testing::Test {
   // and value.
   static Status ExpectEqual(const Tensor& a, const Tensor& b);
 
+  // The method validates whether the two tensor vectors have the same tensors.
+  // If `expect_items_equal` is true, the method will only evaluate the two
+  // vectors have the same elements regardless of order.
+  static Status ExpectEqual(std::vector<Tensor> produced_tensors,
+                            std::vector<Tensor> expected_tensors,
+                            bool expect_items_equal);
+
   // Creates a tensor with the specified dtype, shape, and value.
   template <typename T>
   static Tensor CreateTensor(TensorShape input_shape,

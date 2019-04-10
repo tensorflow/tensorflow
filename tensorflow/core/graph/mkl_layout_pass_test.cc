@@ -149,6 +149,7 @@ REGISTER_OP("InputList").Output("o: N * float").Attr("N: int").SetIsStateful();
 REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
 REGISTER_OP("Int32Input").Output("o: int32").SetIsStateful();
 REGISTER_OP("DoubleInput").Output("o: double").SetIsStateful();
+REGISTER_OP("QuantizedInput").Output("o: quint8").SetIsStateful();
 REGISTER_OP("_MklInput").Output("o: uint8").SetIsStateful();
 REGISTER_OP("_MklInput2")
     .Output("o: uint8")
@@ -1239,6 +1240,42 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Positive) {
             "A->D;A:control->DMT/_0:control;A:control->DMT/"
             "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
             "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Const_Input) {
+  InitGraph(
+      "node { name: 'A' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_QUINT8 } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_QUINT8 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Dequantize'"
+      " attr { key: 'T'             value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'          value { s: 'SCALED' } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Const);B(Input);C(Input);D(Dequantize);"
+            "E(Zeta)|A->D;B->D:1;C->D:2;D->E");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Non_SCALED_Mode) {
+  InitGraph(
+      "node { name: 'A' op: 'QuantizedInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Dequantize'"
+      " attr { key: 'T'             value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'          value { s: 'MIN_FIRST' } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(QuantizedInput);B(Input);C(Input);D(Dequantize);"
+            "E(Zeta)|A->D;B->D:1;C->D:2;D->E");
 }
 
 // Rewrite test for _FusedConv2D Op with BiasAdd fusion
@@ -2342,6 +2379,57 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormGrad_Positive) {
             "E->F:4;F->G:1");
 }
 
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormGradV2_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNormGradV2'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Input);"
+            "F(_MklFusedBatchNormGradV2);G(Zeta)|A->F;A->G;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"
+            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"
+            "E->F:4;F->G:1");
+}
+
+// T, U combination is not supported by MKL. Node will not be rewritten
+// into MKL node.
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormGradV2_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'HalfInput'}"
+      "node { name: 'B' op: 'HalfInput'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNormGradV2'"
+      " attr { key: 'T'            value { type: DT_HALF } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
+      " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(HalfInput);B(HalfInput);C(Input);D(Input);E(Input);"
+            "F(FusedBatchNormGradV2);G(Zeta)|A->F;A->G;"
+            "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNorm_Positive) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -2367,6 +2455,56 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNorm_Positive) {
             "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"
             "E->F:4;F->G:1");
 }
+
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNormV2'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Input);"
+            "F(_MklFusedBatchNormV2);G(Zeta)|A->F;A->G;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"
+            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"
+            "E->F:4;F->G:1");
+}
+
+// T, U combination is not supported by MKL. Node will not be rewritten
+// into MKL node.
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'HalfInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNormV2'"
+      " attr { key: 'T'            value { type: DT_HALF } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
+      " input: ['A', 'F'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(HalfInput);B(Input);C(Input);D(Input);E(Input);"
+            "F(FusedBatchNormV2);G(Zeta)|A->F;A->G;"
+            "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
   InitGraph(
@@ -2397,7 +2535,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
       "A:control->DMT/_2:control;A:control->DMT/_3:control;"
       "A:control->DMT/_4:control;A:control->DMT/_5:control;B->H:1;C->H:2;"
       "D->H:3;DMT/_0->H:6;DMT/_1->H:7;DMT/_2->H:8;DMT/_3->H:9;DMT/_4->H:10;"
-      "DMT/_5->H:11;E->H:4;F->H:5;G->I;H->I:1");
+      "DMT/_5->H:11;E->H:4;F->H:5;G->I;H->I:1");  
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -3024,6 +3162,29 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNorm_DeviceTest) {
       "node { name: 'E' op: 'Input'}"
       "node { name: 'F' op: 'FusedBatchNorm'"
       " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F'] }",
+      kGPUDevice);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(Input);E(Input);"
+            "F(FusedBatchNorm);G(Zeta)|A->F;A->G;B->F:1;C->F:2;D->F:3;"
+            "E->F:4;F->G:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_DeviceTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNorm'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'U'            value { type: DT_FLOAT } }"
       " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'epsilon'      value { f: 0.0001 } }"
       " attr { key: 'is_training'  value { b: true } }"

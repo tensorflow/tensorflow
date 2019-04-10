@@ -604,10 +604,9 @@ std::unique_ptr<HloComputation> MakeReduceTestComputation() {
 
 XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
   auto hlo_module = CreateNewVerifiedModule();
-
   auto builder = HloComputation::Builder(TestName());
-  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<int32>({1, 2, 4, 8})));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {32}), 0));
   auto const1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
   auto reduce2 = builder.AddInstruction(HloInstruction::CreateReduce(
@@ -618,7 +617,7 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
                                 HloInstruction::FusionKind::kInput);
 
   EXPECT_TRUE(
-      LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32>(15),
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32>(496),
                              ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 

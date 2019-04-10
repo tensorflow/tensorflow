@@ -78,6 +78,9 @@ from tensorflow.python.keras.layers.core import Lambda
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.keras.layers.core import ActivityRegularization
 
+# Dense Attention layers.
+from tensorflow.python.keras.layers.dense_attention import Attention
+
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
@@ -149,15 +152,17 @@ from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.layers.recurrent import AbstractRNNCell
 from tensorflow.python.keras.layers.recurrent import StackedRNNCells
 from tensorflow.python.keras.layers.recurrent import SimpleRNNCell
-from tensorflow.python.keras.layers.recurrent import GRUCell
-from tensorflow.python.keras.layers.recurrent import LSTMCell
 from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
 
 from tensorflow.python.keras.layers.recurrent import GRU
+from tensorflow.python.keras.layers.recurrent import GRUCell
 from tensorflow.python.keras.layers.recurrent import LSTM
+from tensorflow.python.keras.layers.recurrent import LSTMCell
 from tensorflow.python.keras.layers.recurrent_v2 import GRU as GRU_v2
+from tensorflow.python.keras.layers.recurrent_v2 import GRUCell as GRUCell_v2
 from tensorflow.python.keras.layers.recurrent_v2 import LSTM as LSTM_v2
+from tensorflow.python.keras.layers.recurrent_v2 import LSTMCell as LSTMCell_v2
 
 # Convolutional-recurrent layers.
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D

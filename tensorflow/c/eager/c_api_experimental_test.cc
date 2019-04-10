@@ -18,6 +18,7 @@ limitations under the License.
 #include <string.h>
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -123,6 +124,61 @@ TEST(CAPI, MultipleProfilerSession) {
   TFE_DeleteProfiler(profiler1);
   TFE_DeleteProfiler(profiler2);
   TFE_DeleteProfilerContext(profiler_context);
+}
+
+TEST(CAPI, MonitoringSetGauge) {
+  TFE_MonitoringSetGauge("test/gauge", "label", 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/gauge", metrics->point_set_map.at("test/gauge")->metric_name);
+  EXPECT_EQ(1,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+
+  TFE_MonitoringSetGauge("test/gauge", "label", 5);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(5,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+}
+
+TEST(CAPI, MonitoringAddCounter) {
+  TFE_MonitoringAddCounter("test/counter", "label", 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/counter",
+            metrics->point_set_map.at("test/counter")->metric_name);
+  EXPECT_EQ(
+      1, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+
+  TFE_MonitoringAddCounter("test/counter", "label", 5);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(
+      6, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+}
+
+TEST(CAPI, MonitoringAddSampler) {
+  TFE_MonitoringAddSampler("test/sampler", "label", 1.0);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/sampler",
+            metrics->point_set_map.at("test/sampler")->metric_name);
+  EXPECT_EQ(1.0, metrics->point_set_map.at("test/sampler")
+                     ->points.at(0)
+                     ->histogram_value.sum());
+
+  TFE_MonitoringAddSampler("test/sampler", "label", 5.0);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(6.0, metrics->point_set_map.at("test/sampler")
+                     ->points.at(0)
+                     ->histogram_value.sum());
 }
 
 }  // namespace

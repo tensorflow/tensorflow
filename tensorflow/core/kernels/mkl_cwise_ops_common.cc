@@ -67,17 +67,17 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
                               .Label(mkl_op_registry::kMklOpLabel), \
                           OP<D##Device, F<T>>);
 
-REGISTER5(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,
-          int32, int64);
-REGISTER7(MklBinaryOp, CPU, "_MklSub", functor::sub, float, Eigen::half, double,
-          int32, int64, complex64, complex128);
-REGISTER5(MklBinaryOp, CPU, "_MklMul", functor::mul, float, Eigen::half, double,
-          uint8, int32);
-REGISTER5(MklBinaryOp, CPU, "_MklMaximum", functor::maximum, float, Eigen::half,
-          double, int32, int64);
-REGISTER5(MklBinaryOp, CPU, "_MklSquaredDifference",
-          functor::squared_difference, float, Eigen::half, double, int32,
-          int64);
+REGISTER6(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,
+          int32, int64, bfloat16);
+REGISTER8(MklBinaryOp, CPU, "_MklSub", functor::sub, float, Eigen::half, double,
+          int32, int64, complex64, complex128, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklMul", functor::mul, float, Eigen::half, double,
+          uint8, int32, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklMaximum", functor::maximum, float, Eigen::half,
+          double, int32, int64, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklSquaredDifference",
+          functor::squared_difference, float, Eigen::half, double, int32, int64,
+          bfloat16);
 
 #undef REGISTER
 #pragma pop_macro("REGISTER")

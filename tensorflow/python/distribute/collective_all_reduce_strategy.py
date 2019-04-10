@@ -324,15 +324,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, *args, **kwargs)
 
-  def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(dataset, self._input_workers,
-                                     self._num_replicas_in_sync)
-
-  def _make_input_fn_iterator(
-      self,
-      input_fn,
-      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    """Distributes the dataset to each local GPU."""
+  def _make_input_context(self):
     if self._cluster_spec is None:
       input_pipeline_id = 0
     else:
@@ -342,7 +334,21 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_input_pipelines=self._num_workers,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
+    return input_context
 
+  def _make_dataset_iterator(self, dataset):
+    """Distributes the dataset to each local GPU."""
+    input_context = self._make_input_context()
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._num_replicas_in_sync,
+                                     input_context=input_context)
+
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    """Distributes the input function to each local GPU."""
+    input_context = self._make_input_context()
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, [input_context])
 

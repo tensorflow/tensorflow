@@ -31,7 +31,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only
+@test_util.run_v1_only("contrib code not supported in TF2.0")
 class DynamicDecodeRNNTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, maximum_iterations=None):

@@ -472,7 +472,7 @@ class TestLargeBeamStep(test.TestCase):
     self.assertAllEqual(next_state_.lengths[:, -3:], [[0, 0, 0], [0, 0, 0]])
 
 
-@test_util.run_v1_only
+@test_util.run_v1_only('contrib code not supported in TF2.0')
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention,

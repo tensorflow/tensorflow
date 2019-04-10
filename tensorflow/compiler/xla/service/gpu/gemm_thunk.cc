@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -28,25 +31,16 @@ namespace xla {
 namespace gpu {
 
 namespace {
+using MatrixDescriptor = gemm_thunk_internal::MatrixDescriptor;
+using GemmCacheKey =
+    std::tuple<PrimitiveType, bool, int64, int64, bool, int64, int64, double,
+               double, se::blas::ComputationType, se::StreamExecutor*>;
 
-// This struct contains the metadata of a matrix, e.g., its base address and
-// dimensions.
-struct MatrixDescriptor {
-  MatrixDescriptor(se::DeviceMemoryBase matrix_data, bool needs_transpose,
-                   int64 matrix_num_rows, int64 matrix_num_cols,
-                   int64 matrix_batch_size)
-      : data(matrix_data),
-        transpose(needs_transpose),
-        num_rows(matrix_num_rows),
-        num_cols(matrix_num_cols),
-        batch_size(matrix_batch_size) {}
-
-  se::DeviceMemoryBase data;
-  bool transpose;  // Whether this matrix needs to be transposed.
-  int64 num_rows;
-  int64 num_cols;
-  int64 batch_size;
-};
+tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
+auto& autotune_cache GUARDED_BY(autotune_cache_mu) =
+    *new absl::flat_hash_map<GemmCacheKey, se::blas::AlgorithmType>();
+int64 cache_hits GUARDED_BY(autotune_cache_mu) = 0;
+int64 cache_misses GUARDED_BY(autotune_cache_mu) = 0;
 
 // Performs a gemm call without an explicit algorithm on lhs_matrix and
 // rhs_matrix, and stores the result to output_matrix.
@@ -154,7 +148,7 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
 // than sm_50 -- in both cases, cublas doesn't support gemm-with-algorithm at
 // all.
 template <typename Element>
-StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
+StatusOr<se::blas::AlgorithmType> DoUncachedGemmAutotune(
     MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
     MatrixDescriptor output_matrix, double alpha, double beta,
     se::blas::ComputationType computation_type, se::Stream* stream) {
@@ -212,6 +206,7 @@ auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
       LOG(FATAL) << "Unsupported type.";
   }
 }
+
 auto GetGemmWithAlgorithmFn(PrimitiveType type)
     -> decltype(&DoGemmWithAlgorithm<float>) {
   switch (type) {
@@ -229,6 +224,54 @@ auto GetGemmWithAlgorithmFn(PrimitiveType type)
       LOG(FATAL) << "Unsupported type.";
   }
 }
+
+template <typename Element>
+StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
+    PrimitiveType type, MatrixDescriptor lhs_matrix,
+    MatrixDescriptor rhs_matrix, MatrixDescriptor output_matrix, double alpha,
+    double beta, se::blas::ComputationType computation_type,
+    se::Stream* stream) {
+  tensorflow::mutex_lock lock = LockGpu(stream->parent());
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
+
+  GemmCacheKey key = std::make_tuple(
+      type, lhs_matrix.transpose, lhs_matrix.num_rows, lhs_matrix.num_cols,
+      rhs_matrix.transpose, rhs_matrix.num_rows, rhs_matrix.num_cols, alpha,
+      beta, computation_type, stream->parent());
+  {
+    tensorflow::mutex_lock lock(autotune_cache_mu);
+    auto it = autotune_cache.find(key);
+    int64 autotuning_requests = cache_hits + cache_misses;
+    if (autotuning_requests && autotuning_requests % 10 == 0) {
+      VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
+              << autotuning_requests;
+    }
+
+    if (it != autotune_cache.end()) {
+      cache_hits++;
+      VLOG(4) << "Autotuning cache hit, using algorithm: " << it->second;
+      return it->second;
+    }
+    cache_misses++;
+    VLOG(4) << "Autotuning cache miss";
+  }
+
+  auto result_or =
+      DoUncachedGemmAutotune<Element>(lhs_matrix, rhs_matrix, output_matrix,
+                                      alpha, beta, computation_type, stream);
+  if (result_or.ok()) {
+    tensorflow::mutex_lock lock(autotune_cache_mu);
+
+    // Due to the lock we got from LockGpu we know that no other thread
+    // is autotuning concurrently with us on this GPU, and we know that this
+    // CHECK will not race.
+    CHECK(autotune_cache.emplace(key, result_or.ValueOrDie()).second);
+  }
+  return result_or;
+}
+
 auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
   switch (type) {
     case F16:
@@ -307,6 +350,70 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       alpha_(alpha),
       beta_(beta),
       implements_whole_instruction_(implements_whole_instruction) {}
+
+absl::optional<se::blas::AlgorithmType> GemmThunk::GetGemmAlgorithm(
+    int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+    MatrixDescriptor output_matrix, se::DeviceMemoryBase output_data,
+    se::Stream* stream) {
+  PrimitiveType element_type = output_shape_.element_type();
+  se::blas::ComputationType computation_type =
+      GetBlasComputationType(element_type);
+
+  // TODO(b/112111608): Implement auto tune for batched gemm.
+  if (batch_size != 1) {
+    return absl::nullopt;
+  }
+
+  if (GetModuleConfig().debug_options().xla_gpu_disable_autotune()) {
+    VLOG(2) << "Auto-tune disabled, using generic algorithm.";
+    return absl::nullopt;
+  }
+
+  const string& device_name = stream->parent()->GetDeviceDescription().name();
+  auto autotune_it = autotune_results_.find(device_name);
+  if (autotune_it == autotune_results_.end()) {
+    VLOG(3) << "Starting autotune of GemmThunk " << GetThunkName();
+
+    // If the output buffer already contains a bias then autotune into a
+    // scratch buffer. This avoids overwriting the bias buffer. The scratch
+    // buffer may contain arbitrary garbage values.
+    se::DeviceMemoryBase scratch_data = output_data;
+    std::unique_ptr<se::TemporaryDeviceMemory<char>> scratch_mem;
+    if (beta_ != 0.0) {
+      auto temp_status = stream->AllocateTemporaryArray<char>(
+          ShapeUtil::ByteSizeOf(output_shape_));
+      if (!temp_status.ok()) {
+        return false;
+      }
+      scratch_mem = std::move(temp_status).ValueOrDie();
+      scratch_data = scratch_mem->device_memory();
+    }
+    const MatrixDescriptor scratch_descriptor(
+        scratch_data, false, output_matrix.num_rows, output_matrix.num_cols,
+        batch_size);
+
+    StatusOr<se::blas::AlgorithmType> best_algorithm = GetGemmAutotuneFn(
+        element_type)(element_type, lhs_matrix, rhs_matrix, scratch_descriptor,
+                      alpha_, beta_, computation_type, stream);
+
+    autotune_it = autotune_results_.insert({device_name, best_algorithm}).first;
+
+    if (autotune_it->second.ok()) {
+      VLOG(2) << "Autotune on GemmThunk " << GetThunkName()
+              << " successful; best algorithm is "
+              << best_algorithm.ValueOrDie();
+    } else {
+      VLOG(2) << "Autotune on GemmThunk " << GetThunkName()
+              << " unsuccessful.  Will use generic gemm.";
+    }
+  }
+
+  if (autotune_it->second.ok()) {
+    return autotune_it->second.ValueOrDie();
+  }
+
+  return absl::nullopt;
+}
 
 Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                   se::Stream* stream,
@@ -396,71 +503,21 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     PrimitiveType element_type = output_shape_.element_type();
     se::blas::ComputationType computation_type =
         GetBlasComputationType(element_type);
+    absl::optional<se::blas::AlgorithmType> best_algorithm = GetGemmAlgorithm(
+        batch_size, lhs_matrix, rhs_matrix, output_matrix, output_data, stream);
 
-    // TODO(b/112111608): Implement auto tune for batched gemm.
-    if (batch_size != 1) {
-      return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
-                                     alpha_, beta_, stream);
-    }
-
-    auto thunk_name = [&] {
-      return hlo_instruction() != nullptr ? hlo_instruction()->ToString()
-                                          : "<null>";
-    };
-
-    const string& device_name = stream->parent()->GetDeviceDescription().name();
-    auto autotune_it = autotune_results_.find(device_name);
-    if (autotune_it == autotune_results_.end()) {
-      VLOG(3) << "Starting autotune of GemmThunk " << thunk_name();
-
-      // If the output buffer already contains a bias then autotune into a
-      // scratch buffer. This avoids overwriting the bias buffer. The scratch
-      // buffer may contain arbitrary garbage values.
-      se::DeviceMemoryBase scratch_data = output_data;
-      std::unique_ptr<se::TemporaryDeviceMemory<char>> scratch_mem;
-      if (beta_ != 0.0) {
-        auto temp_status = stream->AllocateTemporaryArray<char>(
-            ShapeUtil::ByteSizeOf(output_shape_));
-        if (!temp_status.ok()) {
-          return false;
-        }
-        scratch_mem = std::move(temp_status).ValueOrDie();
-        scratch_data = scratch_mem->device_memory();
-      }
-      const MatrixDescriptor scratch_descriptor(
-          scratch_data, false, output_matrix.num_rows, output_matrix.num_cols,
-          batch_size);
-
-      StatusOr<se::blas::AlgorithmType> best_algorithm = GetGemmAutotuneFn(
-          element_type)(lhs_matrix, rhs_matrix, scratch_descriptor, alpha_,
-                        beta_, computation_type, stream);
-      autotune_it =
-          autotune_results_.insert({device_name, best_algorithm}).first;
-
-      if (autotune_it->second.ok()) {
-        VLOG(2) << "Autotune on GemmThunk " << thunk_name()
-                << " successful; best algorithm is "
-                << best_algorithm.ValueOrDie();
-      } else {
-        VLOG(2) << "Autotune on GemmThunk " << thunk_name()
-                << " unsuccessful.  Will use generic gemm.";
-      }
-    }
-
-    const StatusOr<se::blas::AlgorithmType>& best_algorithm =
-        autotune_it->second;
-    if (best_algorithm.ok()) {
-      auto algorithm = best_algorithm.ValueOrDie();
+    if (best_algorithm.has_value()) {
+      auto algorithm = best_algorithm.value();
       VLOG(2) << "Using algorithm " << algorithm
-              << " chosen by autotuning on GemmThunk " << thunk_name();
+              << " chosen by autotuning on GemmThunk " << GetThunkName();
       return GetGemmWithAlgorithmFn(element_type)(
           lhs_matrix, rhs_matrix, output_matrix, alpha_, beta_,
           computation_type, algorithm, stream,
           /*output_profile_result=*/nullptr);
     }
 
-    // Autotune will fail when CUDA 8 and GPU sm_50 or older are used.
-    // Use the older Gemm API in this case.
+    // Autotune may fail for various reasons (e.g. when when CUDA 8 and GPU
+    // sm_50 or older are used).  Use the older Gemm API in these case.
     return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
                                    alpha_, beta_, stream);
   };

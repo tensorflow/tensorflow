@@ -46,6 +46,14 @@ enum CollectiveType {
   UNDEFINED_COLLECTIVE,
 };
 
+// Some collective op implementations require runtime group configuration from
+// the OpKernel.  Currently, this struct is used to set communicator key for
+// NCCL-based collective implementation.
+struct CollGroupRuntimeDetails {
+  string communicator_key;  // for communicator-based techniques e.g. NCCL
+  string ToString() const;
+};
+
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
@@ -54,6 +62,7 @@ struct CollGroupParams {
   int32 group_size;
   DeviceType device_type;
   int32 num_tasks;  // number of distinct tasks in group
+  CollGroupRuntimeDetails runtime_details;
   string ToString() const;
   CollGroupParams()
       : group_key(0), group_size(0), device_type(DEVICE_CPU), num_tasks(0) {}
@@ -93,8 +102,6 @@ struct CollInstanceParams {
   // If passed in to GPUOptions in ConfigProto, defines a good ring order for
   // GPUs.  Assumes same GPU configuration at each worker.
   string gpu_ring_order = "";
-  // Valid when using a communicator-based collective mechanism, e.g. NCCL.
-  string communicator_key;
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -383,13 +390,12 @@ class CollectiveImplementationInterface {
   // object.
   virtual Status InitializeCollectiveContext(CollectiveContext* col_ctx) = 0;
 
-  // Initializes instance params at the beginning of `CompleteInstanceLocal()`,
-  // unlike `InitializeCollectiveParams` which is called at the end.  This
-  // function is called before all devices in the instance are discovered, and
-  // may be used to broadcast data via the shared `InstanceRec` object in
-  // collective param resolution to all devices.
-  virtual Status InitializeInstanceBeforeGroupDiscovery(
-      CollectiveParams* col_params) = 0;
+  // Performs collective implementation specific group initialization.  The
+  // intention is to do group-specific initialization of runtime details for the
+  // collective implementation.  Currently used only to set `communicator_key`
+  // in techniques which use a communicator for distributed collectives (NCCL).
+  virtual Status InitializeCollectiveGroupRuntimeDetails(
+      CollGroupRuntimeDetails* col_group_runtime_details) = 0;
 
   // Processes and moves data according to the logic of this Collective
   // implementation.  Relies on appropriate initialization of op-specific

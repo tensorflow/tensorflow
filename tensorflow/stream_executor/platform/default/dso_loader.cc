@@ -47,7 +47,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
                               "'; dlerror: ", status.error_message());
 #if !defined(PLATFORM_WINDOWS)
   if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
-    message += absl::StrCat("; LD_LIRARY_PATH: ", ld_library_path);
+    message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
   LOG(INFO) << message;

@@ -27,13 +27,16 @@ from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
@@ -537,29 +540,17 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testPostTrainingCalibrateAndQuantize(self):
     np.random.seed(0)
-    # Create a mobilenet like model.
-    output_channel = 16
-    depth_multiplier = 1
-    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3))
+    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3),
+                                name='input')
     conv = nn_ops.conv2d(
         inp,
-        filter=array_ops.zeros([3, 3, 3, output_channel]),
+        filter=array_ops.ones([3, 3, 3, 16]),
         strides=[1, 1, 1, 1],
         padding='SAME')
-    dconv = nn_ops.depthwise_conv2d_native(
-        conv,
-        filter=array_ops.zeros(
-            [16, 16, output_channel, output_channel * depth_multiplier]),
-        strides=[1, 1, 1, 1],
-        padding='SAME')
-    pool = nn_ops.pool(
-        dconv, window_shape=[2, 2], pooling_type='AVG', padding='SAME')
-    max_pool = nn_ops.pool(
-        pool, window_shape=[2, 2], pooling_type='MAX', padding='SAME')
-    output = nn_ops.softmax(max_pool)
+    output = nn_ops.relu(conv, name='output')
 
     def calibration_gen():
-      for _ in range(10):
+      for _ in range(5):
         yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
 
     sess = session.Session()
@@ -577,6 +568,62 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         calibration_gen)
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
+
+    # The default input and output types should be float.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  def testPostTrainingCalibrateAndQuantizeInt8Inputs(self):
+    np.random.seed(0)
+    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3),
+                                name='input')
+    conv = nn_ops.conv2d(
+        inp,
+        filter=array_ops.ones([3, 3, 3, 16]),
+        strides=[1, 1, 1, 1],
+        padding='SAME')
+    output = nn_ops.relu(conv, name='output')
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
+
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized weights model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.inference_input_type = lite_constants.INT8
+    quantized_converter.inference_output_type = lite_constants.INT8
+    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
+    quantized_converter.representative_dataset = lite.RepresentativeDataset(
+        calibration_gen)
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # The input and output types should be int8.
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual(np.int8, input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual(np.int8, output_details[0]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
@@ -625,6 +672,49 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2.0, interpreter.get_tensor(output_details[1]['index']))
     self.assertEqual(3.0, interpreter.get_tensor(output_details[2]['index']))
     self.assertEqual(4.0, interpreter.get_tensor(output_details[3]['index']))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFunctions(self):
+    """Tests tf.function in 1.X."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = variables.Variable(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      output_node = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+      sess.run(variables.variables_initializer([variable_node]))
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [placeholder],
+                                                  [output_node])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('input', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output_node', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
 
 
 @test_util.run_v1_only('b/120545219')
@@ -1020,16 +1110,33 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+class MyAddLayer(keras.layers.Layer):
+
+  def __init__(self, increment, **kwargs):
+    super(MyAddLayer, self).__init__(**kwargs)
+    self._increment = increment
+
+  def call(self, inputs):
+    return inputs + self._increment
+
+  def get_config(self):
+    config = super(MyAddLayer, self).get_config()
+    config['increment'] = self._increment
+    return config
+
+
 @test_util.run_v1_only('b/120545219')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):
     keras.backend.clear_session()
 
-  def _getSequentialModel(self):
+  def _getSequentialModel(self, include_custom_layer=False):
     with session.Session().as_default():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
+      if include_custom_layer:
+        model.add(MyAddLayer(1.0))
       model.add(keras.layers.RepeatVector(3))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
       model.compile(
@@ -1047,6 +1154,10 @@ class FromKerasFile(test_util.TensorFlowTestCase):
         keras.models.save_model(model, keras_file)
       finally:
         os.close(fd)
+
+      if include_custom_layer:
+        custom_objects = {'MyAddLayer': MyAddLayer}
+        return keras_file, custom_objects
       return keras_file
 
   def testSequentialModel(self):
@@ -1082,6 +1193,37 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     tflite_result = interpreter.get_tensor(output_details[0]['index'])
 
     keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
+
+  def testCustomLayer(self):
+    """Test a Sequential tf.keras model with default inputs."""
+    keras_file, custom_objects = self._getSequentialModel(
+        include_custom_layer=True)
+
+    converter = lite.TFLiteConverter.from_keras_model_file(
+        keras_file, custom_objects=custom_objects)
+
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check tensor details of converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(
+        keras_file, custom_objects=custom_objects)
     keras_result = keras_model.predict(input_data)
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
@@ -1346,6 +1488,65 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     # Ensure the model is able to load.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
+
+  def testInferenceInputOutputTypeFloatDefault(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+
+  def testInferenceInputOutputTypeQuantizedUint8Default(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = array_ops.fake_quant_with_min_max_args(
+        in_tensor + in_tensor, min=0., max=1., name='output')
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.uint8, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output', output_details[0]['name'])
+    self.assertEqual(np.uint8, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
 
 
 if __name__ == '__main__':

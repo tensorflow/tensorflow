@@ -23,6 +23,8 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -357,6 +360,28 @@ class GatherNdTest(test.TestCase):
     with self.session(use_gpu=True):
       self.assertIndexedSlices(grads)
       self.assertAllEqual(expected_grads, ops.convert_to_tensor(grads).eval())
+
+  @test_util.run_v1_only("RefVariable is not supported in v2")
+  def testGatherNdRefVariable(self):
+    with self.cached_session():
+      v = variables.RefVariable(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      self.evaluate(variables.global_variables_initializer())
+      gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
+      if not context.executing_eagerly():  # .op doesn't make sense in Eager
+        self.assertEqual("GatherNd", gather.op.name)
+      self.assertAllEqual([2, 5], gather)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherNdResourceVariable(self):
+    with compat.forward_compatibility_horizon(2019, 4, 30):
+      with self.cached_session():
+        v = resource_variable_ops.ResourceVariable(
+            constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+        self.evaluate(variables.global_variables_initializer())
+        gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
+        if not context.executing_eagerly():  # .op doesn't make sense in Eager
+          self.assertEqual("ResourceGatherNd", gather.op.inputs[0].op.type)
+        self.assertAllEqual([2, 5], gather)
 
 
 class GatherNdOpBenchmark(test.Benchmark):

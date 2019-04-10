@@ -17,6 +17,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -863,25 +864,37 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   }
 };  // MklMaxPoolingGradOp
 
-REGISTER_KERNEL_BUILDER(Name("_MklMaxPool3D")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklMaxPoolingOp<CPUDevice, float>);
+#define REGISTER_MKL_MAXPOOL3D_KERNELS(T)                           \
+  REGISTER_KERNEL_BUILDER(Name("_MklMaxPool3D")                     \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklMaxPoolingOp<CPUDevice, T>);           \
+  REGISTER_KERNEL_BUILDER(Name("_MklMaxPool3DGrad")                 \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklMaxPoolingGradOp<CPUDevice, T>);
 
-REGISTER_KERNEL_BUILDER(Name("_MklMaxPool3DGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklMaxPoolingGradOp<CPUDevice, float>);
+TF_CALL_float(REGISTER_MKL_MAXPOOL3D_KERNELS);
+TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL3D_KERNELS);
 
 #endif  // INTEL_MKL_ML_ONLY
 
-REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklMaxPoolingOp<CPUDevice, float>);
+#define REGISTER_MKL_MAXPOOL_KERNELS(T)                             \
+  REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")                       \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklMaxPoolingOp<CPUDevice, T>);           \
+  REGISTER_KERNEL_BUILDER(Name("_MklMaxPoolGrad")                   \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklMaxPoolingGradOp<CPUDevice, T>);
+
+TF_CALL_float(REGISTER_MKL_MAXPOOL_KERNELS);
+TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL_KERNELS);
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .Device(DEVICE_CPU)
@@ -894,12 +907,6 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklMaxPoolingOp<CPUDevice, qint8>);
-
-REGISTER_KERNEL_BUILDER(Name("_MklMaxPoolGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklMaxPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

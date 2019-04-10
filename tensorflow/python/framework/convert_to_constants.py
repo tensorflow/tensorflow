@@ -21,10 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.eager import function
-from tensorflow.python.framework import func_graph
-from tensorflow.python.framework import importer
-from tensorflow.python.framework import ops
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.platform import tf_logging as logging
@@ -55,6 +52,7 @@ def _run_inline_graph_optimization(func):
   # Initialize RewriterConfig with everything disabled except function inlining.
   config = config_pb2.ConfigProto()
   rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.min_graph_nodes = -1  # do not skip small graphs
   rewrite_options.optimizers.append("function")
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 
@@ -76,45 +74,6 @@ def _get_tensors_from_graph(graph, tensors):
       new_tensor.set_shape(orig_tensor.shape)
     new_tensors.append(new_tensor)
   return new_tensors
-
-
-def _construct_concrete_function(input_func, graph_def):
-  """Creates a ConcreteFunction from the input function and frozen graph.
-
-  Args:
-    input_func: ConcreteFunction.
-    graph_def: TensorFlow GraphDef.
-
-  Returns:
-    ConcreteFunction containing the graph_def.
-  """
-  output_graph = func_graph.FuncGraph(input_func.graph.name)
-  with output_graph.as_default():
-    importer.import_graph_def(graph_def, name="")
-    output_graph.inputs = _get_tensors_from_graph(output_graph,
-                                                  input_func.inputs)
-    output_graph.outputs = _get_tensors_from_graph(output_graph,
-                                                   input_func.outputs)
-
-  output_graph.structured_outputs = input_func.graph.structured_outputs
-  output_graph.structured_input_signature = (
-      input_func.graph.structured_input_signature)
-
-  # Create the ConcreteFunction and add it to the global context.
-  output_func = function.ConcreteFunction(output_graph)
-  output_func.add_to_graph()
-
-  # Inject the captured inputs into the ConcreteFunction.
-  output_func._captured_inputs = input_func.captured_inputs  # pylint: disable=protected-access
-  output_func.graph.variables = input_func.graph.variables
-
-  output_func._arg_keywords = input_func._arg_keywords  # pylint: disable=protected-access
-  output_func._num_position_args = input_func._num_positional_args  # pylint: disable=protected-access
-
-  # Register the gradients in the current root context.
-  with ops.init_scope():
-    output_func._register_gradient()  # pylint: disable=protected-access
-  return output_func
 
 
 def convert_variables_to_constants_v2(func):
@@ -146,11 +105,14 @@ def convert_variables_to_constants_v2(func):
   # TODO(b/125838789): Use `func.graph.captures`.
   # Get mapping from input name to variable value.
   tensor_data = {}
+  map_name_to_handle = {}
   input_tensors = func.inputs[-len(func.captured_inputs):]
   for var in func.graph.variables:
     index = func.captured_inputs.index(var.handle)
     tensor = input_tensors[index]
-    tensor_data[get_name(tensor.name)] = var.numpy()
+    node_name = get_name(tensor.name)
+    tensor_data[node_name] = var.numpy()
+    map_name_to_handle[node_name] = var.handle
 
   resource_identities = {}
   resource_placeholders = {}
@@ -177,6 +139,7 @@ def convert_variables_to_constants_v2(func):
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
 
+  converted_input_indices = set([])
   for input_node in graph_def.node:
     output_node = output_graph_def.node.add()
     # Convert Placeholder ops that are inputs to ReadVariableOps into Const ops.
@@ -191,6 +154,8 @@ def convert_variables_to_constants_v2(func):
           tensor_util.make_tensor_proto(
               data, dtype=dtype.type, shape=data.shape))
       how_many_converted += 1
+      converted_input_indices.add(
+          func.captured_inputs.index(map_name_to_handle[input_node.name]))
     # Change the dtype for Identity ops that are inputs to ReadVariableOps.
     elif input_node.name in resource_identities:
       output_node.CopyFrom(input_node)
@@ -207,5 +172,12 @@ def convert_variables_to_constants_v2(func):
       output_node.CopyFrom(input_node)
 
   logging.info("Converted %d variables to const ops.", how_many_converted)
-  # TODO(b/126613403): Use wrap_function.function_from_graph_def.
-  return _construct_concrete_function(func, output_graph_def)
+  converted_inputs = set(
+      [input_tensors[index] for index in converted_input_indices])
+  not_converted_inputs = set(func.inputs).difference(converted_inputs)
+
+  new_input_names = [tensor.name for tensor in not_converted_inputs]
+  new_output_names = [tensor.name for tensor in func.outputs]
+  return wrap_function.function_from_graph_def(output_graph_def,
+                                               new_input_names,
+                                               new_output_names)

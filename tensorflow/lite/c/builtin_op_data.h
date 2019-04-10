@@ -334,6 +334,7 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteRankParams;
 
 typedef struct {
@@ -376,6 +377,10 @@ typedef struct {
 typedef struct {
   EmptyStructPlaceholder placeholder;
 } TfLiteMatrixDiagParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixSetDiagParams;
 
 #ifdef __cplusplus
 }  // extern "C"

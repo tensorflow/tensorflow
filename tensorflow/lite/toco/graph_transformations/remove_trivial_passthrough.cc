@@ -64,7 +64,7 @@ void Reroute(const string& from, const string& to, Model* model) {
 bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
                                 Model* model, std::size_t op_index,
                                 int input_index) {
-  const auto passthru_it = model->operators.begin() + op_index;
+  auto passthru_it = model->operators.begin() + op_index;
   auto* passthru_op = passthru_it->get();
   CHECK_EQ(passthru_op->outputs.size(), 1);
   CHECK_GE(passthru_op->inputs.size(), 1);
@@ -127,6 +127,8 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
       // copy itself is a trivial reshape and we'd go into an infinite loop!
       transformation->AddMessageF("Replacing with a copy (reshape) instead");
       InsertCopyOperator(model, main_input_name, output_name);
+      // To avoid using invalidated iterator, evaluate passthru_it again.
+      passthru_it = model->operators.begin() + op_index;
     } else {
       return false;
     }

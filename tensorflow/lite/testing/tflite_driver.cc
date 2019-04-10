@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tflite_driver.h"
 
-#include <iostream>
-
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
@@ -48,6 +46,10 @@ int64_t Value(const TfLitePtrUnion& data, int index) {
 template <>
 uint8_t Value(const TfLitePtrUnion& data, int index) {
   return data.uint8[index];
+}
+template <>
+int8_t Value(const TfLitePtrUnion& data, int index) {
+  return data.int8[index];
 }
 template <>
 bool Value(const TfLitePtrUnion& data, int index) {
@@ -184,6 +186,8 @@ bool TfLiteDriver::Expectation::Check(bool verbose,
       return TypedCheck<int64_t>(verbose, tensor);
     case kTfLiteUInt8:
       return TypedCheck<uint8_t>(verbose, tensor);
+    case kTfLiteInt8:
+      return TypedCheck<int8_t>(verbose, tensor);
     case kTfLiteBool:
       return TypedCheck<bool>(verbose, tensor);
     case kTfLiteString:
@@ -295,6 +299,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteInt8: {
+      const auto& values = testing::Split<int8_t>(csv_values, ",");
+      if (!CheckSizes<int8_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     case kTfLiteBool: {
       const auto& values = testing::Split<bool>(csv_values, ",");
       if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
@@ -337,6 +347,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
+      break;
+    case kTfLiteInt8:
+      expected_output_[id]->SetData<int8_t>(csv_values);
       break;
     case kTfLiteBool:
       expected_output_[id]->SetData<bool>(csv_values);
@@ -402,7 +415,7 @@ string TfLiteDriver::ReadOutput(int id) {
     case kTfLiteUInt8:
       return Join(tensor->data.uint8, num_elements, ",");
     case kTfLiteInt8:
-      return JoinDefault(tensor->data.int8, num_elements, ",");
+      return Join(tensor->data.int8, num_elements, ",");
     case kTfLiteBool:
       return JoinDefault(tensor->data.b, num_elements, ",");
     default:

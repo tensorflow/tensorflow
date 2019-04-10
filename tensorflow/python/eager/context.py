@@ -22,6 +22,7 @@ import collections
 import contextlib
 import copy
 import random
+import six
 import threading
 
 from tensorflow.core.protobuf import config_pb2
@@ -333,8 +334,8 @@ class Context(object):
     finally:
       pywrap_tensorflow.TF_DeleteDeviceList(device_list)
 
-  def _initialize_handle_and_devices(self):
-    """Initialize handle and devices."""
+  def ensure_initialized(self):
+    """Initialize handle and devices if not already done so."""
     with self._initialize_lock:
       if self._context_handle is not None:
         return
@@ -391,9 +392,10 @@ class Context(object):
     """
     if not server_def:
       raise ValueError("server_def is None.")
-    if not self._context_handle:
-      self._server_def = server_def
-    else:
+
+    self._server_def = server_def
+
+    if self._context_handle:
       server_def_str = server_def.SerializeToString()
       pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
                                                 keep_alive_secs, server_def_str)
@@ -429,21 +431,17 @@ class Context(object):
 
   @property
   def _handle(self):
-    ctx = self._context_handle
-    if ctx is None:
-      self._initialize_handle_and_devices()
-      return self._context_handle
-    else:
-      return ctx
+    if self._context_handle is None:
+      raise AssertionError("Context must be initialized first.")
+
+    return self._context_handle
 
   @property
   def _devices(self):
-    devices = self._context_devices
-    if devices is None:
-      self._initialize_handle_and_devices()
-      return self._context_devices
-    else:
-      return devices
+    if self._context_devices is None:
+      raise AssertionError("Context must be initialized first.")
+
+    return self._context_devices
 
   def __str__(self):
     if self._context_handle is None:
@@ -552,58 +550,24 @@ class Context(object):
     """Returns the device spec for the current thread."""
     return self._thread_local_data.device_spec
 
-  @tf_contextlib.contextmanager
+  def _set_device(self, device_name, device_spec):
+    self._thread_local_data.device_name = device_name
+    self._thread_local_data.device_spec = device_spec
+
   def device(self, name):
     """Context-manager to force placement of operations and Tensors on a device.
 
     Args:
       name: Name of the device or None to get default placement.
 
-    Yields:
-      Nothing.
+    Returns:
+      Context manager that forces device placement.
 
     Raises:
       ValueError: If name is not a string or is an invalid device name.
       RuntimeError: If device scopes are not properly nested.
     """
-    eager_context = self._thread_local_data
-    old_device_name = eager_context.device_name
-    old_device_spec = eager_context.device_spec
-    cache_key = (old_device_name, name)
-    try:
-      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
-    except TypeError:
-      # Error while trying to compute the cache key.
-      raise ValueError("Expecting a string device name. Got %s(%s)" %
-                       (type(name), name))
-    except KeyError:
-      # Handle a cache miss.
-      if name is not None:
-        if not isinstance(name, str):
-          raise ValueError("Expecting a string device name. Got %s(%s)" %
-                           (type(name), name))
-        device_spec = pydev.DeviceSpec.from_string(name)
-        if old_device_name:
-          new_device_spec = copy.copy(old_device_spec)
-        else:
-          self._initialize_handle_and_devices()
-          new_device_spec = pydev.DeviceSpec.from_string(
-              self._context_devices[0])
-        new_device_spec.merge_from(device_spec)
-      else:
-        new_device_spec = pydev.DeviceSpec.from_string("")
-      new_device_name = new_device_spec.to_string()
-      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
-
-    try:
-      eager_context.device_name = new_device_name
-      eager_context.device_spec = new_device_spec
-      yield
-    finally:
-      if eager_context.device_spec is not new_device_spec:
-        raise RuntimeError("Exiting device scope without proper scope nesting")
-      eager_context.device_name = old_device_name
-      eager_context.device_spec = old_device_spec
+    return _EagerDeviceContext(self, name)
 
   def devices(self):
     """List of the names of devices available to execute operations."""
@@ -743,7 +707,7 @@ class Context(object):
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
-    self._initialize_handle_and_devices()
+    self.ensure_initialized()
     return self._num_gpus
 
   def add_function(self, fn):
@@ -755,6 +719,7 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
+    self.ensure_initialized()
     pywrap_tensorflow.TFE_ContextAddFunction(self._handle, fn)
 
   def add_function_def(self, fdef):
@@ -766,12 +731,14 @@ class Context(object):
     Args:
       fdef: A FunctionDef protocol buffer message.
     """
+    self.ensure_initialized()
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
   def has_function(self, name):
     """Check if a function `name` is registered."""
+    self.ensure_initialized()
     return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
   def add_post_execution_callback(self, callback):
@@ -966,6 +933,7 @@ class Context(object):
     To retrieve the accumulated metadata call context.export_run_metadata()
     and to stop tracing call context.disable_run_metadata().
     """
+    self.ensure_initialized()
     pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
 
   def disable_run_metadata(self):
@@ -980,6 +948,7 @@ class Context(object):
     To retrieve the accumulated graphs call context.export_run_metadata()
     and to stop collecting graphs call context.disable_graph_collection().
     """
+    self.ensure_initialized()
     pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
 
   def disable_graph_collection(self):
@@ -1022,7 +991,59 @@ _context = None
 _context_lock = threading.Lock()
 
 
-def _initialize_context():
+class _EagerDeviceContext(object):
+  """Context-manager forcing placement of ops and Tensors on a device."""
+
+  def __init__(self, ctx, device_name):
+    self._device_name = device_name
+    self._ctx = ctx
+    self._stack = []
+
+  def __enter__(self):
+    ctx = self._ctx
+    old_device_name = ctx.device_name
+    old_device_spec = ctx.device_spec
+    new_device_name = self._device_name
+    cache_key = (old_device_name, new_device_name)
+    try:
+      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
+    except TypeError:
+      # Error while trying to compute the cache key.
+      raise ValueError("Expecting a string device name. Got %s(%s)" %
+                       (type(new_device_name), new_device_name))
+    except KeyError:
+      # Handle a cache miss.
+      if new_device_name is not None:
+        if not isinstance(new_device_name, six.string_types):
+          raise ValueError("Expecting a string device name. Got %s(%s)" %
+                           (type(new_device_name), new_device_name))
+        device_spec = pydev.DeviceSpec.from_string(new_device_name)
+        if old_device_name:
+          new_device_spec = copy.copy(old_device_spec)
+        else:
+          ctx.ensure_initialized()
+          new_device_spec = pydev.DeviceSpec.from_string(
+              ctx._context_devices[0])  # pylint: disable=protected-access
+        new_device_spec.merge_from(device_spec)
+      else:
+        new_device_spec = pydev.DeviceSpec.from_string("")
+      new_device_name = new_device_spec.to_string()
+      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
+
+    ctx._set_device(new_device_name, new_device_spec)  # pylint: disable=protected-access
+    self._stack.append((old_device_name, old_device_spec, new_device_spec))
+
+  def __exit__(self, *ex_info):
+    ctx = self._ctx
+    old_device_name, old_device_spec, new_device_spec = self._stack[-1]
+    if ctx.device_spec is not new_device_spec:
+      raise RuntimeError(
+          "Exiting device scope without proper scope nesting")
+    del self._stack[-1]
+    ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
+
+
+def _create_context():
   global _context
   with _context_lock:
     if _context is None:
@@ -1032,13 +1053,18 @@ def _initialize_context():
 def context():
   """Returns a singleton context object."""
   if _context is None:
-    _initialize_context()
+    _create_context()
   return _context
 
 
 def context_safe():
   """Returns current context (or None if one hasn't been initialized)."""
   return _context
+
+
+def ensure_initialized():
+  """Initialize the context."""
+  context().ensure_initialized()
 
 
 def set_global_seed(seed):
@@ -1129,8 +1155,8 @@ def device(name):
 
   Example:
   ```python
-  with tfe.device('gpu:0'):
-    with tfe.device('cpu:0'):
+  with tf.device('gpu:0'):
+    with tf.device('cpu:0'):
       shape = tf.constant([], dtype=tf.int32)
     x = tf.truncated_normal(shape, tf.float32)
   ```
@@ -1144,6 +1170,7 @@ def device(name):
   Returns:
     Context manager for setting the device.
   """
+  ensure_initialized()
   return context().device(name)
 
 
@@ -1154,6 +1181,7 @@ def list_devices():
   Returns:
     Names of the available devices, as a `list`.
   """
+  ensure_initialized()
   return context().devices()
 
 

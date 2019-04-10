@@ -520,7 +520,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output mul5 = ops::MulNoNan(s.WithOpName("mul5"), x, zeros_1d);
     Output mul6 = ops::MulNoNan(s.WithOpName("mul6"), zeros_1d, y);
     Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
-    Output div2 = ops::DivNoNan(s.WithOpName("div2"), ones, y);
+    Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
     Output matmul2 = ops::MatMul(s.WithOpName("matmul2"), zeros, y);
     Output matmul3 = ops::MatMul(s.WithOpName("matmul3"), a, zeros);

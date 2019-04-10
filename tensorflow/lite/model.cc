@@ -208,6 +208,9 @@ InterpreterBuilder::~InterpreterBuilder() {}
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
+  if (!opcodes) {
+    return status;
+  }
   for (const OperatorCode* opcode : *opcodes) {
     const TfLiteRegistration* registration = nullptr;
     status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
@@ -326,22 +329,23 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
 
   // Affine-quantization.
   quantization->type = kTfLiteAffineQuantization;
-  auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
   const size_t num_scales = src_quantization->scale()->size();
-  affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
-  affine_quantization->zero_point = TfLiteIntArrayCreate(num_scales);
-  for (size_t i = 0; i < num_scales; ++i) {
-    affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
-    affine_quantization->zero_point->data[i] =
-        src_quantization->zero_point()->Get(i);
-  }
   if (src_quantization->quantized_dimension() < 0 ||
       src_quantization->quantized_dimension() >= num_scales) {
     error_reporter_->Report(
         "quantized_dimension must be in range [0, %d). Was %d.", num_scales,
         src_quantization->quantized_dimension());
     return kTfLiteError;
+  }
+
+  auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
+  affine_quantization->zero_point = TfLiteIntArrayCreate(num_scales);
+  for (size_t i = 0; i < num_scales; ++i) {
+    affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
+    affine_quantization->zero_point->data[i] =
+        src_quantization->zero_point()->Get(i);
   }
   affine_quantization->quantized_dimension =
       src_quantization->quantized_dimension();
@@ -366,13 +370,6 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   for (int i = 0; i < tensors->Length(); ++i) {
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
-
-    const auto* src_quantization = tensor->quantization();
-    TfLiteQuantization quantization;
-    if (ParseQuantization(src_quantization, &quantization) != kTfLiteOk) {
-      status = kTfLiteError;
-      continue;
-    }
 
     TfLiteType type;
     if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
@@ -406,6 +403,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     size_t buffer_size = 0;
     const char* buffer_ptr;
     TF_LITE_ENSURE_STATUS(get_readonly_data(&buffer_ptr, &buffer_size));
+
+    const auto* src_quantization = tensor->quantization();
+    TfLiteQuantization quantization;
+    if (ParseQuantization(src_quantization, &quantization) != kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
+    }
 
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {

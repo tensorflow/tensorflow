@@ -122,7 +122,7 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
 #===============================================================================
 # ragged.gather_nd
 #===============================================================================
-def gather_nd(params, indices, name=None):
+def gather_nd(params, indices, batch_dims=0, name=None):
   """Gather slices from `params` using `n`-dimensional indices.
 
   This operation is similar to `gather`, but it uses the innermost dimension
@@ -139,6 +139,7 @@ def gather_nd(params, indices, name=None):
   Args:
     params: A potentially ragged tensor with shape `[A1...AN, I]`.
     indices: A potentially ragged tensor with shape `[B1...BM]`.
+    batch_dims: Must be zero.
     name: A name for the operation (optional).
 
   Returns:
@@ -165,6 +166,8 @@ def gather_nd(params, indices, name=None):
     ['001', '112']
     ```
   """
+  if not isinstance(batch_dims, int) or batch_dims != 0:
+    raise ValueError('batch_dims != 0 is not supported for ragged gather yet.')
   if not (ragged_tensor.is_ragged(params) or ragged_tensor.is_ragged(indices)):
     return array_ops.gather_nd(params, indices, name)
 

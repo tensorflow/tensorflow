@@ -372,6 +372,7 @@ TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
     case BuiltinOperator_MUL:
     case BuiltinOperator_PAD:
     case BuiltinOperator_MEAN:
+    case BuiltinOperator_CONCATENATION:
       return QuantizeInputsAndOutputs(op_code, op);
     case BuiltinOperator_SOFTMAX:
       return AsymmetricQuantizeSoftmax(op_code, op);

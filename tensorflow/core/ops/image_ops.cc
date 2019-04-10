@@ -450,6 +450,13 @@ REGISTER_OP("EncodeJpeg")
     .SetShapeFn(EncodeImageShapeFn);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("EncodeJpegVariableQuality")
+    .Input("images: uint8")
+    .Input("quality: int32")
+    .Output("contents: string")
+    .SetShapeFn(EncodeImageShapeFn);
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ExtractJpegShape")
     .Input("contents: string")
     .Output("image_shape: output_type")
@@ -592,6 +599,17 @@ REGISTER_OP("DrawBoundingBoxes")
       // The rank of the input image (rank = 4) has already been restricted
       // above, and the output is of the same shape as the input.
       return shape_inference::UnchangedShape(c);
+    });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DrawBoundingBoxesV2")
+    .Input("images: T")
+    .Input("boxes: float")
+    .Input("colors: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
 // --------------------------------------------------------------------------
