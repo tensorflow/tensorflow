@@ -149,7 +149,7 @@ inline void DispatchDepthwiseConv(
           return;
         case DepthwiseConvOutputRounding::kUpward:
           optimized_ops::depthwise_conv::DepthwiseConv3x3Filter<
-              DepthwiseConvOutputRounding::kAwayFromZero>(
+              DepthwiseConvOutputRounding::kUpward>(
               params, input_shape, input_data, filter_shape, filter_data,
               bias_shape, bias_data, output_shape, output_data,
               /*thread_start=*/0,
