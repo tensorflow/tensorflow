@@ -25,6 +25,9 @@ from tensorflow.python.platform import tf_logging as logging
 prohibited_ops = frozenset(["NextIteration", "PopDatastreamInfeedDequeue"])
 
 
+# This is a model for the size of a tensor on a tile.  It could be improved by
+# accepting that tensors generate vertex state associated with the number of
+# operations which consume them.
 def tensor_memory_use(t):
   return t.shape.num_elements() * t.dtype.size
 
@@ -211,6 +214,12 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   subgraph_mem = [calculate_memory(graph_fwd, g) for g in subgraphs]
 
   logging.debug('Subgraph memory use ' + str(subgraph_mem))
+
+  # Verify that we have enough subgraphs to fill all of the available shards
+  if len(edges) + 1 < num_shards:
+    raise Exception(
+        "There are fewer subgraphs (%s) than available shards (%s). Reduce the "
+        "number of shards." % (len(edges) + 1, num_shards))
 
   # Split the ordered subgraphs into n groups and calculate the memory for each
   # possible combination
