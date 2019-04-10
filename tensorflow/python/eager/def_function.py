@@ -280,8 +280,6 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
-    # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
-    # same FunctionSpec. Consider removing it from both and passing in instead.
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._autograph = autograph
@@ -318,8 +316,7 @@ class Function(object):
 
     return self._defun(tf_decorator.make_decorator(
         self._python_function,
-        wrapped_fn,
-        decorator_argspec=self._function_spec.fullargspec))
+        wrapped_fn))
 
   def _defun(self, fn):
     """Returns a defun generated from the input function."""

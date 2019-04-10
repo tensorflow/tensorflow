@@ -141,14 +141,10 @@ message FunctionSpec {
   StructuredValue fullargspec = 1;
   // Whether this represents a class method.
   bool is_method = 2;
-  // Which arguments to always prepend, in case the original function is based
-  // on a functools.partial.
-  StructuredValue args_to_prepend = 3;
-  // Which kwargs to always include, in case the original function is based on a
-  // functools.partial.
-  StructuredValue kwargs_to_include = 4;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+
+  reserved 3, 4;
 }
 
 // A SavedResource represents a TF object that holds state during its lifetime.
