@@ -108,6 +108,7 @@ from tensorflow.python.ops.variables import *
 
 #Imports the following poplibs modules so that @RegisterGradient get executed.
 from tensorflow.python.ops.poplar import popnn_ops_grad
+from tensorflow.python.ops.poplar import poputil_ops_grad
 
 # These modules were imported to set up RaggedTensor operators and dispatchers:
 del _ragged_dispatch, _ragged_operators
