@@ -231,7 +231,8 @@ def _CheckAtLeast3DImage(image, require_static=True):
             array_ops.shape(image),
             ["all dims of 'image.shape' "
              'must be > 0.']),
-        check_ops.assert_greater_equal(array_ops.rank(image), 3,
+        check_ops.assert_greater_equal(
+            array_ops.rank(image), 3,
             message="'image' must be at least three-dimensional.")
     ]
   else:
@@ -250,7 +251,7 @@ def _AssertGrayscaleImage(image):
       image: >= 3-D Tensor of size [*, height, width, depth]
 
     Raises:
-      ValueError: if image.shape is not a [>= 3] vector or if 
+      ValueError: if image.shape is not a [>= 3] vector or if
                 last dimension is not size 1.
 
     Returns:
@@ -270,7 +271,7 @@ def _CheckGrayscaleImage(image, require_static=True):
     image: >= 3-D Tensor of size [*, height, width, depth]
 
   Raises:
-    ValueError: if image.shape is not a [>= 3] vector or if 
+    ValueError: if image.shape is not a [>= 3] vector or if
               last dimension is not size 1.
 
   Returns:
@@ -278,27 +279,29 @@ def _CheckGrayscaleImage(image, require_static=True):
     containing an assert op is returned.
   """
   try:
-      if image.get_shape().ndims is None:
-          image_shape = image.get_shape().with_rank(3)
-      else:
-          image_shape = image.get_shape().with_rank_at_least(3)
+    if image.get_shape().ndims is None:
+      image_shape = image.get_shape().with_rank(3)
+    else:
+      image_shape = image.get_shape().with_rank_at_least(3)
   except ValueError:
-      raise ValueError("A grayscale image must be at least three-dimensional.")
+    raise ValueError("A grayscale image must be at least three-dimensional.")
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
   if image_shape.is_fully_defined():
-      if image_shape[-1] != 1:
-          raise ValueError(
-              "Last dimension of a grayscale image should be size 1.")
+    if image_shape[-1] != 1:
+      raise ValueError(
+          "Last dimension of a grayscale image should be size 1.")
   if not image_shape.is_fully_defined():
-      return [
-          check_ops.assert_equal(array_ops.shape(image)[-1], 1,
-              message="Last dimension of a grayscale image should be size 1."),
-          check_ops.assert_greater_equal(array_ops.rank(image), 3,
+    return [
+        check_ops.assert_equal(
+            array_ops.shape(image)[-1], 1,
+            message="Last dimension of a grayscale image should be size 1."),
+        check_ops.assert_greater_equal(
+            array_ops.rank(image), 3,
             message="A grayscale image must be at least three-dimensional.")
-      ]
+    ]
   else:
-      return []
+    return []
 
 
 def fix_image_flip_shape(image, result):
