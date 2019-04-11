@@ -566,7 +566,6 @@ tf_xla_py_test(
     srcs = ["image_ops_test.py"],
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
-        "no_rocm",
     ],
     deps = [
         ":xla_test",
