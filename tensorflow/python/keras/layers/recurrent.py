@@ -83,7 +83,7 @@ class StackedRNNCells(Layer):
     if self.reverse_state_order:
       logging.warning('reverse_state_order=True in StackedRNNCells will soon '
                       'be deprecated. Please update the code to work with the '
-                      'natural order of states if you reply on the RNN states, '
+                      'natural order of states if you rely on the RNN states, '
                       'eg RNN(return_state=True).')
     super(StackedRNNCells, self).__init__(**kwargs)
 
