@@ -5926,6 +5926,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "clip_boxes"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "CompareAndBitpack"
@@ -10896,6 +10903,14 @@ op {
   attr {
     name: "table_ids"
     type: "list(int)"
+  }
+  attr {
+    name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
   }
   is_stateful: true
 }

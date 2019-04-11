@@ -13460,6 +13460,63 @@ op {
   }
 }
 op {
+  name: "CombinedNonMaxSuppression"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size_per_class"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "max_total_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_boxes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_scores"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_classes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "valid_detections"
+    type: DT_INT32
+  }
+  attr {
+    name: "pad_per_class"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "clip_boxes"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "CompareAndBitpack"
   input_arg {
     name: "input"
@@ -23111,6 +23168,101 @@ op {
   attr {
     name: "table_ids"
     type: "list(int)"
+  }
+  is_stateful: true
+}
+op {
+  name: "EnqueueTPUEmbeddingSparseTensorBatch"
+  input_arg {
+    name: "sample_indices"
+    type_attr: "T1"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "embedding_indices"
+    type_attr: "T2"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "aggregation_weights"
+    type_attr: "T3"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T3"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "combiners"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "table_ids"
+    type: "list(int)"
+  }
+  attr {
+    name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
   }
   is_stateful: true
 }
