@@ -688,7 +688,10 @@ py_test(
     size = "enormous",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "notsan",
+        "no_oss",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
