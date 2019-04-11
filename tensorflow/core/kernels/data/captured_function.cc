@@ -144,13 +144,14 @@ Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx,
     std::vector<Tensor>&& captured_inputs, Params params,
     std::unique_ptr<CapturedFunction>* out_function) {
-  // TODO(b/130248232): Remove this code path once all users of CapturedFunction
-  // are migrated to per-kernel FunctionLibraryDefinition.
-  if (params.lib_def == nullptr) {
-    TF_RETURN_IF_ERROR(CreateFunctionLibraryDefinition(
-        ctx->function_library()->GetFunctionLibraryDefinition(), func.name(),
-        &params.lib_def));
-  }
+  if (params.lib_def == nullptr)
+    return errors::Internal(
+        "After cl/242905426 the CapturedFunction factories require the "
+        "FunctionLibraryDefinition parameter to be set. The expectation is "
+        "that any tf.data op kernel that uses the CapturedFunction mechanism "
+        "to invoke user-defined functions will create an instance of "
+        "FunctionLibraryDefinition in its constructor. See map_dataset_op.cc "
+        "for a code example.");
   *out_function = absl::WrapUnique(new CapturedFunction(
       func, std::move(captured_inputs), std::move(params)));
   return Status::OK();

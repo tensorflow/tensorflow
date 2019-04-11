@@ -154,18 +154,19 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 };
 
 GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
-    : DatasetOpKernel(ctx) {
+    : DatasetOpKernel(ctx),
+      lib_def_(std::make_shared<FunctionLibraryDefinition>(
+          ctx->function_library()
+              ->GetFunctionLibraryDefinition()
+              ->default_registry(),
+          FunctionDefLibrary{})) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("init_func", &init_func_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("next_func", &next_func_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("finalize_func", &finalize_func_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-  OP_REQUIRES_OK(ctx,
-                 CreateFunctionLibraryDefinition(
-                     ctx->function_library()->GetFunctionLibraryDefinition(),
-                     init_func_.name(), &lib_def_));
 
-  for (const auto& func : {next_func_, finalize_func_}) {
+  for (const auto& func : {init_func_, next_func_, finalize_func_}) {
     std::shared_ptr<FunctionLibraryDefinition> result;
     OP_REQUIRES_OK(ctx,
                    CreateFunctionLibraryDefinition(

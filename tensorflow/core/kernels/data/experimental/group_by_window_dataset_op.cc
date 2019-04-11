@@ -32,19 +32,19 @@ namespace {
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
+      : UnaryDatasetOpKernel(ctx),
+        lib_def_(std::make_shared<FunctionLibraryDefinition>(
+            ctx->function_library()
+                ->GetFunctionLibraryDefinition()
+                ->default_registry(),
+            FunctionDefLibrary{})) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size_func", &window_size_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
 
-    OP_REQUIRES_OK(ctx,
-                   CreateFunctionLibraryDefinition(
-                       ctx->function_library()->GetFunctionLibraryDefinition(),
-                       key_func_.name(), &lib_def_));
-
-    for (const auto& func : {reduce_func_, window_size_func_}) {
+    for (const auto& func : {key_func_, reduce_func_, window_size_func_}) {
       std::shared_ptr<FunctionLibraryDefinition> result;
       OP_REQUIRES_OK(
           ctx, CreateFunctionLibraryDefinition(
