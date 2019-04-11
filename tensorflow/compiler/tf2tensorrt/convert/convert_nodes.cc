@@ -4246,6 +4246,95 @@ Status ConvertTopK(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TFAttrs attrs(node_def);
+  const int block_size = attrs.get<int64>("block_size");
+  if (block_size < 2) {
+    return errors::InvalidArgument("Block size must be 2 or greater, at ",
+                                   node_def.name());
+  }
+  const string data_format = attrs.get<string>("data_format");
+  if (data_format != "NCHW" && data_format != "NHWC") {
+    return errors::Unimplemented("Data format ", data_format,
+                                 " is not supported, at ", node_def.name());
+  }
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  if (dims.nbDims != 3) {
+    return errors::InvalidArgument("The input to ", node_def.op(),
+                                   " must be rank 4, at ", node_def.name());
+  }
+  const int num_channels = data_format == "NCHW" ? dims.d[0] : dims.d[2];
+  const int h = data_format == "NCHW" ? dims.d[1] : dims.d[0];
+  const int w = data_format == "NCHW" ? dims.d[2] : dims.d[1];
+  // Get shuffle parameters.
+  nvinfer1::Dims first_shuffle_shape;
+  nvinfer1::Permutation transpose_perm;
+  nvinfer1::Dims second_shuffle_shape;
+  if (node_def.op() == "DepthToSpace") {
+    if (num_channels % (block_size * block_size) != 0) {
+      return errors::InvalidArgument(
+          "Number of channels must be divisible by block_size*block_size, at ",
+          node_def.name());
+    }
+    // First Reshape [C, H, W] - > [r, r, C/(r*r), H, W]
+    first_shuffle_shape = {
+        /*nbDims=*/5,
+        /*d=*/{block_size, block_size, num_channels / (block_size * block_size),
+               h, w}};
+    // Transpose [r, r, C/(r*r), H, W] -> [C/(r*r), H, r, W, r]
+    transpose_perm = {2, 3, 0, 4, 1};
+    // Second Reshape [C/(r*r), H, r, W, r] -> [C/(r*r), H * r, W * r]
+    second_shuffle_shape =
+        nvinfer1::DimsCHW(num_channels / (block_size * block_size),
+                          h * block_size, w * block_size);
+  } else if (node_def.op() == "SpaceToDepth") {
+    if (h % block_size != 0 || w % block_size != 0) {
+      return errors::InvalidArgument(
+          "Width and height must be divisible by block_size, at ",
+          node_def.name());
+    }
+    // First Reshape [C, H, W] -> [C, H/r, r, W/r, r]
+    first_shuffle_shape = {/*nbDims=*/5,
+                           /*d=*/{num_channels, h / block_size, block_size,
+                                  w / block_size, block_size}};
+    // Transpose [C, H/r, r, W/r, r] -> [r, r, C, H/r, W/r]
+    transpose_perm = {2, 4, 0, 1, 3};
+    // Second Reshape  [r, r, C, H/r, W/r] -> [C*r*r, H/r, W/r]
+    second_shuffle_shape = nvinfer1::DimsCHW(
+        num_channels * block_size * block_size, h / block_size, w / block_size);
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IShuffleLayer* first_shuffle =
+      params->converter->network()->addShuffle(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(first_shuffle, node_def.name());
+  if (data_format == "NHWC") {
+    first_shuffle->setFirstTranspose({2, 0, 1});
+  }
+  first_shuffle->setReshapeDimensions(first_shuffle_shape);
+  first_shuffle->setSecondTranspose(transpose_perm);
+
+  nvinfer1::IShuffleLayer* second_shuffle =
+      params->converter->network()->addShuffle(*first_shuffle->getOutput(0));
+  TFTRT_RETURN_ERROR_IF_NULLPTR(second_shuffle, node_def.name());
+  second_shuffle->setReshapeDimensions(second_shuffle_shape);
+  if (data_format == "NHWC") {
+    second_shuffle->setSecondTranspose({1, 2, 0});
+  }
+
+  params->converter->MarkQuantizationRangesAsInferrable(
+      inputs.at(0).tensor(), first_shuffle->getOutput(0));
+  params->converter->MarkQuantizationRangesAsInferrable(
+      first_shuffle->getOutput(0), second_shuffle->getOutput(0));
+  params->outputs->push_back(TRT_TensorOrWeights(second_shuffle->getOutput(0)));
+  return Status::OK();
+}
+
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
@@ -4425,6 +4514,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
+  (*registration)["DepthToSpace"] = ConvertDepthSpaceShuffle;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
@@ -4439,6 +4529,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
   (*registration)["Softmax"] = ConvertSoftmax;
+  (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
   (*registration)["Split"] = ConvertSplit;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
