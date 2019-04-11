@@ -407,9 +407,7 @@ XLA_TEST_F(TriangularSolveTest, DISABLED_ON_GPU_ROCM(SimpleLeftUpperTransposeNoc
       &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
 }
 
-// The following test will results in a call to "BlasGemmStridedBatched"
-// That operation is currently not supported on the ROCm platform  
-XLA_TEST_F(TriangularSolveTest, DISABLED_ON_GPU_ROCM(BatchedLeftUpper)) {
+XLA_TEST_F(TriangularSolveTest, BatchedLeftUpper) {
   XlaBuilder builder(TestName());
 
   Array3D<float> bvals(7, 5, 5);
