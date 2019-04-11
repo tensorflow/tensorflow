@@ -1,10 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
 // add go_package externally with copybara
 
 import "tensorflow/core/framework/attr_value.proto";
@@ -81,6 +83,11 @@ message RewriterConfig {
   // Enable the swap of kernel implementations based on the device placement
   // (default is ON).
   Toggle implementation_selector = 22;
+  // Optimize data types (default is OFF).
+  // e.g., This will try to use float16 on GPU which is faster.
+  // Note that this can change the numerical stability of the graph and may
+  // require the use of loss scaling to maintain model convergence.
+  Toggle auto_mixed_precision = 23;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
 
