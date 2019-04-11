@@ -118,39 +118,6 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(context.ASYNC, context.context().execution_mode)
 
   @reset_eager
-  def testGpuPerProcessMemoryFraction(self):
-    config.set_gpu_per_process_memory_fraction(0.5)
-    self.assertEqual(
-        config.get_gpu_per_process_memory_fraction(),
-        context.context().gpu_per_process_memory_fraction)
-
-    context.ensure_initialized()
-
-    with self.assertRaises(RuntimeError):
-      config.set_gpu_per_process_memory_fraction(0.5)
-
-  @reset_eager
-  def testGpuPerProcessMemoryGrowth(self):
-    self.assertFalse(config.get_gpu_per_process_memory_growth())
-
-    config.set_gpu_per_process_memory_growth(True)
-    self.assertTrue(config.get_gpu_per_process_memory_growth())
-    self.assertEqual(
-        config.get_gpu_per_process_memory_growth(),
-        context.context().gpu_per_process_memory_growth)
-
-    config.set_gpu_per_process_memory_growth(False)
-    self.assertFalse(config.get_gpu_per_process_memory_growth())
-    self.assertEqual(
-        config.get_gpu_per_process_memory_growth(),
-        context.context().gpu_per_process_memory_growth)
-
-    context.ensure_initialized()
-
-    with self.assertRaises(RuntimeError):
-      config.set_gpu_per_process_memory_growth(True)
-
-  @reset_eager
   def testIntraOpParallelismThreads(self):
     config.set_intra_op_parallelism_threads(10)
     self.assertEqual(

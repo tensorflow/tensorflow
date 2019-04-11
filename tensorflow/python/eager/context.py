@@ -285,8 +285,6 @@ class Context(object):
     self._collective_ops_server_def = None
 
     # Values set after construction
-    self._gpu_per_process_memory_fraction = None
-    self._gpu_per_process_memory_growth = None
     self._optimizer_jit = None
     self._intra_op_parallelism_threads = None
     self._inter_op_parallelism_threads = None
@@ -612,11 +610,6 @@ class Context(object):
     if self._config is not None:
       config.CopyFrom(self._config)
 
-    if self._gpu_per_process_memory_fraction is not None:
-      config.gpu_options.per_process_gpu_memory_fraction = (
-          self._gpu_per_process_memory_fraction)
-    if self._gpu_per_process_memory_growth is not None:
-      config.gpu_options.allow_growth = self._gpu_per_process_memory_growth
     if self._optimizer_jit is not None:
       config.graph_options.optimizer_options.global_jit_level = (
           config_pb2.OptimizerOptions.ON_1
@@ -775,30 +768,6 @@ class Context(object):
   def post_execution_callbacks(self):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
-
-  @property
-  def gpu_per_process_memory_fraction(self):
-    return self.config.gpu_options.per_process_gpu_memory_fraction
-
-  @gpu_per_process_memory_fraction.setter
-  def gpu_per_process_memory_fraction(self, fraction):
-    if self._context_handle is not None:
-      raise RuntimeError(
-          "GPU options must be set at program startup")
-
-    self._gpu_per_process_memory_fraction = fraction
-
-  @property
-  def gpu_per_process_memory_growth(self):
-    return self.config.gpu_options.allow_growth
-
-  @gpu_per_process_memory_growth.setter
-  def gpu_per_process_memory_growth(self, enabled):
-    if self._context_handle is not None:
-      raise RuntimeError(
-          "GPU options must be set at program startup")
-
-    self._gpu_per_process_memory_growth = enabled
 
   @property
   def optimizer_jit(self):
