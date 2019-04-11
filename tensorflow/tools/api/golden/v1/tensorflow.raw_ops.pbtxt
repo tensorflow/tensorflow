@@ -2513,6 +2513,22 @@ tf_module {
     argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
+    name: "QuantizedDepthwiseConv2D"
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizedDepthwiseConv2DWithBias"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizedDepthwiseConv2DWithBiasAndRelu"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
     name: "QuantizedInstanceNorm"
     argspec: "args=[\'x\', \'x_min\', \'x_max\', \'output_range_given\', \'given_y_min\', \'given_y_max\', \'variance_epsilon\', \'min_separation\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'0\', \'0\', \'1e-05\', \'0.001\', \'None\'], "
   }
