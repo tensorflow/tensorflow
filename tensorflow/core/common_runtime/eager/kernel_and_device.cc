@@ -292,7 +292,10 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     // If tracing if off, the overheads of ScopedAnnotation and ScopedActivity
     // are negligible.
     if (device_->TraceUsingAnnotations()) {
-      tracing::ScopedAnnotation activity(op_name, kernel_->type_string());
+      // 'ScopedActivity' will trace the OpKernel scheduling time on host.
+      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      // 'ScopedAnnotation' will trace the OpKernel execution time on device.
+      tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
       tracing::ScopedActivity activity(op_name, kernel_->type_string());

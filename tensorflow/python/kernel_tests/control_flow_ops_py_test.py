@@ -1613,11 +1613,14 @@ class ControlFlowTest(test.TestCase):
         # With while_v2 on xla, run_metadata only contains the unlowered While
         # op so node_stats does not have statistics for the pushes. So as a
         # loose check we check the pushes in the lowered version.
-        node_stats = run_metadata_without_xla_context.step_stats.dev_stats[
-            0].node_stats
+        for dev in run_metadata_without_xla_context.step_stats.dev_stats:
+          if "/device:CPU" in dev.device:
+            node_stats = dev.node_stats
         stack_push_op = "TensorListPushBack"
       else:
-        node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+        for dev in run_metadata.step_stats.dev_stats:
+          if "/device:CPU" in dev.device:
+            node_stats = dev.node_stats
         stack_push_op = "StackPushV2"
       stack_push_count = len(
           [x for x in node_stats if x.node_name.endswith(stack_push_op)])
