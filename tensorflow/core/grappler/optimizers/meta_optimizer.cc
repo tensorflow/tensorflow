@@ -551,11 +551,23 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Find functions for which we might need to compute a gradient at runtime.
   absl::flat_hash_set<string> differentiable_functions;
-  for (const NodeDef& node : optimized_graph->node()) {
-    if (IsSymbolicGradient(node)) {
-      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
-      if (f_attr) differentiable_functions.insert(f_attr->func().name());
+
+  using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
+  const auto find_differentiable_functions =
+      [&differentiable_functions](const NodeDefs& nodes) -> void {
+    for (const NodeDef& node : nodes) {
+      if (IsSymbolicGradient(node)) {
+        const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
+        if (f_attr) differentiable_functions.insert(f_attr->func().name());
+      }
     }
+  };
+
+  // SymbolicGradient nodes inside the main graph.
+  find_differentiable_functions(optimized_graph->node());
+  // SymbolicGradient nodes inside the function library.
+  for (const FunctionDef& function : optimized_graph->library().function()) {
+    find_differentiable_functions(function.node_def());
   }
 
   // Optimize each function only once.
@@ -597,11 +609,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // If we need to compute the gradient of optimized function at runtime, we
       // can't perform non-differentiable rewrites.
-      if (differentiable_functions.find(func_name) !=
-          differentiable_functions.end()) {
-        func_item.optimization_options().allow_non_differentiable_rewrites =
-            false;
-      }
+      func_item.optimization_options().allow_non_differentiable_rewrites =
+          !differentiable_functions.contains(func_name);
 
       // Device set available to the function is defined only by the runtime,
       // when we instantiate and execute the function. We can't use all devices
