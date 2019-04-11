@@ -32,7 +32,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.ops import nccl_ops
 
 
