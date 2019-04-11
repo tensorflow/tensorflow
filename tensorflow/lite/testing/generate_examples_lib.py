@@ -251,6 +251,19 @@ def write_test_cases(fp, model_name, examples):
       fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
+
+      # In these tests, TFLite produces output shapes which are different from
+      # TensorFlow. It's complicated to construct a regular expression to
+      # blacklist exactly broken cases. Therefore a quick hack is put here to
+      # disable output shape check for all of these tests.
+      # TODO(b/130328328): Investigate Pack tests.
+      # TODO(b/130328180): Investigate LSTM and RNN tests.
+      # When resolving these todo items, please remove the hack in the
+      # following line.
+      if not re.match(r".*/(pack|unidirectional_sequence_(lstm|rnn))_.*",
+                      model_name):
+        fp.write("  output_shape: \"" +
+                 ",".join([str(dim) for dim in t.shape]) + "\"\n")
     fp.write("}\n")
 
 
@@ -3944,26 +3957,38 @@ def make_expand_dims_tests(options):
 
   test_parameters = [{
       "input_type": [tf.float32, tf.int32],
-      "input_shape": [[3, 4], [10, 10, 3]],
+      "input_shape": [[5, 4, 3]],
       "axis_value": [0, 1, 2, -1, -2],
+      "constant_axis": [True, False],
   }]
 
   def build_graph(parameters):
     """Build the where op testing graph."""
+    inputs = []
     input_value = tf.placeholder(
         dtype=parameters["input_type"],
         name="input",
         shape=parameters["input_shape"])
-    axis_value = tf.placeholder(dtype=tf.int32, name="axis", shape=[1])
+    inputs.append(input_value)
+
+    if parameters["constant_axis"]:
+      axis_value = tf.constant(
+          parameters["axis_value"], dtype=tf.int32, shape=[1])
+    else:
+      axis_value = tf.placeholder(dtype=tf.int32, name="axis", shape=[1])
+      inputs.append(axis_value)
+
     out = tf.expand_dims(input_value, axis=axis_value)
-    return [input_value, axis_value], [out]
+    return inputs, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_value = create_tensor_data(parameters["input_type"],
-                                     parameters["input_shape"])
-    axis_value = np.array([parameters["axis_value"]], dtype=np.int32)
-    return [input_value, axis_value], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_value, axis_value])))
+    input_values = []
+    input_values.append(
+        create_tensor_data(parameters["input_type"], parameters["input_shape"]))
+    if not parameters["constant_axis"]:
+      input_values.append(np.array([parameters["axis_value"]], dtype=np.int32))
+    return input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
