@@ -40,6 +40,7 @@ from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -532,7 +533,12 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
+    if tfdev.is_device_spec(device):
+      device = device.to_string()
     self.device = device
+
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
 
 
 def _get_current_tf_device():
@@ -546,7 +552,7 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return op.device
+  return tfdev.DeviceSpec.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):

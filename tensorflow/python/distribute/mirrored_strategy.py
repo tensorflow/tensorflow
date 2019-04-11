@@ -68,7 +68,7 @@ def _enter_graph(g, eager, creator_stack=None):
 
 def _cpu_device(device):
   cpu_device = tf_device.DeviceSpec.from_string(device)
-  cpu_device.merge_from(tf_device.DeviceSpec(device_type="CPU", device_index=0))
+  cpu_device = cpu_device.replace(device_type="CPU", device_index=0)
   return cpu_device.to_string()
 
 
@@ -297,7 +297,7 @@ def _is_device_list_local(devices):
   """
   all_local = None
   for d in devices:
-    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    d_spec = tf_device.DeviceSpec.from_string(d)
     is_local = d_spec.job in (None, "localhost")
 
     if all_local is None:  # Determine all_local from first device.
@@ -345,7 +345,7 @@ def _group_device_list(devices):
   device_dict = {}
 
   for d in devices:
-    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    d_spec = tf_device.DeviceSpec.from_string(d)
 
     # Create an entry for the task_type.
     if d_spec.job not in device_dict:
@@ -361,7 +361,7 @@ def _group_device_list(devices):
 
 
 def _is_gpu_device(device):
-  return tf_device.DeviceSpec().parse_from_string(device).device_type == "GPU"
+  return tf_device.DeviceSpec.from_string(device).device_type == "GPU"
 
 
 def _infer_num_gpus_per_worker(devices):
@@ -396,7 +396,7 @@ def _infer_num_gpus_per_worker(devices):
           raise ValueError("All workers should have the same number of GPUs.")
 
         for d in device_in_task:
-          d_spec = tf_device.DeviceSpec().parse_from_string(d)
+          d_spec = tf_device.DeviceSpec.from_string(d)
           if (d_spec.device_type == "GPU" and
               d_spec.device_index >= num_gpus):
             raise ValueError("GPU `device_index` on a worker should be "

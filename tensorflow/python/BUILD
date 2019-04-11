@@ -628,6 +628,7 @@ py_library(
     deps = [
         ":constant_op",
         ":device",
+        ":device_spec",
         ":dtypes",
         ":framework_ops",
         ":function",
@@ -649,6 +650,7 @@ py_library(
     deps = [
         ":constant_op",
         ":device",
+        ":device_spec",
         ":dtypes",
         ":framework_ops",
         ":op_def_library",
@@ -744,6 +746,15 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+    ],
+)
+
+py_library(
+    name = "device_spec",
+    srcs = ["framework/device_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
     ],
 )
 
@@ -1666,6 +1677,19 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "framework/sparse_tensor_test.py",
+)
+
+tf_py_test(
+    name = "framework_device_spec_test",
+    size = "small",
+    srcs = ["framework/device_spec_test.py"],
+    additional_deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "framework/device_spec_test.py",
 )
 
 tf_py_test(
@@ -3924,6 +3948,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops",
         ":device",
+        ":device_spec",
         ":distribute",
         ":errors",
         ":framework",

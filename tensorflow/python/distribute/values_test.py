@@ -86,9 +86,6 @@ class DistributedValuesTest(test.TestCase):
     self.assertEqual(canonical_cpu, v.devices)
     v = values.DistributedValues(values.SingleDeviceMap("/CPU:0"), (42,))
     self.assertEqual(canonical_cpu, v.devices)
-    with self.assertRaises(AssertionError):
-      v = values.DistributedValues(
-          values.SingleDeviceMap("/device:cpu:0"), (42,))
 
   def testIsTensorLike(self):
     with context.graph_mode(), \

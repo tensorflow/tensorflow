@@ -1,6 +1,5 @@
 path: "tensorflow.DeviceSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.device_spec.DeviceSpecV1\'>"
   is_instance: "<class \'tensorflow.python.framework.device_spec.DeviceSpecV2\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -33,10 +32,6 @@ tf_class {
   }
   member_method {
     name: "make_merged_spec"
-    argspec: "args=[\'self\', \'dev\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "merge_from"
     argspec: "args=[\'self\', \'dev\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

@@ -1024,7 +1024,7 @@ class _EagerDeviceContext(object):
           ctx.ensure_initialized()
           new_device_spec = pydev.DeviceSpec.from_string(
               ctx._context_devices[0])  # pylint: disable=protected-access
-        new_device_spec.merge_from(device_spec)
+        new_device_spec = new_device_spec.make_merged_spec(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
       new_device_name = new_device_spec.to_string()
