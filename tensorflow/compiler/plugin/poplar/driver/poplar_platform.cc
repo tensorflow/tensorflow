@@ -115,8 +115,8 @@ Status PoplarPlatform::ConfigurePoplarDevices(const IpuOptions& opts) {
   }
 
   for (int ordinal = 0; ordinal < num_devices; ordinal++) {
-    se::StreamExecutor* executor;
-    TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                        ExecutorForDevice(ordinal));
 
     auto* e = static_cast<PoplarExecutor*>(executor->implementation());
 
@@ -129,8 +129,8 @@ Status PoplarPlatform::ConfigurePoplarDevices(const IpuOptions& opts) {
 Status PoplarPlatform::GetCompilerEvents(
     std::list<tensorflow::IpuTraceEvent>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
-    se::StreamExecutor* executor;
-    TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                        ExecutorForDevice(ordinal));
 
     auto* e = static_cast<PoplarExecutor*>(executor->implementation());
 

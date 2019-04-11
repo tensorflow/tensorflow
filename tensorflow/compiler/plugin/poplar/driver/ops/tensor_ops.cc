@@ -45,8 +45,7 @@ StatusOr<poplar::program::Program> ConstSliceUpdate(
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor input = inputs[0][0];
 
-  poplar::Tensor update;
-  TF_ASSIGN_OR_RETURN(update,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor update,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   std::vector<std::size_t> begin;
@@ -86,12 +85,10 @@ StatusOr<poplar::program::Program> DynamicSliceUpdate(
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor input = inputs[0][0];
 
-  poplar::Tensor update;
-  TF_ASSIGN_OR_RETURN(update,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor update,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
-  poplar::Tensor indices;
-  TF_ASSIGN_OR_RETURN(indices,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor indices,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
   auto first_index = inst->first_index_operand_number();
@@ -150,8 +147,7 @@ StatusOr<poplar::program::Program> ConstSlice(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor input,
                       FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   std::vector<std::size_t> begin;
@@ -187,12 +183,10 @@ StatusOr<poplar::program::Program> DynamicSlice(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor input,
                       FindInstructionInput(tensor_map, res, inst, 0, seq));
 
-  poplar::Tensor indices;
-  TF_ASSIGN_OR_RETURN(indices,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor indices,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   auto first_index = inst->first_index_operand_number();
@@ -310,8 +304,8 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
   const HloInstruction* root =
       inst->fused_instructions_computation()->root_instruction();
   const PaddingConfig& cfg(root->padding_config());
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   std::vector<std::ptrdiff_t> paddingLower;
   std::vector<std::ptrdiff_t> paddingUpper;
@@ -330,8 +324,8 @@ StatusOr<poplar::program::Program> CreateInterIpuCopy(
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   const auto src = inst->operand(0);
 

@@ -96,9 +96,8 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
           lt_instructions.insert(inst);
 
           // Test if the value is the smallest
-          int64 val;
-          TF_ASSIGN_OR_RETURN(val, LiteralScalarToNativeType<int64>(
-                                       inst->operand(1)->literal()));
+          TF_ASSIGN_OR_RETURN(int64 val, LiteralScalarToNativeType<int64>(
+                                             inst->operand(1)->literal()));
           if (val < smallest_constant_value) {
             smallest_lt = inst;
             smallest_constant_value = val;

@@ -206,8 +206,7 @@ StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
                                         const xla::Shape& shape) {
   poplar::Tensor out;
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
-  poplar::Type poplar_type;
-  TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type poplar_type, PoplarDataType(shape));
 
   out = graph.addVariable(poplar_type, dim, debug_name);
   poputil::mapTensorLinearly(graph, out);
@@ -219,8 +218,7 @@ StatusOr<poplar::Tensor> AddRnnSequence(poplar::Graph& graph,
                                         const xla::Shape& shape) {
   poplar::Tensor out;
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
-  poplar::Type poplar_type;
-  TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type poplar_type, PoplarDataType(shape));
 
   out = graph.addVariable(poplar_type, dim, debug_name);
 
@@ -448,8 +446,8 @@ StatusOr<poplar::Tensor> AddScatterTensor(poplar::Graph& graph,
 static StatusOr<poplar::Tensor> AddConvolutionInput(
     poplar::Graph& graph, const std::string& debug_name,
     const HloInstruction* target, CompilerResources& resources) {
-  poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, 0, 1));
+  TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
+                      GetConvolutionParameters(target, 0, 1));
 
   auto name = StrCat(debug_name, "_input");
   poplar::OptionFlags opts;
@@ -461,8 +459,8 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
 static StatusOr<poplar::Tensor> AddConvolutionWeights(
     poplar::Graph& graph, const std::string& debug_name,
     const HloInstruction* target, CompilerResources& resources) {
-  poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, 0, 1));
+  TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
+                      GetConvolutionParameters(target, 0, 1));
 
   auto name = StrCat(debug_name, "_weights");
   poplar::OptionFlags opts;
@@ -627,8 +625,7 @@ static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
                                               const xla::Shape& shape,
                                               const HloInstruction* target,
                                               CompilerResources& resources) {
-  poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(shape));
   auto a_shape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   auto b_shape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto o_shape = a_shape;
@@ -694,8 +691,7 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
                                                const xla::Shape& shape,
                                                const HloInstruction* target,
                                                CompilerResources& resources) {
-  poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(shape));
   auto a_shape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   auto b_shape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto o_shape = b_shape;
@@ -1092,8 +1088,7 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
                                            const TensorMap& tensor_map) {
   poplar::Tensor tensor;
 
-  poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(literal.shape()));
+  TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(literal.shape()));
 
   if (ShapeUtil::ElementsIn(literal.shape()) > 32) {
     TF_ASSIGN_OR_RETURN(tensor,
@@ -1168,8 +1163,7 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
                                        int64 iota_dimension,
                                        CompilerResources& resources,
                                        const TensorMap& tensor_map) {
-  poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(shape));
 
   int64 len = shape.dimensions(iota_dimension);
   Literal literal;
@@ -1191,11 +1185,11 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
       return xla::FailedPrecondition("unsupported primitive type for iota: %s",
                                      PrimitiveType_Name(shape.element_type()));
   }
-  poplar::Tensor t;
   auto iota_shape = ShapeUtil::MakeShape(shape.element_type(),
                                          {shape.dimensions(iota_dimension)});
-  TF_ASSIGN_OR_RETURN(t, AddConstantTensor(graph, src, iota_shape, literal,
-                                           resources, tensor_map));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor t,
+                      AddConstantTensor(graph, src, iota_shape, literal,
+                                        resources, tensor_map));
   return BroadcastTensor(t, shape, {iota_dimension});
 }
 

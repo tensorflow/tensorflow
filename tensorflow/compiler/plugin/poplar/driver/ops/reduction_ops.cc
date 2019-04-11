@@ -325,8 +325,7 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     // Find the input tensors
-    poplar::Tensor to_reduce;
-    TF_ASSIGN_OR_RETURN(to_reduce,
+    TF_ASSIGN_OR_RETURN(poplar::Tensor to_reduce,
                         FindInstructionInput(tensor_map, res, inst, 0, seq));
 
     HloInstruction* root(inst->to_apply()->root_instruction());
@@ -345,15 +344,13 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
-      poplar::Tensor init_val;
-      TF_ASSIGN_OR_RETURN(init_val,
+      TF_ASSIGN_OR_RETURN(poplar::Tensor init_val,
                           FindInstructionInput(tensor_map, res, inst, 1, seq));
 
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-      popops::expr::BinaryOpType op;
-      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
+      TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupBinaryFn(root));
 
       popops::mapInPlace(graph, op, out, init_val, seq,
                          GetDebugName(inst) + "_initval");
@@ -380,8 +377,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     // Find the input tensors
-    poplar::Tensor to_reduce;
-    TF_ASSIGN_OR_RETURN(to_reduce,
+    TF_ASSIGN_OR_RETURN(poplar::Tensor to_reduce,
                         FindInstructionInput(tensor_map, res, inst, 0, seq));
 
     // Find the type and vertex
@@ -455,15 +451,13 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
-      poplar::Tensor init_val;
-      TF_ASSIGN_OR_RETURN(init_val,
+      TF_ASSIGN_OR_RETURN(poplar::Tensor init_val,
                           FindInstructionInput(tensor_map, res, inst, 1, seq));
 
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-      popops::expr::BinaryOpType op;
-      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
+      TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupBinaryFn(root));
 
       popops::mapInPlace(graph, op, out, init_val, seq,
                          GetDebugName(inst) + "_initval");
@@ -576,8 +570,8 @@ StatusOr<poplar::program::Program> CreatePoplibsPooling(
       init_val = init_val.reshape({1})
                      .broadcast(out.numElements(), 0)
                      .reshape(out.shape());
-      popops::expr::BinaryOpType op;
-      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(reducing_op));
+      TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op,
+                          LookupBinaryFn(reducing_op));
       popops::mapInPlace(graph, op, out, init_val, prog,
                          GetDebugName(reducing_op) + "_initval");
     }
@@ -596,14 +590,11 @@ StatusOr<poplar::program::Program> CreatePoplibsMaxPoolGrad(
   poplar::program::Sequence seq;
   poplar::Graph& graph = GetGraph(res, inst);
 
-  poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor input,
                       FindInstructionInput(tensor_map, res, inst, 0, seq));
-  poplar::Tensor output;
-  TF_ASSIGN_OR_RETURN(output,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor output,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
-  poplar::Tensor output_grad;
-  TF_ASSIGN_OR_RETURN(output_grad,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor output_grad,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
   const auto reduction_dims = GetPoolingReductionDims(window);
@@ -642,8 +633,7 @@ StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
   poplar::program::Sequence prog;
   poplar::Graph& graph = GetGraph(res, inst);
 
-  poplar::Tensor output_grad;
-  TF_ASSIGN_OR_RETURN(output_grad,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor output_grad,
                       FindInstructionInput(tensor_map, res, inst, 0, prog));
   // Get the input shape (same shape as the input grad i.e. the output shape).
   auto optional_input_shape =
@@ -708,12 +698,10 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   poplar::Graph& graph = GetGraph(res, inst);
 
   // Find the input tensors
-  poplar::Tensor operand;
-  TF_ASSIGN_OR_RETURN(operand,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
                       FindInstructionInput(tensor_map, res, inst, 0, prog));
 
-  poplar::Tensor source;
-  TF_ASSIGN_OR_RETURN(source,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor source,
                       FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   HloInstruction* select_root(inst->select()->root_instruction());
@@ -752,9 +740,8 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
 
   Literal identity_literal = GetIdentityConstantLiteral(scatter_root, inst);
 
-  poplar::Tensor identity_val;
   TF_ASSIGN_OR_RETURN(
-      identity_val,
+      poplar::Tensor identity_val,
       AddConstantTensor(graph, std::make_pair(inst, 0), partial_shape,
                         identity_literal, res, tensor_map));
   prog.add(poplar::program::Copy(identity_val, partial));
@@ -852,15 +839,14 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
    */
   auto* init_inst = inst->operand(2);
   if (!(init_inst->IsConstant() && init_inst->literal() == identity_literal)) {
-    poplar::Tensor init_val;
-    TF_ASSIGN_OR_RETURN(init_val,
+    TF_ASSIGN_OR_RETURN(poplar::Tensor init_val,
                         FindInstructionInput(tensor_map, res, inst, 2, prog));
 
     // Create a binary op with the scatter_root opcode
     TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-    popops::expr::BinaryOpType op;
-    TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(scatter_root));
+    TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op,
+                        LookupBinaryFn(scatter_root));
 
     popops::mapInPlace(graph, op, out, init_val, prog,
                        GetDebugName(inst) + "_initval");
@@ -881,8 +867,8 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
   const HloInstruction* root =
       inst->fused_instructions_computation()->root_instruction();
   const Window& window(root->window());
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   std::vector<std::ptrdiff_t> paddingLower;
   std::vector<std::ptrdiff_t> paddingUpper;
@@ -891,8 +877,7 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
     paddingUpper.push_back(d.padding_high());
   }
 
-  poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor init_val,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   out = popops::pad(graph, out, paddingLower, paddingUpper, init_val);

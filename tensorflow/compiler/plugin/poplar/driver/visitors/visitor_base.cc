@@ -83,29 +83,26 @@ Status BaseVisitor::Unimplemented(HloInstruction* inst) {
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(
-      prog, CreateUnaryElementwiseOp(resources_, inst, GetOutputShape(inst),
-                                     tensor_map));
+  TF_ASSIGN_OR_RETURN(poplar::program::Program prog,
+                      CreateUnaryElementwiseOp(
+                          resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(
-      prog, CreateBinaryElementwiseOp(resources_, inst, GetOutputShape(inst),
-                                      tensor_map));
+  TF_ASSIGN_OR_RETURN(poplar::program::Program prog,
+                      CreateBinaryElementwiseOp(
+                          resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleCompare(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog,
+      poplar::program::Program prog,
       CreateComparisonOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
@@ -113,21 +110,20 @@ Status BaseVisitor::HandleCompare(HloInstruction* inst) {
 
 Status BaseVisitor::HandleConvert(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateCastOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      poplar::program::Program prog,
+      CreateCastOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleCopy(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor in;
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      in, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      poplar::Tensor in,
+      FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
 
-  out = GetGraph(resources_, inst).clone(in);
+  poplar::Tensor out = GetGraph(resources_, inst).clone(in);
   sequence.add(poplar::program::Copy(in, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -136,27 +132,27 @@ Status BaseVisitor::HandleCopy(HloInstruction* inst) {
 
 Status BaseVisitor::HandleClamp(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateClampOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      poplar::program::Program prog,
+      CreateClampOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      poplar::program::Program prog,
+      CreateSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleTupleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      poplar::program::Program prog,
+      CreateSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -258,10 +254,10 @@ Status BaseVisitor::HandleConstant(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Graph& graph = GetGraph(resources_, inst);
 
-  poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, AddConstantTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
-                           inst->literal(), resources_, tensor_map));
+      poplar::Tensor t,
+      AddConstantTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
+                        inst->literal(), resources_, tensor_map));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }
@@ -330,17 +326,16 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
 Status BaseVisitor::HandleCall(HloInstruction* inst) {
   HloComputation* comp = inst->to_apply();
   VLOG(1) << "Processing " << inst->name() << " : " << comp->name();
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateCallOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      poplar::program::Program prog,
+      CreateCallOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleCustomCall(HloInstruction* inst) {
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog,
+      poplar::program::Program prog,
       CreateCustomCallOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
 
@@ -382,12 +377,11 @@ Status BaseVisitor::HandleReduceWindow(HloInstruction* inst) {
 
 Status BaseVisitor::HandleMap(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  bool simple_parallel;
-  TF_ASSIGN_OR_RETURN(simple_parallel, IsParallelMap(inst, inst->to_apply()));
+  TF_ASSIGN_OR_RETURN(bool simple_parallel,
+                      IsParallelMap(inst, inst->to_apply()));
   if (simple_parallel) {
-    poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(
-        prog,
+        poplar::program::Program prog,
         CreateParallelMap(resources_, inst, GetOutputShape(inst), tensor_map));
     sequence.add(prog);
     return Status::OK();
@@ -404,9 +398,8 @@ Status BaseVisitor::HandleWhile(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleConditional(HloInstruction* inst) {
-  poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog,
+      poplar::program::Program prog,
       CreateConditionalOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
 
@@ -415,12 +408,11 @@ Status BaseVisitor::HandleConditional(HloInstruction* inst) {
 
 Status BaseVisitor::HandleReal(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor in;
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      in, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      poplar::Tensor in,
+      FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
 
-  out = GetGraph(resources_, inst).clone(in);
+  poplar::Tensor out = GetGraph(resources_, inst).clone(in);
   sequence.add(poplar::program::Copy(in, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -469,9 +461,9 @@ Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
     input_tensors = FindInstructionInputs(tensor_map, resources_, inst, 0, seq,
                                           expand_constants);
   } else {
-    poplar::Tensor in;
     TF_ASSIGN_OR_RETURN(
-        in, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+        poplar::Tensor in,
+        FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
     input_tensors.emplace_back(in);
   }
 

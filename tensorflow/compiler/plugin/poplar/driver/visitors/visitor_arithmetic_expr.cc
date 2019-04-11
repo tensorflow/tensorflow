@@ -73,12 +73,10 @@ ArithmeticExprVisitor::FindExpressionInput(const HloInstruction* inst) {
 Status ArithmeticExprVisitor::HandleElementwiseUnary(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   // find the op
-  popops::expr::UnaryOpType op;
-  TF_ASSIGN_OR_RETURN(op, LookupUnaryFn(inst));
+  TF_ASSIGN_OR_RETURN(popops::expr::UnaryOpType op, LookupUnaryFn(inst));
 
   // get the input
-  std::unique_ptr<popops::expr::Expr> in;
-  TF_ASSIGN_OR_RETURN(in, FindExpressionInput(inst->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto in, FindExpressionInput(inst->operand(0)));
 
   // create new expression
   expressions_map_[inst] = std::unique_ptr<popops::expr::UnaryOp>(
@@ -89,36 +87,30 @@ Status ArithmeticExprVisitor::HandleElementwiseUnary(HloInstruction* inst) {
 Status ArithmeticExprVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   // find the op
-  popops::expr::BinaryOpType op;
-  TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
+  TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupBinaryFn(inst));
 
   // get the inputs
-  std::unique_ptr<popops::expr::Expr> in0;
-  TF_ASSIGN_OR_RETURN(in0, FindExpressionInput(inst->operand(0)));
-  std::unique_ptr<popops::expr::Expr> in1;
-  TF_ASSIGN_OR_RETURN(in1, FindExpressionInput(inst->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto lhs, FindExpressionInput(inst->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto rhs, FindExpressionInput(inst->operand(1)));
 
   // create new expression
   expressions_map_[inst] = std::unique_ptr<popops::expr::BinaryOp>(
-      new popops::expr::BinaryOp(op, *in0.get(), *in1.get()));
+      new popops::expr::BinaryOp(op, *lhs.get(), *rhs.get()));
   return Status::OK();
 }
 
 Status ArithmeticExprVisitor::HandleCompare(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   // find the op
-  popops::expr::BinaryOpType op;
-  TF_ASSIGN_OR_RETURN(op, LookupComparisonFn(inst));
+  TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupComparisonFn(inst));
 
   // get the inputs
-  std::unique_ptr<popops::expr::Expr> in0;
-  TF_ASSIGN_OR_RETURN(in0, FindExpressionInput(inst->operand(0)));
-  std::unique_ptr<popops::expr::Expr> in1;
-  TF_ASSIGN_OR_RETURN(in1, FindExpressionInput(inst->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto lhs, FindExpressionInput(inst->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto rhs, FindExpressionInput(inst->operand(1)));
 
   // create new expression
   expressions_map_[inst] = std::unique_ptr<popops::expr::BinaryOp>(
-      new popops::expr::BinaryOp(op, *in0.get(), *in1.get()));
+      new popops::expr::BinaryOp(op, *lhs.get(), *rhs.get()));
   return Status::OK();
 }
 
@@ -127,13 +119,9 @@ Status ArithmeticExprVisitor::HandleSelect(HloInstruction* inst) {
   // set the op
   const popops::expr::TernaryOpType op = popops::expr::TernaryOpType::SELECT;
 
-  std::unique_ptr<popops::expr::Expr> pred;
-  TF_ASSIGN_OR_RETURN(pred, FindExpressionInput(inst->operand(0)));
-
-  std::unique_ptr<popops::expr::Expr> in0;
-  TF_ASSIGN_OR_RETURN(in0, FindExpressionInput(inst->operand(1)));
-  std::unique_ptr<popops::expr::Expr> in1;
-  TF_ASSIGN_OR_RETURN(in1, FindExpressionInput(inst->operand(2)));
+  TF_ASSIGN_OR_RETURN(auto pred, FindExpressionInput(inst->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto in0, FindExpressionInput(inst->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto in1, FindExpressionInput(inst->operand(2)));
   // create new expression
   expressions_map_[inst] = std::unique_ptr<popops::expr::TernaryOp>(
       new popops::expr::TernaryOp(op, *in0.get(), *in1.get(), *pred.get()));
@@ -145,12 +133,9 @@ Status ArithmeticExprVisitor::HandleClamp(HloInstruction* inst) {
   // set the op
   const popops::expr::TernaryOpType op = popops::expr::TernaryOpType::CLAMP;
 
-  std::unique_ptr<popops::expr::Expr> min;
-  TF_ASSIGN_OR_RETURN(min, FindExpressionInput(inst->operand(0)));
-  std::unique_ptr<popops::expr::Expr> arg;
-  TF_ASSIGN_OR_RETURN(arg, FindExpressionInput(inst->operand(1)));
-  std::unique_ptr<popops::expr::Expr> max;
-  TF_ASSIGN_OR_RETURN(max, FindExpressionInput(inst->operand(2)));
+  TF_ASSIGN_OR_RETURN(auto min, FindExpressionInput(inst->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto arg, FindExpressionInput(inst->operand(1)));
+  TF_ASSIGN_OR_RETURN(auto max, FindExpressionInput(inst->operand(2)));
 
   // create new expression
   expressions_map_[inst] = std::unique_ptr<popops::expr::TernaryOp>(
@@ -171,12 +156,10 @@ Status ArithmeticExprVisitor::FinishVisit(HloInstruction* inst) {
   poplar::Graph& graph = GetGraph(resources_, inst);
 
   // get the expression
-  std::unique_ptr<popops::expr::Expr> expr;
-  TF_ASSIGN_OR_RETURN(expr, FindExpressionInput(inst));
+  TF_ASSIGN_OR_RETURN(auto expr, FindExpressionInput(inst));
   // map expression with the tensors
   poplar::Tensor out = popops::map(graph, *expr, ts_, sequence,
                                    GetDebugName(inst) + "_expression");
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, GetOutputShape(inst)));
   outputs_.push_back(out);
 
   resources_.tensor_maps[inst->parent()->name()] = std::move(tensor_map);

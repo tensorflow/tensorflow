@@ -143,11 +143,9 @@ StatusOr<int64> ConvertWhileToRepeat(HloInstruction* while_inst) {
     return xla::FailedPrecondition("%s", err_msg);
   }
 
-  int64 initial_value;
-  TF_ASSIGN_OR_RETURN(initial_value,
+  TF_ASSIGN_OR_RETURN(int64 initial_value,
                       LiteralScalarToNativeType<int64>(init_inst->literal()));
-  int64 compare_value;
-  TF_ASSIGN_OR_RETURN(compare_value,
+  TF_ASSIGN_OR_RETURN(int64 compare_value,
                       LiteralScalarToNativeType<int64>(limit_inst->literal()));
 
   // Calculate the number of iterations and the final counter state

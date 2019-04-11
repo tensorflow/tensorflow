@@ -500,8 +500,7 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
           continue;
         }
 
-        bool done;
-        TF_ASSIGN_OR_RETURN(done, ProcessComputation(comp, attempt));
+        TF_ASSIGN_OR_RETURN(bool done, ProcessComputation(comp, attempt));
 
         // Patch up GTE sharding.  GTEs should always have the sharding taken
         // from their operand, not their users.  During the initial copying of
