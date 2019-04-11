@@ -404,7 +404,7 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
 
 
 @tf_export("strings.split", v1=[])
-def string_split_v2(source, sep=None, maxsplit=-1):
+def string_split_v2(input, sep=None, maxsplit=-1):  # pylint: disable=redefined-builtin
   """Split elements of `source` based on `sep` into a `RaggedTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
@@ -428,7 +428,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   Note that the above mentioned behavior matches python's str.split.
 
   Args:
-    source: `1-D` string `Tensor`, the strings to split.
+    input: `1-D` string `Tensor`, the strings to split.
     sep: `0-D` string `Tensor`, the delimiter string.
     maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
 
@@ -438,7 +438,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   Returns:
     A `RaggedTensor` of rank `2`: the strings split according to the delimiter.
   """
-  sparse_result = string_ops.string_split_v2(source, sep=sep, maxsplit=maxsplit)
+  sparse_result = string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
   return ragged_tensor.RaggedTensor.from_value_rowids(
       values=sparse_result.values,
       value_rowids=sparse_result.indices[:, 0],
@@ -508,7 +508,8 @@ def string_split(source, sep=None, skip_empty=True, delimiter=None,
 # In TensorFlow 1.x, "tf.strings.split" uses the new signature (with maxsplit),
 # but we need to add the result_type argument.
 @tf_export(v1=["strings.split"])
-def strings_split_v1(source, sep=None, maxsplit=-1, result_type="SparseTensor"):
+def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redefined-builtin
+                     result_type="SparseTensor", source=None):
   """Split elements of `source` based on `sep`.
 
   Let N be the size of source (typically N will be the batch size). Split each
@@ -537,11 +538,12 @@ def strings_split_v1(source, sep=None, maxsplit=-1, result_type="SparseTensor"):
   Note that the above mentioned behavior matches python's str.split.
 
   Args:
-    source: `1-D` string `Tensor`, the strings to split.
+    input: `1-D` string `Tensor`, the strings to split.
     sep: `0-D` string `Tensor`, the delimiter character.
     maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
     result_type: The tensor type for the result: one of `"RaggedTensor"` or
       `"SparseTensor"`.
+    source: alias for "input" argument.
 
   Raises:
     ValueError: If sep is not a string.
@@ -551,6 +553,8 @@ def strings_split_v1(source, sep=None, maxsplit=-1, result_type="SparseTensor"):
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
   """
+  source = deprecation.deprecated_argument_lookup(
+      "input", input, "source", source)
   sparse_result = string_ops.string_split_v2(
       source, sep=sep, maxsplit=maxsplit)
   if result_type == "SparseTensor":

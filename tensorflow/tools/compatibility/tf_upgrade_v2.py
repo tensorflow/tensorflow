@@ -2575,7 +2575,7 @@ def _rename_to_compat_v1(node, full_name, logs, reason):
 
 
 def _string_split_transformer(parent, node, full_name, name, logs):
-  """Update tf.string_split arguments: skip_empty, sep, result_type."""
+  """Update tf.string_split arguments: skip_empty, sep, result_type, source."""
   # Check the skip_empty parameter: if not false, then use compat.v1.
   for i, kw in enumerate(node.keywords):
     if kw.arg == "skip_empty":
@@ -2606,7 +2606,7 @@ def _string_split_transformer(parent, node, full_name, name, logs):
 
 
 def _string_split_rtype_transformer(parent, node, full_name, name, logs):
-  """Update tf.strings.split argument: result_type."""
+  """Update tf.strings.split arguments: result_type, source."""
   # Remove the "result_type" argument.
   need_to_sparse = True
   for i, kw in enumerate(node.keywords):
@@ -2624,6 +2624,10 @@ def _string_split_rtype_transformer(parent, node, full_name, name, logs):
             node, full_name, logs,
             "%s no longer takes the result_type parameter." % full_name)
       break
+
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "source":
+      kw.arg = "input"
 
   # If necessary, add a call to .to_sparse() to convert the output of
   # strings.split from a RaggedTensor to a SparseTensor.
