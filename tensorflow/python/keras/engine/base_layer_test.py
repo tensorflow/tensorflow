@@ -541,6 +541,19 @@ class NestedTrackingTest(test.TestCase):
 
     self.assertEqual([layer.v], layer.variables)
 
+  def test_layer_class_not_tracked_as_sublayer(self):
+    # See https://github.com/tensorflow/tensorflow/issues/27431 for details.
+
+    class LayerWithClassAttribute(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithClassAttribute, self).__init__()
+        self.layer_fn = keras.layers.Dense
+
+    layer = LayerWithClassAttribute()
+    self.assertEmpty(layer.variables)
+    self.assertEmpty(layer.submodules)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NameScopingTest(keras_parameterized.TestCase):
