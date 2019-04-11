@@ -1608,14 +1608,14 @@ class SymbolicShapeRefiner {
   Status InferShapes(const NodeDef& node, NodeContext* c) {
     // Infer the shapes of output tensors.
     if (!c->op_data || c->op_data->shape_inference_fn == nullptr) {
-      // There is nothing more we can infer, annotate outputs with unknown
-      // shapes
-      return c->inference_context->Run(shape_inference::UnknownShape);
+      // Annotate outputs with unknown shapes. Update output shapes with
+      // annotated information later on if available.
+      TF_RETURN_IF_ERROR(
+          c->inference_context->Run(shape_inference::UnknownShape));
+    } else {
+      TF_RETURN_IF_ERROR(
+          c->inference_context->Run(c->op_data->shape_inference_fn));
     }
-
-    TF_RETURN_IF_ERROR(
-        c->inference_context->Run(c->op_data->shape_inference_fn));
-
     Status status = Status::OK();
     auto it = fed_ports_.find(node.name());
     const bool is_fed = it != fed_ports_.end();

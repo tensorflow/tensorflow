@@ -91,6 +91,8 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
+    "//tensorflow/python:util_nest_test_main_lib",
+    "//tensorflow/python/keras/distribute:multi_worker_test_main_lib",
     # lite
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell.py",
@@ -101,6 +103,7 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/lite/python:interpreter.py",
     "//tensorflow/lite/python:interpreter_test.py",
     # contrib
+    "//tensorflow/contrib/eager/python/examples/revnet:blocks_test_main_lib",
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
     "//tensorflow/contrib/ffmpeg:test_data",

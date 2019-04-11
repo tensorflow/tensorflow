@@ -274,15 +274,15 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = 6;
 
-  static const ::tensorflow::cpu_function_runtime::BufferInfo* BufferInfos() {
-    static const ::tensorflow::cpu_function_runtime::BufferInfo
+  static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
+    static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
-::tensorflow::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
+::xla::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
+::xla::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
       };
     return kBufferInfos;
   }

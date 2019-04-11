@@ -374,7 +374,7 @@ class AssetTests(test.TestCase):
         {"output_0": [0.2]},
         _import_and_infer(export_dir, {"x": [0.1]}))
 
-  def test_sensible_graph_building_exception(self):
+  def test_sensible_function_building_exception(self):
     root = util.Checkpoint(v=variables.Variable(2.))
     root.f = def_function.function(
         lambda x: 2. * root.v,
@@ -385,9 +385,6 @@ class AssetTests(test.TestCase):
       save.save(root, export_dir)
     with self.assertRaisesRegexp(AssertionError, "tf.function"):
       _calls_save()
-    with ops.Graph().as_default():
-      with self.assertRaisesRegexp(AssertionError, "enable_eager_execution"):
-        save.save(root, export_dir)
 
 
 class _ModelWithOptimizerUsingDefun(util.Checkpoint):

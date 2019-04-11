@@ -86,7 +86,7 @@ def get_seed(op_seed):
 
 @tf_export(v1=['random.set_random_seed', 'set_random_seed'])
 def set_random_seed(seed):
-  """Sets the graph-level random seed.
+  """Sets the graph-level random seed for the default graph.
 
   Operations that rely on a random seed actually derive it from two seeds:
   the graph-level and operation-level seeds. This sets the graph-level seed.

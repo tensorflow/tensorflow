@@ -164,7 +164,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // We need a cost model for GPUs. Currently, do nothing.
       return false;
     };
-    pipeline.AddPass<DotDecomposer>(false);
+    pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<ConvolutionGroupConverter>(
         cost_model,
         /*convert_batch_groups_only=*/true);
@@ -443,8 +443,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
   VLOG(3) << "*** HLO After Optimization";
   XLA_VLOG_LINES(3, module->ToString());
-#if 0 
-  
+#if 0
+
   const string xla_dump_optimized_hlo_proto_to =
       module->config().debug_options().xla_dump_hlo_as_text();
   if (!xla_dump_optimized__hlo_proto_to.empty()) {
@@ -452,13 +452,13 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
         proto, xla_dump_optimized_hlo_proto_to, module->name()));
   }
-#endif 
+#endif
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
-  llvm_ir::AMDGPUMachineFeatures llvm_target_features = 
+  llvm_ir::AMDGPUMachineFeatures llvm_target_features =
        llvm_ir::AMDGPUMachineFeatures::Singleton();
 
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
@@ -549,7 +549,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     profile_printer = CreateHloProfilePrinterData(
         *profile_index_map, cost_analysis, entry_computation->name());
   }
- 
+
   auto* amdgpu_executable = new AMDGPUExecutable(
         "", std::move(hsaco), isa_version, std::move(thunk_schedule),
         std::move(module), std::move(buffer_assignment),

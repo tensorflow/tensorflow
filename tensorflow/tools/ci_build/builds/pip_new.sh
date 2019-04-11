@@ -630,10 +630,11 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
   else
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Avoid Python3.6 abnormality by installing auditwheel here.
-      pip3 show auditwheel
       set +e
-      pip3 install auditwheel==1.5.0
-      sudo pip3 install auditwheel==1.5.0
+      pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+      pip3 install auditwheel==1.5.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==1.5.0
+      sudo pip3 install auditwheel==1.5.0 || \
+        sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==1.5.0
       set -e
       auditwheel --version
 

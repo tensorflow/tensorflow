@@ -17,7 +17,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+
+exports_files(glob([
+    "testdata/**",
+]))
 
 cc_library(
     name = "evaluation_stage",
@@ -26,5 +30,27 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/core:tflite_portable_logging",
+    ],
+)
+
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    data = ["testdata/labels.txt"],
+    linkopts = tflite_linkopts(),
+    linkstatic = 1,
+    deps = [
+        ":utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )

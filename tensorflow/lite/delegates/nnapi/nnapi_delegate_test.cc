@@ -882,7 +882,8 @@ class SqueezeOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, SqueezeSimpleTest) {
+// TODO(b/215935381): Enable after resolving issues with flakiness.
+TEST(NNAPIDelegate, DISABLED_SqueezeSimpleTest) {
   std::initializer_list<float> data = {
       1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
       13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
@@ -1585,11 +1586,10 @@ TEST(NNAPIDelegate, LogisticQuantized) {
                                  {128, 1, 227, 251, 244, 32, 255, 188}));
 }
 
-#if 0
 class ResizeBilinearOpModel : public SingleOpModelWithNNAPI {
  public:
   ResizeBilinearOpModel(const TensorData& input,
-                        std::initializer_list<int> size_data = {}) {
+                        std::initializer_list<int> size_data) {
     bool const_size = size_data.size() != 0;
     input_ = AddInput(input);
     if (const_size) {
@@ -1625,14 +1625,16 @@ class ResizeBilinearOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, ResizeBilinearHorizontal) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}});
+TEST(ResizeBilinear, Horizontal) {
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}}, {});
   m.SetInput<float>({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({3, 5, 6})));
+}
 
+TEST(ResizeBilinear, HorizontalConstant) {
   ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 1, 2, 1}}, {1, 3});
   const_m.SetInput<float>({3, 6});
   const_m.Invoke();
@@ -1640,14 +1642,16 @@ TEST(NNAPIDelegate, ResizeBilinearHorizontal) {
               ElementsAreArray(ArrayFloatNear({3, 5, 6})));
 }
 
-TEST(NNAPIDelegate, ResizeBilinearVertical) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}});
+TEST(ResizeBilinear, Vertical) {
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}}, {});
   m.SetInput<float>({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({3, 7, 9})));
+}
 
+TEST(ResizeBilinear, VerticalConstant) {
   ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 2, 1, 1}}, {3, 1});
   const_m.SetInput<float>({3, 9});
   const_m.Invoke();
@@ -1655,8 +1659,8 @@ TEST(NNAPIDelegate, ResizeBilinearVertical) {
               ElementsAreArray(ArrayFloatNear({3, 7, 9})));
 }
 
-TEST(NNAPIDelegate, ResizeBilinearTwoDimensional) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}});
+TEST(ResizeBilinear, TwoDimensional) {
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {});
   m.SetInput<float>({
       3, 6,  //
       9, 12  //
@@ -1668,7 +1672,9 @@ TEST(NNAPIDelegate, ResizeBilinearTwoDimensional) {
                                         7, 9, 10,   //
                                         9, 11, 12,  //
                                     })));
+}
 
+TEST(ResizeBilinear, TwoDimensionalConstant) {
   ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 2, 2, 1}}, {3, 3});
   const_m.SetInput<float>({
       3, 6,  //
@@ -1681,7 +1687,6 @@ TEST(NNAPIDelegate, ResizeBilinearTwoDimensional) {
                                               9, 11, 12,  //
                                           })));
 }
-#endif
 
 template <typename T>
 class PadOpModel : public SingleOpModelWithNNAPI {

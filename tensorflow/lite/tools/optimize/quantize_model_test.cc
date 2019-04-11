@@ -38,9 +38,8 @@ namespace tflite {
 namespace optimize {
 namespace {
 
-std::unique_ptr<FlatBufferModel> ReadTestModel() {
-  auto model_path = tensorflow::io::JoinPath(
-      *g_test_model_dir, internal::kConvModelWith0Plus10Weights);
+std::unique_ptr<FlatBufferModel> ReadTestModel(const string& model_name) {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model_name);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
@@ -49,10 +48,10 @@ std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
   return std::vector<T>(vec->begin(), vec->end());
 }
 
-class QuantizeModelTest : public testing::Test {
+class QuantizeConvModelTest : public testing::Test {
  protected:
-  QuantizeModelTest() {
-    input_model_ = ReadTestModel();
+  QuantizeConvModelTest() {
+    input_model_ = ReadTestModel(internal::kConvModelWith0Plus10Weights);
     readonly_model_ = input_model_->GetModel();
     readonly_model_->UnPackTo(&model_);
   }
@@ -64,7 +63,7 @@ class QuantizeModelTest : public testing::Test {
   internal::FailOnErrorReporter error_reporter_;
 };
 
-TEST_F(QuantizeModelTest, QuantizationSucceeds) {
+TEST_F(QuantizeConvModelTest, QuantizationSucceeds) {
   auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
                               TensorType_INT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
@@ -73,7 +72,7 @@ TEST_F(QuantizeModelTest, QuantizationSucceeds) {
   ASSERT_TRUE(output_model);
 }
 
-TEST_F(QuantizeModelTest, TensorShapesAndStructureIsUnchanged) {
+TEST_F(QuantizeConvModelTest, TensorShapesAndStructureIsUnchanged) {
   auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
                               TensorType_INT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
@@ -94,7 +93,7 @@ TEST_F(QuantizeModelTest, TensorShapesAndStructureIsUnchanged) {
   }
 }
 
-TEST_F(QuantizeModelTest, OperatorsAreUnchanged) {
+TEST_F(QuantizeConvModelTest, OperatorsAreUnchanged) {
   auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
                               TensorType_INT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
@@ -124,7 +123,7 @@ TEST_F(QuantizeModelTest, OperatorsAreUnchanged) {
   }
 }
 
-TEST_F(QuantizeModelTest, GraphIsFullyQuantized) {
+TEST_F(QuantizeConvModelTest, GraphIsFullyQuantized) {
   auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
                               TensorType_INT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
@@ -136,7 +135,7 @@ TEST_F(QuantizeModelTest, GraphIsFullyQuantized) {
   }
 }
 
-TEST_F(QuantizeModelTest, FloatInputAndOutput) {
+TEST_F(QuantizeConvModelTest, FloatInputAndOutput) {
   auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
@@ -189,7 +188,7 @@ TEST_F(QuantizeModelTest, FloatInputAndOutput) {
   }
 }
 
-TEST_F(QuantizeModelTest, Uint8InputAndOutput) {
+TEST_F(QuantizeConvModelTest, Uint8InputAndOutput) {
   auto status = QuantizeModel(&builder_, &model_, TensorType_UINT8,
                               TensorType_UINT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
@@ -256,6 +255,90 @@ TEST_F(QuantizeModelTest, Uint8InputAndOutput) {
       }
     }
   }
+}
+
+class QuantizeConcatModelTest : public testing::Test {
+ protected:
+  QuantizeConcatModelTest() {
+    input_model_ = ReadTestModel(internal::kFloatConcatMax5Max10Max10);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+
+  std::unique_ptr<FlatBufferModel> input_model_;
+  const Model* readonly_model_;
+  tflite::ModelT model_;
+  flatbuffers::FlatBufferBuilder builder_;
+  internal::FailOnErrorReporter error_reporter_;
+};
+
+// There are two inputs for concat, "input0" and "input1". "input0" has [0, 5]
+// as min/max and "input1" has [0, 10] as min/max. The output "output" for
+// concat has [0, 10] as min/max.
+// After applyging QuantizeModel(), "input0" will have a requant op added, along
+// with a tensor "input0_reqaunt" that has [0, 10] as min/max. So the topology
+// becomes:
+// input0 -> requant -> input0_requant \
+//                                       concat - output
+//                              input1 /
+TEST_F(QuantizeConcatModelTest, AddRequantBeforeConcat) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be two ops: quant and concat.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 1);
+  EXPECT_EQ(subgraph->operators.size(), 2);
+  const auto& requant = subgraph->operators[0];
+  const auto& concat = subgraph->operators[1];
+  EXPECT_EQ(model_.operator_codes[requant->opcode_index]->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(model_.operator_codes[concat->opcode_index]->builtin_code,
+            BuiltinOperator_CONCATENATION);
+
+  // There should be 4 tensors: input0, input1, input0_requantized, output.
+  EXPECT_EQ(subgraph->tensors.size(), 4);
+  EXPECT_EQ(subgraph->tensors[0]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[0]->name, "input0");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->scale[0], 0.019607844);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->zero_point[0], -128);
+  EXPECT_EQ(subgraph->tensors[1]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[1]->name, "input1");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->scale[0], 0.039215688);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->zero_point[0], -128);
+  EXPECT_EQ(subgraph->tensors[2]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[2]->name, "output");
+  EXPECT_EQ(subgraph->tensors[2]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[2]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->scale[0], 0.039215688);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->zero_point[0], -128);
+  EXPECT_EQ(subgraph->tensors[3]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[3]->name, "input0_requantized");
+  EXPECT_EQ(subgraph->tensors[3]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[3]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[3]->quantization->scale[0], 0.039215688);
+  EXPECT_FLOAT_EQ(subgraph->tensors[3]->quantization->zero_point[0], -128);
+
+  // The connection should be what is described in the comment.
+  EXPECT_EQ(requant->inputs.size(), 1);
+  EXPECT_EQ(requant->outputs.size(), 1);
+  EXPECT_EQ(requant->inputs[0], 0);
+  EXPECT_EQ(requant->outputs[0], 3);
+  EXPECT_EQ(concat->inputs.size(), 2);
+  EXPECT_EQ(concat->outputs.size(), 1);
+  EXPECT_EQ(concat->inputs[0], 3);
+  EXPECT_EQ(concat->inputs[1], 1);
+  EXPECT_EQ(concat->outputs[0], 2);
 }
 
 }  // namespace

@@ -1007,11 +1007,8 @@ bool DotImplementationCanHandleTranspose(
       GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
                                    DotInfo(dot_instr), target_machine_features);
 
-  // TODO(sanjoy): This is not quite right, it should be `impl_strategy ==
-  // kEigen || impl_strategy == kTiledLlvmIrGemv || impl_strategy ==
-  // kNaiveLlvmIr` but I'll fix this in a later CL in the interest of keeping
-  // the CL adding this comment NFC.
-  return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
+  return impl_strategy == DotImplementationStrategy::kNaiveLlvmIr ||
+         impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemv ||
          impl_strategy == DotImplementationStrategy::kEigen;
 }
 

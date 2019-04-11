@@ -1271,12 +1271,10 @@ class ControlFlowTest(test.TestCase):
     def nested_while_loop():
       return build_nested_while()[0]
 
-    # TODO(b/117840611): calling nested_while_loop fails in eager
-    if not context.executing_eagerly():
-      with self.captureWritesToStream(sys.stderr) as printed:
-        self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
-                       filter_test_messages(printed.contents()))
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.assertEqual(self.evaluate(nested_while_loop()), 2)
+    self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
+                     filter_test_messages(printed.contents()))
 
     # wrap_function should prune.
     def pruned_while():
@@ -1291,11 +1289,9 @@ class ControlFlowTest(test.TestCase):
       return build_nested_while()[0]
     pruned_nested_while = wrap_function.wrap_function(pruned_nested_while, [])
 
-    # TODO(b/117840611): calling nested_while_loop fails in eager
-    if not context.executing_eagerly():
-      with self.captureWritesToStream(sys.stderr) as printed:
-        self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.assertEqual(self.evaluate(pruned_nested_while()), 2)
+    self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):

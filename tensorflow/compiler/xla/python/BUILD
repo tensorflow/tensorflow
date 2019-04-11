@@ -137,6 +137,7 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
         # Do NOT remove this dependency. The XLA Python extension must not
         # depend on any part of TensorFlow at runtime, **including**
         # libtensorflow_framework.so. The XLA module is deployed self-contained

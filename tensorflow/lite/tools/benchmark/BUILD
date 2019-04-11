@@ -110,12 +110,18 @@ cc_library(
     deps = [
         ":benchmark_model_lib",
         ":logging",
+        "@gemmlowp",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profile_summarizer",
-        "@gemmlowp",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:gl_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(

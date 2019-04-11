@@ -3698,7 +3698,12 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
   if batch_dims == 0:
-    return gen_array_ops.gather_nd(params, indices, name=name)
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.gather_nd(indices, name=name)
+    except AttributeError:
+      return gen_array_ops.gather_nd(params, indices, name=name)
   else:
     return batch_gather_nd(
         params, indices, batch_dims=batch_dims, name=name)

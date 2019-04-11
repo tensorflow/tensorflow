@@ -793,6 +793,25 @@ cc_library(
 )
 
 cc_library(
+    name = "eigen_helpers_no_mkl",
+    hdrs = [
+        "eigen_activations.h",
+        "eigen_attention.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_backward_spatial_convolutions.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_pooling.h",
+        "eigen_softmax.h",
+        "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
+    ],
+    deps = [
+        ":eigen_spatial_convolutions-inl",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "eigen_spatial_convolutions-inl",
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
@@ -1473,6 +1492,27 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "conv_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -2375,6 +2415,7 @@ tf_kernel_library(
         ":bounds_check",
         ":dense_update_functor",
         ":gather_functor",
+        ":gather_nd_op",
         ":scatter_functor",
         ":training_op_helpers",
         ":variable_ops",

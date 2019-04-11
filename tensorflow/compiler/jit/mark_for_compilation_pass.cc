@@ -93,12 +93,18 @@ class RecursiveCompilabilityChecker {
     // their memory effects in jit/resource_variable_safety_analysis.
     bool allow_resource_ops_in_called_functions;
 
-    // Whether resource operations that do not operate on resource variables are
-    // allowed.
-    bool allow_non_resource_var_resource_ops;
+    // Whether Stack operations are allowed.  We avoid auto-clustering Stack
+    // operations in general because we do not support snapshotting them.
+    //
+    // TODO(b/112837194): This restriction can be lifted with some work.
+    bool allow_stack_ops;
 
-    // Whether operations that produce resources (like StackV2) are allowed.
-    bool allow_resource_producing_ops;
+    // Whether TensorArray operations are allowed.  We avoid auto-clustering
+    // TensorArray operations in general because we do not support snapshotting
+    // them.
+    //
+    // TODO(b/112837194): This restriction can be lifted with some work.
+    bool allow_tensor_array_ops;
 
     // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
     // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
@@ -109,12 +115,14 @@ class RecursiveCompilabilityChecker {
     // to cluster ControlTrigger because of how we use deadness analysis.
     bool allow_control_trigger;
 
-    // Whether ops with dummy implementations are allowed. We avoid
-    // auto-clustering these ops so that the user is not surprised when XLA is
-    // implicitly enabled. If the user explicitly specifies to use XLA, it is
-    // fine to resort to a dummy implementation. Currently Assert and
-    // CheckNumerics ops have dummy XLA implementations.
-    bool allow_dummy_ops;
+    // Whether it is okay to "cluster" Assert and CheckNumerics by simply
+    // removing them (they're not removed during clustering, but their
+    // XlaOpKernel is a no-op kernel).  We avoid auto-clustering these ops so
+    // that the user is not surprised when XLA is implicitly enabled. If the
+    // user explicitly specifies to use XLA, it is fine to resort to a dummy
+    // implementation. Currently Assert and CheckNumerics ops have dummy XLA
+    // implementations.
+    bool allow_eliding_assert_and_checknumerics_ops;
 
     // Whether ops that produce or consume DT_VARIANT values are allowed.  We
     // don't auto-cluster these ops because we don't yet support live-in or
@@ -146,18 +154,19 @@ class RecursiveCompilabilityChecker {
   bool IsCompilableWhile(const Node& while_node, int depth,
                          FunctionLibraryRuntime* lib_runtime);
 
-  // Returns true if `node` is a resource operation recognized by tf2xla that
-  // operates on something other than resource variables.
-  bool IsNonResourceVarResourceOp(const Node& node) {
-    // TODO(b/112837194): We can't cluster these because we only support
-    // snapshotting resource variables (and we can't e.g. snapshot stacks). This
-    // limitation may be fixable with some work.
+  bool IsStackOp(const Node& node) {
     const XlaResourceOpInfo* op_info =
         GetResourceOpInfoForOp(node.type_string());
-    return op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
+    return op_info && op_info->resource_kind() == XlaResourceKind::kStack;
   }
 
-  bool IsDummyImplOp(absl::string_view op_name) {
+  bool IsTensorArrayOp(const Node& node) {
+    const XlaResourceOpInfo* op_info =
+        GetResourceOpInfoForOp(node.type_string());
+    return op_info && op_info->resource_kind() == XlaResourceKind::kTensorArray;
+  }
+
+  bool IsAssertOrCheckNumerics(absl::string_view op_name) {
     return op_name == "Assert" || op_name == "CheckNumerics";
   }
 
@@ -273,20 +282,6 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
 
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   CHECK(fbody);
-  const FunctionDef& fdef = fbody->fdef;
-  bool noinline = false;
-  if (GetNodeAttr(AttrSlice(&fdef.attr()), "_noinline", &noinline).ok() &&
-      noinline) {
-    // The underlying mechanism that calls non-inlined functions uses
-    // LocalExecutor, which interacts poorly with the LocalExecutor used by
-    // tf2xla to translate the TF graph into XLA.  So we avoid this for now.
-    //
-    // TODO(b/36139787): Create a mechanism to set inlining hints.
-    VLOG(2) << "Rejecting " << call_def.op()
-            << ": can't compile noinline function.";
-    return false;
-  }
-
   for (Node* node : fbody->graph->op_nodes()) {
     if (!IsCompilableNode(*node, depth + 1, lib_runtime)) {
       return false;
@@ -342,8 +337,9 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return LogNotCompilableAndReturn(node);
   }
 
-  if (!op_filter_.allow_dummy_ops && IsDummyImplOp(node.type_string())) {
-    return LogNotCompilableAndReturn(node, "dummy op");
+  if (!op_filter_.allow_eliding_assert_and_checknumerics_ops &&
+      IsAssertOrCheckNumerics(node.type_string())) {
+    return LogNotCompilableAndReturn(node, "Assert or CheckNumerics");
   }
 
   if (!op_filter_.allow_ops_producing_or_consuming_variant &&
@@ -351,18 +347,12 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return LogNotCompilableAndReturn(node, "DT_VARIANT producer/consumer");
   }
 
-  if (!op_filter_.allow_resource_producing_ops && HasResourceOutput(node)) {
-    // We don't have a way of returning values of type DT_RESOURCE from XLA
-    // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
-    return LogNotCompilableAndReturn(node, "DT_RESOURCE producer");
+  if (!op_filter_.allow_stack_ops && IsStackOp(node)) {
+    return LogNotCompilableAndReturn(node, "Stack op");
   }
 
-  if (!op_filter_.allow_non_resource_var_resource_ops &&
-      IsNonResourceVarResourceOp(node)) {
-    // XlaLaunchOp also cannot snapshot resources that are not resource
-    // variables so we avoid clustering resource operations that operate on
-    // non-resource variables.
-    return LogNotCompilableAndReturn(node, "non-resource variable resource op");
+  if (!op_filter_.allow_tensor_array_ops && IsTensorArrayOp(node)) {
+    return LogNotCompilableAndReturn(node, "TensorArray op");
   }
 
   if (!op_filter_.allow_resource_ops_in_called_functions && depth > 0 &&
@@ -376,20 +366,17 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
     const XlaOpRegistry::DeviceRegistration& registration) {
-  bool always_auto_cluster = registration.autoclustering_policy ==
-                             XlaOpRegistry::AutoclusteringPolicy::kAlways;
-
   RecursiveCompilabilityChecker::OperationFilter op_filter;
-  op_filter.allow_non_resource_var_resource_ops =
-      registration.compile_all_resource_ops;
-  op_filter.allow_non_resource_var_resource_ops =
-      registration.compile_all_resource_ops;
-  op_filter.allow_resource_producing_ops =
-      registration.compile_all_resource_ops;
-  op_filter.allow_stateful_rng_ops = always_auto_cluster;
-  op_filter.allow_control_trigger = always_auto_cluster;
-  op_filter.allow_dummy_ops = always_auto_cluster;
-  op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
+  op_filter.allow_resource_ops_in_called_functions =
+      registration.cluster_resource_variable_ops_unsafely;
+  op_filter.allow_stack_ops = registration.cluster_stack_ops;
+  op_filter.allow_tensor_array_ops = registration.cluster_tensor_array_ops;
+  op_filter.allow_stateful_rng_ops = registration.cluster_stateful_rng_ops;
+  op_filter.allow_control_trigger = registration.cluster_control_trigger;
+  op_filter.allow_eliding_assert_and_checknumerics_ops =
+      registration.elide_assert_and_checknumerics;
+  op_filter.allow_ops_producing_or_consuming_variant =
+      registration.cluster_variant_ops;
   return op_filter;
 }
 
@@ -443,6 +430,13 @@ class MarkForCompilationPassImpl {
     // cluster must be placed on the same device.
     string resource_op_device;
 
+    // If set then it is a predicate that is true iff the cluster is alive
+    // (clusters are alive or dead as a single unit).  If unset we've decided to
+    // (unsafely) ignore deadness analysis because the user asked us to.  If
+    // this is unset on a single Cluster instance then it is unset on all
+    // Cluster instances.
+    absl::optional<DeadnessAnalysis::DeadnessPredicate> deadness_predicate;
+
     // True if any node in the cluster has an _XlaCompile attribute set to true.
     bool has_xla_compile_attr;
   };
@@ -456,9 +450,10 @@ class MarkForCompilationPassImpl {
   bool CompilationDisallowedByXlaCompileAttr(Node* node,
                                              const DeviceType& jit_device_type);
 
-  void BuildInitialClusterSet(const OrderedNodeSet& compilation_candidates,
-                              std::vector<UnionFind<Cluster>>* clusters,
-                              std::deque<UnionFind<Cluster>*>* worklist);
+  Status BuildInitialClusterSet(const OrderedNodeSet& compilation_candidates,
+                                const DeadnessAnalysis* deadness_analysis,
+                                std::vector<UnionFind<Cluster>>* clusters,
+                                std::deque<UnionFind<Cluster>*>* worklist);
 
   StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
 
@@ -542,14 +537,22 @@ bool MarkForCompilationPassImpl::HasMismatchingXlaScope(Node* node_from,
          from_scope != to_scope;
 }
 
-void MarkForCompilationPassImpl::BuildInitialClusterSet(
+Status MarkForCompilationPassImpl::BuildInitialClusterSet(
     const OrderedNodeSet& compilation_candidates,
+    const DeadnessAnalysis* deadness_analysis,
     std::vector<UnionFind<Cluster>>* clusters,
     std::deque<UnionFind<Cluster>*>* worklist) {
   clusters->resize(graph_->num_node_ids());
   for (Node* node : compilation_candidates) {
     Cluster* cluster = &(*clusters)[node->id()].Get();
     cluster->representative = node->id();
+
+    if (deadness_analysis) {
+      TF_ASSIGN_OR_RETURN(
+          cluster->deadness_predicate,
+          deadness_analysis->GetPredicateFor(node, Graph::kControlSlot));
+    }
+
     const string& device = !node->assigned_device_name().empty()
                                ? node->assigned_device_name()
                                : node->requested_device();
@@ -571,6 +574,8 @@ void MarkForCompilationPassImpl::BuildInitialClusterSet(
     cluster->devices.insert(device);
     worklist->push_back(&(*clusters)[node->id()]);
   }
+
+  return Status::OK();
 }
 
 StatusOr<std::pair<OrderedNodeSet, absl::flat_hash_set<Node*>>>
@@ -607,12 +612,6 @@ MarkForCompilationPassImpl::FindCompilationCandidates() {
     VLOG(2) << "Starting fuel: " << *debug_options_.fuel;
   }
 
-  std::unique_ptr<DeadnessAnalysis> deadness_analysis;
-  if (!debug_options_.ignore_deadness_checks) {
-    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
-    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis));
-  }
-
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
   for (Node* node : sorted_nodes) {
@@ -627,14 +626,6 @@ MarkForCompilationPassImpl::FindCompilationCandidates() {
         device_info_cache_.GetDeviceTypeFor(node->assigned_device_name()));
     VLOG(4) << "Device type for " << node->name() << ": "
             << device_type.type_string();
-
-    if (deadness_analysis) {
-      if (node->IsMerge() ||
-          deadness_analysis->HasInputsWithMismatchingDeadness(*node)) {
-        VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
-        continue;
-      }
-    }
 
     if (CompilationDisallowedByXlaCompileAttr(node, device_type)) {
       VLOG(2) << "Not clustering " << node->name()
@@ -795,7 +786,7 @@ Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
   if (!registration) {
     *ignore = true;
   } else {
-    *ignore = registration->compile_all_resource_ops;
+    *ignore = registration->cluster_resource_variable_ops_unsafely;
   }
   return Status::OK();
 }
@@ -834,12 +825,19 @@ Status MarkForCompilationPassImpl::Run() {
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
       graph_, flib_def_, ignore_resource_ops, &cycles));
 
+  std::unique_ptr<DeadnessAnalysis> deadness_analysis;
+  if (!debug_options_.ignore_deadness_checks) {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
+    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis));
+  }
+
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative names the node in the 'cycles' graph that represents the
   // cluster.
   std::vector<UnionFind<Cluster>> clusters;
   std::deque<UnionFind<Cluster>*> worklist;
-  BuildInitialClusterSet(compilation_candidates, &clusters, &worklist);
+  TF_RETURN_IF_ERROR(BuildInitialClusterSet(
+      compilation_candidates, deadness_analysis.get(), &clusters, &worklist));
 
   int64 iteration_count = 0;
 
@@ -878,6 +876,12 @@ Status MarkForCompilationPassImpl::Run() {
       Node* node_to = graph_->FindNodeId(to);
       if (compilation_candidates.find(node_to) ==
           compilation_candidates.cend()) {
+        continue;
+      }
+
+      DCHECK(cluster_from->deadness_predicate.has_value() ==
+             cluster_to.deadness_predicate.has_value());
+      if (cluster_from->deadness_predicate != cluster_to.deadness_predicate) {
         continue;
       }
 
@@ -1365,11 +1369,11 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   // even if we are sometimes unable to auto-cluster them.
   RecursiveCompilabilityChecker::OperationFilter op_filter;
   op_filter.allow_resource_ops_in_called_functions = true;
-  op_filter.allow_non_resource_var_resource_ops = true;
-  op_filter.allow_resource_producing_ops = true;
+  op_filter.allow_stack_ops = true;
+  op_filter.allow_tensor_array_ops = true;
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
-  op_filter.allow_dummy_ops = true;
+  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
 
   return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
@@ -1393,11 +1397,12 @@ Status MarkForCompilationPass::Run(
 }
 
 Status MarkForCompilationPass::RunForTest(
-    const GraphOptimizationPassOptions& options) {
+    const GraphOptimizationPassOptions& options,
+    bool disable_deadness_analysis) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
   MarkForCompilationPassImpl::DebugOptions debug_options;
-  debug_options.ignore_deadness_checks = true;
+  debug_options.ignore_deadness_checks = disable_deadness_analysis;
   debug_options.ignore_xla_compile_attr = true;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;

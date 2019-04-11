@@ -23,6 +23,7 @@ import sys
 import enum
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.api.lib import api_objects_pb2
@@ -183,7 +184,8 @@ class PythonObjectToProtoVisitor(object):
     def _AddMember(member_name, member_obj, proto):
       """Add the child object to the object being constructed."""
       _, member_obj = tf_decorator.unwrap(member_obj)
-      if _SkipMember(parent, member_name):
+      if (_SkipMember(parent, member_name)
+          or member_obj == deprecation.HIDDEN_ATTRIBUTE):
         return
       if member_name == '__init__' or not member_name.startswith('_'):
         if tf_inspect.isroutine(member_obj):

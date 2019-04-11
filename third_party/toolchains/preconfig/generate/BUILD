@@ -10,13 +10,13 @@ tensorflow_rbe_config(
 )
 
 tensorflow_rbe_config(
-    name = "centos7-py3-gcc7-cuda10.0-cudnn7-tensorrt5",
+    name = "centos6-py3-gcc7-cuda10.0-cudnn7-tensorrt5",
     compiler = "gcc",
     compiler_prefix = "/opt/rh/devtoolset-7/root/usr/bin",
     cuda_version = "10.0",
     cudnn_install_path = "/usr/local/cuda-10.0",
     cudnn_version = "7",
-    os = "centos7",
+    os = "centos6",
     python_version = "3",
     tensorrt_install_path = "/usr/lib64",
     tensorrt_version = "5",

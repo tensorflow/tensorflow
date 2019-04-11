@@ -1038,7 +1038,7 @@ XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
 
 class VariadicReduceTest : public HloTestBase {};
 
-XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R2x2_simple)) {
+XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {
   absl::string_view hlo_string = R"(
   HloModule Reduce_R3x2_to_R1x2_simple
 
@@ -1066,7 +1066,7 @@ XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R2x2_simple)) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R1x2_simple)) {
+XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R1x2_simple) {
   absl::string_view hlo_string = R"(
   HloModule Reduce_R3x2_to_R1x2_simple
 
@@ -1094,7 +1094,7 @@ XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R1x2_simple)) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R1x2_to_R0x2_simple)) {
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_simple) {
   absl::string_view hlo_string = R"(
   HloModule Reduce_R1x2_to_R0x2_simple
 
@@ -1122,7 +1122,7 @@ XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R1x2_to_R0x2_simple)) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R1x2_to_R0x2_argmax)) {
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
   absl::string_view hlo_string = R"(
     HloModule Reduce_R1x2_to_R0x2_argmax
 

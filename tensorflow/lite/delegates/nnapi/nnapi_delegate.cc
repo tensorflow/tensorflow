@@ -701,6 +701,31 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_RESHAPE>;
         }
         break;
+      case kTfLiteBuiltinResizeBilinear:
+        if (version == 1) {
+          if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+            // Some NNAPI 1.1 drivers don't support this operator properly.
+            return nullptr;
+          }
+          const auto& input = context->tensors[node->inputs->data[0]];
+          if (input.dims->size != 4) return nullptr;
+          if (input.type != kTfLiteFloat32 && input.type != kTfLiteUInt8) {
+            return nullptr;
+          }
+
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            const int output_id = mapping_args.node->outputs->data[0];
+            auto& output = mapping_args.context->tensors[output_id];
+            const int output_height = output.dims->data[1];
+            const int output_width = output.dims->data[2];
+            // TfLiteResizeBilinearParams's |align_corners| is ignored.
+            mapping_args.builder->AddScalarInt32Operand(output_height);
+            mapping_args.builder->AddScalarInt32Operand(output_width);
+            return ANEURALNETWORKS_RESIZE_BILINEAR;
+          };
+        }
+        break;
       case kTfLiteBuiltinSqueeze:
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI11) {
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -1252,6 +1277,7 @@ class NNAPIDelegateKernel {
       const bool hybrid_op = IsHybridOperator(context, reg->builtin_code, node);
 
       // Map inputs to NN API tensor indices.
+      int num_added_inputs = 0;
       for (auto input_index : TfLiteIntArrayView(node->inputs)) {
         if (input_index == kOptionalTensor &&
             (reg->builtin_code == kTfLiteBuiltinLstm ||
@@ -1261,9 +1287,19 @@ class NNAPIDelegateKernel {
           // TODO(miaowang): make sure this is also able to handle quantized
           // tensor when supported by NNAPI.
           TF_LITE_ENSURE_STATUS(builder.AddVectorFloat32Operand(nullptr, 0));
+        } else if (reg->builtin_code == kTfLiteBuiltinResizeBilinear) {
+          if (num_added_inputs == 0) {
+            // Only the first input tensor is added. The second one, specifying
+            // the output height and width, is not added and instead the height
+            // and width will be added individually as scalars by the mapping
+            // function returned by Map().
+            TF_LITE_ENSURE_STATUS(
+                builder.AddTensorInput(input_index, hybrid_op));
+          }
         } else {
           TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op));
         }
+        ++num_added_inputs;
       }
       // Get op type and operands
       int nn_op_type = Map(

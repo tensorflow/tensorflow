@@ -22,7 +22,6 @@ import copy
 import threading
 from absl.testing import parameterized
 from tensorflow.contrib.distribute.python import parameter_server_strategy
-from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
@@ -33,6 +32,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy as core_parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop

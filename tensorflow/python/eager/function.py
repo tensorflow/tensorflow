@@ -575,7 +575,8 @@ class ConcreteFunction(object):
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
-    tape.variables_accessed(self._func_graph.variables)
+    for v in self._func_graph.variables:
+      resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
     variables_used = set([])
@@ -585,8 +586,7 @@ class ConcreteFunction(object):
         # pass its handle only once.
         if arg.handle in variables_used:
           continue
-        if arg.trainable:
-          tape.variable_accessed(arg)
+        resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
         variables_used.add(arg.handle)
       elif isinstance(arg, ops.Tensor):

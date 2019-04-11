@@ -39,7 +39,7 @@ class ReLU : public NodeShader {
     std::vector<UniformParameter> params;
     std::string min;
     if (attr.alpha == 0) {
-      min = "0.0";
+      min = "vec4(0.0)";
     } else {
       min = "min($alpha$ * value_0, 0.0)";
       params.push_back({"alpha", attr.alpha});
@@ -48,7 +48,7 @@ class ReLU : public NodeShader {
     if (attr.clip == 0) {
       code = "value_0 = max(value_0, " + min + ");";
     } else {
-      code = "value_0 = clamp(value_0, " + min + ", $clip$);";
+      code = "value_0 = clamp(value_0, " + min + ", vec4($clip$));";
       params.push_back({"clip", attr.clip});
     }
     *generated_code = {

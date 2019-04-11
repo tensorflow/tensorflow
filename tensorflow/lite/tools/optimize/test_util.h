@@ -56,6 +56,10 @@ extern const char* kQuantizedWithGather;
 // constant and other placeholder.
 extern const char* kConstInputAddModel;
 
+// A float test model with concat that has [0, 5] and [0, 10] for inputs and [0,
+// 10] as output.
+extern const char* kFloatConcatMax5Max10Max10;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

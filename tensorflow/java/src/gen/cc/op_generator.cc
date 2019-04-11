@@ -243,6 +243,10 @@ void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
       writer->EndLine();
     }
   }
+  // Add control dependencies, if any.
+  writer->Append("opBuilder = scope.applyControlDependencies(opBuilder);");
+  writer->EndLine();
+
   for (const AttributeSpec& attribute : op.attributes()) {
     WriteSetAttrDirective(attribute, false, writer);
   }

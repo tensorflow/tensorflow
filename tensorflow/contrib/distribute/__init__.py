@@ -29,7 +29,6 @@ from tensorflow.contrib.distribute.python.mirrored_strategy import MirroredStrat
 from tensorflow.contrib.distribute.python.monitor import Monitor
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
 from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
-from tensorflow.contrib.distribute.python.step_fn import *
 from tensorflow.contrib.distribute.python.tpu_strategy import initialize_tpu_system
 from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
 from tensorflow.python.distribute.cross_device_ops import *
@@ -38,6 +37,7 @@ from tensorflow.python.distribute.distribute_coordinator import run_standard_ten
 from tensorflow.python.distribute.distribute_lib import *
 from tensorflow.python.distribute.distribution_strategy_context import *
 
+from tensorflow.python.distribute.step_fn import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 

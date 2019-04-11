@@ -57,8 +57,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
       shape_in = BCast::ToShape(bcast.output_shape());
     }
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(shape_in),
-                errors::InvalidArgument("logits and labels must be beither "
-                                        "2-dimensional, or roadcasted to "
+                errors::InvalidArgument("logits and labels must be either "
+                                        "2-dimensional, or broadcasted to be "
                                         "2-dimensional"));
 
     // loss is 1-D (one per example), and size is batch_size.

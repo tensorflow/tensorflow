@@ -526,9 +526,10 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,3,?,d1_3]");
 
-  // input depths must match.
-  INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
-              "[1,2,2,10];[1,1,10000,20]");
+  // input depths must be multiple of filter.
+  INFER_ERROR(
+      "Depth of input (10) is not a multiple of input depth of filter (10000)",
+      op, "[1,2,2,10];[1,1,10000,20]");
 
   // Tests for NCHW
   // 1x1 filter

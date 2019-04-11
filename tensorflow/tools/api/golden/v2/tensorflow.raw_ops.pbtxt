@@ -937,6 +937,10 @@ tf_module {
     argspec: "args=[\'images\', \'boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "DrawBoundingBoxesV2"
+    argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DynamicPartition"
     argspec: "args=[\'data\', \'partitions\', \'num_partitions\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2947,6 +2951,10 @@ tf_module {
   member_method {
     name: "ResourceGather"
     argspec: "args=[\'resource\', \'indices\', \'dtype\', \'batch_dims\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "ResourceGatherNd"
+    argspec: "args=[\'resource\', \'indices\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "ResourceScatterAdd"

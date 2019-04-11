@@ -54,3 +54,11 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
   @property
   def _element_structure(self):
     return self._structure
+
+
+def _AutoShardDatasetV1(input_dataset, num_workers, index):
+  return dataset_ops.DatasetV1Adapter(
+      _AutoShardDataset(input_dataset, num_workers, index))
+
+
+_AutoShardDatasetV1.__doc__ = _AutoShardDataset.__doc__

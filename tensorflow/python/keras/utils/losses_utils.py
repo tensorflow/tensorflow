@@ -225,7 +225,7 @@ def compute_weighted_loss(losses,
       weight_ndim = K.ndim(sample_weight)
       losses = K.mean(losses, axis=list(range(weight_ndim, ndim)))
 
-    sample_weight.shape.assert_is_compatible_with(losses.get_shape())
+    sample_weight.shape.assert_is_compatible_with(losses.shape)
     weighted_losses = math_ops.multiply(losses, sample_weight)
     # Apply reduction function to the individual weighted losses.
     loss = reduce_weighted_loss(weighted_losses, reduction)
