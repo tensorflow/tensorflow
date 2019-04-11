@@ -59,27 +59,6 @@ namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 namespace {
-class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
- public:
-  explicit EigenThreadPoolWrapper(thread::ThreadPool* pool) : pool_(pool) {}
-  ~EigenThreadPoolWrapper() override {}
-  void Schedule(std::function<void()> fn) override {
-    auto wrapped = [=]() {
-      // TensorFlow flushes denormals to zero and rounds to nearest, so we do
-      // the same here.
-      port::ScopedFlushDenormal flush;
-      port::ScopedSetRound round(FE_TONEAREST);
-      fn();
-    };
-    pool_->Schedule(std::move(wrapped));
-  }
-  int NumThreads() const override { return pool_->NumThreads(); }
-  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
-
- private:
-  thread::ThreadPool* pool_ = nullptr;
-};
-
 template <typename T>
 bool AllValuesAre(const TensorProto& proto, const T& value) {
   Tensor tensor;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <math.h>
+
 #include <algorithm>
 #include <memory>
 #include <new>
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -895,8 +895,7 @@ void BM_ParallelFusion(int num_iters) {
   // Initialize thread pool.
   tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
                                       intra_op_parallelism_threads);
-  tensorflow::EigenThreadPoolWrapper tp(&pool);
-  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+  Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   // Initialize ExecutableRunOptions.
   ExecutableRunOptions options;
