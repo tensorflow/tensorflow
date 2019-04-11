@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
+# TODO: Create test case using multiple graphs
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.

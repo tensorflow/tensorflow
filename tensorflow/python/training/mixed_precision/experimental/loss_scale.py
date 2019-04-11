@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Contains LossScaler classes."""
+"""Contains LossScale classes."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,78 +34,50 @@ from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(reedwm): Merge this with tf.keras.mixed_precision.experimental.LossScale
 @six.add_metaclass(abc.ABCMeta)
 @tf_export(v1=['train.mixed_precision.experimental.LossScale'])
 class LossScale(trackable.Trackable):
-  """Base class to compute the loss scale.
+  """Loss scale base class.
 
-  Loss scaling is a process that:
+  Instances of this class represent a loss scale. Calling instances of this
+  class returns the loss scale as a scalar float32 tensor, while method
+  `update()` updates the loss scale depending on the values of the gradients.
+  Optimizers use instances of this class to scale loss and gradients.
 
-  1) Applies a multiplier on the loss before computing gradients, and
-  2) Applies the reciprocal of the multiplier on the gradients before they are
-     applied on variables.
-
-  Mathematically, loss scaling has no effect, but can help avoid numerical
-  underflow when float16 tensors are used. By multiplying the loss, each
-  gradient will have the same multiplier applied.
-
-  Instances of this class compute the loss scale. Method `get_loss_scale()`
-  returns the current loss scale, while method `update()` updates the loss scale
-  depending on the values of the gradients. Optimizers use instances of this
-  class to scale loss and gradients.
+  Note: this LossScale class can only be used with a v1 optimizer wrapper,
+  tf.train.mixed_precision.experimental.LossScaleOptimizer. For a v2
+  wrapper, tf.keras.mixed_precision.experimental.LossScaleOptimizer, a
+  tf.keras.mixed_precision.experimental.LossScale should be used instead.
   """
 
   def __init__(self):
-    """Initializes the loss scale class.
-
-    Note subclasses should create variables in build() instead of in the
-    constructor. This is because callers might choose to place variables on
-    a certain device by calling build() under a tf.device() scope.
-    """
-    self.built = False
+    """Initializes the loss scale class."""
     self._weights = {}
 
-  def build(self):
-    """Builds the weights of the loss scale class.
-
-    If weights are needed, subclasses should build weights by calling
-    `self.add_weight(...)`, then call the super's build to set self.built =
-    True.
-    """
-    self.built = True
-
+  @abc.abstractmethod
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    if not self.built:
-      self.build()
-    return self._get_loss_scale()
-
-  @abc.abstractmethod
-  def _get_loss_scale(self):
-    """Returns the loss scale without calling build().
-
-    Subclasses must implement this. Subclasses should not override the public
-    `__call__` method, which calls this method.
-    """
     pass
 
+  @abc.abstractmethod
   def update(self, grads):
     """Updates the value of the loss scale.
 
-    The loss scale tensor will be potentially updated, based on the value of
-    `grads`. The tensor returned by `get_loss_scale` is only
-    updated when this function is evaluated.
+    The loss scale will be potentially updated, based on the value of `grads`.
+    The tensor returned by calling this class is only updated when this function
+    is evaluated.
 
     In eager mode, this directly updates the loss scale, so that calling
-    `get_loss_scale` will return the newly updated loss scale. In graph mode,
+    `__call__` will return the newly updated loss scale. In graph mode,
     this returns an op that, when evaluated, updates the loss scale.
 
     This function also returns a `should_apply_gradients` bool. If False,
     gradients should not be applied to the variables that step, as nonfinite
-    gradients were found, and the loss scale controller can update the loss
-    scale to reduce the chance of finding nonfinite gradients in the next step.
-    Some loss scale controllers will always return True, as they cannot adjust
-    the loss scale in response to nonfinite gradients.
+    gradients were found, and the loss scale has been be updated to reduce the
+    chance of finding nonfinite gradients in the next step. Some loss scale
+    classes will always return True, as they cannot adjust themselves in
+    response to nonfinite gradients.
 
     When a DistributionStrategy is used, this function may only be called in a
     cross-replica context.
@@ -122,31 +94,13 @@ class LossScale(trackable.Trackable):
         False, the caller should skip applying `grads` to the variables this
         step.
     """
-    if not self.built:
-      self.build()
-    return self._update(grads)
-
-  @abc.abstractmethod
-  def _update(self, grads):
-    """Updates the value of the loss scale without calling build().
-
-    Subclasses must implement this. Subclasses should not override the public
-    `update_loss_scale` method, which calls this method.
-
-    Args:
-      grads: A list of unscaled gradients. See `update_loss_scale`.
-
-    Returns:
-      In eager mode, None. In graph mode, an op to update the loss scale.
-    """
     pass
 
-
-  def add_weight(self,
-                 name,
-                 shape=(),
-                 dtype=None,
-                 initializer='zeros'):
+  def _add_weight(self,
+                  name,
+                  shape=(),
+                  dtype=None,
+                  initializer='zeros'):
     """Adds a weight to this loss scale manager..
 
     This should be called by subclasses in `build()` to build the weights of the
@@ -182,7 +136,7 @@ class LossScale(trackable.Trackable):
       graph = ops.get_default_graph()
       graph_key = graph._graph_key # pylint: disable=protected-access
 
-    key = (graph_key, name)
+    key = (name, graph_key)
     if self._weights.get(key, None) is not None:
       raise RuntimeError('Duplicate variables detected. {}'.format(key))
     self._weights[key] = variable
@@ -198,8 +152,8 @@ class LossScale(trackable.Trackable):
       graph = ops.get_default_graph()
       graph_key = graph._graph_key # pylint: disable=protected-access
     weights = [trackable.TrackableReference(name=name, ref=v)
-               for (g, name), v in sorted(
-                   self._weights.items(), key=lambda i: i[0][1])
+               for (name, g), v in sorted(
+                   self._weights.items(), key=lambda i: i[0][0])
                if g == graph_key]
     return super(LossScale, self)._checkpoint_dependencies + weights
 
@@ -213,7 +167,7 @@ class LossScale(trackable.Trackable):
     else:
       graph = ops.get_default_graph()
       graph_key = graph._graph_key # pylint: disable=protected-access
-    return self._weights.get((graph_key, name), None)
+    return self._weights.get((name, graph_key), None)
 
 @tf_export(v1=['train.mixed_precision.experimental.FixedLossScale'])
 class FixedLossScale(LossScale):
@@ -243,10 +197,10 @@ class FixedLossScale(LossScale):
     self._tensor_loss_scale = ops.convert_to_tensor(loss_scale_value,
                                                     dtype=dtypes.float32)
 
-  def _get_loss_scale(self):
+  def __call__(self):
     return self._tensor_loss_scale
 
-  def _update(self, grads):
+  def update(self, grads):
     del grads
     return control_flow_ops.no_op(), True
 
@@ -312,16 +266,25 @@ class DynamicLossScale(LossScale):
         loss scale that is too high gets lowered far more quickly than a loss
         scale that is to low gets raised. The default is 2 ** 15, which is
         approximately half the maximum float16 value.
-      incr_every_n_steps: Increases loss scale every `incr_every_n_steps`
+      increment_period: Increases loss scale every `increment_period`
         consecutive steps that finite gradients are encountered. If a nonfinite
         gradient is encountered, the count is reset back to zero.
-      loss_scale_multiplier: The multiplier to use when increasing or decreasing
+      multiplier: The multiplier to use when increasing or decreasing
         the loss scale.
     """
     super(DynamicLossScale, self).__init__()
     self._initial_loss_scale = float(initial_loss_scale)
     self._increment_period = int(increment_period)
     self._multiplier = float(multiplier)
+
+    self._current_loss_scale = self._add_weight(
+        name='loss_scale',
+        dtype=dtypes.float32,
+        initializer=self._initial_loss_scale)
+    # The number of consecutive steps with finite gradients since the last
+    # nonfinite gradient or change in loss scale.
+    self._num_good_steps = self._add_weight(
+        name='good_steps', dtype=dtypes.int64, initializer='zeros')
 
 
   @property
@@ -336,19 +299,10 @@ class DynamicLossScale(LossScale):
   def multiplier(self):
     return self._multiplier
 
-  def build(self):
-    self._current_loss_scale = self.add_weight(
-        name='loss_scale',
-        dtype=dtypes.float32,
-        initializer=self._initial_loss_scale)
-    self._num_good_steps = self.add_weight(
-        name='good_steps', dtype=dtypes.int64, initializer='zeros')
-    self.built = True
-
-  def _get_loss_scale(self):
+  def __call__(self):
     return self._current_loss_scale
 
-  def _update(self, grads):
+  def update(self, grads):
     """Updates loss scale based on if gradients are finite in current step."""
     if distribution_strategy_context.has_strategy():
       distribution = distribution_strategy_context.get_cross_replica_context()

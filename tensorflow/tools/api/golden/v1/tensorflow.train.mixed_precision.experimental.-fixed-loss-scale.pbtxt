@@ -9,14 +9,6 @@ tf_class {
     argspec: "args=[\'self\', \'loss_scale_value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'zeros\'], "
-  }
-  member_method {
-    name: "build"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "update"
     argspec: "args=[\'self\', \'grads\'], varargs=None, keywords=None, defaults=None"
   }
