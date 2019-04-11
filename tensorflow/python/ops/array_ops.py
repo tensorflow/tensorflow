@@ -3464,7 +3464,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
     ValueError: if `indices` has an unknown shape.
   """
   if batch_dims is not None and not isinstance(batch_dims, int):
-    raise TypeError("batch_dims must be an int; got %r" % batch_dims)
+    raise TypeError("batch_dims must be an int; got %r" % (batch_dims,))
   indices = ops.convert_to_tensor(indices, name="indices")
   params = ops.convert_to_tensor(params, name="params")
 
@@ -3743,7 +3743,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     params = ops.convert_to_tensor(params, name="params")
 
     if not isinstance(batch_dims, int):
-      raise TypeError("batch_dims must be an int; got %r" % batch_dims)
+      raise TypeError("batch_dims must be an int; got %r" % (batch_dims,))
     if batch_dims < 0:
       raise ValueError("tf.gather_nd does not allow negative batch_dims.")
     params_ndims = params.shape.ndims

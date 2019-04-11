@@ -22,6 +22,7 @@ import collections
 import functools
 import os
 import tempfile
+import weakref
 
 from absl.testing import parameterized
 
@@ -1078,6 +1079,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
     self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
 
+  def test_table_collections_untouched_eager(self, cycles):
+
+    def _gather_nonempty_collections():
+      graph = ops.get_default_graph()
+      gathered = {}
+      for collection in graph.collections:
+        collection_contents = graph.get_collection(collection)
+        if collection_contents:
+          gathered[collection] = collection_contents
+      return gathered
+
+    root = self._make_model_with_tables()
+    # Warm up collections to ignore those that don't expand every iteration,
+    # e.g. the __varscope collection.
+    self.cycle(root, 1)
+    original_collections = _gather_nonempty_collections()
+    self.cycle(root, cycles)
+    self.assertEqual(original_collections, _gather_nonempty_collections())
+
   def test_table_in_graph(self, cycles):
     root = self._make_model_with_tables()
 
@@ -1300,6 +1320,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         [None, 2], signature.inputs[1].shape.as_list())
     self.assertEqual(
         [None, 5], signature.outputs[0].shape.as_list())
+
+  def test_variables_destroyed(self, cycles):
+    v1 = variables.Variable(1.)
+    weak_v1 = weakref.ref(v1)
+    root = util.Checkpoint(v=v1)
+    root = self.cycle(root, cycles)
+    del v1
+    self.assertIsNone(weak_v1())
+    weak_v2 = weakref.ref(root.v)
+    del root
+    self.assertIsNone(weak_v2())
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),

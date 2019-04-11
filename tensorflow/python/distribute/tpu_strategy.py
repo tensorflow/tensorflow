@@ -477,7 +477,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     host_canonical = device_util.canonicalize(self._host_device)
 
     if dest_canonical != host_canonical:
-      with ops.device(devices[0]):
+      with ops.device(dest_canonical):
         output = array_ops.identity(output)
 
     return output

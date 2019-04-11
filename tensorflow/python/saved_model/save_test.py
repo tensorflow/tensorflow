@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
@@ -38,6 +39,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
@@ -113,6 +115,18 @@ class SaveTest(test.TestCase):
         {"out": 2.},
         _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
+
+  def test_version_information_included(self):
+    root = tracking.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+    saved_model_proto = loader_impl.parse_saved_model(save_dir)
+    self.assertEqual(
+        versions.__version__,
+        saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_version)
+    self.assertEqual(
+        versions.__git_version__,
+        saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_git_version)
 
   def test_non_concrete_error(self):
     root = tracking.AutoTrackable()

@@ -24,7 +24,6 @@ from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -143,7 +142,6 @@ def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 def _GetBatchMatmulOpBroadcastingTest(dtype, adjoint_a, adjoint_b,
                                       use_static_shape):
 
-  @test_util.disable_xla("b/128537983")
   def Test(self):
     with compat.forward_compatibility_horizon(2019, 4, 19):
       np.random.seed(42)
@@ -187,7 +185,6 @@ class BatchMatmulGradientTest(test.TestCase):
 def _GetBatchMatmulGradientTest(dtype, adjoint_a, adjoint_b):
 
   def Test(self):
-
     def CheckGradients(self, a_shape, b_shape):
       self._compare(a_shape, b_shape, dtype, adjoint_a, adjoint_b)
 
@@ -199,9 +196,7 @@ def _GetBatchMatmulGradientTest(dtype, adjoint_a, adjoint_b):
 
 def _GetBatchMatmulGradientWithBroadcastingTest(dtype, adjoint_a, adjoint_b):
 
-  @test_util.disable_xla("b/128537983")
   def Test(self):
-
     def CheckGradients(self, a_shape, b_shape):
       self._compare(a_shape, b_shape, dtype, adjoint_a, adjoint_b)
 

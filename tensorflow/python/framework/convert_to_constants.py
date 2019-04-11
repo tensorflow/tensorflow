@@ -172,12 +172,23 @@ def convert_variables_to_constants_v2(func):
       output_node.CopyFrom(input_node)
 
   logging.info("Converted %d variables to const ops.", how_many_converted)
+
+  # Create a ConcreteFunction from the new GraphDef.
   converted_inputs = set(
       [input_tensors[index] for index in converted_input_indices])
   not_converted_inputs = set(func.inputs).difference(converted_inputs)
+  not_converted_inputs_map = {
+      tensor.name: tensor for tensor in not_converted_inputs
+  }
 
   new_input_names = [tensor.name for tensor in not_converted_inputs]
   new_output_names = [tensor.name for tensor in func.outputs]
-  return wrap_function.function_from_graph_def(output_graph_def,
-                                               new_input_names,
-                                               new_output_names)
+  new_func = wrap_function.function_from_graph_def(output_graph_def,
+                                                   new_input_names,
+                                                   new_output_names)
+
+  # Manually propagate shape for input tensors where the shape is not correctly
+  # propagated. Scalars shapes are lost when wrapping the function.
+  for input_tensor in new_func.inputs:
+    input_tensor.set_shape(not_converted_inputs_map[input_tensor.name].shape)
+  return new_func

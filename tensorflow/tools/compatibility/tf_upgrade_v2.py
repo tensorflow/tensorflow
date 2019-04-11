@@ -1720,12 +1720,32 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.summary.histogram": _add_summary_step_transformer,
         "tf.contrib.summary.image": _add_summary_step_transformer,
         "tf.contrib.summary.scalar": _add_summary_step_transformer,
+        "tf.contrib.layers.l1_regularizer":
+            _contrib_layers_l1_regularizer_transformer,
+        "tf.contrib.layers.l2_regularizer":
+            _contrib_layers_l2_regularizer_transformer,
+        "tf.contrib.layers.xavier_initializer":
+            _contrib_layers_xavier_initializer_transformer,
+        "tf.contrib.layers.xavier_initializer_conv2d":
+            _contrib_layers_xavier_initializer_transformer,
+        "tf.contrib.layers.variance_scaling_initializer":
+            _contrib_layers_variance_scaling_initializer_transformer,
         "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
         "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
         "tf.initializers.uniform_unit_scaling":
             _add_uniform_scaling_initializer_transformer,
         "tf.uniform_unit_scaling_initializer":
             _add_uniform_scaling_initializer_transformer,
+        "slim.l1_regularizer":
+            _contrib_layers_l1_regularizer_transformer,
+        "slim.l2_regularizer":
+            _contrib_layers_l2_regularizer_transformer,
+        "slim.xavier_initializer":
+            _contrib_layers_xavier_initializer_transformer,
+        "slim.xavier_initializer_conv2d":
+            _contrib_layers_xavier_initializer_transformer,
+        "slim.variance_scaling_initializer":
+            _contrib_layers_variance_scaling_initializer_transformer,
     }
 
     self.module_deprecations = {
@@ -2240,6 +2260,269 @@ def _add_uniform_scaling_initializer_transformer(
   node.func.value.lineno = lineno
   node.func.value.col_offset = col_offset
   node.func.attr = "VarianceScaling"
+  return node
+
+
+def _contrib_layers_xavier_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to contrib.layers.xavier_initializer.
+
+  Transforms:
+  tf.contrib.layers.xavier_initializer(uniform, seed, dtype) to
+  tf.compat.v1.keras.initializers.VarianceScaling(
+      scale=1.0, mode="fan_avg",
+      distribution=("uniform" if uniform else "truncated_normal"),
+      seed=seed, dtype=dtype)
+
+  Returns: The new node
+  """
+  def _get_distribution(old_value):
+    """Returns an AST matching the following:
+    ("uniform" if (old_value) else "truncated_normal")
+    """
+    dist = pasta.parse("\"uniform\" if old_value else \"truncated_normal\"")
+    ifexpr = dist.body[0].value
+    pasta.ast_utils.replace_child(ifexpr, ifexpr.test, old_value)
+
+    pasta.base.formatting.set(dist, "prefix", "(")
+    pasta.base.formatting.set(dist, "suffix", ")")
+
+    return dist
+
+  found_distribution = False
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "uniform":
+      found_distribution = True
+      keyword_arg.arg = "distribution"
+
+      old_value = keyword_arg.value
+      new_value = _get_distribution(keyword_arg.value)
+
+      pasta.ast_utils.replace_child(keyword_arg, old_value, new_value)
+
+      pasta.base.formatting.set(keyword_arg.value, "prefix", "(")
+      pasta.base.formatting.set(keyword_arg.value, "suffix", ")")
+
+  new_keywords = []
+  scale = pasta.parse("1.0")
+  new_keywords.append(ast.keyword(arg="scale", value=scale))
+
+  mode = pasta.parse("\"fan_avg\"")
+  new_keywords.append(ast.keyword(arg="mode", value=mode))
+
+  if len(node.args) >= 1:
+    found_distribution = True
+    dist = _get_distribution(node.args[0])
+    new_keywords.append(ast.keyword(arg="distribution", value=dist))
+  if not found_distribution:
+    # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+    uniform_dist = pasta.parse("\"uniform\"")
+    new_keywords.append(ast.keyword(arg="distribution", value=uniform_dist))
+  if len(node.args) >= 2:
+    new_keywords.append(ast.keyword(arg="seed", value=node.args[1]))
+  if len(node.args) >= 3:
+    new_keywords.append(ast.keyword(arg="dtype", value=node.args[2]))
+  node.args = []
+
+  node.keywords = new_keywords + node.keywords
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.compat.v1.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Changing tf.contrib.layers xavier initializer"
+               " to a tf.compat.v1.keras.initializers.VarianceScaling and"
+               " converting arguments.\n"))
+
+  return node
+
+
+def _contrib_layers_variance_scaling_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to contrib.layers.variance_scaling_initializer.
+
+  Transforms:
+  tf.contrib.layers.variance_scaling_initializer(
+    factor, mode, uniform, seed, dtype
+  ) to
+  tf.compat.v1.keras.initializers.VarianceScaling(
+      scale=factor, mode=mode.lower(),
+      distribution=("uniform" if uniform else "truncated_normal"),
+      seed=seed, dtype=dtype)
+
+  And handles the case where no factor is provided and scale needs to be
+  set to 2.0 to match contrib's default instead of tf.keras.initializer's
+  default of 1.0
+  """
+  def _replace_distribution(parent, old_value):
+    """Replaces old_value: ("uniform" if (old_value) else "truncated_normal")"""
+    new_value = pasta.parse(
+        "\"uniform\" if old_value else \"truncated_normal\"")
+    ifexpr = new_value.body[0].value
+    pasta.ast_utils.replace_child(ifexpr, ifexpr.test, old_value)
+
+    pasta.ast_utils.replace_child(parent, old_value, new_value)
+
+    pasta.base.formatting.set(new_value, "prefix", "(")
+    pasta.base.formatting.set(new_value, "suffix", ")")
+
+  def _replace_mode(parent, old_value):
+    """Replaces old_value with (old_value).lower()."""
+    new_value = pasta.parse("mode.lower()")
+    mode = new_value.body[0].value.func
+    pasta.ast_utils.replace_child(mode, mode.value, old_value)
+
+    # This copies the prefix and suffix on old_value to new_value.
+    pasta.ast_utils.replace_child(parent, old_value, new_value)
+
+    # Put parentheses around keep_prob.value (and remove the old prefix/
+    # suffix, they should only be around new_value).
+    pasta.base.formatting.set(old_value, "prefix", "(")
+    pasta.base.formatting.set(old_value, "suffix", ")")
+
+  # Need to keep track of scale because slim & keras
+  # have different defaults
+  found_scale = False
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "factor":
+      keyword_arg.arg = "scale"
+      found_scale = True
+    if keyword_arg.arg == "mode":
+      _replace_mode(keyword_arg, keyword_arg.value)
+    if keyword_arg.arg == "uniform":
+      keyword_arg.arg = "distribution"
+      _replace_distribution(keyword_arg, keyword_arg.value)
+
+  # Handle any detected positional arguments
+  if len(node.args) >= 1:
+    found_scale = True
+  if len(node.args) >= 2:
+    _replace_mode(node, node.args[1])
+  if len(node.args) >= 3:
+    _replace_distribution(node, node.args[2])
+
+  # If no scale was provided, make tf 2.0 use slim's default factor
+  if not found_scale:
+    # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+    scale_value = pasta.parse("2.0")
+    node.keywords = ([ast.keyword(arg="scale", value=scale_value)]
+                     + node.keywords)
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.compat.v1.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Changing tf.contrib.layers.variance_scaling_initializer"
+               " to a tf.compat.v1.keras.initializers.VarianceScaling and"
+               " converting arguments.\n"))
+
+  return node
+
+
+def _contrib_layers_l1_regularizer_transformer(
+    parent, node, full_name, name, logs):
+  """Replace slim l1 regularizer with Keras one.
+
+  This entails renaming the 'scale' arg to 'l' and dropping any
+  provided scope arg.
+  """
+  # Check if we have a scale or scope keyword arg
+  scope_keyword = None
+  for keyword in node.keywords:
+    if keyword.arg == "scale":
+      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                   "Renaming scale arg of regularizer\n"))
+      keyword.arg = "l"
+    if keyword.arg == "scope":
+      scope_keyword = keyword
+
+  # Remove the scope keyword or arg if it is present
+  if scope_keyword:
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l1_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l1\n"))
+    node.keywords.remove(scope_keyword)
+  if len(node.args) > 1:
+    node.args = node.args[:1]
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l1_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l1\n"))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.keras.regularizers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "l1"
+
+  return node
+
+
+def _contrib_layers_l2_regularizer_transformer(
+    parent, node, full_name, name, logs):
+  """Replace slim l2 regularizer with Keras one, with l=0.5*scale.
+
+  Also drops the scope argument.
+  """
+  def _replace_scale_node(parent, old_value):
+    """Replaces old_value with 0.5*(old_value)."""
+    half = ast.Num(n=0.5)
+    half.lineno = 0
+    half.col_offset = 0
+    new_value = ast.BinOp(left=half, op=ast.Mult(),
+                          right=old_value)
+    # This copies the prefix and suffix on old_value to new_value.
+    pasta.ast_utils.replace_child(parent, old_value, new_value)
+
+    # Put parentheses around scale.value (and remove the old prefix/
+    # suffix, they should only be around new_value).
+    pasta.base.formatting.set(old_value, "prefix", "(")
+    pasta.base.formatting.set(old_value, "suffix", ")")
+
+  # Check if we have a scale or scope keyword arg
+  scope_keyword = None
+  for keyword in node.keywords:
+    if keyword.arg == "scale":
+      keyword.arg = "l"
+      _replace_scale_node(keyword, keyword.value)
+    if keyword.arg == "scope":
+      scope_keyword = keyword
+
+  # Maybe it was a positional arg
+  if len(node.args) >= 1:
+    _replace_scale_node(node, node.args[0])
+
+  # Remove the scope keyword or arg if it is present
+  if scope_keyword:
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l2_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l2\n"))
+    node.keywords.remove(scope_keyword)
+  if len(node.args) > 1:
+    node.args = node.args[:1]
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l2_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l2\n"))
+
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Multiplying scale arg of tf.contrib.layers.l2_regularizer"
+               " by half to what tf.keras.regularizers.l2 expects.\n"))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.keras.regularizers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "l2"
+
   return node
 
 

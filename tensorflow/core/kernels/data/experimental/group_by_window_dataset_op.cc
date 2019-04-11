@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
@@ -37,23 +38,40 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size_func", &window_size_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       key_func_.name(), &lib_def_));
+
+    for (const auto& func : {reduce_func_, window_size_func_}) {
+      std::shared_ptr<FunctionLibraryDefinition> result;
+      OP_REQUIRES_OK(
+          ctx, CreateFunctionLibraryDefinition(
+                   ctx->function_library()->GetFunctionLibraryDefinition(),
+                   func.name(), &result));
+      OP_REQUIRES_OK(ctx, lib_def_->AddLibrary(*result));
+    }
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
+    CapturedFunction::Params params;
+    params.lib_def = lib_def_;
+
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            key_func_, ctx, "key_func_other_arguments",
-                            /*params=*/{}, &captured_key_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+                                                 "key_func_other_arguments",
+                                                 params, &captured_key_func));
     std::unique_ptr<CapturedFunction> captured_reduce_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(
                             reduce_func_, ctx, "reduce_func_other_arguments",
-                            /*params=*/{}, &captured_reduce_func));
+                            params, &captured_reduce_func));
     std::unique_ptr<CapturedFunction> captured_window_size_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(
-                 window_size_func_, ctx, "window_size_func_other_arguments",
-                 /*params=*/{}, &captured_window_size_func));
+        ctx, CapturedFunction::Create(window_size_func_, ctx,
+                                      "window_size_func_other_arguments",
+                                      params, &captured_window_size_func));
 
     *output = new Dataset(
         ctx, input, key_func_, reduce_func_, window_size_func_,
@@ -502,6 +520,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList key_func_;
   NameAttrList reduce_func_;
   NameAttrList window_size_func_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(

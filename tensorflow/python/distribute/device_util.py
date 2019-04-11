@@ -87,9 +87,8 @@ class _FakeOperation(object):
 def current():
   """Return a string (not canonicalized) for the current device."""
   # TODO(josh11b): Work out how this function interacts with ops.colocate_with.
-  ctx = context.context()
-  if ctx.executing_eagerly():
-    d = ctx.device_name
+  if ops.executing_eagerly_outside_functions():
+    d = context.context().device_name
   else:
     op = _FakeOperation()
     ops.get_default_graph()._apply_device_functions(op)  # pylint: disable=protected-access

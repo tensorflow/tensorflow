@@ -3147,6 +3147,10 @@ void PrintToPythonStdout(const char* msg) {
     }
     PySys_WriteStdout("\n");
 
+    // Force flushing to make sure print newlines aren't interleaved in
+    // some colab environments
+    PyRun_SimpleString("import sys; sys.stdout.flush()");
+
     PyGILState_Release(py_threadstate);
   }
 }

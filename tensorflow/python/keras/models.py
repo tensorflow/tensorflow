@@ -352,6 +352,11 @@ def _in_place_subclassed_model_reset(model):
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):
+    # Skip the check of methods in tf.Module since they basically
+    # recursively query all the other attributes within same module.
+    if name == 'submodules':
+      continue
+
     try:
       value = getattr(model, name)
     except (AttributeError, ValueError, TypeError):

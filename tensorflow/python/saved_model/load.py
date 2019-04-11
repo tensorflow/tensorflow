@@ -21,6 +21,7 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -66,7 +67,8 @@ class _Loader(object):
     for node in self._nodes:
       if isinstance(node, tracking.TrackableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
-        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+        if not context.executing_eagerly():
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _setup_functions_structures(self):
     """Setup structure for inputs and outputs of restored functions."""

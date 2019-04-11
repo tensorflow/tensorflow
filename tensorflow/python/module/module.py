@@ -95,6 +95,14 @@ class Module(tracking.AutoTrackable):
   ```
   """
 
+  # AutoTrackable adds object attributes that users will not expect us to
+  # include when flattening (these reference dependencies reachable via other
+  # object attributes).
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset((
+      "_unconditional_checkpoint_dependencies",
+      "_unconditional_dependency_names"
+  ))
+
   def __init__(self, name=None):
     if name is None:
       name = camel_to_snake(type(self).__name__)
@@ -233,6 +241,7 @@ class Module(tracking.AutoTrackable):
         self,
         recursive=recursive,
         predicate=predicate,
+        attributes_to_ignore=self._TF_MODULE_IGNORED_PROPERTIES,
         attribute_traversal_key=attribute_traversal_key,
         with_path=with_path)
 
@@ -292,17 +301,11 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-# AutoTrackable adds object attributes that users will not expect us to
-# include when flattening (these reference dependencies reachable via other
-# object attributes).
-AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",
-                             "_unconditional_dependency_names")
-
-
 def _flatten_module(module,
                     recursive,
                     predicate,
                     attribute_traversal_key,
+                    attributes_to_ignore,
                     with_path,
                     module_path=(),
                     seen=None):
@@ -314,7 +317,7 @@ def _flatten_module(module,
   submodules = []
 
   for key in sorted(module_dict, key=attribute_traversal_key):
-    if key in AUTO_CHECKPOINTABLE_ATTRS:
+    if key in attributes_to_ignore:
       continue
 
     for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
@@ -343,6 +346,7 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
+        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,
         with_path=with_path,
         module_path=submodule_path,
         seen=seen)

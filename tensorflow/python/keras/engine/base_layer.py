@@ -48,6 +48,7 @@ from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -56,6 +57,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
@@ -66,7 +68,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(trackable.Trackable):
+class Layer(module.Module):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -118,6 +120,18 @@ class Layer(trackable.Trackable):
     input_spec: Optional (list of) `InputSpec` object(s) specifying the
       constraints on inputs that can be accepted by the layer.
   """
+
+  # See tf.Module for the usage of this property.
+  # The key for _obj_reference_counts_dict is a Trackable, which could be a
+  # variable or layer etc. tf.Module._flatten will fail to flatten the key
+  # since it is trying to convert Trackable to a string. This attribute can be
+  # ignored even after the fix of nest lib, since the trackable object should
+  # already been available as individual attributes. _obj_reference_counts_dict
+  # just contains a copy of them.
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+      ('_obj_reference_counts_dict',),
+      module.Module._TF_MODULE_IGNORED_PROPERTIES
+  ))
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
@@ -1865,6 +1879,11 @@ class Layer(trackable.Trackable):
       super(Layer, self).__setattr__(name, default_value)
 
   def __delattr__(self, name):
+    # For any super.__delattr__() call, we will directly use the implementation
+    # in Trackable and skip the behavior in AutoTrackable. The Layer was
+    # originally use Trackable as base class, the change of using Module as base
+    # class forced us to have AutoTrackable in the class hierarchy. Skipping
+    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -1872,7 +1891,7 @@ class Layer(trackable.Trackable):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(Layer, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)
       return
 
     reference_count = reference_counts[existing_value]
@@ -1880,33 +1899,34 @@ class Layer(trackable.Trackable):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(Layer, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(Layer, self).__delattr__(name)
+    super(tracking.AutoTrackable, self).__delattr__(name)
 
     if (isinstance(existing_value, Layer)
         or trackable_layer_utils.has_weights(existing_value)):
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(Layer, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
   def __setattr__(self, name, value):
-    if (not getattr(self, '_setattr_tracking', True) or
+    if (name == '_setattr_tracking' or
+        not getattr(self, '_setattr_tracking', True) or
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
-      super(Layer, self).__setattr__(name, value)
+      super(tracking.AutoTrackable, self).__setattr__(name, value)
       return
 
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
@@ -1923,6 +1943,8 @@ class Layer(trackable.Trackable):
     except AttributeError:
       pass
 
+    # TODO(scottzhu): Need to track Module object as well for weight tracking.
+    # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
         trackable_layer_utils.has_weights(value)):
@@ -1955,7 +1977,9 @@ class Layer(trackable.Trackable):
             self._non_trainable_weights.append(val)
           backend.track_variable(val)
 
-    super(Layer, self).__setattr__(name, value)
+    # Skip the auto trackable from tf.Module to keep status quo. See the comment
+    # at __delattr__.
+    super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {

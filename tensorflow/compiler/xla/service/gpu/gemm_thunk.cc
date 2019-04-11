@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,6 +32,15 @@ namespace gpu {
 
 namespace {
 using MatrixDescriptor = gemm_thunk_internal::MatrixDescriptor;
+using GemmCacheKey =
+    std::tuple<PrimitiveType, bool, int64, int64, bool, int64, int64, double,
+               double, se::blas::ComputationType, se::StreamExecutor*>;
+
+tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
+auto& autotune_cache GUARDED_BY(autotune_cache_mu) =
+    *new absl::flat_hash_map<GemmCacheKey, se::blas::AlgorithmType>();
+int64 cache_hits GUARDED_BY(autotune_cache_mu) = 0;
+int64 cache_misses GUARDED_BY(autotune_cache_mu) = 0;
 
 // Performs a gemm call without an explicit algorithm on lhs_matrix and
 // rhs_matrix, and stores the result to output_matrix.
@@ -136,7 +148,7 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
 // than sm_50 -- in both cases, cublas doesn't support gemm-with-algorithm at
 // all.
 template <typename Element>
-StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
+StatusOr<se::blas::AlgorithmType> DoUncachedGemmAutotune(
     MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
     MatrixDescriptor output_matrix, double alpha, double beta,
     se::blas::ComputationType computation_type, se::Stream* stream) {
@@ -194,6 +206,7 @@ auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
       LOG(FATAL) << "Unsupported type.";
   }
 }
+
 auto GetGemmWithAlgorithmFn(PrimitiveType type)
     -> decltype(&DoGemmWithAlgorithm<float>) {
   switch (type) {
@@ -211,6 +224,54 @@ auto GetGemmWithAlgorithmFn(PrimitiveType type)
       LOG(FATAL) << "Unsupported type.";
   }
 }
+
+template <typename Element>
+StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
+    PrimitiveType type, MatrixDescriptor lhs_matrix,
+    MatrixDescriptor rhs_matrix, MatrixDescriptor output_matrix, double alpha,
+    double beta, se::blas::ComputationType computation_type,
+    se::Stream* stream) {
+  tensorflow::mutex_lock lock = LockGpu(stream->parent());
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
+
+  GemmCacheKey key = std::make_tuple(
+      type, lhs_matrix.transpose, lhs_matrix.num_rows, lhs_matrix.num_cols,
+      rhs_matrix.transpose, rhs_matrix.num_rows, rhs_matrix.num_cols, alpha,
+      beta, computation_type, stream->parent());
+  {
+    tensorflow::mutex_lock lock(autotune_cache_mu);
+    auto it = autotune_cache.find(key);
+    int64 autotuning_requests = cache_hits + cache_misses;
+    if (autotuning_requests && autotuning_requests % 10 == 0) {
+      VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
+              << autotuning_requests;
+    }
+
+    if (it != autotune_cache.end()) {
+      cache_hits++;
+      VLOG(4) << "Autotuning cache hit, using algorithm: " << it->second;
+      return it->second;
+    }
+    cache_misses++;
+    VLOG(4) << "Autotuning cache miss";
+  }
+
+  auto result_or =
+      DoUncachedGemmAutotune<Element>(lhs_matrix, rhs_matrix, output_matrix,
+                                      alpha, beta, computation_type, stream);
+  if (result_or.ok()) {
+    tensorflow::mutex_lock lock(autotune_cache_mu);
+
+    // Due to the lock we got from LockGpu we know that no other thread
+    // is autotuning concurrently with us on this GPU, and we know that this
+    // CHECK will not race.
+    CHECK(autotune_cache.emplace(key, result_or.ValueOrDie()).second);
+  }
+  return result_or;
+}
+
 auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
   switch (type) {
     case F16:
@@ -332,8 +393,8 @@ absl::optional<se::blas::AlgorithmType> GemmThunk::GetGemmAlgorithm(
         batch_size);
 
     StatusOr<se::blas::AlgorithmType> best_algorithm = GetGemmAutotuneFn(
-        element_type)(lhs_matrix, rhs_matrix, scratch_descriptor, alpha_, beta_,
-                      computation_type, stream);
+        element_type)(element_type, lhs_matrix, rhs_matrix, scratch_descriptor,
+                      alpha_, beta_, computation_type, stream);
 
     autotune_it = autotune_results_.insert({device_name, best_algorithm}).first;
 

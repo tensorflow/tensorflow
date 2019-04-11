@@ -22,6 +22,7 @@ import os.path as _os_path
 
 from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
 from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
+from tensorflow.python.framework.versions import VERSION as _VERSION
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -75,5 +76,5 @@ def get_link_flags():
   flags = []
   if not _MONOLITHIC_BUILD:
     flags.append('-L%s' % get_lib())
-    flags.append('-ltensorflow_framework')
+    flags.append('-l:libtensorflow_framework.so.%s' % _VERSION.split('.')[0])
   return flags

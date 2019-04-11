@@ -222,7 +222,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # matmul to fail, due to incompatible dims.  What would have been a graph
     # build time error (layer would complain about the inner dim being 4).
     with self.captureWritesToStream(sys.stderr) as printed:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   r'Matrix size-incompatible'):
         fn(array_ops.ones((3, 4)))
 
   def testNestedShapeFunctionRelaxation(self):

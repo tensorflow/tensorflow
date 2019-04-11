@@ -3973,7 +3973,7 @@ def make_sparse_to_dense_tests(options):
   """Make a set of tests to do sparse to dense."""
 
   test_parameters = [{
-      "value_dtype": [tf.float32, tf.int32],
+      "value_dtype": [tf.float32, tf.int32, tf.int64],
       "index_dtype": [tf.int32, tf.int64],
       "value_count": [1, 3, 6, 8],
       "dense_shape": [[15], [3, 10], [4, 4, 4, 4], [7, 10, 9]],
@@ -4131,7 +4131,7 @@ def make_range_tests(options):
   """Make a set of tests to do range."""
 
   test_parameters = [{
-      "dtype": [tf.int32],
+      "dtype": [tf.int32, tf.float32],
       "offset": [10, 100, 1000],
       "delta": [1, 2, 3, 4, -1, -2, -3, -4],
   }]
@@ -4146,7 +4146,7 @@ def make_range_tests(options):
       offset = parameters["offset"]
     delta = parameters["delta"]
     limit_tensor = input_tensor + offset
-    delta_tensor = tf.constant(delta, dtype=tf.int32)
+    delta_tensor = tf.constant(delta, dtype=parameters["dtype"])
     out = tf.range(input_tensor, limit_tensor, delta_tensor)
     return [input_tensor], [out]
 
