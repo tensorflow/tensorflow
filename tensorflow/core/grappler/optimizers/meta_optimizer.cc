@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -528,25 +529,6 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Optimized main graph.";
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
-  // Skip optimizing functions if this is a TPU graph. Currently, Grappler
-  // passes do not handle TPU functions correctly in a variety of ways (Note
-  // that due to the pre-placement TPU graph rewriting passes, the TPU-related
-  // ops are encapsulated away into functions). For example, TPU graphs contain
-  // TPUReplicateMetadata node that carries relevant TPU metadata and Grappler
-  // passes could prune that away. Grappler passes could also cause issues
-  // around shape inference. Since the desired and existing behavior is to not
-  // optimize TPU functions with Grappler, this check preserves that.
-  if (IsTPUGraphDef(*optimized_graph)) {
-    VLOG(2) << "Skipping optimizing funcs for TPU graphs";
-    if (VLOG_IS_ON(1)) {
-      DumpGraphDefToFile(
-          strings::StrCat("after_MetaOptimizer_",
-                          reinterpret_cast<uintptr_t>(optimized_graph)),
-          *optimized_graph);
-    }
-    return Status::OK();
-  }
-
   // 2. Optimize functions reachable from the optimized graph.
   FunctionLibraryDefinition flib = minimized_flib(*optimized_graph);
 
@@ -640,8 +622,25 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
-      TF_RETURN_IF_ERROR(
-          OptimizeGraph(cluster, func_item, &optimized_func_graph));
+      if (IsTPUGraphDef(*optimized_graph)) {
+        // Skip optimizing functions if this is a TPU graph. Currently, Grappler
+        // passes do not handle TPU functions correctly in a variety of ways
+        // (Note that due to the pre-placement TPU graph rewriting passes, the
+        // TPU-related ops are encapsulated away into functions). For example,
+        // TPU graphs contain TPUReplicateMetadata node that carries relevant
+        // TPU metadata and Grappler passes could prune that away. Grappler
+        // passes could also cause issues around shape inference. Since the
+        // desired and existing behavior is to not optimize TPU functions with
+        // Grappler, this check preserves that. The only execption is
+        // implementation selector what is required to swap in some TPU specific
+        // lowering code and is verified the work correctly on TPUs.
+        ImplementationSelector implementation_selector;
+        TF_RETURN_IF_ERROR(implementation_selector.Optimize(
+            cluster, func_item, &optimized_func_graph));
+      } else {
+        TF_RETURN_IF_ERROR(
+            OptimizeGraph(cluster, func_item, &optimized_func_graph));
+      }
 
       // Function body optimization might have created new specialized
       // functions for each instantiation context. Add them to the library.
