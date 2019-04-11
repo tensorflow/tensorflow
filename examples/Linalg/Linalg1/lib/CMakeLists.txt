@@ -23,6 +23,21 @@ add_llvm_library(Linalg1
   ViewType.cpp
   )
 
+target_link_libraries(Linalg1
+  PUBLIC
+    MLIRAnalysis
+    MLIRDialect
+    MLIREDSC
+    MLIRIR
+    MLIRLLVMIR
+    MLIRParser
+    MLIRPass
+    MLIRTransforms
+    )
+
 add_llvm_library(Linalg1DialectConstruction
   DialectConstruction.cpp
   )
+
+target_link_libraries(Linalg1DialectConstruction
+  PUBLIC Linalg1)

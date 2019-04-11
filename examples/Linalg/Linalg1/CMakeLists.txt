@@ -19,14 +19,6 @@ target_link_libraries(linalg-example-1
   PRIVATE
     Linalg1DialectConstruction
     Linalg1
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRTransforms
     )
 
 whole_archive_link(linalg-example-1
@@ -37,14 +29,6 @@ target_link_libraries(linalg-conversion-1
   PRIVATE
     Linalg1DialectConstruction
     Linalg1
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRTransforms
     )
 
 whole_archive_link(linalg-conversion-1

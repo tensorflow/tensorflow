@@ -15,6 +15,21 @@ add_llvm_library(Linalg3
   TensorOps.cpp
   )
 
+target_link_libraries(Linalg3
+  PUBLIC
+    MLIRAnalysis
+    MLIRDialect
+    MLIREDSC
+    MLIRIR
+    MLIRLLVMIR
+    MLIRParser
+    MLIRPass
+    MLIRTransforms
+    )
+
 add_llvm_library(Linalg3DialectConstruction
   DialectConstruction.cpp
   )
+
+target_link_libraries(Linalg3DialectConstruction
+  PUBLIC Linalg3)

@@ -13,14 +13,6 @@ add_llvm_example(linalg-example-2
 
 target_link_libraries(linalg-example-2
   PRIVATE
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRTransforms
     Linalg1
     Linalg2
     Linalg2DialectConstruction

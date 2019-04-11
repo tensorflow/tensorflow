@@ -29,14 +29,6 @@ add_llvm_example(linalg-execution-3
 
 target_link_libraries(linalg-example-3
   PRIVATE
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRTransforms
     Linalg1
     Linalg2
     Linalg3
@@ -49,14 +41,6 @@ whole_archive_link(linalg-example-3
 
 target_link_libraries(linalg-conversion-3
   PRIVATE
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRTransforms
     Linalg1
     Linalg2
     Linalg3
@@ -69,17 +53,7 @@ whole_archive_link(linalg-conversion-3
 
 target_link_libraries(linalg-execution-3
   PRIVATE
-    MLIRAnalysis
-    MLIRDialect
-    MLIREDSC
     MLIRExecutionEngine
-    MLIRIR
-    MLIRLLVMIR
-    MLIRParser
-    MLIRPass
-    MLIRSupport
-    MLIRTargetLLVMIR
-    MLIRTransforms
     Linalg1
     Linalg2
     Linalg3

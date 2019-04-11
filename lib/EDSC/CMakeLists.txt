@@ -8,3 +8,9 @@ add_llvm_library(MLIREDSC
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/EDSC
   )
 add_dependencies(MLIREDSC MLIRReferenceImplementationTestGen)
+target_link_libraries(MLIREDSC
+  PUBLIC
+    MLIRAffineOps
+    MLIRStandardOps
+    MLIRVectorOps
+    )
