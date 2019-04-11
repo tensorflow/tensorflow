@@ -812,7 +812,8 @@ INSTANTIATE_TEST_SUITE_P(ParallelMapDatasetOpTest,
                          ParameterizedParallelMapDatasetOpTest,
                          ::testing::ValuesIn(std::vector<TestCase>(
                              {TestCase1(), TestCase2(), TestCase3(),
-                              TestCase4(), TestCase5(), TestCase6()})));
+                              TestCase4(), TestCase5(), TestCase6(),
+                              TestCase7(), TestCase8()})));
 
 }  // namespace
 }  // namespace data

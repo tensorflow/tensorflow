@@ -417,6 +417,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status CreateKernel(const NodeDef& ndef,
                       const FunctionLibraryDefinition* lib_def,
                       OpKernel** kernel);
+  Status CreateKernel(const NodeDef& ndef,
+                      const FunctionLibraryDefinition* lib_def,
+                      const string& executor_type, OpKernel** kernel);
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
                            std::unique_ptr<FunctionBody>* fbody);
@@ -591,6 +594,68 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // Try to instantiate this function for the func/attr. Maybe it's
   // cached already.
   InstantiateOptions options;
+  if (lib_def != base_lib_def_) {
+    options.lib_def = lib_def;
+  }
+  Handle handle;
+  TF_RETURN_IF_ERROR(
+      Instantiate(ndef.op(), AttrSlice(&ndef.attr()), options, &handle));
+
+  const FunctionBody* fbody = GetFunctionBody(handle);
+  CHECK_NOTNULL(fbody);
+
+  // TODO(zhifengc): For now, we assume int32 and resources are always on host
+  // memory and other types are always on device memory. We should do type
+  // inference over function body to derive the correct input/output memory
+  // types.
+  MemoryTypeVector input_memory_types;
+  for (const auto& t : fbody->arg_types) {
+    input_memory_types.push_back(MTypeFromDType(t));
+  }
+  MemoryTypeVector output_memory_types;
+  for (const auto& t : fbody->ret_types) {
+    output_memory_types.push_back(MTypeFromDType(t));
+  }
+
+  // Constructs a CallOp kernel for running the instantiated function.
+  auto device_type = DeviceType(device_->attributes().device_type());
+  OpKernelConstruction construction(
+      device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
+      &fbody->fdef.signature(), this, fbody->arg_types, input_memory_types,
+      fbody->ret_types, output_memory_types, graph_def_version_, &s);
+  if (s.ok()) {
+    *kernel = new CallOp(handle, &construction);
+  }
+  return s;
+}
+
+Status FunctionLibraryRuntimeImpl::CreateKernel(
+    const NodeDef& ndef, const FunctionLibraryDefinition* lib_def,
+    const string& executor_type, OpKernel** kernel) {
+  // If a custom kernel creator is given, try that.
+  Status s;
+  if (custom_kernel_creator_ != nullptr &&
+      custom_kernel_creator_->CanCreateKernel(*this, ndef)) {
+    std::unique_ptr<OpKernel> ret;
+    s = custom_kernel_creator_->CreateKernel(this, ndef, &ret);
+    if (s.ok()) {
+      *kernel = ret.release();
+    } else {
+      VLOG(2) << "Custom creator error: " << s;
+    }
+    return s;
+  }
+
+  if (lib_def->Find(ndef.op()) == nullptr) {
+    // A primitive operation. Creates the registered kernel.
+    return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
+                                 kernel);
+  }
+
+  // Try to instantiate this function for the func/attr. Maybe it's
+  // cached already.
+  InstantiateOptions options;
+  options.executor_type = executor_type;
   if (lib_def != base_lib_def_) {
     options.lib_def = lib_def;
   }
@@ -917,9 +982,9 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   if (lib_def == base_lib_def_) {
     params.create_kernel = create_kernel_;
   } else {
-    params.create_kernel = [this, lib_def](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateKernel(ndef, lib_def, kernel);
+    params.create_kernel = [this, lib_def, executor_type](const NodeDef& ndef,
+                                                          OpKernel** kernel) {
+      return CreateKernel(ndef, lib_def, executor_type, kernel);
     };
   }
   params.delete_kernel = [](OpKernel* kernel) {
