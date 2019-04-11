@@ -210,7 +210,11 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                          filter_shape.dim(1).size() != 1 &&  //
                          filter_shape.dim(2).size() != 1;
 
-  return is_spatial_conv && IsGpuCompatibleConv2D(matched.conv2d);
+  // We rely on cuDNN for fused convolution, and it currently supports only Relu
+  // activation.
+  bool is_relu = IsRelu(*matched.activation);
+
+  return is_relu && is_spatial_conv && IsGpuCompatibleConv2D(matched.conv2d);
 }
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const Conv2DWithBiasAdd& matched) {
