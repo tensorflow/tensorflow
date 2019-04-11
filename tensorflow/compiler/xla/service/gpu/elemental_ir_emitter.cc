@@ -198,36 +198,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
   PrimitiveType output_type = op->shape().element_type();
   llvm::Type* llvm_ty = lhs_value->getType();
 
-  auto make_sqrt = [&, this]() -> StatusOr<llvm::Value*> {
-    // NVPTX has four relevant square root instructions:
-    //   sqrt.approx{.ftz}.f32
-    //   sqrt.rn{.ftz}.f32
-    //   sqrt.rn.f64
-    //   rsqrt.approx.f64
-    // We rely on LLVM's NVPTX backend to pick the right one based on our
-    // fast-math options.  (If fast-math is enabled, llvm may compute the 64-bit
-    // sqrt from the rsqrt approximation.)
-    return EmitLlvmIntrinsicMathCall("llvm.sqrt", {lhs_value}, {lhs_input_type},
-                                     output_type);
-  };
-
-  const HloInstruction* rhs = op->operand(1);
-  if (IsFPLiteralWithValue(rhs, .5)) {
-    VLOG(10) << "emitting pow(A, .5) as sqrt(A): " << op->ToString();
-    return make_sqrt();
-  }
-
-  if (IsFPLiteralWithValue(rhs, -.5)) {
-    VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
-    // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
-    // rsqrt.approx instruction.
-    //
-    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
-    // we force-enable it?
-    TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
-    return FDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
-  }
-
   VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
   return EmitLibdeviceMathCall("__ocml_pow", {lhs_value, rhs_value},
                                {lhs_input_type, rhs_input_type}, output_type);

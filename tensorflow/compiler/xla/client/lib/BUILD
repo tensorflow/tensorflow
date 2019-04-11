@@ -165,7 +165,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
-    tags = ["no_rocm"],
 )
 
 cc_library(
