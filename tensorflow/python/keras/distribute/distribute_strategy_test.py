@@ -198,7 +198,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)

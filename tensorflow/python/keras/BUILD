@@ -284,7 +284,7 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
-        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:init_ops_v2",
     ],
 )
 

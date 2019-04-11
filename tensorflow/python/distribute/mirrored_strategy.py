@@ -420,8 +420,8 @@ def _all_devices():
   return devices if devices else all_local_devices()
 
 
-@tf_export("distribute.MirroredStrategy")
-class MirroredStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.MirroredStrategy", v1=[])
+class MirroredStrategy(distribute_lib.Strategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
   This strategy uses one replica per device and sync replication for its
@@ -439,6 +439,17 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategy, self).__init__(extended)
+
+
+@tf_export(v1=["distribute.MirroredStrategy"])
+class MirroredStrategyV1(distribute_lib.StrategyV1):
+
+  __doc__ = MirroredStrategy.__doc__
+
+  def __init__(self, devices=None, cross_device_ops=None):
+    extended = MirroredExtended(
+        self, devices=devices, cross_device_ops=cross_device_ops)
+    super(MirroredStrategyV1, self).__init__(extended)
 
 
 class MirroredExtended(distribute_lib.DistributionStrategyExtended):

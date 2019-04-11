@@ -45,8 +45,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(yuefengz): support in-graph replication.
-@tf_export("distribute.experimental.MultiWorkerMirroredStrategy")
-class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
+class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   """Distribution strategy that uses collective ops for all-reduce.
 
   It is similar to MirroredStrategy but it uses collective ops for reduction.
@@ -75,6 +75,21 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
       communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
     """Initializes the object."""
     super(CollectiveAllReduceStrategy, self).__init__(
+        CollectiveAllReduceExtended(
+            self,
+            communication=communication))
+
+
+@tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])
+class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
+
+  __doc__ = CollectiveAllReduceStrategy.__doc__
+
+  def __init__(
+      self,
+      communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
+    """Initializes the object."""
+    super(CollectiveAllReduceStrategyV1, self).__init__(
         CollectiveAllReduceExtended(
             self,
             communication=communication))

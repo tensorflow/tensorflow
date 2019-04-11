@@ -5426,7 +5426,8 @@ def configure_and_create_distributed_session(distribution_strategy):
 
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def cast_variables_to_tensor(tensors):

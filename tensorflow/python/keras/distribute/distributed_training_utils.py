@@ -395,7 +395,8 @@ def global_batch_size_supported(distribution_strategy):
 # TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def is_dataset_shape_fully_defined(dataset):

@@ -99,7 +99,8 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
       iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
-      if isinstance(distribution, tpu_strategy.TPUStrategy):
+      if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                   tpu_strategy.TPUStrategyV1)):
         def step_fn(ctx, inputs):
           value, update = distribution.extended.call_for_each_replica(
               metric_fn, args=(inputs,))

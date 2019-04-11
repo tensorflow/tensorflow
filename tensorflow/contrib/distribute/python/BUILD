@@ -326,7 +326,7 @@ distribute_py_test(
     ],
     deps = [
         ":mirrored_strategy",
-        ":tpu_strategy",
+        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras/distribute:keras_test_lib",
     ],
 )

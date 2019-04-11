@@ -2732,6 +2732,7 @@ py_library(
         ":linalg_ops_impl",
         ":math_ops",
         ":random_ops",
+        ":stateless_random_ops",
         ":util",
         "//third_party/py/numpy",
     ],

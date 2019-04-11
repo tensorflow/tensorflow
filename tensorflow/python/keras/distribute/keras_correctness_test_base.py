@@ -130,7 +130,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)
@@ -294,7 +295,8 @@ def compare_results(results_with_ds, results_without_ds, distribution,
 
   for key in results_with_ds:
     if (key.startswith('training_history') and
-        isinstance(distribution, tpu_strategy.TPUStrategy) and
+        isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                  tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       # TODO(b/119894254): Enable this test for all cases once the
       # underlying bug is fixed.
@@ -311,7 +313,8 @@ def compare_results(results_with_ds, results_without_ds, distribution,
 
 def should_skip_tpu_with_eager(distribution):
   return (context.executing_eagerly() and
-          isinstance(distribution, tpu_strategy.TPUStrategy))
+          isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                    tpu_strategy.TPUStrategyV1)))
 
 
 class LearningRateBatchScheduler(keras.callbacks.Callback):
