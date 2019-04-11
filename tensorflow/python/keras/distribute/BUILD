@@ -298,6 +298,7 @@ cuda_py_test(
     additional_deps = [":multi_worker_test_main_lib"],
     shard_count = 32,
     tags = [
+        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
         # TODO(b/124344198): Add "multi_and_single_gpu",
     ],
 )
