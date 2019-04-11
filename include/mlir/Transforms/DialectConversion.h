@@ -42,8 +42,10 @@ class FunctionConversion;
 }
 
 /// Base class for the dialect op conversion patterns.  Specific conversions
-/// must derive this class and implement `PatternMatch match(Operation *)`
-/// defined in `Pattern` and at least one of `rewrite` and `rewriteTerminator`.
+/// must derive this class and implement least one of `rewrite` and
+/// `rewriteTerminator`. Optionally they can also override
+/// `PatternMatch match(Operation *)` to match more specific operations than the
+/// `rootName` provided in the constructor.
 //
 // TODO(zinenko): this should eventually converge with RewritePattern.  So far,
 // rewritePattern is missing support for operations with successors as well as
