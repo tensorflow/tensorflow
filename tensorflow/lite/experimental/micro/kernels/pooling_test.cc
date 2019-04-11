@@ -511,4 +511,257 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingValidStride1) {
       kTfLitePaddingValid, kTfLiteActNone, output_data);
 }
 
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestUInt8ActNone) {
+  using tflite::testing::F2Q;
+
+  uint8_t output_data[2];
+  float input_min = 0;
+  float input_max = 15.9375;
+  float output_min = 0;
+  float output_max = 15.9375;
+  int filter_width = 2;
+  int filter_height = 2;
+  int stride_width = 2;
+  int stride_height = 2;
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(0, input_min, input_max),
+          F2Q(6, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(3, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(6, output_min, output_max),
+          F2Q(10, output_min, output_max)
+      }, output_min, output_max,
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActNone,
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
+  using tflite::testing::F2Q;
+
+  uint8_t output_data[2];
+  float input_min = -15.9375;
+  float input_max = 15.9375;
+  float output_min = -15.9375;
+  float output_max = 15.9375;
+  int filter_width = 2;
+  int filter_height = 2;
+  int stride_width = 2;
+  int stride_height = 2;
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(-1.5, input_min, input_max),
+          F2Q(-6, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(-3, input_min, input_max),
+          F2Q(-2, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(0, output_min, output_max),
+          F2Q(10, output_min, output_max)
+      }, output_min, output_max,
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu,
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
+  using tflite::testing::F2Q;
+
+  uint8_t output_data[2];
+  float input_min = -15.9375;
+  float input_max = 15.9375;
+  float output_min = -15.9375;
+  float output_max = 15.9375;
+  int filter_width = 2;
+  int filter_height = 2;
+  int stride_width = 2;
+  int stride_height = 2;
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(-1.7, input_min, input_max),
+          F2Q(-6, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(-3, input_min, input_max),
+          F2Q(-2, input_min, input_max),
+          F2Q(-10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(-1.0, output_min, output_max),
+          F2Q(1.0, output_min, output_max)
+      }, output_min, output_max,
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu1,
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {
+  using tflite::testing::F2Q;
+
+  uint8_t output_data[8];
+  float input_min = -15.9375;
+  float input_max = 15.9375;
+  float output_min = -15.9375;
+  float output_max = 15.9375;
+  int filter_width = 2;
+  int filter_height = 2;
+  int stride_width = 2;
+  int stride_height = 2;
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(0, input_min, input_max),
+          F2Q(-6, input_min, input_max),
+          F2Q(12, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(-3, input_min, input_max),
+          F2Q(-2, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(0.0, output_min, output_max),
+          F2Q(6.0, output_min, output_max)
+      }, output_min, output_max,
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu6,
+      output_data);
+
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(0, input_min, input_max),
+          F2Q(4.5, input_min, input_max),
+          F2Q(12, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(3, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(4.5, output_min, output_max),
+          F2Q(6.0, output_min, output_max)
+      }, output_min, output_max,
+      {4, 1, 1, 2, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActRelu6,
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingSameStride1) {
+  using tflite::testing::F2Q;
+
+  uint8_t output_data[8];
+  float input_min = 0;
+  float input_max = 15.9375;
+  float output_min = 0;
+  float output_max = 15.9375;
+  int filter_width = 2;
+  int filter_height = 2;
+  int stride_width = 1;
+  int stride_height = 1;
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(0, input_min, input_max),
+          F2Q(6, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(3, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(6, output_min, output_max),
+          F2Q(10, output_min, output_max),
+          F2Q(10, output_min, output_max),
+          F2Q(7, output_min, output_max),
+          F2Q(3, output_min, output_max),
+          F2Q(10, output_min, output_max),
+          F2Q(10, output_min, output_max),
+          F2Q(7, output_min, output_max),
+      }, output_min, output_max,
+      {4, 1, 2, 4, 1},  // Output shape
+      kTfLitePaddingSame, kTfLiteActNone,
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingValidStride1) {
+  using tflite::testing::F2Q;
+
+  uint8_t output_data[3];
+  float input_min = 0;
+  float input_max = 15.9375;
+  float output_min = 0;
+  float output_max = 15.9375;
+  int filter_width = 2;
+  int filter_height = 2;
+  int stride_width = 1;
+  int stride_height = 1;
+  tflite::testing::TestMaxPoolQuantizedUInt8(
+      {4, 1, 2, 4, 1},  // Input shape
+      {
+          // Input values
+          F2Q(0, input_min, input_max),
+          F2Q(6, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(4, input_min, input_max),
+          F2Q(3, input_min, input_max),
+          F2Q(2, input_min, input_max),
+          F2Q(10, input_min, input_max),
+          F2Q(7, input_min, input_max),
+      }, input_min, input_max,
+      filter_width, filter_height,
+      stride_width, stride_height,
+      {
+          // Output values
+          F2Q(6, output_min, output_max),
+          F2Q(10, output_min, output_max),
+          F2Q(10, output_min, output_max),
+      }, output_min, output_max,
+      {4, 1, 1, 3, 1},  // Output shape
+      kTfLitePaddingValid, kTfLiteActNone,
+      output_data);
+}
+
 TF_LITE_MICRO_TESTS_END
