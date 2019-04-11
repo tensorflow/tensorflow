@@ -797,6 +797,8 @@ class TFLiteConverter(object):
         post_training_optimize and (self.representative_dataset is None))
 
     toco_inference_input_type = self.inference_input_type
+    inference_input_type = self.inference_input_type
+    inference_output_type = self.inference_output_type
     if post_training_optimize:
       # Post training optimizations require that TOCO outputs a float model.
       if self.inference_type != constants.FLOAT:
@@ -804,15 +806,15 @@ class TFLiteConverter(object):
             "`optimizations` require that `inference_type` is set to float.")
       toco_inference_input_type = constants.FLOAT
       # Set up default values.
-      if self.inference_input_type is None:
-        self.inference_input_type = constants.FLOAT
-      if self.inference_output_type is None:
-        self.inference_output_type = constants.FLOAT
+      if inference_input_type is None:
+        inference_input_type = constants.FLOAT
+      if inference_output_type is None:
+        inference_output_type = constants.FLOAT
 
     if weights_only_quantize_flag:
       # Currently, weight only quantization requires float inputs and outputs.
-      if (self.inference_input_type != constants.FLOAT or
-          self.inference_output_type != constants.FLOAT):
+      if (inference_input_type != constants.FLOAT or
+          inference_output_type != constants.FLOAT):
         raise ValueError(
             "Provide an inference_input_type and inference_output_type of type "
             "tf.float32.")
@@ -869,8 +871,8 @@ class TFLiteConverter(object):
     if self.representative_dataset and post_training_optimize:
       calibrate_quantize = _calibrator.Calibrator(result)
       result = calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen, self.inference_input_type,
-          self.inference_output_type)
+          self.representative_dataset.input_gen, inference_input_type,
+          inference_output_type)
 
     return result
 
