@@ -140,14 +140,10 @@ class StackedRNNCells(Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     if isinstance(input_shape, list):
-      constants_shape = input_shape[1:]
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer):
-        if generic_utils.has_arg(cell.call, 'constants'):
-          cell.build([input_shape] + constants_shape)
-        else:
-          cell.build(input_shape)
+        cell.build(input_shape)
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -490,16 +486,6 @@ class RNN(Layer):
       return output_mask
 
   def build(self, input_shape):
-    # Note input_shape will be list of shapes of initial states and
-    # constants if these are passed in __call__.
-    if self._num_constants is not None:
-      constants_shape = input_shape[-self._num_constants:]  # pylint: disable=invalid-unary-operand-type
-      constants_shape = nest.map_structure(
-          lambda s: tuple(tensor_shape.TensorShape(s).as_list()),
-          constants_shape)
-    else:
-      constants_shape = None
-
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
       # The input_shape here could be a nest structure.
@@ -551,10 +537,7 @@ class RNN(Layer):
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
-      if constants_shape is not None:
-        self.cell.build([step_input_shape] + constants_shape)
-      else:
-        self.cell.build(step_input_shape)
+      self.cell.build(step_input_shape)
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
