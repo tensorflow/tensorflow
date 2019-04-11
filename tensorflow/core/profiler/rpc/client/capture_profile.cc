@@ -243,11 +243,10 @@ MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
 }
 
 void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries) {
+                     int monitoring_level, bool timestamp, int num_queries) {
   for (int query = 0; query < num_queries; ++query) {
     MonitorRequest request =
-        PopulateMonitorRequest(duration_ms, monitoring_level,
-                               /*timestamp=*/false);
+        PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
 
     ::grpc::ClientContext context;
     ::grpc::ChannelArguments channel_args;
