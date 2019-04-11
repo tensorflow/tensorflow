@@ -782,6 +782,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -954,7 +955,7 @@ xla_test(
     args = ["--xla_gpu_disable_autotune"],
     backends = ["gpu"],
     shard_count = 40,
-    tags = ["optonly"],
+    tags = ["optonly", "no_rocm"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
