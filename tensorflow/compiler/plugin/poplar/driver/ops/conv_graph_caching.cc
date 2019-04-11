@@ -134,60 +134,54 @@ BiasApplyCacheKey GetBiasApplyCacheKey(
 
 poplar::Tensor DoCachedConvolution(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
-    const poplar::Tensor& weights, const poplin::ConvParams& params,
-    const ConvClassificationType& conv_type, bool transpose_and_flip_weights,
-    const uint64 device_id, poplar::program::Sequence& prog,
-    const std::string& debug_prefix) {
-  // If this is a pass bwd convolution, try and see if we can turn it into a
+    const poplar::Tensor& input_weights, const poplin::ConvParams& params,
+    const ConvClassificationType& input_conv_type,
+    bool input_transpose_and_flip_weights, const uint64 device_id,
+    poplar::program::Sequence& prog, const std::string& debug_prefix) {
+  // If this is a pass bwd convolution, turn it into a
   // weightsTransposeChansFlipXY and a fwd pass convolution - this allows us to
-  // reause the graph for the convolution and save code space
-  auto fwd_type = ConvClassificationType::FORWARD;
-  auto fwd_key = conv_graph_caching::GetConvolutionCacheKey(
-      params, ConvClassificationType::FORWARD, false, device_id);
-  auto it = res.conv_graph_cache.find(fwd_key);
+  // reuse the graph for the convolution and save code space.
 
-  poplar::OptionFlags opts = res.default_conv_options;
+  ConvClassificationType conv_type = input_conv_type;
+  poplar::Tensor weights = input_weights;
+  bool transpose_and_flip_weights = input_transpose_and_flip_weights;
+  // If this is a backprop input convolution perform the
+  // weightsTransposeChansFlipXY on weights.
   if (conv_type == ConvClassificationType::BACKPROP_INPUT &&
-      it != res.conv_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
-    // We found a matching convolution in the forward pass. Transform the
-    // weights prior to the convolution so we can reuse the existing
-    // graph.
-    opts.set("pass", ConvClassificationTypeToString(fwd_type));
-    auto bwd_weights = poplin::createWeights(graph, params, "bwd_weights", opts,
-                                             &res.convolution_cache);
+    conv_type = ConvClassificationType::FORWARD;
+    transpose_and_flip_weights = false;
+    auto fwd_opts = res.default_conv_options;
+    fwd_opts.set("pass", ConvClassificationTypeToString(conv_type));
+    auto bwd_weights = poplin::createWeights(graph, params, "bwd_weights",
+                                             fwd_opts, &res.convolution_cache);
     CreateCachedBwdWeights(graph, res, weights, bwd_weights, device_id, prog,
                            debug_prefix);
-    std::vector<poplar::Tensor> args = {in, bwd_weights};
-    // Execute the convolution.
+    weights = bwd_weights;
+  }
+  // Perform the convolution.
+  std::vector<poplar::Tensor> args = {in, weights};
+  auto key =
+      GetConvolutionCacheKey(poplin::canonicalizeParams(params), conv_type,
+                             transpose_and_flip_weights, device_id);
+  auto it = res.conv_graph_cache.find(key);
+  if (it != res.conv_graph_cache.end() &&
+      !res.disable_graph_convolution_caching) {
     auto& f = it->second;
     return f(args, prog);
-  } else {
-    // Otherwise try and get a convolution, if one doesn't exist, then create it
-    // and execute it
-    std::vector<poplar::Tensor> args = {in, weights};
-    auto key =
-        GetConvolutionCacheKey(poplin::canonicalizeParams(params), conv_type,
-                               transpose_and_flip_weights, device_id);
-    auto it = res.conv_graph_cache.find(key);
-    if (it != res.conv_graph_cache.end() &&
-        !res.disable_graph_convolution_caching) {
-      auto& f = it->second;
-      return f(args, prog);
-    }
-    opts.set("pass", ConvClassificationTypeToString(conv_type));
-    using namespace poputil::graphfn;
-    auto f = TensorFunction(graph, {input(in, "in"), input(weights, "weights")},
-                            [&](std::vector<poplar::Tensor>& args,
-                                poplar::program::Sequence& prog) {
-                              return convolution(
-                                  graph, args[0], args[1], params,
-                                  transpose_and_flip_weights, prog,
-                                  debug_prefix, opts, &res.convolution_cache);
-                            });
-    res.conv_graph_cache.emplace(key, f);
-    return f(args, prog);
   }
+  auto opts = res.default_conv_options;
+  opts.set("pass", ConvClassificationTypeToString(conv_type));
+  using namespace poputil::graphfn;
+  auto f = TensorFunction(
+      graph, {input(in, "in"), input(weights, "weights")},
+      [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& prog) {
+        return convolution(graph, args[0], args[1], params,
+                           transpose_and_flip_weights, prog, debug_prefix, opts,
+                           &res.convolution_cache);
+      });
+  res.conv_graph_cache.emplace(key, f);
+  return f(args, prog);
 }
 
 namespace {

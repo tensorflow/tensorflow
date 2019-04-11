@@ -40,7 +40,7 @@ StatusOr<poplar::program::Program> ConstSliceUpdate(
   poplar::program::Sequence seq;
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+                      FindInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor input = inputs[0][0];
@@ -81,7 +81,7 @@ StatusOr<poplar::program::Program> DynamicSliceUpdate(
   poplar::program::Sequence seq;
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+                      FindInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor input = inputs[0][0];

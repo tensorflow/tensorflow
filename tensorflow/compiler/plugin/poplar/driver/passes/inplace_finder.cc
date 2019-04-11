@@ -188,11 +188,8 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
         case HloOpcode::kWhile:
           inplace_instructions_queue.push_front(inst);
           break;
-        case HloOpcode::kAdd:
-        case HloOpcode::kSubtract:
-          inplace_instructions_queue.push_back(inst);
-          break;
         default:
+          inplace_instructions_queue.push_back(inst);
           break;
       }
     }

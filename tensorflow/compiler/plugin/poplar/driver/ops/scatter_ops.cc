@@ -32,7 +32,7 @@ StatusOr<poplar::program::Program> CreateScatter(
   poplar::Graph& graph = GetGraph(res, inst);
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor operand = inputs[0][0];

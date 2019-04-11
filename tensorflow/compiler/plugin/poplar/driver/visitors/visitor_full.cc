@@ -62,7 +62,7 @@ Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
   int64 dimension(inst->concatenate_dimension());
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), inst->operand_count());
 
   std::vector<poplar::Tensor> tensors(inputs.size());
@@ -97,9 +97,13 @@ Status FullVisitor::HandleConvolution(HloInstruction* inst) {
 
 Status FullVisitor::HandleReverse(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      ArgVectors inputs,
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor t = inputs[0][0];
+
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
@@ -126,7 +130,7 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor out = inputs[0][0];
@@ -143,7 +147,7 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
 
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor out = inputs[0][0];
@@ -157,7 +161,7 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor out = inputs[0][0];
@@ -177,7 +181,7 @@ Status FullVisitor::HandleSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor out = inputs[0][0];
@@ -298,7 +302,7 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), 2);
   CHECK_EQ(inputs[0].size(), 1);
   CHECK_EQ(inputs[1].size(), 1);

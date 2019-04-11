@@ -1334,21 +1334,21 @@ std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
   return std::make_pair(start, end);
 }
 
-ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
-                                      const HloInstruction* inst, int64 input,
-                                      int64 n, poplar::program::Sequence& seq,
-                                      const bool expand_constants) {
-  const HloInstruction* operand = inst->operand(input);
-  const Shape& shape = operand->shape();
+namespace {
+std::pair<int64, int64> FindGetTupleElementTupleIndecies(
+    const HloInstruction* inst) {
+  const auto* gte = Cast<HloGetTupleElementInstruction>(inst);
+  const HloInstruction* tuple = inst->operand(0);
+  const Shape& shape = tuple->shape();
   int64 start = 0;
-  for (int64 i = 0; i < n; i++) {
+  for (int64 i = 0; i < gte->tuple_index(); i++) {
     start += CountShapes(ShapeUtil::GetTupleElementShape(shape, i));
   }
-  int64 end = start + CountShapes(ShapeUtil::GetTupleElementShape(shape, n));
-  ArgVector inputs = GetTensorsMaybeExpand(map, res, operand, seq,
-                                           expand_constants, start, end);
-  return inputs;
+  int64 end = start + CountShapes(ShapeUtil::GetTupleElementShape(
+                          shape, gte->tuple_index()));
+  return std::make_pair(start, end);
 }
+}  // namespace
 
 ArgVector FindInstructionInputsInRange(TensorMap& map, CompilerResources& res,
                                        const HloInstruction* inst, int64 input,
@@ -1402,11 +1402,58 @@ OutVector FindExpandedInstructionOutputs(TensorMap& map, CompilerResources& res,
   return outputs;
 }
 
-StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
-                                             CompilerResources& res,
-                                             const HloInstruction* inst,
-                                             poplar::program::Sequence& seq,
-                                             const bool expand_constants) {
+bool AreInplaceOutputTensorsWritable(TensorMap& map, CompilerResources& res,
+                                     const HloInstruction* inst) {
+  if (!res.annotations.inplace_instructions.contains(inst)) {
+    return false;
+  }
+
+  // Check that the instruction description is for an inplace operation.
+  auto inst_description = InplaceUtil::GetHloInstructionDescription(inst);
+  if (!inst_description->IsInPlaceType(inst)) {
+    LOG(FATAL) << "Trying to execute " << inst->name()
+               << " as an inplace operation, but it is not.";
+  }
+  auto& inplace_description =
+      *static_cast<InplaceUtil::InplaceHloInstructionDescription*>(
+          inst_description.get());
+
+  // Get all the input tensors for all the inplace operands
+  auto inplace_indexes = inplace_description.GetInplaceOperandIndexes();
+
+  std::vector<TensorVector> tensor_vectors(inplace_indexes.size());
+
+  if (inst->opcode() == HloOpcode::kGetTupleElement) {
+    // For GTEs there is only one input - only get the tensors we need.
+    CHECK_EQ(inplace_indexes.size(), 1);
+    CHECK_EQ(inplace_indexes[0], 0);
+    auto gte_tensors_indecies = FindGetTupleElementTupleIndecies(inst);
+    tensor_vectors[0] =
+        GetTensorsInMap(map, inst->operand(0), gte_tensors_indecies.first,
+                        gte_tensors_indecies.second);
+  } else {
+    for (uint64 i = 0; i < inplace_indexes.size(); i++) {
+      tensor_vectors[i] = GetTensorsInMap(map, inst->operand(i));
+    }
+  }
+  // Go through all the inplace tensors and check they are all parallel
+  // writeable.
+  for (auto tensor_vector : tensor_vectors) {
+    for (auto key_tensor_pair : tensor_vector) {
+      if (!key_tensor_pair.second.isParallelWriteable()) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
+                                              CompilerResources& res,
+                                              const HloInstruction* inst,
+                                              poplar::program::Sequence& seq,
+                                              const bool expand_constants) {
   // Check that the instruction description is for an inplace operation.
   auto inst_description = InplaceUtil::GetHloInstructionDescription(inst);
   if (!inst_description->IsInPlaceType(inst)) {
@@ -1429,8 +1476,9 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
     // For GTEs there is only one input, and it is always inplace
     CHECK_EQ(inplace_indexes.size(), 1);
     CHECK_EQ(inplace_indexes[0], 0);
-    tensors[0] = FindTupleInInstructionInput(
-        map, res, inst, 0, inst->tuple_index(), seq, expand_constants);
+    auto gte_tensors_indecies = FindGetTupleElementTupleIndecies(inst);
+    tensors[0] = FindInstructionInputsInRange(
+        map, res, inst, 0, gte_tensors_indecies, seq, expand_constants);
   } else {
     for (uint64 i = 0; i < inplace_indexes.size(); i++) {
       tensors[i] = FindInstructionInputs(map, res, inst, inplace_indexes[i],

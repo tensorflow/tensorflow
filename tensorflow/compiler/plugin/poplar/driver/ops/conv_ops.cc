@@ -435,7 +435,7 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
 
   // Find the weights tensor
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor w = inputs[0][0];
@@ -469,7 +469,7 @@ StatusOr<poplar::program::Program> CreateConvBiasAddOp(
   poplar::program::Sequence prog;
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor in = inputs[0][0];
@@ -500,7 +500,7 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
 
   // Find the biases
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor biases = inputs[0][0];

@@ -167,11 +167,14 @@ Status BaseVisitor::HandleConcatenate(HloInstruction* inst) {
 
 Status BaseVisitor::HandleBitcastConvert(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
-  poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
+      ArgVectors inputs,
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor out = inputs[0][0];
+
+  TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(inst->shape()));
   out = out.reinterpret(type);
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
@@ -267,7 +270,7 @@ Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors output_tensors,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(output_tensors.size(), 1);
   CHECK_EQ(output_tensors[0].size(), CountShapes(inst->shape()));
   for (int64 i = 0; i < output_tensors[0].size(); i++) {
@@ -360,7 +363,7 @@ Status BaseVisitor::HandleTuple(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), inst->operand_count());
   uint64 n = 0;
   for (uint64 i = 0; i < inputs.size(); i++) {
@@ -560,7 +563,7 @@ Status BaseVisitor::HandleAddDependency(HloInstruction* inst) {
           << absl::StrJoin(dep_names, ",");
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+      FindInplaceOutputTensors(tensor_map, resources_, inst, sequence));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), CountShapes(inst->operand(0)->shape()));
   for (int64 idx = 0; idx < inputs[0].size(); idx++) {
