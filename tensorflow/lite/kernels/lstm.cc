@@ -605,7 +605,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // TODO(mirkov): add a check that weights are all uint8s or all floats.
   switch (input_to_output_weights->type) {
     case kTfLiteFloat32: {
       return lstm_eval::EvalFloat(
