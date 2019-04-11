@@ -202,7 +202,6 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
-        "no_rocm",
     ],
     deps = [
         ":xla_test",
@@ -321,7 +320,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -727,7 +726,7 @@ tf_xla_py_test(
         "cpu_ondemand",
     ],
     shard_count = 5,
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

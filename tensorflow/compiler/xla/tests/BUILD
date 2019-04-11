@@ -2207,7 +2207,6 @@ xla_test(
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
-        "no_rocm",	
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
