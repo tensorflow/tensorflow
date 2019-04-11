@@ -83,7 +83,7 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
                                   vdupq_n_s16(params.output_offset));
     const int8x8_t clamped =
         vmax_s8(output_activation_min_vector,
-                vmin_s8(output_activation_max_vector, vqmovun_s16(s)));
+                vmin_s8(output_activation_max_vector, vqmovn_s16(s)));
     vst1_s8(output_data + i, clamped);
   }
 #endif  // NEON
@@ -179,7 +179,7 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
                                   vdupq_n_s16(params.output_offset));
     const int8x8_t clamped =
         vmax_s8(output_activation_min_vector,
-                vmin_s8(output_activation_max_vector, vqmovun_s16(s)));
+                vmin_s8(output_activation_max_vector, vqmovn_s16(s)));
     vst1_s8(output_data + i, clamped);
   }
 #endif  // NEON
