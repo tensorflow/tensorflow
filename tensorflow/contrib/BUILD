@@ -82,7 +82,6 @@ py_library(
         "//tensorflow/contrib/proto",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
-        "//tensorflow/contrib/rccl:rccl_py",
         "//tensorflow/contrib/receptive_field:receptive_field_py",
         "//tensorflow/contrib/recurrent:recurrent_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
@@ -183,8 +182,6 @@ cc_library(
         "//tensorflow/contrib/text:all_kernels",
     ] + if_mpi([
         "//tensorflow/contrib/mpi_collectives:mpi_collectives_py"
-    ]) + if_rocm([
-        "//tensorflow/contrib/rccl:rccl_kernels",
     ]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -221,7 +218,6 @@ cc_library(
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
         "//tensorflow/contrib/rnn:all_ops",
-        "//tensorflow/contrib/rccl:rccl_ops_op_lib",
         "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:model_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",

@@ -32,11 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python import pywrap_tensorflow
-if pywrap_tensorflow.IsBuiltWithROCm():
-  from tensorflow.contrib import rccl as nccl_ops
-else:
-  from tensorflow.python.ops import nccl_ops
+from tensorflow.python.ops import nccl_ops
 
 
 def aggregate_gradients_using_nccl(replica_grads):
