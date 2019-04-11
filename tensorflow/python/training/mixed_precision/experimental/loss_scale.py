@@ -103,9 +103,6 @@ class LossScale(trackable.Trackable):
                   initializer='zeros'):
     """Adds a weight to this loss scale manager..
 
-    This should be called by subclasses in `build()` to build the weights of the
-    loss scale class.
-
     Args:
       name: Variable name.
       shape: Variable shape.
