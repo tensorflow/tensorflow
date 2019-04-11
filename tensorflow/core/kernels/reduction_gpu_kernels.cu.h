@@ -20,8 +20,6 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include <sstream>
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_reduce.cuh"
 #include "third_party/cub/device/device_segmented_reduce.cuh"
@@ -31,10 +29,12 @@ limitations under the License.
 #include "cuda/include/cuComplex.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/util/gpu_device_functions.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/cuda_device_functions.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
+
+#include <sstream>
 
 namespace tensorflow {
 namespace functor {

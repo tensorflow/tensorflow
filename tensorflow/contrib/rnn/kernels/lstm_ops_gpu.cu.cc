@@ -17,11 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/rnn/kernels/lstm_ops.h"
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/eigen_activations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {

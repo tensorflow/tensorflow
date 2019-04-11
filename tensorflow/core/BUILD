@@ -942,7 +942,7 @@ tf_cuda_library(
         "util/activation_mode.h",
         "util/batch_util.h",
         "util/bcast.h",
-        "util/gpu_kernel_helper.h",
+        "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
@@ -2911,7 +2911,7 @@ cc_library(
 
 tf_cuda_library(
     name = "cuda_device_functions",
-    hdrs = ["util/gpu_device_functions.h"],
+    hdrs = ["util/cuda_device_functions.h"],
     visibility = ["//visibility:public"],
     deps = [":framework_lite"],
 )
@@ -4323,7 +4323,7 @@ tf_cuda_cc_test(
 tf_cuda_only_cc_test(
     name = "util_cuda_kernel_helper_test",
     srcs = [
-        "util/gpu_kernel_helper_test.cu.cc",
+        "util/cuda_kernel_helper_test.cu.cc",
     ],
     deps = [
         ":test",
