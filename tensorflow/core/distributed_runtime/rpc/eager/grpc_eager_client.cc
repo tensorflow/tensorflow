@@ -71,6 +71,10 @@ class GrpcEagerClientCache : public EagerClientCache {
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
+      if (shared == nullptr) {
+        return errors::InvalidArgument("Client for target ", target,
+                                       " not found.");
+      }
       auto worker = std::unique_ptr<EagerClient>(new GrpcEagerClient(
           shared, threads_[AssignClientToThread(target)].completion_queue()));
 
