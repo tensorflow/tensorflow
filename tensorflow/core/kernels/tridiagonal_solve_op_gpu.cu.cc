@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/cuda_device_functions.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 

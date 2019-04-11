@@ -18,10 +18,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/util/cuda_device_functions.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
-
 #include "cuda/include/cuda_fp16.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 // Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
 #define CUDA_1D_KERNEL_LOOP(i, n) \

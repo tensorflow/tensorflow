@@ -99,7 +99,7 @@ void MyDriverFunc(const Eigen::GpuDevice &d) {
 
 // See the test for this for more example:
 //
-https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/gpu_kernel_helper_test.cu.cc
 
 */
 
