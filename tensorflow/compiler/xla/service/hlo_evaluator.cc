@@ -423,7 +423,8 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 #ifndef NDEBUG
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
+  DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
+                                                   input_literal->shape()))
       << "parameter shape is: "
       << ShapeUtil::HumanStringWithLayout(parameter->shape())
       << ", but input literal shape is: "
