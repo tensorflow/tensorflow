@@ -103,6 +103,8 @@ fi
 
 run_configure_for_gpu_build
 
+# build twice as a quick hack
+bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package
 bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
