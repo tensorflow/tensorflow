@@ -3167,6 +3167,9 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     data = ["//tensorflow/core:image_testdata"],
+    tags = [
+       "no_oss",
+    ],
     shard_count = 5,
 )
 
