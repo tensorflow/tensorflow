@@ -463,65 +463,71 @@ StatusOr<poplar::program::Program> CreateConditionalOp(
     return xla::FailedPrecondition("Unsupported condition input type.");
   }
 
+  int n_branches = inst->operand_count() - 1;
+
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
                       GetInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), inst->operand_count());
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor pred = inputs[0][0];
 
-  CHECK_EQ(inputs[1].size(), CountShapes(inst->operand(1)->shape()));
-  ArgVectors true_inputs({inputs[1]});
+  std::vector<std::shared_ptr<SubComputationVisitor>> bodies;
+  const auto& comps = inst->called_computations();
 
-  CHECK_EQ(inputs[2].size(), CountShapes(inst->operand(2)->shape()));
-  ArgVectors false_inputs({inputs[2]});
-
-  TF_ASSIGN_OR_RETURN(
-      auto true_body,
-      GetOrCompileSubComputation(res, true_inputs, inst->true_computation()));
-
-  TF_ASSIGN_OR_RETURN(
-      auto false_body,
-      GetOrCompileSubComputation(res, false_inputs, inst->false_computation()));
-
-  poplar::Tensor scalar_pred =
-      popops::allTrue(graph, pred, seq, GetDebugName(inst));
-
-  if (true_body->inputs().size() != 1 || false_body->inputs().size() != 1) {
-    return xla::FailedPrecondition("Invalid input count.");
+  // Compile each branch into a sequence
+  for (auto b = 0; b < n_branches; b++) {
+    CHECK_EQ(inputs[b + 1].size(), CountShapes(inst->operand(b + 1)->shape()));
+    TF_ASSIGN_OR_RETURN(
+        auto body, GetOrCompileSubComputation(res, {inputs[b + 1]}, comps[b]));
+    bodies.push_back(body);
   }
 
-  poplar::program::Sequence true_seq;
-  for (unsigned int i = 0; i < true_body->inputs()[0].size(); i++) {
-    if (true_body->InputIsUsed(0, i)) {
-      true_seq.add(
-          poplar::program::Copy(true_inputs[0][i], true_body->inputs()[0][i]));
-    }
-  }
-  true_seq.add(true_body->sequence);
+  unsigned int output_count = bodies[0]->outputs().size();
 
-  poplar::program::Sequence false_seq;
-  for (unsigned int i = 0; i < false_body->inputs()[0].size(); i++) {
-    if (false_body->InputIsUsed(0, i)) {
-      false_seq.add(poplar::program::Copy(false_inputs[0][i],
-                                          false_body->inputs()[0][i]));
-    }
-  }
-  false_seq.add(false_body->sequence);
-
-  unsigned int output_count = true_body->outputs().size();
-  if (output_count != false_body->outputs().size()) {
-    return xla::FailedPrecondition("Mismatched output size.");
-  }
-
+  // Add final output tensors for the conditional op
+  std::vector<poplar::Tensor> outputs;
   for (unsigned int i = 0; i < output_count; i++) {
-    poplar::Tensor out = graph.clone(true_body->outputs()[i]);
+    poplar::Tensor out = graph.clone(bodies[0]->outputs()[i]);
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
-
-    true_seq.add(poplar::program::Copy(true_body->outputs()[i], out));
-    false_seq.add(poplar::program::Copy(false_body->outputs()[i], out));
+    outputs.push_back(out);
   }
 
-  seq.add(poplar::program::If(scalar_pred, true_seq, false_seq));
+  // Create the full program sequences for each branch
+  std::vector<poplar::program::Sequence> seqs(bodies.size());
+  for (auto b = 0; b < n_branches; b++) {
+    if (bodies[b]->inputs().size() != 1) {
+      return xla::FailedPrecondition("Invalid input count on branch %d.", b);
+    }
+    if (bodies[b]->outputs().size() != output_count) {
+      return xla::FailedPrecondition("Mismatched output size on branch %d.", b);
+    }
+
+    // Add input copies
+    for (unsigned int i = 0; i < bodies[b]->inputs()[0].size(); i++) {
+      if (bodies[b]->InputIsUsed(0, i)) {
+        seqs[b].add(
+            poplar::program::Copy(inputs[b + 1][i], bodies[b]->inputs()[0][i]));
+      }
+    }
+
+    // Add the actual body
+    seqs[b].add(bodies[b]->sequence);
+
+    // Add output copies
+    for (unsigned int i = 0; i < output_count; i++) {
+      seqs[b].add(poplar::program::Copy(bodies[b]->outputs()[i], outputs[i]));
+    }
+  }
+
+  if (!is_switch) {
+    poplar::Tensor scalar_pred =
+        popops::allTrue(graph, pred, seq, GetDebugName(inst));
+
+    seq.add(poplar::program::If(scalar_pred, seqs[0], seqs[1]));
+  } else {
+    // Add switch
+  }
+
   return seq;
 }
 
