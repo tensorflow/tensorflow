@@ -18,10 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
