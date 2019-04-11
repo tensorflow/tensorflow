@@ -208,15 +208,12 @@ def _is_known_loaded_type(f, module_name, entity_name):
 
 def converted_call(f, owner, options, args, kwargs):
   """Compiles a function call inline. For internal use only."""
-  logging.log(1,
-              'Converted call: %s; owner: %s\n    args: %s\n    kwargs: %s\n',
-              f, owner, args, kwargs)
-
   if owner is not None:
     if not isinstance(f, str):
       raise ValueError(
           'When owner is specified, the function name must be specified as'
           ' a string: {}'.format(f))
+    owner_attr = f
 
     # Special case when the owner is a 'super' object. In that case lookups of
     # dynamic attributes won't work. See
@@ -226,15 +223,21 @@ def converted_call(f, owner, options, args, kwargs):
 
     f = getattr(owner, f)
 
+  if logging.has_verbosity(1):
+    if owner is not None:
+      composite_desc = '("{}" attr of {})'.format(owner_attr, owner)
+    else:
+      composite_desc = ''
+
+    logging.log(1,
+                'Converted call: %s %s\n    args: %s\n    kwargs: %s\n',
+                f, composite_desc, args, kwargs)
+
   if inspect_utils.isbuiltin(f):
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
       return py_builtins.overload_of(f)(*args)
-
-  if _is_known_loaded_type(f, 'weakref', 'ref'):
-    logging.log(2, 'Permanently whitelisted: %s: weakref', f)
-    return _call_unconverted(f, args, kwargs)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
@@ -259,9 +262,7 @@ def converted_call(f, owner, options, args, kwargs):
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  # Note: TF linter disallows importing inspect.
-  if any(f in m.__dict__.values()
-         for m in (collections, pdb, copy, tf_inspect._inspect)):  # pylint:disable=protected-access
+  if any(f in m.__dict__.values() for m in (collections, pdb, copy, inspect)):
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return _call_unconverted(f, args, kwargs)
 
@@ -317,6 +318,12 @@ def converted_call(f, owner, options, args, kwargs):
     else:
       target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
+
+    if (not tf_inspect.isclass(target_entity) and
+        not hasattr(target_entity, '__code__')):
+      logging.log(
+          2, 'Permanently whitelisted: %s: native binding', target_entity)
+      return _call_unconverted(f, args, kwargs)
 
     converted_f = to_graph(
         target_entity,

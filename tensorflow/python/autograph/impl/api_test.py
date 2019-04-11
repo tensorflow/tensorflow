@@ -21,6 +21,8 @@ from __future__ import print_function
 import collections
 import functools
 import gc
+import os
+import types
 
 import numpy as np
 
@@ -36,6 +38,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
@@ -267,6 +270,39 @@ class ApiTest(test.TestCase):
                            (), {})
     self.assertEqual(1, self.evaluate(x))
 
+  def test_converted_call_synthetic_method(self):
+
+    class TestClass(object):
+
+      def __init__(self, x):
+        self.x = x
+
+    def test_function(self):
+      if self.x < 0:
+        return -self.x
+      return self.x
+
+    tc = TestClass(constant_op.constant(-1))
+    test_method = types.MethodType(test_function, tc)
+
+    x = api.converted_call(test_method, None, converter.ConversionOptions(),
+                           (), {})
+    self.assertEqual(1, self.evaluate(x))
+
+  def test_converted_call_method_wrapper(self):
+
+    class TestClass(object):
+
+      def foo(self):
+        pass
+
+    tc = TestClass()
+
+    # `method.__get__()` returns a so-called method-wrapper.
+    wrapper = api.converted_call(
+        '__get__', tc.foo, converter.ConversionOptions(), (tc,), {})
+    self.assertEqual(wrapper, tc.foo)
+
   def test_converted_call_method_as_object_attribute(self):
 
     class AnotherClass(object):
@@ -452,6 +488,24 @@ class ApiTest(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+
+  def test_converted_call_numpy(self):
+
+    opts = converter.ConversionOptions()
+
+    x = api.converted_call(np.arange, None, opts, (5,), {})
+
+    self.assertAllEqual(x, list(range(5)))
+
+  def test_converted_call_tf_op_forced(self):
+
+    # TODO(mdan): Add the missing level of support to LOGICAL_EXPRESSIONS.
+    opts = converter.ConversionOptions(
+        force_conversion=True, optional_features=None)
+
+    x = api.converted_call(gen_math_ops.add, None, opts, (1, 1), {})
+
+    self.assertAllEqual(self.evaluate(x), 2)
 
   def test_converted_call_namedtuple(self):
 
@@ -684,4 +738,5 @@ class ApiTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
   test.main()
