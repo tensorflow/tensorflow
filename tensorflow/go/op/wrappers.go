@@ -8617,6 +8617,29 @@ func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes [
 	return op.Output(0)
 }
 
+// Creates a dataset that emits the records from one or more TFRecord files.
+//
+// Arguments:
+//	filenames: A scalar or vector containing the name(s) of the file(s) to be
+// read.
+//	compression_type: A scalar containing either (i) the empty string (no
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+//	buffer_size: A scalar representing the number of bytes to buffer. A value of
+// 0 means no buffering will be performed.
+func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TFRecordDataset",
+		Input: []tf.Input{
+			filenames, compression_type, buffer_size,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Deserialize bucket boundaries and ready flag into current QuantileAccumulator.
 //
 // An op that deserializes bucket boundaries and are boundaries ready flag into current QuantileAccumulator.
@@ -9433,6 +9456,32 @@ func MaxPoolGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, grad
 		Type: "MaxPoolGrad",
 		Input: []tf.Input{
 			orig_input, orig_output, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that contains `rate` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	rate: A scalar representing the sample rate of elements from the `input_dataset`
+// that should be taken.
+//	seed: A scalar representing seed of random number generator.
+//	seed2: A scalar representing seed2 of random number generator.
+//
+//
+func SamplingDataset(scope *Scope, input_dataset tf.Output, rate tf.Output, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SamplingDataset",
+		Input: []tf.Input{
+			input_dataset, rate, seed, seed2,
 		},
 		Attrs: attrs,
 	}
@@ -39807,29 +39856,6 @@ func ShuffleDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output
 			input_dataset, buffer_size, seed, seed2,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset that emits the records from one or more TFRecord files.
-//
-// Arguments:
-//	filenames: A scalar or vector containing the name(s) of the file(s) to be
-// read.
-//	compression_type: A scalar containing either (i) the empty string (no
-// compression), (ii) "ZLIB", or (iii) "GZIP".
-//	buffer_size: A scalar representing the number of bytes to buffer. A value of
-// 0 means no buffering will be performed.
-func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TFRecordDataset",
-		Input: []tf.Input{
-			filenames, compression_type, buffer_size,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
