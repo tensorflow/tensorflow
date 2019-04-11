@@ -248,7 +248,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       x = constant_op.constant(x_np, shape=x_np.shape)
 
-      err_msg = "Gamma should be a non-negative real number."
+      err_msg = "Gamma should be a non-negative real number"
       with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
@@ -261,7 +261,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       x = constant_op.constant(x_np, shape=x_np.shape)
 
-      err_msg = "Gamma should be a non-negative real number."
+      err_msg = "Gamma should be a non-negative real number"
       with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
@@ -277,7 +277,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       image = image_ops.adjust_gamma(x, gamma=y)
 
-      err_msg = "Gamma should be a non-negative real number."
+      err_msg = "Gamma should be a non-negative real number"
       with self.assertRaisesRegexp(ValueError, err_msg):
         self.evaluate(image)
 
