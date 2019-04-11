@@ -148,3 +148,16 @@ tflite_micro_cc_test(
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
+
+tflite_micro_cc_test(
+    name = "pooling_test",
+    srcs = [
+        "pooling_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
