@@ -103,6 +103,21 @@ class FromConcreteFunctionTest(TestModels):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
+  def testScalarInput(self):
+    root = self._getSimpleVariableModel()
+    input_data = constant_op.constant(1., shape=[])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.f(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
   def testMultiFunctionModel(self):
     """Convert a single model in a multi-functional model."""
     root = self._getMultiFunctionModel()
