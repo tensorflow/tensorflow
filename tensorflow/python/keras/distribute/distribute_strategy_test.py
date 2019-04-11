@@ -1465,6 +1465,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
+      self.assertLen(ds_model.metrics, 1)
 
     self.assertAllClose(history.history, ds_history.history)
 
@@ -1507,6 +1508,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
+      self.assertLen(ds_model.metrics, 1)
 
     self.assertAllClose(history.history, ds_history.history)
 
