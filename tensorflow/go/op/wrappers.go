@@ -30094,6 +30094,14 @@ func EnqueueTPUEmbeddingSparseTensorBatchCombiners(value []string) EnqueueTPUEmb
 	}
 }
 
+// EnqueueTPUEmbeddingSparseTensorBatchMaxSequenceLengths sets the optional max_sequence_lengths attribute to value.
+// If not specified, defaults to <>
+func EnqueueTPUEmbeddingSparseTensorBatchMaxSequenceLengths(value []int64) EnqueueTPUEmbeddingSparseTensorBatchAttr {
+	return func(m optionalAttr) {
+		m["max_sequence_lengths"] = value
+	}
+}
+
 // Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
 //
 // sample_indices[i], embedding_indices[i] and aggregation_weights[i] correspond
@@ -38019,6 +38027,18 @@ type CombinedNonMaxSuppressionAttr func(optionalAttr)
 func CombinedNonMaxSuppressionPadPerClass(value bool) CombinedNonMaxSuppressionAttr {
 	return func(m optionalAttr) {
 		m["pad_per_class"] = value
+	}
+}
+
+// CombinedNonMaxSuppressionClipBoxes sets the optional clip_boxes attribute to value.
+//
+// value: If true, assume the box coordinates are between [0, 1] and clip the output boxes
+// if they fall beyond [0, 1]. If false, do not do clipping and output the box
+// coordinates as it is.
+// If not specified, defaults to true
+func CombinedNonMaxSuppressionClipBoxes(value bool) CombinedNonMaxSuppressionAttr {
+	return func(m optionalAttr) {
+		m["clip_boxes"] = value
 	}
 }
 
