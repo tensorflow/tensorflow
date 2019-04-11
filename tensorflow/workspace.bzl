@@ -893,6 +893,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:pybind11.BUILD"),
     )
 
+    tf_http_archive(
+        name = "wrapt",
+        build_file = clean_dep("//third_party:wrapt.BUILD"),
+        sha256 = "8a6fb40e8f8b6a66b4ba81a4044c68e6a7b1782f21cfabc06fb765332b4c3e51",
+        strip_prefix = "wrapt-1.11.1/src/wrapt",
+        urls = [
+            "http://mirror.tensorflow.org/github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+            "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+        ],
+    )
+
     ##############################################################################
     # BIND DEFINITIONS
     #

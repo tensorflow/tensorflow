@@ -1921,8 +1921,8 @@ class Layer(module.Module):
           [w for w in self._non_trainable_weights if w is not existing_value])
 
   def __setattr__(self, name, value):
-    if (name == '_setattr_tracking' or
-        not getattr(self, '_setattr_tracking', True) or
+    if (name == '_self_setattr_tracking' or
+        not getattr(self, '_self_setattr_tracking', True) or
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
@@ -2279,3 +2279,4 @@ def default(method):
 # Avoid breaking users who directly import this symbol from this file.
 # TODO(fchollet): remove this.
 InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name
+

@@ -405,7 +405,7 @@ class Network(base_layer.Layer):
           layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
-    if not getattr(self, '_setattr_tracking', True):
+    if not getattr(self, '_self_setattr_tracking', True):
       super(Network, self).__setattr__(name, value)
       return
 
