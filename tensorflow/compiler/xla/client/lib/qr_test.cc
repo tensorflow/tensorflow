@@ -60,9 +60,7 @@ XLA_TEST_F(QrTest, Simple) {
                              xla::ErrorSpec(1e-4, 1e-4));
 }
 
-// The following test will results in a call to "BlasGemmStridedBatched"
-// That operation is currently not supported on the ROCm platform  
-XLA_TEST_F(QrTest, DISABLED_ON_GPU_ROCM(SimpleBatched)) {
+XLA_TEST_F(QrTest, SimpleBatched) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array3D<float> a_vals({

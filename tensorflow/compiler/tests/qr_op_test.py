@@ -102,12 +102,6 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
   @parameterized.parameters(*PARAMS)
   def testQR(self, rows, cols, dtype):
 
-    if xla_test.test.is_built_with_rocm():
-      # TODO(rocm)
-      # The folowing subtest invokes the call to "BlasGemmStridedBatched"
-      # That operation is currently not supported on the ROCm platform
-      self.skipTest("BlasGemmStridedBatched is not yet supported in ROCm")
-
     # TODO(b/111317468): Test other types.
     for full_matrices in [True, False]:
       # Only tests the (3, 2) case for small numbers of rows/columns.

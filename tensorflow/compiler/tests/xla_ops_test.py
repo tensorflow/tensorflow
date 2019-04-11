@@ -143,12 +143,6 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   @parameterized.parameters(*PRECISION_VALUES)
   def testDotGeneral(self, precision):
 
-    if xla_test.test.is_built_with_rocm():
-      # TODO(rocm)
-      # The folowing subtest invokes the call to "BlasGemmStridedBatched"
-      # That operation is currently not supported on the ROCm platform
-      self.skipTest("BlasGemmStridedBatched is not yet supported in ROCm")
-
     for dtype in self.float_types:
 
       def dot_fn(lhs, rhs):
