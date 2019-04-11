@@ -282,14 +282,8 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number."
-
-      try:
+      with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_uint8(self):
@@ -301,14 +295,8 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number."
-
-      try:
+      with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_tensor(self):
@@ -323,13 +311,8 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       image = image_ops.adjust_gamma(x, gamma=y)
 
       err_msg = "Gamma should be a non-negative real number."
-      try:
+      with self.assertRaisesRegexp(ValueError, err_msg):
         self.evaluate(image)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _test_adjust_gamma_uint8(self, gamma):
     """Verifying the output with expected results for gamma
