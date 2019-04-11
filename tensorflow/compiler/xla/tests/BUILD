@@ -728,7 +728,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-        "no_rocm",	
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",

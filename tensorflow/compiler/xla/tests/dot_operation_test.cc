@@ -47,6 +47,13 @@ using TypesF16F32 = ::testing::Types<float>;
 using TypesF16F32F64 = ::testing::Types<float>;
 using TypesF16F32F64CF64 = ::testing::Types<float>;
 #elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
+    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) && \
+    defined(XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX)
+using TypesF16F32 = ::testing::Types<Eigen::half, float>;
+using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
+using TypesF16F32F64CF64 =
+    ::testing::Types<Eigen::half, float, double>;
+#elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
     !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
@@ -501,7 +508,7 @@ XLA_TYPED_TEST(NonsquareMatrixDot, TestFT) { this->TestImpl(false, true); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTF) { this->TestImpl(true, false); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTT) { this->TestImpl(true, true); }
 
-XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
+XLA_TEST_F(DotOperationTest, DISABLED_ON_GPU_ROCM(MatrixVectorC64)) {
   auto lhs_handle =
       client_
           ->TransferToServer(LiteralUtil::CreateR2WithLayout<complex64>(
@@ -604,6 +611,7 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
+#if !TENSORFLOW_USE_ROCM
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
   using T = TypeParam;
 
@@ -639,6 +647,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
+#endif
 
 #ifndef XLA_TEST_BACKEND_CPU
 // TODO(b/74459949): failed on CPU on 2018-10-29.
@@ -710,6 +719,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
 }
 #endif  // XLA_TEST_BACKEND_CPU
 
+#if !TENSORFLOW_USE_ROCM
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;
 
@@ -751,6 +761,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
        {{{10.0f, 9.0f}, {12.0f, 11.0f}}, {{14.0f, 13.0f}, {16.0f, 15.0f}}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
+#endif
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, TransposeFolding) {
   using T = TypeParam;
@@ -1164,7 +1175,7 @@ using EinsumParamType =
     std::tuple<std::vector<int64>, std::vector<int64>, string>;
 class EinsumTest : public DotOperationTest,
                    public ::testing::WithParamInterface<EinsumParamType> {};
-XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
+XLA_TEST_P(EinsumTest, DISABLED_ON_GPU_ROCM(SimpleEinsumTest)) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
@@ -1209,7 +1220,7 @@ INSTANTIATE_TEST_CASE_P(Einsum, EinsumTest,
 
 class DotOperationTextTest : public HloTestBase {};
 
-XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(DotReorderedDotDims)) {
   absl::string_view hlo_string =
       R"(
 HloModule ComplexDotMultipleNonContracting
@@ -1224,7 +1235,7 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DotReorderedDotDimsAndMultipleContracting) {
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(DotReorderedDotDimsAndMultipleContracting)) {
   absl::string_view hlo_string =
       R"(
 HloModule ComplexDotMultipleNonContracting
@@ -1346,7 +1357,7 @@ ENTRY TransposeOutput {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(MatrixVectorComplex)) {
   absl::string_view hlo_string =
       R"(
 HloModule MatrixVectorComplex
