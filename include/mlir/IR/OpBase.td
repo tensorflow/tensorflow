@@ -315,6 +315,10 @@ class TypedTensor<Type t>
                     "{0}.cast<TensorType>().getElementType()",
                     "tensor">;
 
+class TypedStaticShapeTensor<Type t>
+    : Type<AllOf<[ TypedTensor<t>.predicate, IsStaticShapeTensorTypePred ]>,
+           "statically shaped tensor">;
+
 def I1Tensor  : TypedTensor<I1>;
 def I8Tensor  : TypedTensor<I8>;
 def I16Tensor : TypedTensor<I16>;
