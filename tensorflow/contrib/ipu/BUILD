@@ -65,6 +65,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "case_test",
+    size = "small",
+    srcs = ["python/tests/case_test.py"],
+    additional_deps = [
+        ":ipu",
+        ":test_util",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
+tf_py_test(
     name = "while_loop_perf_test",
     size = "small",
     srcs = ["python/tests/while_loop_perf_test.py"],
@@ -349,6 +362,7 @@ test_suite(
     name = "all_tests",
     tests = [
         "autoshard_cnn_test",
+        "case_test",
         "conditional_test",
         "infeed_outfeed_test",
         "mapping_test",

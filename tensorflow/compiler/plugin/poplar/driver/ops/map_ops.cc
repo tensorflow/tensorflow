@@ -458,12 +458,17 @@ StatusOr<poplar::program::Program> CreateConditionalOp(
     is_switch = false;
   } else if (inst->operand(0)->shape().element_type() == S32) {
     is_switch = true;
-    return xla::FailedPrecondition("Switch not implemented.");
   } else {
-    return xla::FailedPrecondition("Unsupported condition input type.");
+    return xla::FailedPrecondition(
+        "Conditional %s has unsupported condition input type %s.",
+        PrimitiveType_Name(inst->operand(0)->shape().element_type()));
   }
 
   int n_branches = inst->operand_count() - 1;
+  if (n_branches == 0) {
+    return xla::FailedPrecondition("Conditional %s has no branches.",
+                                   inst->name().c_str());
+  }
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
                       GetInplaceOutputTensors(tensor_map, res, inst, seq));
@@ -525,7 +530,11 @@ StatusOr<poplar::program::Program> CreateConditionalOp(
 
     seq.add(poplar::program::If(scalar_pred, seqs[0], seqs[1]));
   } else {
-    // Add switch
+    std::vector<std::pair<int32, poplar::program::Program>> cases;
+    for (auto c = 0; c < seqs.size() - 1; c++) {
+      cases.push_back(std::make_pair(c, seqs[c]));
+    }
+    seq.add(poplar::program::Switch(pred, cases, seqs.back()));
   }
 
   return seq;
