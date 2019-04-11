@@ -2639,7 +2639,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     GraphDef* optimized_graph, NodeDef* node, bool* success) {
   *success = false;
   const bool is_mul = IsAnyMul(*node) || IsLogicalAnd(*node);
-  const bool is_matmul = IsMatMul(*node);
+  const bool is_matmul = IsAnyMatMul(*node);
   const bool is_quantized_matmul = IsQuantizedMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
   const bool is_sub = IsSub(*node);
