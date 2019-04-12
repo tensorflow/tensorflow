@@ -950,6 +950,22 @@ py_test(
 )
 
 py_test(
+    name = "topk_onehot_test",
+    size = "small",
+    srcs = ["tests/topk_onehot_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "simple_network_test",
     size = "small",
     srcs = ["tests/simple_network_test.py"],
@@ -1476,6 +1492,7 @@ test_suite(
         "sort_op_test",
         "sync_list_scheduler_test",
         "tensor_array_test",
+        "topk_onehot_test",
         "update_op_dependencies_test",
         "variable_test",
         "while_loop_condition_simplify_test",
