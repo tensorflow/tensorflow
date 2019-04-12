@@ -24,6 +24,7 @@ from tensorflow.python.keras.activations import hard_sigmoid
 from tensorflow.python.keras.activations import linear
 from tensorflow.python.keras.activations import relu
 from tensorflow.python.keras.activations import selu
+from tensorflow.python.keras.activations import gelu
 from tensorflow.python.keras.activations import sigmoid
 from tensorflow.python.keras.activations import softmax
 from tensorflow.python.keras.activations import softplus

@@ -38,7 +38,7 @@ class KerasActivationsTest(test.TestCase):
   def test_serialization(self):
     all_activations = ['softmax', 'relu', 'elu', 'tanh',
                        'sigmoid', 'hard_sigmoid', 'linear',
-                       'softplus', 'softsign', 'selu']
+                       'softplus', 'softsign', 'selu', 'gelu']
     for name in all_activations:
       fn = keras.activations.get(name)
       ref_fn = getattr(keras.activations, name)
@@ -90,6 +90,18 @@ class KerasActivationsTest(test.TestCase):
     result = f([negative_values])[0]
     true_result = (np.exp(negative_values) - 1) * scale * alpha
     self.assertAllClose(result, true_result)
+
+  def test_gelu(self):
+    x = keras.backend.placeholder(ndim=2)
+    f = keras.backend.function([x], [keras.activations.gelu(x)])
+
+    test_input = np.random.random((2, 5))
+    tf_result = f([test_input])[0]
+    np_result = 0.5 * test_input * (1 + np.tanh(np.sqrt(2 / np.pi)       \
+                                                * (test_input + 0.044715 \
+                                                   * np.power(test_input, 3))))
+    self.assertAllClose(tf_result, np_result, rtol=1e-05)
+
 
   def test_softplus(self):
     def softplus(x):

@@ -119,6 +119,23 @@ def selu(x):
   scale = 1.0507009873554804934193349852946
   return scale * K.elu(x, alpha)
 
+@keras_export('keras.activations.gelu')
+def gelu(x):
+  """Gaussian Error Linear Units (GELU).
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The GELU activation:
+          '0.5x(1 + tanh[√2/π(x+ 0.044715x3)])'.
+
+  References:
+      - [Gaussian Error Linear Units](https://arxiv.org/pdf/1606.08415.pdf)
+  """
+  PI = 3.141592653589793
+  return 0.5 * x * (1 + nn.tanh(math_ops.sqrt(2 / PI) \
+                                * (x + 0.044715 * math_ops.pow(x, 3))))
 
 @keras_export('keras.activations.softplus')
 def softplus(x):
