@@ -611,7 +611,6 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#if !TENSORFLOW_USE_ROCM
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
   using T = TypeParam;
 
@@ -647,7 +646,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
-#endif
 
 #ifndef XLA_TEST_BACKEND_CPU
 // TODO(b/74459949): failed on CPU on 2018-10-29.
@@ -719,7 +717,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
 }
 #endif  // XLA_TEST_BACKEND_CPU
 
-#if !TENSORFLOW_USE_ROCM
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;
 
@@ -761,7 +758,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
        {{{10.0f, 9.0f}, {12.0f, 11.0f}}, {{14.0f, 13.0f}, {16.0f, 15.0f}}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
-#endif
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, TransposeFolding) {
   using T = TypeParam;
@@ -1175,7 +1171,7 @@ using EinsumParamType =
     std::tuple<std::vector<int64>, std::vector<int64>, string>;
 class EinsumTest : public DotOperationTest,
                    public ::testing::WithParamInterface<EinsumParamType> {};
-XLA_TEST_P(EinsumTest, DISABLED_ON_GPU_ROCM(SimpleEinsumTest)) {
+XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
@@ -1259,7 +1255,7 @@ INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
 
 class DotOperationTextTest : public HloTestBase {};
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(DotReorderedDotDims)) {
+XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
   absl::string_view hlo_string =
       R"(
 HloModule ComplexDotMultipleNonContracting
@@ -1274,7 +1270,7 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU_ROCM(DotReorderedDotDimsAndMultipleContracting)) {
+XLA_TEST_F(DotOperationTextTest, DotReorderedDotDimsAndMultipleContracting) {
   absl::string_view hlo_string =
       R"(
 HloModule ComplexDotMultipleNonContracting
