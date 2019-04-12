@@ -475,12 +475,12 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       ok = [
           '__seed*', 'Copy_', 'host-exchange-local-copy-',
-          'vs/conv2d/Conv2D/convolution*/Conv_1x1/Convolve',
-          'vs/conv2d/BiasAdd/fusion*/addToChannel',
-          'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
-          'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
+          'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropInput/fusion*/Conv_1x1/',
+          'vs/conv2d/BiasAdd/fusion.1/addToChannel',
           'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/ReduceFinalStage/IntermediateToOutput/Reduce',
           'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/AddTo',
+          'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4/',
+          'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
           'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/multiply*/Op/Multiply',
           'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/subtract*/AddTo',
           'vs/conv2d_1/BiasAdd/fusion*/addToChannel',

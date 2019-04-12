@@ -117,8 +117,7 @@ class StatelessRandomNormalOp : public PoplibsOpDef {
                                              TensorMap& tensor_map) override {
     poplar::program::Sequence seq;
 
-    poplar::Tensor seed;
-    TF_ASSIGN_OR_RETURN(seed,
+    TF_ASSIGN_OR_RETURN(poplar::Tensor seed,
                         FindInstructionInput(tensor_map, res, inst, 0, seq));
     seed = seed.reinterpret(poplar::UNSIGNED_INT);
 

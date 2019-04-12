@@ -91,8 +91,7 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
 
   const Window& window = GetConvolutionWindow(inst);
 
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
+  TF_ASSIGN_OR_RETURN(poplar::Type dtype, PoplarDataType(input));
 
   std::vector<size_t> input_dims = PoplarShapeFromXlaShape(input);
   std::vector<size_t> kernel_dims = PoplarShapeFromXlaShape(kernel);
@@ -309,16 +308,15 @@ StatusOr<poplar::program::Program> CreateConv2D(CompilerResources& res,
   poplar::program::Sequence prog;
 
   // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in,
+                      FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the kernel tensor
-  poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
                       FindInstructionInput(tensor_map, res, inst, 1, prog));
 
-  poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 0, 1));
+  TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
+                      GetConvolutionParameters(inst, 0, 1));
 
   in = ShuffleConvolutionInputToPoplar(inst, in);
 
@@ -347,16 +345,15 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   poplar::program::Sequence prog;
 
   // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in,
+                      FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the kernel tensor
-  poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
                       FindInstructionInput(tensor_map, res, inst, 1, prog));
 
-  poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 0, 1));
+  TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
+                      GetConvolutionParameters(inst, 0, 1));
 
   in = ShuffleConvolutionInputToPoplar(inst, in);
 
@@ -385,16 +382,15 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   poplar::program::Sequence prog;
 
   // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in,
+                      FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the kernel tensor
-  poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
                       FindInstructionInput(tensor_map, res, inst, 1, prog));
 
-  poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 0, 1));
+  TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
+                      GetConvolutionParameters(inst, 0, 1));
 
   in = ShuffleConvolutionInputToPoplar(inst, in);
 
@@ -435,22 +431,21 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
 
   // Find the weights tensor
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor w = inputs[0][0];
 
   // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 1, prog));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   // Find the deltas tensor
-  poplar::Tensor deltas;
-  TF_ASSIGN_OR_RETURN(deltas,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor deltas,
                       FindInstructionInput(tensor_map, res, inst, 2, prog));
 
-  poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 1, 2));
+  TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
+                      GetConvolutionParameters(inst, 1, 2));
 
   TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionScaledInplace(
       graph, res, w, in, deltas, params, GetSingleShardingDeviceId(inst), prog,
@@ -469,14 +464,14 @@ StatusOr<poplar::program::Program> CreateConvBiasAddOp(
   poplar::program::Sequence prog;
 
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor in = inputs[0][0];
 
-  poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(
-      bias, FindInstructionInput(tensor_map, res, inst, 1, prog, false));
+      poplar::Tensor bias,
+      FindInstructionInput(tensor_map, res, inst, 1, prog, false));
 
   const auto* conv_op = GetOperandLookThroughInterIpuCopy(inst, 0);
   poplar::Tensor shuffled_in = ShuffleConvolutionOutputToPoplar(conv_op, in);
@@ -500,7 +495,7 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
 
   // Find the biases
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor biases = inputs[0][0];

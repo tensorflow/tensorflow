@@ -191,15 +191,19 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor in,
+      FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
-  popops::expr::UnaryOpType op;
-  TF_ASSIGN_OR_RETURN(op, LookupUnaryFn(inst));
+  TF_ASSIGN_OR_RETURN(popops::expr::UnaryOpType op, LookupUnaryFn(inst));
 
-  poplar::Tensor out = popops::map(graph, op, in, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+  poplar::Tensor out;
+  if (AreInplaceOutputTensorsWritable(tensor_map, res, inst)) {
+    popops::mapInPlace(graph, op, in, seq, GetDebugName(inst));
+    out = in;
+  } else {
+    out = popops::map(graph, op, in, seq, GetDebugName(inst));
+  }
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -213,123 +217,71 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(
-      in0, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
+      poplar::Tensor rhs,
+      FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
-  poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(
-      in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
-
-  if (res.annotations.inplace_instructions.count(inst) &&
-      (in0.shape() == in1.shape())) {
+  if (AreInplaceOutputTensorsWritable(tensor_map, res, inst)) {
     TF_ASSIGN_OR_RETURN(
         ArgVectors inputs,
-        GetInplaceOutputTensors(tensor_map, res, inst, seq, false));
+        FindInplaceOutputTensors(tensor_map, res, inst, seq, false));
     CHECK_EQ(inputs.size(), 1);
     CHECK_EQ(inputs[0].size(), 1);
-    poplar::Tensor in0 = inputs[0][0];
+    poplar::Tensor lhs = inputs[0][0];
 
     // Call the inplace op
     switch (inst->opcode()) {
       case HloOpcode::kAdd: {
-        popops::scaledAddTo(graph, in0, in1, 1.0f, seq, GetDebugName(inst));
+        popops::scaledAddTo(graph, lhs, rhs, 1.0f, seq, GetDebugName(inst));
         break;
       }
       case HloOpcode::kSubtract: {
-        popops::scaledSubtractFrom(graph, in0, in1, 1.0f, seq,
+        popops::scaledSubtractFrom(graph, lhs, rhs, 1.0f, seq,
                                    GetDebugName(inst));
         break;
       }
       default: {
-        popops::expr::BinaryOpType op;
-        TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
-        popops::mapInPlace(graph, op, in0, in1, seq, GetDebugName(inst));
+        TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op,
+                            LookupBinaryFn(inst));
+        popops::mapInPlace(graph, op, lhs, rhs, seq, GetDebugName(inst));
         break;
       }
     }
 
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in0));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, lhs));
 
     return seq;
 
   } else {
-    if (in0.shape() != in1.shape()) {
-      auto shape0_optional = convert_array<tensorflow::BCast::Vec>(in0.shape());
-      auto shape1_optional = convert_array<tensorflow::BCast::Vec>(in1.shape());
-      if (!shape0_optional || !shape1_optional) {
-        return xla::FailedPrecondition(
-            "ExpressionOutliner - cannot cast input shape.");
-      }
-      tensorflow::BCast::Vec shape0 = *shape0_optional;
-      tensorflow::BCast::Vec shape1 = *shape1_optional;
-
-      tensorflow::BCast bcast(shape0, shape1);
-      if (!bcast.IsValid()) {
-        return xla::FailedPrecondition("Incompatible broadcast on %s",
-                                       inst->name().c_str());
-      }
-
-      auto bcast_x_shape_optional =
-          convert_array<std::vector<size_t>>(bcast.x_reshape());
-      auto bcast_y_shape_optional =
-          convert_array<std::vector<size_t>>(bcast.y_reshape());
-      if (!bcast_x_shape_optional || !bcast_y_shape_optional) {
-        return xla::FailedPrecondition(
-            "ExpressionOutliner - cannot cast broadcast shape.");
-      }
-      std::vector<size_t> bcast_x_shape = *bcast_x_shape_optional;
-      std::vector<size_t> bcast_y_shape = *bcast_y_shape_optional;
-      in0 = in0.reshape(bcast_x_shape);
-      in1 = in1.reshape(bcast_y_shape);
-
-      in0 = TileTensor(bcast.x_bcast(), in0);
-      in1 = TileTensor(bcast.y_bcast(), in1);
-    }
+    TF_ASSIGN_OR_RETURN(
+        poplar::Tensor lhs,
+        FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
     poplar::Tensor out;
-
     if (inst->opcode() == HloOpcode::kXor) {
-      if (inst->shape().element_type() == PRED) {
-        poplar::Tensor or_out =
-            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_OR, in0, in1,
-                        seq, GetDebugName(inst));
-        poplar::Tensor and_out =
-            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND, in0,
-                        in1, seq, GetDebugName(inst));
-        poplar::Tensor not_out =
-            popops::map(graph, popops::expr::UnaryOpType::LOGICAL_NOT, and_out,
-                        seq, GetDebugName(inst));
-        out = popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND,
-                          or_out, not_out, seq, GetDebugName(inst));
-      } else {
-        poplar::Tensor or_out =
-            popops::map(graph, popops::expr::BinaryOpType::BITWISE_OR, in0, in1,
-                        seq, GetDebugName(inst));
-        poplar::Tensor and_out =
-            popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, in0,
-                        in1, seq, GetDebugName(inst));
-        poplar::Tensor not_out =
-            popops::map(graph, popops::expr::UnaryOpType::BITWISE_NOT, and_out,
-                        seq, GetDebugName(inst));
-        out = popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND,
-                          or_out, not_out, seq, GetDebugName(inst));
-      }
+      const bool is_predicate = inst->shape().element_type() == PRED;
+      popops::expr::BinaryOpType or_op =
+          is_predicate ? popops::expr::BinaryOpType::LOGICAL_OR
+                       : popops::expr::BinaryOpType::BITWISE_OR;
+      popops::expr::BinaryOpType and_op =
+          is_predicate ? popops::expr::BinaryOpType::LOGICAL_AND
+                       : popops::expr::BinaryOpType::BITWISE_AND;
+      popops::expr::UnaryOpType not_op =
+          is_predicate ? popops::expr::UnaryOpType::LOGICAL_NOT
+                       : popops::expr::UnaryOpType::BITWISE_NOT;
+
+      poplar::Tensor or_out =
+          popops::map(graph, or_op, lhs, rhs, seq, GetDebugName(inst));
+      poplar::Tensor and_out =
+          popops::map(graph, and_op, lhs, rhs, seq, GetDebugName(inst));
+      poplar::Tensor not_out =
+          popops::map(graph, not_op, and_out, seq, GetDebugName(inst));
+      out =
+          popops::map(graph, and_op, or_out, not_out, seq, GetDebugName(inst));
     } else {
-      popops::expr::BinaryOpType op;
-      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
-
-      out = popops::map(graph, op, in0, in1, seq, GetDebugName(inst));
+      TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupBinaryFn(inst));
+      out = popops::map(graph, op, lhs, rhs, seq, GetDebugName(inst));
     }
-
-    // Occasionally, due to an interplay of implicit broadcasting and
-    // arithmetic re-arrangement, the output of an op is larger than the inputs
-    // generate
-    if (ShapeUtil::ElementsIn(output_shape) != out.numElements()) {
-      TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
-    }
-
-    out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -344,29 +296,18 @@ StatusOr<poplar::program::Program> CreateComparisonOp(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(
-      in0, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
+      poplar::Tensor lhs,
+      FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
-  poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(
-      in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
+      poplar::Tensor rhs,
+      FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
-  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupComparisonFn(inst));
 
-  popops::expr::BinaryOpType op;
-  TF_ASSIGN_OR_RETURN(op, LookupComparisonFn(inst));
-
-  out = popops::map(graph, op, in0, in1, seq, GetDebugName(inst));
-
-  // Occasionally, due to an interplay of implicit broadcasting and
-  // arithmetic re-arrangement, the output of an op is larger than the inputs
-  // generate
-  if (ShapeUtil::ElementsIn(output_shape) != out.numElements()) {
-    TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
-  }
-
-  out = out.reshape(PoplarShapeFromXlaShape(output_shape));
+  poplar::Tensor out =
+      popops::map(graph, op, lhs, rhs, seq, GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -425,14 +366,14 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
   poplar::program::Sequence seq;
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, res, inst, seq, false));
+      FindInplaceOutputTensors(tensor_map, res, inst, seq, false));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor in0 = inputs[0][0];
 
-  poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(
-      in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
+      poplar::Tensor in1,
+      FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
   const auto* root_inst =
       inst->fused_instructions_computation()->root_instruction();
@@ -469,11 +410,10 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   poplar::program::Sequence seq;
 
   CHECK_EQ(inst->opcode(), HloOpcode::kDot);
-  poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, res, inst, 0, seq));
-
-  poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, res, inst, 1, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in0,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in1,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   const DotDimensionNumbers& dot_dims = inst->dot_dimension_numbers();
   auto lhs_reduction_dimensions = dot_dims.lhs_contracting_dimensions();
@@ -571,14 +511,14 @@ StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
 
   TF_ASSIGN_OR_RETURN(
       ArgVectors inputs,
-      GetInplaceOutputTensors(tensor_map, res, inst, prog, false));
+      FindInplaceOutputTensors(tensor_map, res, inst, prog, false));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor in = inputs[0][0];
 
-  poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(
-      bias, FindInstructionInput(tensor_map, res, inst, 1, prog, false));
+      poplar::Tensor bias,
+      FindInstructionInput(tensor_map, res, inst, 1, prog, false));
 
   poplin::addBias(graph, in, bias, prog, GetDebugName(inst));
 
@@ -593,9 +533,9 @@ StatusOr<poplar::program::Program> CreateSelectOp(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(
-      pred, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
+      poplar::Tensor pred,
+      FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
   ArgVector in0 = FindInstructionInputs(tensor_map, res, inst, 1, seq, false);
   ArgVector in1 = FindInstructionInputs(tensor_map, res, inst, 2, seq, false);
@@ -633,16 +573,13 @@ StatusOr<poplar::program::Program> CreateCastOp(CompilerResources& res,
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor in,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
-  poplar::Type poplar_type;
-  TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type poplar_type, PoplarDataType(output_shape));
 
   poplar::Tensor out =
       popops::cast(graph, in, poplar_type, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -657,31 +594,20 @@ StatusOr<poplar::program::Program> CreateClampOp(CompilerResources& res,
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor min;
   TF_ASSIGN_OR_RETURN(
-      min, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
-  if (!PoplarShapeMatchesXLAShape(min, output_shape)) {
-    TF_ASSIGN_OR_RETURN(min, BroadcastTensor(min, output_shape));
-  }
+      poplar::Tensor min,
+      FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
-  poplar::Tensor arg;
   TF_ASSIGN_OR_RETURN(
-      arg, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
-  if (!PoplarShapeMatchesXLAShape(arg, output_shape)) {
-    TF_ASSIGN_OR_RETURN(arg, BroadcastTensor(arg, output_shape));
-  }
+      poplar::Tensor arg,
+      FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
-  poplar::Tensor max;
   TF_ASSIGN_OR_RETURN(
-      max, FindInstructionInput(tensor_map, res, inst, 2, seq, false));
-  if (!PoplarShapeMatchesXLAShape(max, output_shape)) {
-    TF_ASSIGN_OR_RETURN(max, BroadcastTensor(max, output_shape));
-  }
+      poplar::Tensor max,
+      FindInstructionInput(tensor_map, res, inst, 2, seq, false));
 
   poplar::Tensor out = popops::map(graph, popops::expr::TernaryOpType::CLAMP,
                                    arg, min, max, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -696,14 +622,12 @@ StatusOr<poplar::program::Program> CreateNonLinearityOp(
 
   poplar::program::Sequence seq;
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+                      FindInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor t = inputs[0][0];
   popnn::nonLinearityInPlace(graph, non_linearity_type, t, seq,
                              GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 
@@ -718,17 +642,14 @@ StatusOr<poplar::program::Program> CreateNonLinearityGradOp(
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
-  poplar::Tensor outgrad;
-  TF_ASSIGN_OR_RETURN(outgrad,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor outgrad,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   poplar::Tensor t = popnn::nonLinearityInputGradient(
       graph, non_linearity_type, out, outgrad, seq, GetDebugName(inst));
-
-  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 

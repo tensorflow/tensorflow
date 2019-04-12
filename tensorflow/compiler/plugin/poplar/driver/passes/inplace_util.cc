@@ -102,31 +102,27 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
   switch (inst->opcode()) {
     // Unary Elementwise ops - inplace on operand 0.
     case HloOpcode::kAbs:
-    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
-    case HloOpcode::kConvert:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
-    case HloOpcode::kImag:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
     case HloOpcode::kLog1p:
-    case HloOpcode::kNot:
+    case HloOpcode::kLog:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
-    case HloOpcode::kReducePrecision:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
     // Binary Elementwise ops - inplace on operand 0.
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
-    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kMaximum:
@@ -137,17 +133,16 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
-    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     // These ops are implemented as inplace ops on operand 0 as well.
     case HloOpcode::kAddDependency:
-    case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
     case HloOpcode::kScatter:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose: {
@@ -241,26 +236,35 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kClamp:
+    case HloOpcode::kCompare:
     case HloOpcode::kConstant:
+    case HloOpcode::kConvert:
     case HloOpcode::kConvolution:
+    case HloOpcode::kCopy:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
+    case HloOpcode::kImag:
     case HloOpcode::kInfeed:
     case HloOpcode::kIota:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kReduce:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRng:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kTupleSelect: {
+    case HloOpcode::kTupleSelect:
+    case HloOpcode::kXor: {
       return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
 
     // Unimplemented ops.
+    case HloOpcode::kBitcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kFft:
     case HloOpcode::kRecv:
@@ -269,8 +273,8 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kSendDone:
     case HloOpcode::kTrace:
     default: {
-      LOG(INFO) << "Unrecognized op " << inst->opcode()
-                << ". Classify whether it is an inplace op or not";
+      LOG(FATAL) << "Unrecognized op " << inst->opcode()
+                 << ". Classify whether it is an inplace op or not";
       return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
   }

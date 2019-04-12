@@ -25,7 +25,7 @@ StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
   poplar::program::Sequence prog;
   // Get the inplace input/outputs.
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+                      FindInplaceOutputTensors(tensor_map, res, inst, prog));
   if (sort->operand_count() == 1) {
     CHECK_EQ(inputs.size(), 1);
     CHECK_EQ(inputs[0].size(), 1);

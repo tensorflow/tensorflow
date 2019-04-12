@@ -35,8 +35,8 @@ Status FlattenNode(const CallGraphNode& node) {
       !IsPopOpsFusion(node.computation())) {
     CallSite call_site = node.caller_callsites()[0];
     if (call_site.instruction()->opcode() == HloOpcode::kCall) {
-      CallInliner::InlinedInstructionMap map;
-      TF_ASSIGN_OR_RETURN(map, CallInliner::Inline(call_site.instruction()));
+      TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap map,
+                          CallInliner::Inline(call_site.instruction()));
     }
   }
   return Status::OK();

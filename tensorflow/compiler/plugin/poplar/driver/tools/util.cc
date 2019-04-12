@@ -148,8 +148,7 @@ StatusOr<NativeT> LiteralScalarToNativeType(const xla::Literal& lit) {
     return xla::FailedPrecondition("Literal is not scalar");
   }
 
-  Literal converted_lit;
-  TF_ASSIGN_OR_RETURN(converted_lit, lit.Convert(primitive_type));
+  TF_ASSIGN_OR_RETURN(Literal converted_lit, lit.Convert(primitive_type));
 
   return *static_cast<const NativeT*>(converted_lit.untyped_data());
 }
@@ -162,8 +161,7 @@ StatusOr<std::vector<NativeT>> LiteralVectorToNativeType(
     return xla::FailedPrecondition("Literal rank != 1");
   }
 
-  Literal converted_lit;
-  TF_ASSIGN_OR_RETURN(converted_lit, lit.Convert(primitive_type));
+  TF_ASSIGN_OR_RETURN(Literal converted_lit, lit.Convert(primitive_type));
 
   const NativeT* start =
       static_cast<const NativeT*>(converted_lit.untyped_data());

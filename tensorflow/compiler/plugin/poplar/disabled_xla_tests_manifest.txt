@@ -309,8 +309,6 @@ FmaxSimpleTest.FminEdgeCases POPLAR
 ComparatorsTest.CompareLtF32 POPLAR
 ComparatorsTest.CompareGtF32 POPLAR
 
-CaseOpTest POPLAR // Case form of the conditional op
-
 MatrixTest.GetMatrixDiagonal_S32 POPLAR // Don't support int32 reduction.
 MatrixTest.GetMatrixDiagonal_S64 POPLAR // Don't support int64 reduction.
 

@@ -352,8 +352,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     filename = poplarExecutor->CachedExecutableFilename(*module);
 
     if (poplarExecutor->HaveCachedExecutable(filename)) {
-      PoplarExecutable* poplar_executable;
-      TF_ASSIGN_OR_RETURN(poplar_executable,
+      TF_ASSIGN_OR_RETURN(PoplarExecutable * poplar_executable,
                           PoplarExecutable::Deserialize(
                               std::move(module), std::move(profile_printer),
                               std::move(profile_index_map), filename));
