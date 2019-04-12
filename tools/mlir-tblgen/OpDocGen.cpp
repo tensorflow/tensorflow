@@ -117,7 +117,7 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
          << "| :-------: | :-------: | ----------- |\n";
     }
     for (auto namedAttr : op.getAttributes()) {
-      os << "| `" << namedAttr.getName() << "` | `"
+      os << "| `" << namedAttr.name << "` | `"
          << namedAttr.attr.getStorageType() << "` | "
          << namedAttr.attr.getDescription() << " attribute |\n";
     }

@@ -426,17 +426,10 @@ void OpEmitter::genAttrGetters() {
   FmtContext fctx;
   fctx.withBuilder("mlir::Builder(this->getContext())");
   for (auto &namedAttr : op.getAttributes()) {
-    auto name = namedAttr.getName();
+    const auto &name = namedAttr.name;
     const auto &attr = namedAttr.attr;
 
-    // Determine the name of the attribute getter. The name matches the
-    // attribute name excluding dialect prefix.
-    StringRef getter = name;
-    auto it = getter.split('.');
-    if (!it.second.empty())
-      getter = it.second;
-
-    auto &method = opClass.newMethod(attr.getReturnType(), getter);
+    auto &method = opClass.newMethod(attr.getReturnType(), name);
     auto &body = method.body();
 
     // Emit the derived attribute body.
@@ -625,9 +618,8 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
       if (emitNotNullCheck) {
         method.body() << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      method.body() << formatv("  {0}->addAttribute(\"{1}\", {2});\n",
-                               builderOpState, namedAttr.getName(),
-                               namedAttr.name);
+      method.body() << formatv("  {0}->addAttribute(\"{1}\", {1});\n",
+                               builderOpState, namedAttr.name);
       if (emitNotNullCheck) {
         method.body() << "  }\n";
       }
@@ -800,9 +792,9 @@ void OpEmitter::genVerifier() {
     if (attr.isDerivedAttr())
       continue;
 
-    auto attrName = namedAttr.getName();
+    auto attrName = namedAttr.name;
     // Prefix with `tblgen_` to avoid hiding the attribute accessor.
-    auto varName = tblgenNamePrefix + namedAttr.name;
+    auto varName = tblgenNamePrefix + attrName;
     body << formatv("  auto {0} = this->getAttr(\"{1}\");\n", varName,
                     attrName);
 

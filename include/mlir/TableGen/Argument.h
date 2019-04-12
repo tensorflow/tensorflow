@@ -44,9 +44,6 @@ namespace tblgen {
 
 // A struct wrapping an op attribute and its name together
 struct NamedAttribute {
-  // Returns the MLIR attribute name.
-  std::string getName() const;
-
   llvm::StringRef name;
   Attribute attr;
 };

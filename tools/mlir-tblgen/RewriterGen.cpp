@@ -345,7 +345,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
   indent += 2;
   os.indent(indent) << formatv(
       "auto attr = op{0}->getAttrOfType<{1}>(\"{2}\");\n", depth,
-      attr.getStorageType(), namedAttr->getName());
+      attr.getStorageType(), namedAttr->name);
 
   // TODO(antiagainst): This should use getter method to avoid duplication.
   if (attr.hasDefaultValueInitializer()) {
