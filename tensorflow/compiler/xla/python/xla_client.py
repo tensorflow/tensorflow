@@ -566,8 +566,9 @@ def transfer_from_outfeed(shape, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  return backend.client.TransferFromOutfeed(shape.as_xla_shape(),
-                                            device_ordinal)
+  return backend.client.TransferFromOutfeed(
+      shape.with_major_to_minor_layout_if_absent().as_xla_shape(),
+      device_ordinal)
 
 
 class CompileOptions(object):
@@ -841,7 +842,9 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    return ops.Infeed(self._builder, shape.as_xla_shape())
+    return ops.Infeed(
+        self._builder,
+        shape.with_major_to_minor_layout_if_absent().as_xla_shape())
 
   def Outfeed(self, operand):
     """Enqueues an outfeed op onto the computation.
@@ -938,8 +941,10 @@ class ComputationBuilder(object):
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
 
-    return ops.Parameter(self._builder, parameter_num, shape.as_xla_shape(),
-                         name.encode('utf8'))
+    return ops.Parameter(
+        self._builder, parameter_num,
+        shape.with_major_to_minor_layout_if_absent().as_xla_shape(),
+        name.encode('utf8'))
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.

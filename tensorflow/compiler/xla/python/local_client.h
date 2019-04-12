@@ -82,8 +82,7 @@ class LocalExecutableWrapper {
  public:
   // Compiles a computation to an executable.
   static StatusOr<std::unique_ptr<LocalExecutableWrapper>> Compile(
-      const XlaComputation& computation,
-      const std::vector<Shape>& argument_layouts,
+      const XlaComputation& computation, std::vector<Shape> argument_layouts,
       const ExecutableBuildOptions* build_options, LocalClient* client);
 
   LocalExecutableWrapper(std::unique_ptr<LocalExecutable> executable,

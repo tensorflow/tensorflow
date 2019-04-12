@@ -82,9 +82,12 @@ StatusOr<LocalShapedBuffer> LocalShapedBuffer::FromPython(
 
   DeviceMemoryAllocator* allocator = client->backend().memory_allocator();
   TransferManager* transfer_manager = client->backend().transfer_manager();
+
+  TF_ASSIGN_OR_RETURN(
+      Shape shape, transfer_manager->ChooseCompactLayoutForShape(tree.shape));
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
                       transfer_manager->AllocateScopedShapedBuffer(
-                          tree.shape, allocator, device_ordinal));
+                          shape, allocator, device_ordinal));
   TF_ASSIGN_OR_RETURN(auto stream,
                       client->mutable_backend()->BorrowStream(device_ordinal));
   TF_RETURN_IF_ERROR(
@@ -92,7 +95,7 @@ StatusOr<LocalShapedBuffer> LocalShapedBuffer::FromPython(
 
   auto it = tree.leaves.begin();
   for (const ShapeUtil::IndexedShape& indexed_shape :
-       ShapeUtil::GetLeafShapes(tree.shape)) {
+       ShapeUtil::GetLeafShapes(shape)) {
     TF_RET_CHECK(it != tree.leaves.end());
     ShapedBuffer leaf(
         indexed_shape.shape,
@@ -346,20 +349,50 @@ StatusOr<std::string> GetComputationHloDotGraph(
 
 /*static*/ StatusOr<std::unique_ptr<LocalExecutableWrapper>>
 LocalExecutableWrapper::Compile(const XlaComputation& computation,
-                                const std::vector<Shape>& argument_layouts,
+                                std::vector<Shape> argument_layouts,
                                 const ExecutableBuildOptions* build_options,
                                 LocalClient* client) {
   tensorflow::profiler::TraceMe("LocalExecutable::Compile");
   std::vector<const Shape*> argument_layout_pointers;
   argument_layout_pointers.reserve(argument_layouts.size());
-  for (auto& argument_layout : argument_layouts) {
-    argument_layout_pointers.push_back(&argument_layout);
+
+  // Assign a default layout to any array subshapes that are missing layouts.
+  auto assign_layouts = [client](Shape* shape) {
+    return ShapeUtil::ForEachMutableSubshapeWithStatus(
+        shape, [&](Shape* subshape, const ShapeIndex&) {
+          if (subshape->IsArray() && !subshape->has_layout()) {
+            LayoutUtil::SetToDefaultLayout(subshape);
+            TF_ASSIGN_OR_RETURN(*subshape,
+                                client->backend()
+                                    .transfer_manager()
+                                    ->ChooseCompactLayoutForShape(*subshape));
+          }
+          return Status::OK();
+        });
+  };
+
+  for (Shape& layout : argument_layouts) {
+    argument_layout_pointers.push_back(&layout);
+    assign_layouts(&layout);
   }
 
   ExecutableBuildOptions options;
   if (build_options != nullptr) {
     options = *build_options;
   }
+
+  Shape result_layout;
+  if (options.result_layout()) {
+    result_layout = *options.result_layout();
+  } else {
+    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                        computation.GetProgramShape());
+    result_layout = program_shape.result();
+    LayoutUtil::ClearLayout(&result_layout);
+  }
+  assign_layouts(&result_layout);
+  options.set_result_layout(result_layout);
+
   TF_ASSIGN_OR_RETURN(
       auto local_executable,
       client->Compile(computation, argument_layout_pointers, options));
