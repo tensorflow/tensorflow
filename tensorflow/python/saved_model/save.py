@@ -590,6 +590,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.variable.SetInParent()
     proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
+    proto.variable.synchronization = obj.synchronization.value
+    proto.variable.aggregation = obj.aggregation.value
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(
