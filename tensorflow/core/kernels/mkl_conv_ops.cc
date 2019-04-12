@@ -963,6 +963,10 @@ class MklConvOp : public OpKernel {
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* dst_tensor = nullptr;
+      bool emit_filter_output = (typeid(Tinput) == typeid(Tfilter) &&
+                                 typeid(Tinput) == typeid(Toutput) &&
+                                 (typeid(Tinput) == typeid(float) ||
+                                  typeid(Tinput) == typeid(bfloat16)));
       if (dst_tf_shape.num_elements() == 0 || dst_dims_tf_order[0] == 0) {
         MklDnnShape dst_mkl_shape;
         dst_mkl_shape.SetMklTensor(false);
@@ -972,10 +976,7 @@ class MklConvOp : public OpKernel {
         // MklConv2D/3D also outputs converted filter as 2nd output.
         filter_mkl_shape.SetMklTensor(false);
         Tensor* output_filter_tensor = nullptr;
-        if (typeid(Tinput) == typeid(Tfilter) &&
-            typeid(Tinput) == typeid(Toutput) &&
-            (typeid(Tinput) == typeid(float) ||
-             typeid(Tinput) == typeid(bfloat16))) {
+        if (emit_filter_output) {
           filter_mkl_shape.SetMklTensor(false);
           AllocateOutputSetMklShape(context, kOutputIndex_Filter,
                                     &output_filter_tensor, filter_tf_shape,
@@ -1076,10 +1077,7 @@ class MklConvOp : public OpKernel {
       AllocateOutputTensor(context, *conv_fwd_pd, dst_dims_mkl_order, tf_fmt,
                            &dst_tensor);
       Tensor* filter_out_tensor = nullptr;
-      if (typeid(Tinput) == typeid(Tfilter) &&
-          typeid(Tinput) == typeid(Toutput) &&
-          (typeid(Tinput) == typeid(float) ||
-           typeid(Tinput) == typeid(bfloat16))) {
+      if (emit_filter_output) {
         AllocateFilterOutputTensor(context, *conv_fwd_pd,
                                    TFShapeToMklDnnDims(filter_tf_shape),
                                    &filter_out_tensor);
