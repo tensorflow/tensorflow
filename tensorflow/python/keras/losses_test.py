@@ -282,7 +282,8 @@ class MeanSquaredErrorTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = mse_obj(y_true, y_pred, sample_weight=2.3)
     loss = self.evaluate(loss)
-    self.assertArrayNear(loss, [84.3333, 143.3666], 1e-3)
+    self.assertAllClose([[20.699999, 2.3, 230.],
+                         [388.69998, 20.699999, 20.699999]], loss, 3)
 
   def test_sum_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
@@ -375,7 +376,8 @@ class MeanAbsoluteErrorTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = mae_obj(y_true, y_pred, sample_weight=2.3)
     loss = self.evaluate(loss)
-    self.assertArrayNear(loss, [10.7333, 14.5666], 1e-3)
+    self.assertAllClose([[6.8999996, 2.3, 23.],
+                         [29.9, 6.8999996, 6.8999996]], loss, 1e-3)
 
   def test_sum_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
@@ -396,6 +398,17 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
         reduction=losses_utils.ReductionV2.SUM, name='mape_1')
     self.assertEqual(mape_obj.name, 'mape_1')
     self.assertEqual(mape_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_noreduction(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError(
+        reduction=losses_utils.ReductionV2.NONE, name='mape_1')
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_pred)
+    self.assertAllClose([[3., 0.11111111, 5.],
+                         [2.6, 1.5, 0.5]], loss, 1e-3)
 
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
@@ -453,6 +466,17 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
         reduction=losses_utils.ReductionV2.SUM, name='mape_1')
     self.assertEqual(msle_obj.name, 'mape_1')
     self.assertEqual(msle_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_noreduction(self):
+    msle_obj = keras.losses.MeanSquaredLogarithmicError(
+        reduction=losses_utils.ReductionV2.NONE, name='mape_1')
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = msle_obj(y_true, y_pred)
+    self.assertAllClose([[0.83958876, 0.01110084, 2.150144],
+                         [4.827796, 0.48045287, 0.3131699]], loss, 1e-3)
 
   def test_unweighted(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError()
@@ -527,6 +551,12 @@ class CosineSimilarityTest(test.TestCase):
         axis=2, reduction=losses_utils.ReductionV2.SUM, name='cosine_loss')
     self.assertEqual(cosine_obj.name, 'cosine_loss')
     self.assertEqual(cosine_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_noreduction(self):
+    cosine_obj = keras.losses.CosineSimilarity(
+        axis=2, reduction=losses_utils.ReductionV2.NONE, name='cosine_loss')
+    self.assertEqual(cosine_obj.name, 'cosine_loss')
+    self.assertEqual(cosine_obj.reduction, losses_utils.ReductionV2.NONE)
 
   def test_unweighted(self):
     self.setup()
@@ -718,7 +748,7 @@ class BinaryCrossentropyTest(test.TestCase):
 
     self.assertAlmostEqual(self.evaluate(loss), 100, 3)
 
-  def test_no_reduction(self):
+  def test_noreduction2D(self):
     y_true = constant_op.constant([[1, 0, 1], [0, 1, 1]])
     logits = constant_op.constant([[100.0, -100.0, 100.0],
                                    [100.0, 100.0, -100.0]])
@@ -728,9 +758,38 @@ class BinaryCrossentropyTest(test.TestCase):
 
     # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
     #            (where x = logits and z = y_true)
-    # Loss = [(0 + 0 + 0)/3, (200)/3]
+    # Loss = [[0, 0, 0],[100, 0, 100]]
 
-    self.assertAllClose((0., 66.6666), self.evaluate(loss), 3)
+    #self.assertAllClose((0., 66.6666), self.evaluate(loss), 3)
+    self.assertAllClose(([[0., 0., 0.], [100., 0., 100.]]), self.evaluate(loss), 3)
+
+  def test_noreduction1D(self):
+    y_true = constant_op.constant([1, 1, 1, 1])
+    logits = constant_op.constant([1.0, 1.0, 0.5, 0.5])
+    bce_obj = keras.losses.BinaryCrossentropy(
+        from_logits=True, reduction=losses_utils.ReductionV2.NONE)
+    loss = bce_obj(y_true, logits)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [0., 0., 0.69314694, 0.69314694]
+
+    self.assertAllClose(([0., 0., 0.69314694, 0.69314694]), self.evaluate(loss), 3)
+
+  def test_no_reductionwithweight(self):
+    y_true = constant_op.constant([1, 1, 1, 1])
+    logits = constant_op.constant([1.0, 1.0, 0.5, 0.5])
+    sample_weight = [1, 1, 2, 1]
+    bce_obj = keras.losses.BinaryCrossentropy(
+        from_logits=True, reduction=losses_utils.ReductionV2.NONE)
+    loss = bce_obj(y_true, logits, sample_weight=sample_weight)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [0., 0., 1.3862939, 0.69314694]
+
+    #self.assertAllClose((0., 66.6666), self.evaluate(loss), 3)
+    self.assertAllClose(([0., 0., 1.3862939, 0.69314694]), self.evaluate(loss), 3)
 
   def test_label_smoothing(self):
     logits = constant_op.constant([[100.0, -100.0, -100.0]])
@@ -929,6 +988,16 @@ class HingeTest(test.TestCase):
     self.assertEqual(hinge_obj.name, 'hinge_loss')
     self.assertEqual(hinge_obj.reduction, losses_utils.ReductionV2.SUM)
 
+  def test_noreduction(self):
+    hinge_obj = keras.losses.Hinge(
+        reduction=losses_utils.ReductionV2.NONE, name='hinge_loss')
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    loss = hinge_obj(y_true, y_pred)
+    self.assertAllClose([[0.7, 0.8, 0.9, 0.],
+                         [0.75, 0., 0.5, 0.39999998]], loss, 1e-3)
+
   def test_unweighted(self):
     hinge_obj = keras.losses.Hinge()
     y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
@@ -1028,6 +1097,16 @@ class SquaredHingeTest(test.TestCase):
         reduction=losses_utils.ReductionV2.SUM, name='sq_hinge_loss')
     self.assertEqual(sq_hinge_obj.name, 'sq_hinge_loss')
     self.assertEqual(sq_hinge_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_noreduction(self):
+    sq_hinge_obj = keras.losses.SquaredHinge(
+        reduction=losses_utils.ReductionV2.NONE, name='sq_hinge_loss')
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    loss = sq_hinge_obj(y_true, y_pred)
+    self.assertAllClose([[0.48999998, 0.64000005, 0.80999994, 0.],
+                         [0.5625, 0., 0.25, 0.15999998]], loss, 1e-3)
 
   def test_unweighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
@@ -1215,6 +1294,12 @@ class LogCoshTest(test.TestCase):
     self.assertEqual(logcosh_obj.name, 'logcosh_loss')
     self.assertEqual(logcosh_obj.reduction, losses_utils.ReductionV2.SUM)
 
+  def test_noreduction(self):
+    logcosh_obj = keras.losses.LogCosh(
+        reduction=losses_utils.ReductionV2.NONE, name='logcosh_loss')
+    self.assertEqual(logcosh_obj.name, 'logcosh_loss')
+    self.assertEqual(logcosh_obj.reduction, losses_utils.ReductionV2.NONE)
+
   def test_unweighted(self):
     self.setup()
     logcosh_obj = keras.losses.LogCosh()
@@ -1304,6 +1389,14 @@ class PoissonTest(test.TestCase):
     expected_loss = np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
+  def test_noreduction(self):
+    self.setup()
+    poisson_obj = keras.losses.Poisson(
+        reduction=losses_utils.ReductionV2.NONE, name='poisson')
+
+    loss = poisson_obj(self.y_true, self.y_pred)
+    self.assertAllClose(self.expected_losses, self.evaluate(loss), 1e-3)
+
   def test_scalar_weighted(self):
     self.setup()
     poisson_obj = keras.losses.Poisson()
@@ -1384,6 +1477,13 @@ class KLDivergenceTest(test.TestCase):
     loss = k_obj(self.y_true, self.y_pred)
     expected_loss = np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_noreduction(self):
+    self.setup()
+    k_obj = keras.losses.KLDivergence(
+        reduction=losses_utils.ReductionV2.NONE, name='kld')
+    loss = k_obj(self.y_true, self.y_pred)
+    self.assertAllClose(self.expected_losses, self.evaluate(loss), 1e-3)
 
   def test_scalar_weighted(self):
     self.setup()
