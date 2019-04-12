@@ -304,19 +304,28 @@ class StridedSliceAssignOp : public OpKernel {
       const Tensor& input = context->input(0);
       TensorShape shape = input.shape();
 
+      fprintf(stderr, "############### 0.0");
+
       std::unique_ptr<Tensor> forwarded_input = context->forward_input(
           0, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
 
+      fprintf(stderr, "############### 0.1");
+
       if (forwarded_input == nullptr) {
+        Tensor* out;
         // We were not able to forward the input, so we deep copy the tensor and
         // set the output.
         OP_REQUIRES_OK(context,
-                       context->allocate_output(0, input.shape(), &old_lhs));
+                       context->allocate_output(0, input.shape(), &out));
+        fprintf(stderr, "############### 1.0.1");
 
         OP_REQUIRES_OK(context,
                        tensorflow::functor::DoCopy(
-                           context->eigen_device<Device>(), input, old_lhs));
+                           context->eigen_device<Device>(), input, out));
+        old_lhs = out;
+        fprintf(stderr, "############### 1.0.2");
       } else {
+        fprintf(stderr, "############### 1.1");
         old_lhs = forwarded_input.get();
       }
     } else {
@@ -348,6 +357,9 @@ class StridedSliceAssignOp : public OpKernel {
                      new_axis_mask, shrink_axis_mask, &processing_shape,
                      &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
                      &begin, &end, &strides));
+
+
+    fprintf(stderr, "############### 2");
 
     if (processing_shape.num_elements()) {
       const Tensor& input = context->input(4);
@@ -429,7 +441,6 @@ class StridedSliceAssignOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")              \
                               .Device(DEVICE_CPU)                       \
                               .TypeConstraint<type>("T")                \
-                              .HostMemory("input")                      \
                               .HostMemory("begin")                      \
                               .HostMemory("end")                        \
                               .HostMemory("strides"),                   \
@@ -475,7 +486,6 @@ TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
   REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")              \
                               .Device(DEVICE_GPU)                       \
                               .TypeConstraint<type>("T")                \
-                              .HostMemory("input")                      \
                               .HostMemory("begin")                      \
                               .HostMemory("end")                        \
                               .HostMemory("strides"),                   \
@@ -529,7 +539,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
 REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
                             .HostMemory("strides"),
@@ -573,7 +582,6 @@ REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
   REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")               \
                               .Device(DEVICE_SYCL)                       \
                               .TypeConstraint<type>("T")                 \
-                              .HostMemory("input")                       \
                               .HostMemory("begin")                       \
                               .HostMemory("end")                         \
                               .HostMemory("strides"),                    \
@@ -619,7 +627,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
 REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
                             .HostMemory("strides"),

@@ -658,6 +658,7 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
+  fprintf(stderr, "############### 5.0");
   bool forward_expected =
       (params_->forward_from_array != nullptr && index >= 0 &&
        params_->forward_from_array[index] >= 0);
@@ -666,7 +667,9 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
         "Explicit allocate_output call where input forwarding required.  Try "
         "turning off the ScopedAllocator optimizer.");
   }
+  fprintf(stderr, "############### 5.1");
   AllocatorAttributes attr = output_alloc_attr(index);
+  fprintf(stderr, "############### 5.2");
   return allocate_output(index, shape, tensor, attr);
 }
 
