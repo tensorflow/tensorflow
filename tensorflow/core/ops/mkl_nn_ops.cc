@@ -952,7 +952,7 @@ expected to invoke this operator.
 REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
-    .Input("bias: float")
+    .Input("bias: Tbias")
     .Input("min_input: float")
     .Input("max_input: float")
     .Input("min_filter: float")
