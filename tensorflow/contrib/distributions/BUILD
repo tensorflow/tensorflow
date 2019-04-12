@@ -294,7 +294,10 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["nomsan"],  # disable to avoid false positives from scipy.
+    tags = [
+        "nomsan",  # disable to avoid false positives from scipy.
+        "notap",  # TODO(b/130421237)
+    ],
 )
 
 cuda_py_test(
