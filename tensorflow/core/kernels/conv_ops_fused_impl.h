@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_ops.h"
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/tensor_format.h"
