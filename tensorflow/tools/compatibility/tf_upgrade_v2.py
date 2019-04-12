@@ -1148,6 +1148,13 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "possible, but the resulting code may not always work. Please check "
         "manually; you can report migration failures on b/124529441.")
 
+    keras_default_save_format_comment = (
+        ast_edits.WARNING,
+        "(This warning is only applicable if the code saves a tf.Keras model) "
+        "Keras model.save now saves to the Tensorflow SavedModel format by "
+        "default, instead of HDF5. To continue saving to HDF5, add the "
+        "argument save_format='h5' to the save() function.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     # You can use *. to add items which do not check the FQN, and apply to e.g.,
@@ -1155,6 +1162,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {
         "*.export_savedmodel":
             export_saved_model_renamed,
+        "*.save":
+            keras_default_save_format_comment,
         "tf.assert_equal":
             assert_return_type_comment,
         "tf.assert_none_equal":
@@ -1746,6 +1755,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _contrib_layers_xavier_initializer_transformer,
         "slim.variance_scaling_initializer":
             _contrib_layers_variance_scaling_initializer_transformer,
+        "tf.keras.models.save_model": functools.partial(
+            _add_argument_transformer,
+            arg_name="save_format",
+            arg_value_ast=ast.Str("h5")),
     }
 
     self.module_deprecations = {

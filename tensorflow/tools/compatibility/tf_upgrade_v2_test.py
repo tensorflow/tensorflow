@@ -1799,6 +1799,18 @@ def _log_prob(self, x):
     self.assertEqual(expected, new_text)
     self.assertIn("`tf.pywrap_tensorflow` will not be distributed", errors[0])
 
+  def testKerasSaveModelFormat(self):
+    text = "tf.keras.models.save_model(model, path)"
+    expected_text = "tf.keras.models.save_model(model, path, save_format='h5')"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertNotIn(
+        "saves to the Tensorflow SavedModel format by default", report)
+
+    _, report, _, _ = self._upgrade("model.save(path)")
+    self.assertIn(
+        "saves to the Tensorflow SavedModel format by default", report)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
