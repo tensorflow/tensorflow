@@ -2785,8 +2785,8 @@ py_library(
     srcs = ["training/mixed_precision/experimental/loss_scale.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
         ":keras_lib",
+        "//tensorflow/python:framework",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2807,10 +2807,10 @@ py_test(
     srcs = ["training/mixed_precision/experimental/loss_scale_optimizer_test.py"],
     deps = [
         ":loss_scale_optimizer",
-        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )
