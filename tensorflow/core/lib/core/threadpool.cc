@@ -208,5 +208,10 @@ void ThreadPool::SetStealPartitions(
     const std::vector<std::pair<unsigned, unsigned>>& partitions) {
   impl_->SetStealPartitions(partitions);
 }
+
+Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() {
+  DCHECK(impl_ != nullptr);
+  return impl_.get();
+}
 }  // namespace thread
 }  // namespace tensorflow

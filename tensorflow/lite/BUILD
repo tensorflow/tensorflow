@@ -402,7 +402,9 @@ cc_library(
         "//tensorflow:android": ["-llog"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(

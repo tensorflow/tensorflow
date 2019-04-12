@@ -18,6 +18,7 @@ limitations under the License.
 #include <string.h>
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -79,11 +80,14 @@ void ExecuteWithProfiling(bool async) {
        profiler_result->length}));
   string profile_proto_str = profile_proto.DebugString();
   if (!gpu_device_name.empty()) {
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "GPU:0"));
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
   }
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "CPU:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:CPU:0"));
+  // This is collected by TraceMe
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "MatMul"));
   TF_DeleteBuffer(profiler_result);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
@@ -123,6 +127,61 @@ TEST(CAPI, MultipleProfilerSession) {
   TFE_DeleteProfiler(profiler1);
   TFE_DeleteProfiler(profiler2);
   TFE_DeleteProfilerContext(profiler_context);
+}
+
+TEST(CAPI, MonitoringSetGauge) {
+  TFE_MonitoringSetGauge("test/gauge", "label", 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/gauge", metrics->point_set_map.at("test/gauge")->metric_name);
+  EXPECT_EQ(1,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+
+  TFE_MonitoringSetGauge("test/gauge", "label", 5);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(5,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+}
+
+TEST(CAPI, MonitoringAddCounter) {
+  TFE_MonitoringAddCounter("test/counter", "label", 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/counter",
+            metrics->point_set_map.at("test/counter")->metric_name);
+  EXPECT_EQ(
+      1, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+
+  TFE_MonitoringAddCounter("test/counter", "label", 5);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(
+      6, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+}
+
+TEST(CAPI, MonitoringAddSampler) {
+  TFE_MonitoringAddSampler("test/sampler", "label", 1.0);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/sampler",
+            metrics->point_set_map.at("test/sampler")->metric_name);
+  EXPECT_EQ(1.0, metrics->point_set_map.at("test/sampler")
+                     ->points.at(0)
+                     ->histogram_value.sum());
+
+  TFE_MonitoringAddSampler("test/sampler", "label", 5.0);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(6.0, metrics->point_set_map.at("test/sampler")
+                     ->points.at(0)
+                     ->histogram_value.sum());
 }
 
 }  // namespace

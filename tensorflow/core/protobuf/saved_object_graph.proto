@@ -5,6 +5,7 @@ import "tensorflow/core/protobuf/struct.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/versions.proto";
+import "tensorflow/core/framework/variable.proto";
 
 option cc_enable_arenas = true;
 
@@ -132,6 +133,8 @@ message SavedVariable {
   DataType dtype = 1;
   TensorShapeProto shape = 2;
   bool trainable = 3;
+  VariableSynchronization synchronization = 4;
+  VariableAggregation aggregation = 5;
 }
 
 // Represents `FunctionSpec` used in `Function`. This represents a

@@ -22,6 +22,7 @@ import collections
 import functools
 import os
 import tempfile
+import weakref
 
 from absl.testing import parameterized
 
@@ -33,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
@@ -88,16 +90,30 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(imported.v2.numpy(), 2.0)
     self.assertFalse(imported.v2.trainable)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
     root = tracking.AutoTrackable()
     root.weights = variables.Variable(2.)
+    self.evaluate(root.weights.initializer)
     root.f = def_function.function(
         lambda x: root.weights * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    for _ in range(cycles):
+      imported = self.cycle(root, 1)
+      self.evaluate(imported.weights.initializer)
+    self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
+    self.evaluate(imported.weights.assign(4.0))
+    self.assertEqual(8., self.evaluate(imported.f(constant_op.constant(2.))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_capture_constant(self, cycles):
+    root = tracking.AutoTrackable()
+    captured_constant = constant_op.constant(2.)
+    root.f = def_function.function(
+        lambda x: captured_constant * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     imported = self.cycle(root, cycles)
-    self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
-    imported.weights.assign(4.0)
-    self.assertEqual(8., imported.f(constant_op.constant(2.)).numpy())
+    self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
 
   def test_control_outputs(self, cycles):
     exported = tracking.AutoTrackable()
@@ -125,6 +141,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       f.write(contents)
     return filename
 
+  @test_util.run_in_graph_and_eager_modes
   def test_assets(self, cycles):
     file1 = self._make_asset("contents 1")
     file2 = self._make_asset("contents 2")
@@ -142,9 +159,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     file_io.rename(save_dir, load_dir)
 
     imported = load.load(load_dir)
-    with open(imported.asset1.asset_path.numpy(), "r") as f:
+    with open(self.evaluate(imported.asset1.asset_path), "r") as f:
       self.assertEqual("contents 1", f.read())
-    with open(imported.asset2.asset_path.numpy(), "r") as f:
+    with open(self.evaluate(imported.asset2.asset_path), "r") as f:
       self.assertEqual("contents 2", f.read())
 
   def test_capture_assets(self, cycles):
@@ -1062,6 +1079,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
     self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
 
+  def test_table_collections_untouched_eager(self, cycles):
+
+    def _gather_nonempty_collections():
+      graph = ops.get_default_graph()
+      gathered = {}
+      for collection in graph.collections:
+        collection_contents = graph.get_collection(collection)
+        if collection_contents:
+          gathered[collection] = collection_contents
+      return gathered
+
+    root = self._make_model_with_tables()
+    # Warm up collections to ignore those that don't expand every iteration,
+    # e.g. the __varscope collection.
+    self.cycle(root, 1)
+    original_collections = _gather_nonempty_collections()
+    self.cycle(root, cycles)
+    self.assertEqual(original_collections, _gather_nonempty_collections())
+
   def test_table_in_graph(self, cycles):
     root = self._make_model_with_tables()
 
@@ -1284,6 +1320,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         [None, 2], signature.inputs[1].shape.as_list())
     self.assertEqual(
         [None, 5], signature.outputs[0].shape.as_list())
+
+  def test_variables_destroyed(self, cycles):
+    v1 = variables.Variable(1.)
+    weak_v1 = weakref.ref(v1)
+    root = util.Checkpoint(v=v1)
+    root = self.cycle(root, cycles)
+    del v1
+    self.assertIsNone(weak_v1())
+    weak_v2 = weakref.ref(root.v)
+    del root
+    self.assertIsNone(weak_v2())
+
+  def test_variable_attributes_preserved(self, cycles):
+    v = variables.Variable(
+        1.,
+        trainable=False,
+        synchronization=variables.VariableSynchronization.NONE,
+        aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.assertEqual(variables.VariableSynchronization.NONE,
+                     v.synchronization)
+    self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                     v.aggregation)
+    root = util.Checkpoint(v=v)
+    root = self.cycle(root, cycles)
+    self.assertEqual(False, root.v.trainable)
+    self.assertEqual(variables.VariableSynchronization.NONE,
+                     root.v.synchronization)
+    self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                     root.v.aggregation)
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),

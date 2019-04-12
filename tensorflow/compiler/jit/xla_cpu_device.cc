@@ -46,7 +46,13 @@ Status XlaCpuDeviceFactory::CreateDevices(
       compile_on_demand
           ? XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested
           : XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  registration.compile_all_resource_ops = true;
+  registration.cluster_resource_variable_ops_unsafely = true;
+  registration.cluster_stack_ops = false;
+  registration.cluster_tensor_array_ops = true;
+  registration.cluster_stateful_rng_ops = true;
+  registration.cluster_control_trigger = true;
+  registration.elide_assert_and_checknumerics = true;
+  registration.cluster_variant_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_CPU, registration);
 
   static XlaDeviceOpRegistrations* registrations =

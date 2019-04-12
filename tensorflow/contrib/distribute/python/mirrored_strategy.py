@@ -32,7 +32,7 @@ CoreMirroredExtended = mirrored_strategy.MirroredExtended
 # pylint: enable=protected-access,invalid-name
 
 
-class MirroredStrategy(distribute_lib.DistributionStrategy):
+class MirroredStrategy(distribute_lib.StrategyV1):
   """Mirrors vars to distribute across multiple devices and machines.
 
   *** contrib version ***

@@ -29,7 +29,13 @@ namespace metal {
 // as tensor with shape dst_shape.
 std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
                                               ValueId output_id,
-                                              const BHWC& dst_shape);
+                                              const ReshapeAttributes& attr);
+
+// This specialization performs faster for the case
+// src_channels % 4 == 0 and dst_channels % 4 == 0
+std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
+                                                ValueId output_id,
+                                                const ReshapeAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

@@ -102,6 +102,9 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/add.*dtype=tf\.int64)", "119126484"},
     {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
     {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
+
+    // ExpandDims outputs wrong shape when axis < -1 when axis is a constant.
+    {R"(^\/expand_dims.*axis_value=-2.*constant_axis=True)", "130260297"},
 };
 
 // Additional list of tests that are expected to fail when

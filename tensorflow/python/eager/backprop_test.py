@@ -538,11 +538,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(argmax)
     self.assertAllEqual(grad([0.0])[0], None)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def fn(x):
       with context.device('/gpu:0'):
         b = constant_op.constant(2.0)
@@ -554,10 +552,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPUImplicitGrad(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPU found')
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(
           constant_op.constant(1.0), name='v')
@@ -580,11 +577,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyGPU2CPU2GPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def f(a, b):
       return a.cpu() + b.cpu()
 
@@ -928,11 +923,9 @@ class BackpropTest(test.TestCase):
     self.assertEqual(1, len(grads))
     self.assertAllEqual(grads[0], x)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyCPU2GPU2CPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # forward: a (cpu->gpu) -> add (gpu) -> c (gpu->cpu) -> add (cpu) -> e (cpu)
     # back: e (cpu) -> add (cpu) -> c (cpu->gpu) -> add (gpu) -> grad (gpu->cpu)
     def f(a, b):
@@ -1339,7 +1332,6 @@ class BackpropTest(test.TestCase):
       self.assertAllEqual(da[0], tf_da[0].eval())
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class JacobianTest(test.TestCase):
 
   def _jacobian(self, experimental_use_pfor):
@@ -1429,6 +1421,22 @@ class JacobianTest(test.TestCase):
       y = math_ops.matmul(x, x)
     self.assertAllClose(g.jacobian(y, x, parallel_iterations=2),
                         g.jacobian(y, x, parallel_iterations=3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_nested_jacobian(self):
+    if context.executing_eagerly():
+      # TODO(agarwal): b/128842926
+      self.skipTest('Conversion of function calls not implemented yet.')
+    x = array_ops.ones((10, 2))
+    with backprop.GradientTape(persistent=False) as g:
+      g.watch(x)
+      with backprop.GradientTape(persistent=False) as gg:
+        gg.watch(x)
+        y = math_ops.reduce_sum(math_ops.square(x))
+      dy_x = gg.jacobian(y, x)
+    dy_xx = g.batch_jacobian(dy_x, x)
+    dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
+    self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
 
 
 @test_util.run_all_in_graph_and_eager_modes

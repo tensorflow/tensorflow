@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
+import collections
 import functools
 import inspect as _inspect
 
@@ -31,7 +31,7 @@ ArgSpec = _inspect.ArgSpec
 if hasattr(_inspect, 'FullArgSpec'):
   FullArgSpec = _inspect.FullArgSpec  # pylint: disable=invalid-name
 else:
-  FullArgSpec = namedtuple('FullArgSpec', [
+  FullArgSpec = collections.namedtuple('FullArgSpec', [
       'args', 'varargs', 'varkw', 'defaults', 'kwonlyargs', 'kwonlydefaults',
       'annotations'
   ])
@@ -143,7 +143,7 @@ def getargspec(obj):
       pass
 
   # The `type(target)` ensures that if a class is received we don't return
-  # the signature of it's __call__ method.
+  # the signature of its __call__ method.
   return _getargspec(type(target).__call__)
 
 
@@ -370,6 +370,11 @@ def isframe(object):  # pylint: disable=redefined-builtin
 def isgenerator(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.isgenerator."""
   return _inspect.isgenerator(tf_decorator.unwrap(object)[1])
+
+
+def isgeneratorfunction(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.isgeneratorfunction."""
+  return _inspect.isgeneratorfunction(tf_decorator.unwrap(object)[1])
 
 
 def ismethod(object):  # pylint: disable=redefined-builtin

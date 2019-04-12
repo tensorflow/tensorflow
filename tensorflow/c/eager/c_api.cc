@@ -143,7 +143,9 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    auto* eager_client = remote_eager_workers->GetClient(remote_worker);
+    tensorflow::eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(
+        remote_eager_workers->GetClient(remote_worker, &eager_client));
     if (eager_client == nullptr) {
       return tensorflow::errors::Internal(
           "Cannot find a client for the given target:", remote_worker);
@@ -358,7 +360,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 
   return new TFE_Context(opts->session_options.options, opts->policy,
                          opts->async, device_mgr.release(),
-                         /*device_mgr_owned*/ true, r);
+                         /*device_mgr_owned*/ true, r,
+                         tensorflow::GetDefaultCustomKernelCreator());
 }
 
 TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
@@ -368,9 +371,10 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
   if (!status->status.ok()) return nullptr;
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr);
+
   return new TFE_Context(opts->session_options.options, opts->policy,
-                         opts->async, device_mgr, /*device_mgr_owned*/ false,
-                         r);
+                         opts->async, device_mgr, /*device_mgr_owned*/ false, r,
+                         tensorflow::GetDefaultCustomKernelCreator());
 }
 
 void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }

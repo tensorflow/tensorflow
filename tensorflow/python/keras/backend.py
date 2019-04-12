@@ -38,7 +38,9 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -531,7 +533,12 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
+    if tfdev.is_device_spec(device):
+      device = device.to_string()
     self.device = device
+
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
 
 
 def _get_current_tf_device():
@@ -545,7 +552,7 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return op.device
+  return tfdev.DeviceSpec.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -2821,19 +2828,21 @@ def get_value(x):
 
   Returns:
       A Numpy array.
-
-  Raises:
-      RuntimeError: If this method is called inside defun.
   """
+  if not tensor_util.is_tensor(x):
+    return x
   if context.executing_eagerly():
     return x.numpy()
-  elif not getattr(x, '_in_graph_mode', True):
+  if not getattr(x, '_in_graph_mode', True):
     # This is a variable which was created in an eager context, but is being
     # evaluated from a Graph.
     with context.eager_mode():
       return x.numpy()
-  elif ops.inside_function():
-    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
+
+  if ops.executing_eagerly_outside_functions():
+    # This method of evaluating works inside the Keras FuncGraph.
+    return function([], x)(x)
+
   return x.eval(session=get_session((x,)))
 
 
@@ -2974,7 +2983,8 @@ class GraphExecutionFunction(object):
                       'should be a list or tuple.')
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
-    self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
+    self.outputs = cast_variables_to_tensor(
+        nest.flatten(outputs, expand_composites=True))
     # TODO(b/127668432): Consider using autograph to generate these
     # dependencies in call.
     # Index 0 = total loss or model output for `predict`.
@@ -3073,6 +3083,19 @@ class GraphExecutionFunction(object):
       if fetch in self.fetch_callbacks:
         self.fetch_callbacks[fetch](output)
 
+  def _eval_if_composite(self, tensor):
+    """Helper method which evaluates any CompositeTensors passed to it."""
+    # We need to evaluate any composite tensor objects that have been
+    # reconstructed in 'pack_sequence_as', since otherwise they'll be output as
+    # actual CompositeTensor objects instead of the value(s) contained in the
+    # CompositeTensors. E.g., if output_structure contains a SparseTensor, then
+    # this ensures that we return its value as a SparseTensorValue rather than
+    # a SparseTensor.
+    if isinstance(tensor, composite_tensor.CompositeTensor):
+      return self._session.run(tensor)
+    else:
+      return tensor
+
   def __call__(self, inputs):
     inputs = nest.flatten(inputs)
 
@@ -3117,8 +3140,17 @@ class GraphExecutionFunction(object):
     fetched = self._callable_fn(*array_vals,
                                 run_metadata=self.run_metadata)
     self._call_fetch_callbacks(fetched[-len(self._fetches):])
-    return nest.pack_sequence_as(self._outputs_structure,
-                                 fetched[:len(self.outputs)])
+    output_structure = nest.pack_sequence_as(
+        self._outputs_structure,
+        fetched[:len(self.outputs)],
+        expand_composites=True)
+    # We need to evaluate any composite tensor objects that have been
+    # reconstructed in 'pack_sequence_as', since otherwise they'll be output as
+    # actual CompositeTensor objects instead of the value(s) contained in the
+    # CompositeTensors. E.g., if output_structure contains a SparseTensor, then
+    # this ensures that we return its value as a SparseTensorValue rather than
+    # a SparseTensor.
+    return nest.map_structure(self._eval_if_composite, output_structure)
 
 
 class EagerExecutionFunction(object):
@@ -3136,7 +3168,7 @@ class EagerExecutionFunction(object):
     self.name = name
     self._outputs_structure = outputs
     inputs = nest.flatten(inputs)
-    outputs = nest.flatten(outputs)
+    outputs = nest.flatten(outputs, expand_composites=True)
 
     updates = updates or []
     if not isinstance(updates, (list, tuple)):
@@ -3237,8 +3269,9 @@ class EagerExecutionFunction(object):
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
-    return nest.pack_sequence_as(self._outputs_structure,
-                                 [x.numpy() for x in outputs])
+    return nest.pack_sequence_as(
+        self._outputs_structure, [x.numpy() for x in outputs],
+        expand_composites=True)
 
 
 @keras_export('keras.backend.function')
@@ -5393,7 +5426,8 @@ def configure_and_create_distributed_session(distribution_strategy):
 
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def cast_variables_to_tensor(tensors):

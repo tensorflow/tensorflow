@@ -121,8 +121,7 @@ EvaluationStageMetrics TopkAccuracyEvalStage::LatestMetrics() {
   auto* topk_metrics =
       metrics.mutable_process_metrics()->mutable_topk_accuracy_metrics();
   for (const auto& count : accuracy_counts_) {
-    topk_metrics->add_topk_accuracy_percentages(static_cast<float>(count) /
-                                                num_runs_);
+    topk_metrics->add_topk_accuracies(static_cast<float>(count) / num_runs_);
   }
   return metrics;
 }

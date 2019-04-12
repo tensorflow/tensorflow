@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <deque>
 #include <ostream>
+#include <queue>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -737,9 +738,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, bool allocate_buffers_for_constants,
-    BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker) {
+    BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker,
+    ReuseColocatedAllocationForTempChecker reuse_colocated_checker) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
-                          std::move(reuse_checker));
+                          std::move(reuse_checker),
+                          std::move(reuse_colocated_checker));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
                                    std::move(color_alignment));
@@ -977,8 +980,36 @@ Status BufferAssigner::AssignBuffersForComputation(
                });
 
   // BufferAllocations are necessarily created in decreasing size order. Keep
-  // indices of previously created BufferAllocations in allocation_indices.
-  std::vector<BufferAllocation::Index> allocation_indices;
+  // indices of previously created BufferAllocations in new_allocation_indices.
+  std::vector<BufferAllocation::Index> new_allocation_indices;
+
+  // A sorted multimap from size to indices of colocated allocations.
+  std::multimap<int64, BufferAllocation::Index>
+      colocated_allocation_size_to_indices;
+  {
+    std::priority_queue<BufferAllocation::Index> sorted_colocated_indices;
+    for (auto index : colocated_allocations) {
+      bool consider_reusing = true;
+      // Output tuple table may be allocated at run-time, so make sure we don't
+      // overwrite them.
+      for (const auto& buffer_offset_size :
+           assignment->GetAllocation(index).assigned_buffers()) {
+        if (buffer_offset_size.first->shape().IsTuple()) {
+          consider_reusing = false;
+          break;
+        }
+      }
+      if (consider_reusing) {
+        sorted_colocated_indices.push(index);
+      }
+    }
+    while (!sorted_colocated_indices.empty()) {
+      auto index = sorted_colocated_indices.top();
+      sorted_colocated_indices.pop();
+      colocated_allocation_size_to_indices.emplace(
+          assignment->GetAllocation(index).size(), index);
+    }
+  }
   for (const LogicalBuffer* buffer : sorted_buffers) {
     VLOG(3) << "Assigning allocation to: " << *buffer;
     if (colocated_buffers.contains(buffer)) {
@@ -1074,25 +1105,47 @@ Status BufferAssigner::AssignBuffersForComputation(
       }
     }
 
+    if (reuse_colocated_checker_ != nullptr &&
+        reuse_colocated_checker_(*buffer, buffer_size) &&
+        !assignment->HasAllocation(*buffer)) {
+      // Find the smallest buffer which can be reused iterating from the lower
+      // bound of the buffer size in colocated_allocation_size_to_indices.
+      auto it = colocated_allocation_size_to_indices.lower_bound(buffer_size);
+      while (it != colocated_allocation_size_to_indices.end()) {
+        CHECK_GE(it->first, buffer_size);
+        BufferAllocation* allocation =
+            assignment->GetMutableAllocation(it->second);
+        if (MaybeAssignBuffer(allocation, *buffer, assignment)) {
+          VLOG(3) << "Reusing allocation #" << allocation->index()
+                  << " for: " << *buffer;
+          // We remove the assigned allocation from
+          // colocated_allocation_size_to_indices to prevent putting too many
+          // buffers into collocated allocations, and to reduce the search space
+          // for subsequent buffers. This is to avoid excessive pairwise checks
+          // for interference that may slow down compilation. The heap simulator
+          // is more efficient in live range checks.
+          //
+          // Another benefit of removing the allocation is that the reused
+          // allocation will be less likely to contain interferences that
+          // prevent operand-output reuse, which is important for in-place
+          // dynamic update slices.
+          colocated_allocation_size_to_indices.erase(it);
+          break;
+        }
+        ++it;
+      }
+    }
+
     if (!assignment->HasAllocation(*buffer)) {
       // Find the smallest buffer which can be reused iterating from end of
-      // allocation_indices (smallest) to beginning (largest).
-      for (int allocation_index = allocation_indices.size() - 1;
+      // new_allocation_indices (smallest) to beginning (largest).
+      for (int allocation_index = new_allocation_indices.size() - 1;
            allocation_index >= 0; allocation_index--) {
         BufferAllocation* allocation = assignment->GetMutableAllocation(
-            allocation_indices[allocation_index]);
+            new_allocation_indices[allocation_index]);
         // Instructions are iterated in increasing buffer size, so any
         // previously create allocation must be large enough to hold this
-        // instruction's output (with the exception of colocated buffers).
-        if (!colocated_allocations.contains(allocation->index())) {
-          // TODO(b/32491382) Colocated buffers are currently assigned in an
-          // earlier pass, and so can break the "increasing allocation size"
-          // invariant in this function (causing this CHECK to fail). However,
-          // the call to MaybeAssignBuffer is safe as it returns false if
-          // allocation.size < buffer.size.
-          CHECK_GE(allocation->size(), buffer_size);
-        }
-
+        // instruction's output.
         if (MaybeAssignBuffer(allocation, *buffer, assignment)) {
           VLOG(3) << "Reusing allocation #" << allocation->index()
                   << " for: " << *buffer;
@@ -1121,7 +1174,7 @@ Status BufferAssigner::AssignBuffersForComputation(
     if (!assignment->HasAllocation(*buffer)) {
       BufferAllocation* allocation =
           assignment->NewAllocation(*buffer, buffer_size);
-      allocation_indices.push_back(allocation->index());
+      new_allocation_indices.push_back(allocation->index());
       VLOG(3) << "New allocation #" << allocation->index()
               << " for: " << *buffer;
     }

@@ -738,9 +738,20 @@ inline string Canonicalize(const string& funcname, AttrSlice attrs) {
 
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
-typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
-                             std::unique_ptr<OpKernel>*)>
-    CustomKernelCreator;
+
+class CustomKernelCreator {
+ public:
+  virtual ~CustomKernelCreator() {}
+
+  // Given a NodeDef 'node_def' and the function library runtime 'flr',
+  // validate if the class supports creating such a kernel.
+  virtual bool CanCreateKernel(const FunctionLibraryRuntime& flr,
+                               const NodeDef& node_def) const = 0;
+
+  // Given a supported NodeDef, returns a kernel that computes the node.
+  virtual Status CreateKernel(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                              std::unique_ptr<OpKernel>* kernel) const = 0;
+};
 
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {

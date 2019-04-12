@@ -74,9 +74,9 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
 
 cat <<EOF > /tmp/check_tf.py
 import tensorflow as tf;
-print("tf.VERSION = %s" % tf.VERSION)
-print("tf.GIT_VERSION = %s" % tf.GIT_VERSION)
-print("tf.COMPILER_VERSION = %s" % tf.COMPILER_VERSION)
+print("tf.version.VERSION = %s" % tf.version.VERSION)
+print("tf.version.GIT_VERSION = %s" % tf.version.GIT_VERSION)
+print("tf.version.COMPILER_VERSION = %s" % tf.version.COMPILER_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF

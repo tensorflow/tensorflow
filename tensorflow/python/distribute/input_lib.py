@@ -308,7 +308,8 @@ class InputFunctionIterator(InputIteratorImpl):
 class DatasetIterator(InputIteratorImpl):
   """Iterator created from input dataset."""
 
-  def __init__(self, dataset, input_workers, split_batch_by=None, **kwargs):
+  def __init__(self, dataset, input_workers, split_batch_by=None,
+               input_context=None, **kwargs):
     """Make an iterator for the dataset on given devices.
 
     If `split_batch_by` is not None, we "split" each batch of the
@@ -321,18 +322,21 @@ class DatasetIterator(InputIteratorImpl):
     `dataset.batch().prefetch()` are the last 2 operations on the dataset OR
     `dataset.apply(map_and_batch).prefetch()` are the last 2 operations.
 
-    TODO(priyag): Support multi worker / host cases properly by cloning
-    and sharding the dataset on each worker. Current setup will only work in
-    some cases, such as in-graph multi worker GPU case. If the input pipeline
-    has random shuffling (with a different seed on each worker), each worker
-    will see random input from the same overall dataset in each step. Otherwise,
-    each worker will see the same input in each step.
+    We clone and shard the dataset on each worker. The current setup tries to
+    shard the dataset by files if possible so that each worker sees a different
+    subset of files. If that is not possible, will attempt to shard the final
+    input such that each worker will run the entire preprocessing pipeline and
+    only receive its own shard of the dataset.
 
     Args:
       dataset: `tf.data.Dataset` that will be used as the input source.
       input_workers: an `InputWorkers` object.
       split_batch_by: Optional integer. If present, we "split" each batch of the
         dataset by `split_batch_by` value.
+      input_context: `InputContext` for sharding. Only pass this in for between
+        graph multi-worker cases where there is only one `input_worker`. In
+        these cases, we will shard based on the `input_pipeline_id` and
+        `num_input_pipelines` in the `InputContext`.
       **kwargs: Additional experimental flags. Will be removed in future.
     """
     assert isinstance(input_workers, InputWorkers)
@@ -340,16 +344,31 @@ class DatasetIterator(InputIteratorImpl):
       dataset = batching._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
 
     iterators = []
-    for i, worker in enumerate(input_workers.worker_devices):
-      with ops.device(worker):
-        worker_devices = input_workers.compute_devices_for_worker(i)
-        cloned_dataset = dataset
-        if not context.executing_eagerly():
-          cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
-          cloned_dataset = cloned_dataset.with_options(dataset.options())
-        iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
-                                                worker_devices)
-        iterators.append(iterator)
+
+    if input_context:
+      # Between-graph where we rely on the input_context for sharding
+      assert input_workers.num_workers == 1
+      worker = input_workers.worker_devices[0]
+      worker_devices = input_workers.compute_devices_for_worker(0)
+      dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
+          dataset, input_context.num_input_pipelines,
+          input_context.input_pipeline_id)
+      iterator = _SingleWorkerDatasetIterator(dataset, worker, worker_devices)
+      iterators.append(iterator)
+    else:
+      # In-graph cases where we depend on the list of workers for sharding
+      for i, worker in enumerate(input_workers.worker_devices):
+        with ops.device(worker):
+          worker_devices = input_workers.compute_devices_for_worker(i)
+          cloned_dataset = dataset
+          if not context.executing_eagerly():
+            cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+            cloned_dataset = cloned_dataset.with_options(dataset.options())
+          cloned_dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
+              cloned_dataset, len(input_workers.worker_devices), i)
+          iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
+                                                  worker_devices)
+          iterators.append(iterator)
 
     self._element_structure = dataset._element_structure  # pylint: disable=protected-access
 

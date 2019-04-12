@@ -28,6 +28,7 @@ from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -290,6 +291,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
         dataset = dataset.batch(2)
+
+  @parameterized.named_parameters(
+      ("Async", context.ASYNC),
+      ("Sync", context.SYNC),
+  )
+  def testDatasetEagerIteration(self, execution_mode):
+    with context.eager_mode(), context.execution_mode(execution_mode):
+      val = 0
+      dataset = dataset_ops.Dataset.range(10)
+      for foo in dataset:
+        self.assertEqual(val, foo.numpy())
+        val += 1
 
 
 if __name__ == "__main__":

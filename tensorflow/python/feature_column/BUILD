@@ -143,10 +143,22 @@ py_library(
 tf_py_test(
     name = "feature_column_v2_test",
     srcs = ["feature_column_v2_test.py"],
-    additional_deps = [
+    additional_deps = [":feature_column_v2_test_main_lib"],
+    shard_count = 5,
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_windows",
+    ],
+)
+
+py_library(
+    name = "feature_column_v2_test_main_lib",
+    srcs = ["feature_column_v2_test.py"],
+    data = [":vocabulary_testdata"],
+    deps = [
         ":feature_column_py",
         ":feature_column_v2",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -166,13 +178,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
-    ],
-    data = [":vocabulary_testdata"],
-    shard_count = 5,
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_pip",
-        "no_windows",
+        "//third_party/py/numpy",
     ],
 )
 

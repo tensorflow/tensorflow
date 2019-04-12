@@ -632,10 +632,11 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
         if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
-          // TODO(b/118332391): Support variadic reduce.
-          return Unimplemented("Variadic reduce is not supported on GPU");
+          // TODO(b/129089333): Support tiled vectorized variadic reduce.
+          return Unimplemented(
+              "Vectorized variadic reduce is not supported on GPU");
         }
-        return EmitReductionToVector(fusion);
+        return EmitReductionFromOrToContiguousDimensions(fusion);
       }
       default:
         LOG(FATAL) << "Bad opcode for input fusion: "
@@ -678,7 +679,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop);
+  CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
+      << ": " << fusion->ToString();
 
   if (CheckAndEmitHloWithTile021(fusion)) {
     return Status::OK();
@@ -722,12 +724,9 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/118332391): Support multi-output reduce.
-  if (!reduce->shape().IsArray()) {
-    return Unimplemented("Multi-output reduce is not supported on GPU");
-  }
-  if (IsReductionToVector(*reduce)) {
-    return EmitReductionToVector(reduce);
+  if (IsReductionFromOrToContiguousDimensions(*reduce) &&
+      reduce->shape().IsArray()) {
+    return EmitReductionFromOrToContiguousDimensions(reduce);
   }
 
   return IrEmitter::HandleReduce(reduce);
@@ -2179,9 +2178,10 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   int unroll_factor = thunk->unroll_factor();
   VLOG(3) << bindings_.ToString();
 
-  const Shape& element_shape = hlo.IsMultiOutputFusion()
-                                   ? ShapeUtil::GetSubshape(hlo.shape(), {0})
-                                   : hlo.shape();
+  bool multi_output = hlo.shape().IsTuple();
+
+  const Shape& element_shape =
+      multi_output ? ShapeUtil::GetSubshape(hlo.shape(), {0}) : hlo.shape();
   VLOG(3) << "EmitTargetElementLoopInThunk "
           << ShapeUtil::HumanStringWithLayout(hlo.shape())
           << " for unroll_factor " << unroll_factor;
@@ -2189,7 +2189,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
       element_shape, ir_emitter_context_->device_description(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
-  if (!hlo.IsMultiOutputFusion()) {
+  if (!multi_output) {
     return ParallelLoopEmitter(element_generator, GetIrArray(hlo, hlo),
                                launch_dimensions, &b_, unroll_factor)
         .EmitLoop(
@@ -2646,9 +2646,10 @@ absl::Span<HloInstruction* const> GetOutputInstructions(
 
 const HloInstruction* GetFirstReduceInstruction(
     absl::Span<HloInstruction* const> instructions) {
-  auto first_reduce_iter = absl::c_find_if(
-      instructions,
-      [](const HloInstruction* inst) { return IsReductionToVector(*inst); });
+  auto first_reduce_iter =
+      absl::c_find_if(instructions, [](const HloInstruction* inst) {
+        return IsReductionFromOrToContiguousDimensions(*inst);
+      });
   CHECK_NE(first_reduce_iter, instructions.end());
   return *first_reduce_iter;
 }
@@ -2664,7 +2665,7 @@ void IrEmitterUnnested::EmitPrologueForOneReduction(
 
   InlinedVector<HloComputation*, 1>* reducers =
       reduction_info->GetMutableReducers();
-  CHECK(IsReductionToVector(*reduce_inst));
+  CHECK(IsReductionFromOrToContiguousDimensions(*reduce_inst));
   reducers->push_back(reduce_inst->to_apply());
 
   InlinedVector<ShapeIndex, 1>* reduction_output_shape_indices =
@@ -2726,7 +2727,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
                                           &b_, GetNestedComputer());
   const HloInstruction* first_reduce = nullptr;
   for (int i = 0, e = output_instructions.size(); i != e; ++i) {
-    if (!IsReductionToVector(*output_instructions[i])) {
+    if (!IsReductionFromOrToContiguousDimensions(*output_instructions[i])) {
       continue;
     }
     HloInstruction* reduce_inst = output_instructions[i];
@@ -2828,7 +2829,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   std::vector<const HloInstruction*> reduce_instructions;
   absl::c_for_each(GetOutputInstructions(&reduce_or_tuple),
                    [&](const HloInstruction* instr) {
-                     if (IsReductionToVector(*instr)) {
+                     if (IsReductionFromOrToContiguousDimensions(*instr)) {
                        reduce_instructions.push_back(instr);
                      }
                    });
@@ -2944,7 +2945,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       if (reduce_or_tuple->opcode() == HloOpcode::kTuple) {
         output_shape_index = {i};
       }
-      if (IsReductionToVector(*inst)) {
+      if (IsReductionFromOrToContiguousDimensions(*inst)) {
         input_gens.push_back(fused_emitter.GetGenerator(inst->operand(0)));
       } else {
         extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
@@ -3523,7 +3524,7 @@ Status AreFusedReductionOutputsConsistent(
     absl::Span<HloInstruction* const> output_instructions,
     const HloInstruction* first_reduce) {
   for (const HloInstruction* inst : output_instructions) {
-    if (IsReductionToVector(*inst)) {
+    if (IsReductionFromOrToContiguousDimensions(*inst)) {
       // Shapes, layouts and dimensions must be the same for all reduces
       // inside of this fusion.
       TF_RET_CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
@@ -3543,105 +3544,6 @@ Status AreFusedReductionOutputsConsistent(
     }
   }
   return Status::OK();
-}
-
-// Given a shape and a group of contiguous dimensions in the shape, returns
-// a tuple of three values (major, middle, minor), where major is the size of
-// the dimensions more major then the given dimensions, minor is the size of
-// dimensions more minor then the given dimensions, and middle is the size of
-// the given dimensions.
-std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
-    const Shape& shape, DimensionVector dims_middle) {
-  CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-
-  absl::Span<const int64> minor_to_major = LayoutUtil::MinorToMajor(shape);
-  int64 values[3] = {1, 1, 1};
-  enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
-  Segment cur_segment = kMinor;
-
-  // Iterate through the dimensions for the three segments in the order of
-  // minor, middle and major to accumulate the size of each segment.
-  absl::c_for_each(minor_to_major, [&](int64 cur_dim) {
-    if (cur_segment != kMajor) {
-      // Handle change of segments.
-      bool cur_dim_in_middle = absl::c_any_of(
-          dims_middle, [&](int64 dim) { return dim == cur_dim; });
-      if (cur_segment == kMinor) {
-        if (cur_dim_in_middle) {
-          cur_segment = kMiddle;
-        }
-      } else if (cur_segment == kMiddle) {
-        if (!cur_dim_in_middle) {
-          cur_segment = kMajor;
-        }
-      }
-    }
-
-    values[cur_segment] *= shape.dimensions(cur_dim);
-  });
-
-  return std::make_tuple(values[kMajor], values[kMiddle], values[kMinor]);
-}
-
-// Given the input shape and dimensions to reduce for a reduction, returns
-// <is_row_reduction, DimensionVector>:
-// is_row_reduction:  indicates whether the reduction is a row reduction or a
-//   column reduction.
-// DimensionVector: contains the size of the three contiguous components for the
-//   reduction [depth, height, width]. For row reduction, height is the size of
-//   the dimensions to keep, depth is the size of the dimensions to reduce that
-//   are more major than the dimensions to keep, and width is the size of the
-//   dimensions to reduce that are more minor than the dimensions to keep. For
-//   column reduction, height is the size of dimensions to reduce, depth is the
-//   the size of the dimensions to keep that are more major than the dimensions
-//   to reduce, and width is the size of the dimensions to keep that are more
-//   minor than the dimensions to reduce.
-//
-// Prerequisite: the reduction instruction passes the check IsReductionToVector,
-// which guarantees either the dimensions to reduce or the dimensions to keep
-// are consecutive.
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
-  DimensionVector dims_to_keep;
-  for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
-    if (!absl::c_linear_search(dims_to_reduce, dim)) {
-      dims_to_keep.push_back(dim);
-    }
-  }
-
-  if (dims_to_keep.empty()) {
-    return std::make_pair(
-        true, DimensionVector{1, 1, ShapeUtil::ElementsIn(input_shape)});
-  }
-
-  if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
-                                           dims_to_keep)) {
-    int64 num_reduced_major = 1, num_kept = 1, num_reduced_minor = 1;
-    std::tie(num_reduced_major, num_kept, num_reduced_minor) =
-        PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
-    if (num_kept == 1) {
-      return std::make_pair(
-          true, DimensionVector{1, 1, num_reduced_minor * num_reduced_major});
-    }
-    if (num_reduced_minor == 1) {
-      return std::make_pair(false,
-                            DimensionVector{1, num_reduced_major, num_kept});
-    }
-    return std::make_pair(
-        true, DimensionVector{num_reduced_major, num_kept, num_reduced_minor});
-  }
-
-  int64 num_kept_major = 1, num_reduced = 1, num_kept_minor = 1;
-  std::tie(num_kept_major, num_reduced, num_kept_minor) =
-      PartitionShapeByMiddleDimensions(
-          input_shape,
-          DimensionVector(dims_to_reduce.begin(), dims_to_reduce.end()));
-  if (num_kept_minor == 1) {
-    return std::make_pair(true,
-                          DimensionVector{1, num_kept_major, num_reduced});
-  }
-  return std::make_pair(
-      false, DimensionVector{num_kept_major, num_reduced, num_kept_minor});
 }
 
 // Returns true if all the transitive users of hlo before hitting users in
@@ -3694,7 +3596,7 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
     return false;
   }
 
-  if (IsReductionToVector(*unnested_hlo)) {
+  if (IsReductionFromOrToContiguousDimensions(*unnested_hlo)) {
     return true;
   }
 
@@ -3703,14 +3605,14 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
   int64 cannot_be_vectorized = 0;
   const HloInstruction* fused_root = unnested_hlo->fused_expression_root();
   ConstHloInstructionSet use_chain_endings;
-  if (IsReductionToVector(*fused_root)) {
+  if (IsReductionFromOrToContiguousDimensions(*fused_root)) {
     use_chain_endings.insert(fused_root);
     // Atomic.add of the reduction result can't be vectorized.
     cannot_be_vectorized++;
   } else {
     CHECK_EQ(fused_root->opcode(), HloOpcode::kTuple);
     for (const HloInstruction* instr : fused_root->operands()) {
-      if (IsReductionToVector(*instr)) {
+      if (IsReductionFromOrToContiguousDimensions(*instr)) {
         // Atomic.add of the reduction result can't be vectorized.
         cannot_be_vectorized++;
       } else {
@@ -3803,7 +3705,8 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
   return std::make_tuple(mapping_scheme, is_row_reduction);
 }
 
-Status IrEmitterUnnested::EmitReductionToVector(HloInstruction* unnested_hlo) {
+Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
+    HloInstruction* unnested_hlo) {
   VLOG(10) << "Emitting reduction to vector " << unnested_hlo->ToString();
 
   HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
@@ -3822,7 +3725,7 @@ Status IrEmitterUnnested::EmitReductionToVector(HloInstruction* unnested_hlo) {
   // Build an initializer thunk to initialize each reduction output.
   std::vector<std::unique_ptr<Thunk>> thunks;
   for (int i = 0, e = output_instructions.size(); i != e; ++i) {
-    if (!IsReductionToVector(*output_instructions[i])) {
+    if (!IsReductionFromOrToContiguousDimensions(*output_instructions[i])) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(

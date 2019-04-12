@@ -51,10 +51,13 @@ def canonicalize(d, default=None):
   result = tf_device.DeviceSpec(
       replica=0, task=0, device_type="CPU", device_index=0)
   if ops.executing_eagerly_outside_functions():
-    result.job = "localhost"
+    result = result.replace(job="localhost")
   if default:
-    result.merge_from(tf_device.DeviceSpec.from_string(default))
-  result.merge_from(d)
+    result = result.make_merged_spec(
+        tf_device.DeviceSpec.from_string(default))
+
+  # Apply `d` last, so that it takes precidence over the defaults.
+  result = result.make_merged_spec(d)
   return result.to_string()
 
 
@@ -83,13 +86,15 @@ class _FakeOperation(object):
   def _set_device(self, device):
     self.device = ops._device_string(device)  # pylint: disable=protected-access
 
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
+
 
 def current():
   """Return a string (not canonicalized) for the current device."""
   # TODO(josh11b): Work out how this function interacts with ops.colocate_with.
-  ctx = context.context()
-  if ctx.executing_eagerly():
-    d = ctx.device_name
+  if ops.executing_eagerly_outside_functions():
+    d = context.context().device_name
   else:
     op = _FakeOperation()
     ops.get_default_graph()._apply_device_functions(op)  # pylint: disable=protected-access

@@ -56,192 +56,105 @@ class TileOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(TileTest, Float32Vector) {
-  TileOpModel m({3}, TensorType_FLOAT32, TensorType_INT32);
-  m.SetInput<float>({1.f, 2.f, 3.f});
-  m.SetMultipliers({2});
+template <typename T>
+void Check(std::initializer_list<int> input_shape,
+           std::initializer_list<T> input_data,
+           std::initializer_list<int> multipliers_data,
+           std::initializer_list<int> exp_output_shape,
+           std::initializer_list<T> exp_output_data, TensorType input_type,
+           TensorType multiply_type) {
+  TileOpModel m(input_shape, input_type, multiply_type);
+  m.SetInput(input_data);
+  m.SetMultipliers(multipliers_data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray({1.f, 2.f, 3.f, 1.f, 2.f, 3.f}));
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
+  EXPECT_THAT(m.GetOutput<T>(), ElementsAreArray(exp_output_data));
+}
+
+TEST(TileTest, Float32Vector) {
+  Check<float>(/*input_shape=*/{3}, /*input_data=*/{1.0, 2.0, 3.0},
+               /*multipliers_data=*/{2}, /*exp_output_shape=*/{6},
+               /*exp_output_data=*/{1.0, 2.0, 3.0, 1.0, 2.0, 3.0},
+               /*input_type=*/TensorType_FLOAT32,
+               /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, Float32Matrix) {
-  TileOpModel m({2, 3}, TensorType_FLOAT32, TensorType_INT32);
-  m.SetInput<float>({
-      11.f,
-      12.f,
-      13.f,
-      21.f,
-      22.f,
-      23.f,
-  });
-  m.SetMultipliers({2, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({
-                                        11.f,
-                                        12.f,
-                                        13.f,
-                                        21.f,
-                                        22.f,
-                                        23.f,
-                                        11.f,
-                                        12.f,
-                                        13.f,
-                                        21.f,
-                                        22.f,
-                                        23.f,
-                                    }));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  Check<float>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/
+      {11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
+      /*input_type=*/TensorType_FLOAT32,
+      /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, Float32HighDimension) {
-  TileOpModel m({1, 2, 3}, TensorType_FLOAT32, TensorType_INT32);
-  m.SetInput<float>({
-      11.f,
-      12.f,
-      13.f,
-      21.f,
-      22.f,
-      23.f,
-  });
-  m.SetMultipliers({2, 3, 1});
-  m.Invoke();
-  EXPECT_THAT(
-      m.GetOutput<float>(),
-      ElementsAreArray({11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f,
-                        21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f,
-                        11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f,
-                        21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 3}));
+  Check<float>(
+      /*input_shape=*/{1, 2, 3},
+      /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
+      /*multipliers_data=*/{2, 3, 1}, /*exp_output_shape=*/{2, 6, 3},
+      /*exp_output_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f,
+                           13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f,
+                           22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f,
+                           11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f,
+                           13.f, 21.f, 22.f, 23.f},
+      /*input_type=*/TensorType_FLOAT32,
+      /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, Uint8Matrix) {
-  TileOpModel m({2, 3}, TensorType_UINT8, TensorType_INT32);
-  m.SetInput<uint8_t>({
-      11,
-      12,
-      13,
-      21,
-      22,
-      23,
-  });
-  m.SetMultipliers({2, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                      }));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  Check<uint8_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{11, 12, 13, 21, 22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
+      /*input_type=*/TensorType_UINT8,
+      /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, Int32Matrix) {
-  TileOpModel m({2, 3}, TensorType_INT32, TensorType_INT32);
-  m.SetInput<int32_t>({
-      11,
-      12,
-      13,
-      21,
-      22,
-      23,
-  });
-  m.SetMultipliers({2, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                      }));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  Check<int32_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{11, 12, 13, 21, 22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
+      /*input_type=*/TensorType_INT32,
+      /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, BooleanMatrix) {
-  TileOpModel m({2, 3}, TensorType_BOOL, TensorType_INT32);
-  m.SetInput<bool>({true, false, false, true, true, false});
-  m.SetMultipliers({2, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput<bool>(),
-              ElementsAreArray({
-                  true, false, false, true, true, false,  // first tiletrue,
-                  true, false, false, true, true, false   // second tile
-              }));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  Check<bool>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{true, false, false, true, true, false},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/
+      {true, false, false, true, true, false, true, false, false, true, true,
+       false},
+      /*input_type=*/TensorType_BOOL,
+      /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, Int64Matrix) {
-  TileOpModel m({2, 3}, TensorType_INT64, TensorType_INT32);
-  m.SetInput<int64_t>({
-      11,
-      12,
-      13,
-      21,
-      22,
-      23,
-  });
-  m.SetMultipliers({2, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                      }));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  Check<int64_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{11, 12, 13, 21, 22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
+      /*input_type=*/TensorType_INT64,
+      /*multiply_type=*/TensorType_INT32);
 }
 
 TEST(TileTest, Int64Matrix64Multipliers) {
-  TileOpModel m({2, 3}, TensorType_INT64, TensorType_INT64);
-  m.SetInput<int64_t>({
-      11,
-      12,
-      13,
-      21,
-      22,
-      23,
-  });
-  m.SetMultipliers({2, 1});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                          11,
-                                          12,
-                                          13,
-                                          21,
-                                          22,
-                                          23,
-                                      }));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 3}));
+  Check<int64_t>(
+      /*input_shape=*/{2, 3},
+      /*input_data=*/{11, 12, 13, 21, 22, 23},
+      /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
+      /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
+      /*input_type=*/TensorType_INT64,
+      /*multiply_type=*/TensorType_INT64);
 }
 }  // namespace
 }  // namespace tflite

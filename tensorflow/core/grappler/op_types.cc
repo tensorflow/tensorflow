@@ -47,6 +47,12 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMatMul(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
+         IsQuantizedMatMul(node);
+}
+
 bool IsAnyMax(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
@@ -211,6 +217,8 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   return false;
 }
 
+bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
+
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
 
 bool IsEnter(const NodeDef& node) {
@@ -299,11 +307,7 @@ bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
-bool IsMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
-}
+bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
 
@@ -411,6 +415,8 @@ bool IsReduction(const NodeDef& node) {
 }
 
 bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
+
+bool IsRelu6(const NodeDef& node) { return node.op() == "Relu6"; }
 
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 

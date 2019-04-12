@@ -55,9 +55,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
   return NPY_NOTYPE;
 }
 
-TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
-  int pyarray_type = PyArray_TYPE(array);
-  switch (pyarray_type) {
+TfLiteType TfLiteTypeFromPyType(int py_type) {
+  switch (py_type) {
     case NPY_FLOAT32:
       return kTfLiteFloat32;
     case NPY_INT32:
@@ -81,6 +80,11 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
       // Avoid default so compiler errors created when new types are made.
   }
   return kTfLiteNoType;
+}
+
+TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
+  int pyarray_type = PyArray_TYPE(array);
+  return TfLiteTypeFromPyType(pyarray_type);
 }
 
 #if PY_VERSION_HEX >= 0x03030000

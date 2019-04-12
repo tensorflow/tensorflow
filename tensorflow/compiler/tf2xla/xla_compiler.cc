@@ -544,11 +544,12 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
 }
 
 Status XlaCompiler::CompileFunction(
-    const XlaCompiler::CompileOptions& options, const NameAttrList& function,
+    const XlaCompiler::CompileOptions& options,
+    const NameAttrList& fn_name_attrs,
     absl::Span<const XlaCompiler::Argument> args,
     XlaCompiler::CompilationResult* result) {
   const string function_id =
-      Canonicalize(function.name(), AttrSlice(&function.attr()));
+      Canonicalize(fn_name_attrs.name(), AttrSlice(&fn_name_attrs.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
   const std::vector<XlaCompiler::Argument> arg_vector(args.begin(), args.end());
@@ -559,11 +560,11 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(FindFunctionBody(function, &fbody));
+  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody));
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       CheckSignature(fbody->arg_types, args),
-      "Signature check failure while compiling: ", function.name());
+      "Signature check failure while compiling: ", fn_name_attrs.name());
 
   std::unique_ptr<Graph> graph = GetGraph(fbody);
 

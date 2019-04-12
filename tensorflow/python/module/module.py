@@ -21,7 +21,6 @@ from __future__ import print_function
 import re
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
@@ -96,6 +95,14 @@ class Module(tracking.AutoTrackable):
   ```
   """
 
+  # AutoTrackable adds object attributes that users will not expect us to
+  # include when flattening (these reference dependencies reachable via other
+  # object attributes).
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset((
+      "_self_unconditional_checkpoint_dependencies",
+      "_self_unconditional_dependency_names"
+  ))
+
   def __init__(self, name=None):
     if name is None:
       name = camel_to_snake(type(self).__name__)
@@ -137,7 +144,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_variable_like))
+    return tuple(self._flatten(predicate=_is_variable))
 
   @property
   def trainable_variables(self):
@@ -234,6 +241,7 @@ class Module(tracking.AutoTrackable):
         self,
         recursive=recursive,
         predicate=predicate,
+        attributes_to_ignore=self._TF_MODULE_IGNORED_PROPERTIES,
         attribute_traversal_key=attribute_traversal_key,
         with_path=with_path)
 
@@ -270,13 +278,12 @@ class Module(tracking.AutoTrackable):
     return tf_decorator.make_decorator(method, method_with_name_scope)
 
 
-def _is_variable_like(obj):
-  return (isinstance(obj, variables.Variable) or
-          resource_variable_ops.is_resource_variable(obj))
+def _is_variable(obj):
+  return isinstance(obj, variables.Variable)
 
 
 def _is_trainable_variable(obj):
-  return _is_variable_like(obj) and getattr(obj, "trainable", False)
+  return _is_variable(obj) and getattr(obj, "trainable", False)
 
 
 def _is_module(obj):
@@ -294,17 +301,11 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-# AutoTrackable adds object attributes that users will not expect us to
-# include when flattening (these reference dependencies reachable via other
-# object attributes).
-AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",
-                             "_unconditional_dependency_names")
-
-
 def _flatten_module(module,
                     recursive,
                     predicate,
                     attribute_traversal_key,
+                    attributes_to_ignore,
                     with_path,
                     module_path=(),
                     seen=None):
@@ -316,7 +317,7 @@ def _flatten_module(module,
   submodules = []
 
   for key in sorted(module_dict, key=attribute_traversal_key):
-    if key in AUTO_CHECKPOINTABLE_ATTRS:
+    if key in attributes_to_ignore:
       continue
 
     for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
@@ -345,6 +346,7 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
+        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,
         with_path=with_path,
         module_path=submodule_path,
         seen=seen)

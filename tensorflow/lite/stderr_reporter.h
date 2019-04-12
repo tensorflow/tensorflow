@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tflite {
 
-// An error reporter that simplify writes the message to stderr.
+// An error reporter that simply writes the message to stderr.
 struct StderrReporter : public ErrorReporter {
   int Report(const char* format, va_list args) override;
 };

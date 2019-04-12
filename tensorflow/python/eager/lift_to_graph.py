@@ -183,7 +183,7 @@ def _copy_non_source(op, graph, op_map):
       # a placeholder for now and return information about the required post-hoc
       # mutation.
       copied_input = array_ops.placeholder(
-          name="unusued_control_flow_input",
+          name="unused_control_flow_input",
           shape=original_input.shape,
           dtype=original_input.dtype)
       input_mutations.append(
@@ -271,6 +271,9 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
         graph_mode=True)
 
   op_map[s] = copied_placeholder
+  # Add an entry for the op of the source tensor so that if there are any nodes
+  # depending on that op via control dependencies it can work correctly.
+  op_map[s.op] = copied_placeholder.op
 
 
 def lift_to_graph(init_tensors, graph, sources=None,
