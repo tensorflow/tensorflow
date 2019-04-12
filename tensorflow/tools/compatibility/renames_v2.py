@@ -577,6 +577,20 @@ renames = {
         'tf.linspace',
     'tf.linalg.transpose':
         'tf.linalg.matrix_transpose',
+    'tf.lite.constants.TFLITE':
+        'tf.compat.v1.lite.constants.TFLITE',
+    'tf.lite.constants.GRAPHVIZ_DOT':
+        'tf.compat.v1.lite.constants.GRAPHVIZ_DOT',
+    'tf.lite.experimental.convert_op_hints_to_stubs':
+        'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.nn.dynamic_rnn':
+        'tf.compat.v1.lite.experimental.nn.dynamic_rnn',
+    'tf.lite.experimental.nn.TFLiteLSTMCell':
+        'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
+    'tf.lite.experimental.nn.TfLiteRNNCell':
+        'tf.compat.v1.lite.experimental.nn.TfLiteRNNCell',
+    'tf.lite.OpHint':
+        'tf.compat.v1.lite.OpHint',
     'tf.lite.TocoConverter':
         'tf.compat.v1.lite.TocoConverter',
     'tf.lite.constants.INT8':
