@@ -99,8 +99,8 @@ class Module(tracking.AutoTrackable):
   # include when flattening (these reference dependencies reachable via other
   # object attributes).
   _TF_MODULE_IGNORED_PROPERTIES = frozenset((
-      "_unconditional_checkpoint_dependencies",
-      "_unconditional_dependency_names"
+      "_self_unconditional_checkpoint_dependencies",
+      "_self_unconditional_dependency_names"
   ))
 
   def __init__(self, name=None):

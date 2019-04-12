@@ -17,12 +17,14 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import json
 import os
 
 import numpy
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -37,6 +39,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
+from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 
 
 class HasList(training.Model):
@@ -105,6 +109,11 @@ class ListTests(test.TestCase):
     self.assertIn(v, model.variables)
     self.assertIn(v, model.trainable_variables)
     self.assertNotIn(v, model.non_trainable_variables)
+
+  def testJSONSerialization(self):
+    obj = tracking.AutoTrackable()
+    obj.l = [1]
+    json.dumps(obj.l, default=serialization.get_json_type)
 
   @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
@@ -283,6 +292,20 @@ class ListWrapperTest(test.TestCase):
 
     if not_overridden:
       self.fail("_ListWrapper does not override %s" % (not_overridden))
+
+  def testSameStructure(self):
+    l = [1]
+    nest.assert_same_structure(l, data_structures._ListWrapper(copy.copy(l)))
+
+  def testFunctionCaching(self):
+    @def_function.function
+    def f(list_input):
+      return list_input[0] + constant_op.constant(1.)
+
+    first_trace = f.get_concrete_function([constant_op.constant(2.)])
+    second_trace = f.get_concrete_function(
+        data_structures._ListWrapper([constant_op.constant(3.)]))
+    self.assertIs(first_trace, second_trace)
 
   def testListWrapperBasic(self):
     # _ListWrapper, unlike List, compares like the built-in list type (since it
@@ -466,6 +489,11 @@ class MappingTests(test.TestCase):
     self.assertAllEqual(numpy.ones([6, 7]),
                         self.evaluate(test_var))
 
+  def testJSONSerialization(self):
+    obj = tracking.AutoTrackable()
+    obj.d = {"a": 2}
+    json.dumps(obj.d, default=serialization.get_json_type)
+
   def testNoOverwrite(self):
     mapping = data_structures.Mapping()
     original = data_structures.List()
@@ -581,7 +609,7 @@ class MappingTests(test.TestCase):
     model.d["a"] = []
     model.d.pop("a")
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
+    with self.assertRaisesRegexp(ValueError, "Unable to save"):
       model.save_weights(save_path)
 
   def testExternalModificationNoSave(self):
@@ -709,7 +737,9 @@ class MappingTests(test.TestCase):
     original_sub = tracking.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
+    self.assertIsInstance(original.b, dict)
     deep_copied = copy.deepcopy(original)
+    self.assertIsInstance(deep_copied.b, dict)
     self.assertIsNot(original, deep_copied)
     self.assertIsNot(original_sub, deep_copied.b["a"])
     self.assertEqual([[1.]], deep_copied.a)
@@ -735,6 +765,20 @@ class MappingTests(test.TestCase):
     self.assertEqual([1., 2.],
                      [1.]
                      + data_structures._ListWrapper([2.]))
+
+  def testSameStructure(self):
+    d = {1: "a"}
+    nest.assert_same_structure(d, data_structures._DictWrapper(d.copy()))
+
+  def testFunctionCaching(self):
+    @def_function.function
+    def f(dict_input):
+      return dict_input["x"] + constant_op.constant(1.)
+
+    first_trace = f.get_concrete_function({"x": constant_op.constant(2.)})
+    second_trace = f.get_concrete_function(
+        data_structures._DictWrapper({"x": constant_op.constant(3.)}))
+    self.assertIs(first_trace, second_trace)
 
 
 if __name__ == "__main__":

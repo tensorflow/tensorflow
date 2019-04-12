@@ -66,7 +66,7 @@ def _get_replica_id_integer():
   return replica_id
 
 
-class MockCoreParameterServerStrategy(distribute_lib.DistributionStrategy):
+class MockCoreParameterServerStrategy(distribute_lib.StrategyV1):
   """Mock the strategy to allow cluster resolver as an argument."""
 
   def __init__(self, cluster_resolver):

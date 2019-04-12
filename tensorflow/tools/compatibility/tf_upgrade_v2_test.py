@@ -1689,12 +1689,15 @@ def _log_prob(self, x):
   @parameterized.parameters(
       # Rename parameter: delimiter -> sep and add .to_sparse()
       ["tf.string_split('test', delimiter=' ')",
-       "tf.strings.split(source='test', sep=' ').to_sparse()"],
+       "tf.strings.split(input='test', sep=' ').to_sparse()"],
+      # Rename parameter: source -> input
+      ["tf.strings.split(source='test1')",
+       "tf.strings.split(input='test1').to_sparse()"],
       # Use compat.v1 for skip_empty parameter.
       ["tf.string_split('test', ' ', True)",
        "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"],
       ["tf.string_split('test', ' ', skip_empty=False)",
-       "tf.strings.split(source='test', sep=' ').to_sparse()"],
+       "tf.strings.split(input='test', sep=' ').to_sparse()"],
       # Split behavior for sep='' changed:
       ["tf.string_split(x)",
        "tf.compat.v1.string_split(source=x)"],
@@ -1705,14 +1708,14 @@ def _log_prob(self, x):
        "tf.compat.v1.string_split(source=x, sep=sep)"],
       # If sep is a non-empty string literal, then we don't need compat.v1.
       ["tf.string_split(x, 'non-empty-sep')",
-       "tf.strings.split(source=x, sep='non-empty-sep').to_sparse()"],
+       "tf.strings.split(input=x, sep='non-empty-sep').to_sparse()"],
       # Add to_sparse unless result_type is RaggedTensor:
       ["tf.string_split(x, ' ')",
-       "tf.strings.split(source=x, sep=' ').to_sparse()"],
+       "tf.strings.split(input=x, sep=' ').to_sparse()"],
       ["tf.string_split(x, ' ', result_type='SparseTensor')",
-       "tf.strings.split(source=x, sep=' ').to_sparse()"],
+       "tf.strings.split(input=x, sep=' ').to_sparse()"],
       ["tf.string_split(x, ' ', result_type='RaggedTensor')",
-       "tf.strings.split(source=x, sep=' ')"],
+       "tf.strings.split(input=x, sep=' ')"],
       ["tf.string_split(x, ' ', result_type=x)",
        "tf.compat.v1.string_split(source=x, sep=' ', result_type=x)"],
   )  # pyformat: disable

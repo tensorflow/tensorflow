@@ -73,8 +73,7 @@ class Backend(object):
     """Destructures a tuple buffer into a sequence of buffers."""
 
   @abc.abstractmethod
-  def compile(self, computation, argument_shapes, result_shape,
-              compile_options):
+  def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
@@ -115,15 +114,19 @@ class LocalBackend(Backend):
   def destructure_tuple(self, c_buffer):
     return c_buffer.DestructureTuple()
 
-  def compile(self, c_computation, argument_shapes, result_shape,
-              compile_options):
+  def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    if compile_options.argument_layouts:
+      argument_layouts = [
+          s.as_xla_shape() for s in compile_options.argument_layouts
+      ]
+    else:
+      argument_layouts = c_computation.GetProgramShape().Parameters()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout.as_xla_shape()
-    argument_shapes = [s.as_xla_shape() for s in argument_shapes]
-    return _xla.LocalExecutable.Compile(c_computation, argument_shapes, options,
-                                        self.client)
+    return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
+                                        options, self.client)
 
   def delete_executable(self, executable):
     executable.Delete()
@@ -232,42 +235,6 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
       op_name=op_name,
       source_file=filename,
       source_line=lineno)
-
-
-class PaddingType(enum.Enum):
-  VALID = 1
-  SAME = 2
-
-
-def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
-                                        window_strides):
-  """Maps PaddingType or string to pad values (list of pairs of ints)."""
-  if not isinstance(padding_type, (str, PaddingType)):
-    msg = 'padding_type must be str or PaddingType, got {}.'
-    raise TypeError(msg.format(type(padding_type)))
-
-  if isinstance(padding_type, str):
-    if padding_type.upper() == 'VALID':
-      padding_type = PaddingType.VALID
-    elif padding_type.upper() == 'SAME':
-      padding_type = PaddingType.SAME
-    else:
-      msg = 'Unknown padding type string: expected "VALID" or "SAME", got {}.'
-      raise ValueError(msg.format(padding_type))
-
-  if padding_type == PaddingType.VALID:
-    return [(0, 0)] * len(window_strides)
-  elif padding_type == PaddingType.SAME:
-    out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
-    pad_sizes = [
-        max((out_size - 1) * stride + filter_size - in_size, 0)
-        for out_size, stride, filter_size, in_size in zip(
-            out_shape, window_strides, rhs_dims, lhs_dims)
-    ]
-    return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
-  else:
-    msg = 'Unexpected PaddingType value: {}'
-    raise ValueError(msg.format(padding_type))
 
 
 PrimitiveType = _xla.PrimitiveType
@@ -401,6 +368,7 @@ class Shape(object):
   @staticmethod
   def from_pyval(pyval):
     """Returns a Shape that describes a tuple-tree of Numpy arrays."""
+
     def convert(pyval):
       if isinstance(pyval, tuple):
         return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
@@ -566,24 +534,6 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
-class CompileOptions(object):
-  """Python object for XLA compile options.
-
-  These options can be passed to the 'compile' step when using a local XLA
-  client.
-  """
-
-  def __init__(self):
-    self.xla_dump_to = None
-    self.dump_hlo_pass_re = None
-    self.dump_hlo_module_re = None
-    self.dump_hlo_as_text = None
-    self.dump_hlo_as_proto = None
-    self.hlo_profile = None
-    self.num_replicas = 1
-    self.result_layout = None
-
-
 def transfer_to_infeed(value, device_ordinal=0):
   """Transfers the given value into the XLA infeed queue.
 
@@ -618,6 +568,25 @@ def transfer_from_outfeed(shape, device_ordinal=0):
   backend = get_local_backend()
   return backend.client.TransferFromOutfeed(shape.as_xla_shape(),
                                             device_ordinal)
+
+
+class CompileOptions(object):
+  """Python object for XLA compile options.
+
+  These options can be passed to the 'compile' step when using a local XLA
+  client.
+  """
+
+  def __init__(self):
+    self.xla_dump_to = None
+    self.dump_hlo_pass_re = None
+    self.dump_hlo_module_re = None
+    self.dump_hlo_as_text = None
+    self.dump_hlo_as_proto = None
+    self.hlo_profile = None
+    self.num_replicas = 1
+    self.argument_layouts = None
+    self.result_layout = None
 
 
 class Computation(object):
@@ -661,54 +630,27 @@ class Computation(object):
     """
     return self.computation.GetHloDotGraph()
 
-  def Compile(self,
-              argument_shapes=(),
-              compile_options=None,
-              layout_fn=None,
-              backend=None):
+  def Compile(self, argument_shapes=None, compile_options=None, backend=None):
     """Compiles a computation.
 
     Computations are the result of a "ComputationBuild'ing" process.
 
     Arguments:
-      argument_shapes: parameter shapes -- they are first laid out by layout_fn
-        if layout_fn is provided. Otherwise, the default layout for those shapes
-        will be used.
+      argument_shapes: Deprecated. Use compile_options.argument_layouts instead.
       compile_options: options to use for compilation, includes an optional laid
         out result shape for the computation.
-      layout_fn: lambda that is used to lay out the argument/result shapes.
       backend: a `Backend` for which an executable should be generated.
 
     Returns:
       A Executable instance.
     """
     backend = backend or self._backend or get_local_backend()
-    result_shape = _wrap_shape(self.computation.GetProgramShape().Result())
-
-    if layout_fn:
-      argument_shapes = [
-          shape.map_leaves(layout_fn) for shape in argument_shapes
-      ]
-      result_shape = result_shape.map_leaves(layout_fn)
-
-    argument_shapes = list(argument_shapes)
 
     compile_options = compile_options or CompileOptions()
-    compile_options.result_layout = result_shape
-    c = backend.compile(self.computation, argument_shapes, result_shape,
-                        compile_options)
+    if argument_shapes:
+      compile_options.argument_layouts = argument_shapes
+    c = backend.compile(self.computation, compile_options)
     return Executable(c, backend=backend)
-
-  def CompileWithExampleArguments(self,
-                                  arguments=(),
-                                  compile_options=None,
-                                  layout_fn=None,
-                                  backend=None):
-    return self.Compile(
-        argument_shapes=[Shape.from_pyval(arg) for arg in arguments],
-        compile_options=compile_options,
-        layout_fn=layout_fn,
-        backend=backend)
 
   def GetProgramShape(self):
     return _wrap_program_shape(self._c_computation.GetProgramShape())
@@ -807,6 +749,42 @@ class Executable(object):
 
   def __del__(self):
     self._backend.delete_executable(self._c_executable)
+
+
+class PaddingType(enum.Enum):
+  VALID = 1
+  SAME = 2
+
+
+def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
+                                        window_strides):
+  """Maps PaddingType or string to pad values (list of pairs of ints)."""
+  if not isinstance(padding_type, (str, PaddingType)):
+    msg = 'padding_type must be str or PaddingType, got {}.'
+    raise TypeError(msg.format(type(padding_type)))
+
+  if isinstance(padding_type, str):
+    if padding_type.upper() == 'VALID':
+      padding_type = PaddingType.VALID
+    elif padding_type.upper() == 'SAME':
+      padding_type = PaddingType.SAME
+    else:
+      msg = 'Unknown padding type string: expected "VALID" or "SAME", got {}.'
+      raise ValueError(msg.format(padding_type))
+
+  if padding_type == PaddingType.VALID:
+    return [(0, 0)] * len(window_strides)
+  elif padding_type == PaddingType.SAME:
+    out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
+    pad_sizes = [
+        max((out_size - 1) * stride + filter_size - in_size, 0)
+        for out_size, stride, filter_size, in_size in zip(
+            out_shape, window_strides, rhs_dims, lhs_dims)
+    ]
+    return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
+  else:
+    msg = 'Unexpected PaddingType value: {}'
+    raise ValueError(msg.format(padding_type))
 
 
 class ComputationBuilder(object):
@@ -1148,9 +1126,11 @@ class ComputationBuilder(object):
     pads = _convert_padding_type_to_pad_values(
         padding,
         self.GetShape(operand).dimensions(), window_dimensions, window_strides)
-    return ops.SelectAndScatterWithGeneralPadding(
-        operand, select.computation, window_dimensions, window_strides, pads,
-        source, init_value, scatter.computation)
+    return ops.SelectAndScatterWithGeneralPadding(operand, select.computation,
+                                                  window_dimensions,
+                                                  window_strides, pads, source,
+                                                  init_value,
+                                                  scatter.computation)
 
   def Slice(self, operand, start_indices, limit_indices, strides=None):
     """Enqueues a slice operation onto the computation.
@@ -1311,13 +1291,15 @@ class ComputationBuilder(object):
     pads = _convert_padding_type_to_pad_values(
         padding,
         self.GetShape(operand).dimensions(), window_dimensions, window_strides)
-    return ops.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.computation,
-        window_dimensions, window_strides, (), (), pads)
+    return ops.ReduceWindowWithGeneralPadding(operand, init_value,
+                                              computation_to_apply.computation,
+                                              window_dimensions, window_strides,
+                                              (), (), pads)
 
-  def ReduceWindowWithGeneralPadding(
-      self, operand, init_value, computation_to_apply, window_dimensions,
-      window_strides, base_dilations, window_dilations, padding):
+  def ReduceWindowWithGeneralPadding(self, operand, init_value,
+                                     computation_to_apply, window_dimensions,
+                                     window_strides, base_dilations,
+                                     window_dilations, padding):
     """Enqueues a windowed reduction operation onto the computation.
 
     Args:
@@ -1333,10 +1315,11 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp representing the added ReduceWindow op.
     """
-    return ops.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.computation,
-        window_dimensions, window_strides, base_dilations, window_dilations,
-        padding)
+    return ops.ReduceWindowWithGeneralPadding(operand, init_value,
+                                              computation_to_apply.computation,
+                                              window_dimensions, window_strides,
+                                              base_dilations, window_dilations,
+                                              padding)
 
   def RngNormal(self, mu, sigma, dims):
     """Enqueues an RngNormal operation onto the computation.
@@ -1713,6 +1696,7 @@ def _forward_methods_to_local_builder():
     forward = forward_op(getattr(ops, method_name))
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
+
 
 _forward_methods_to_local_builder()
 

@@ -36,6 +36,7 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import error_interpolation
@@ -71,6 +72,9 @@ CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 def _flat_shape_list(*params):
   """Return a flat list of TensorShapes, one for each tensor[spec] in `*params`.
 
+  If `params` contains `CompositeTensors`, then they are expanded to their
+  components `Tensors`.
+
   Args:
     *params: Set of nested entries containing Tensors, TensorSpec, and
       non-tensors.
@@ -80,7 +84,7 @@ def _flat_shape_list(*params):
   """
   return [tensor_shape.TensorShape(x.shape)
           if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec)) else None
-          for x in nest.flatten(params)]
+          for x in nest.flatten(params, expand_composites=True)]
 
 
 def _shape_less_specific_than(relaxed, to_check):
@@ -189,12 +193,12 @@ def is_same_structure(structure1,
                       check_values=False):
   """Check two structures for equality, optionally of types and of values."""
   try:
-    nest.assert_same_structure(structure1, structure2)
+    nest.assert_same_structure(structure1, structure2, expand_composites=True)
   except (ValueError, TypeError):
     return False
   if check_values:
-    flattened1 = nest.flatten(structure1)
-    flattened2 = nest.flatten(structure2)
+    flattened1 = nest.flatten(structure1, expand_composites=True)
+    flattened2 = nest.flatten(structure2, expand_composites=True)
     # First check the types to avoid AttributeErrors.
     if any(type(f1) != type(f2) for f1, f2 in zip(flattened1, flattened2)):
       return False
@@ -546,7 +550,8 @@ class ConcreteFunction(object):
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
 
-    Objects aside from Tensors and Variables are ignored.
+    Objects aside from Tensors, CompositeTensors, and Variables are ignored.
+    CompositeTensors are expanded into their components.
 
     Args:
       args: Canonicalized positional arguments of the Python function.
@@ -557,7 +562,7 @@ class ConcreteFunction(object):
       `args` and `kwargs`.
     """
     return self._call_flat(
-        (t for t in nest.flatten((args, kwargs))
+        (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
                            resource_variable_ops.ResourceVariable))))
 
@@ -565,7 +570,8 @@ class ConcreteFunction(object):
     """Executes the wrapped function.
 
     Args:
-      args: a list of Tensors or Variables.
+      args: a list of Tensors or Variables.  Any CompositeTensors should be
+        expanded before calling this method.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -573,8 +579,13 @@ class ConcreteFunction(object):
     Raises:
       ValueError: If `args` contains anything other than Tensors or Variables.
     """
+    args = list(args)
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
+
+    if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
+      raise AssertionError("Expected all args to be Tensors or Variables; "
+                           "but got CompositeTensor: %r" % args)
 
     for v in self._func_graph.variables:
       resource_variable_ops.variable_accessed(v)
@@ -727,31 +738,20 @@ class ConcreteFunction(object):
   @property
   def output_shapes(self):
     """The function's output shapes."""
-    # TODO(ebrevdo): Should we only keep the output shapes associated
-    # with len(self._python_returns) outputs?
-    # TODO(akshayka): Consider removing this.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs)
-    j = 0
-    for i, o in enumerate(outputs_list):
-      if o is not None:
-        if isinstance(o, ops.IndexedSlices):
-          # Extract the shape of the `IndexedSlices` object's `values` field.
-          outputs_list[i] = self._output_shapes[j]  # the `values` shape
-          if o.dense_shape is not None:
-            j += 3  # skip over shapes for `values`, `indices`, `dense_shape`
-          else:
-            j += 2  # skip over shapes for `values`, `indices`
-        else:
-          outputs_list[i] = self._output_shapes[j]
-          j += 1
-    return nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                 outputs_list)
+    return nest.map_structure(
+        lambda x: getattr(x, 'shape', tensor_shape.TensorShape(None)),
+        composite_tensor.replace_composites_with_components(
+            self._func_graph.structured_outputs),
+        expand_composites=False)
 
   @property
   def output_dtypes(self):
     # TODO(akshayka): Consider removing this.
-    return nest.map_structure(lambda x: x.dtype if x is not None else None,
-                              self._func_graph.structured_outputs)
+    return nest.map_structure(
+        lambda x: x.dtype if x is not None else None,
+        composite_tensor.replace_composites_with_components(
+            self._func_graph.structured_outputs),
+        expand_composites=False)
 
   def add_to_graph(self, g=None, register_gradient_functions=False):
     """Registers the function, adds it to the graph g or default graph."""
@@ -932,29 +932,16 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
-    # Use `nest.flatten` instead of `func_graph_module.flatten` in order to
-    # preserve any IndexedSlices in `self._func_graph.structured_outputs`.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs)
+    # Replace outputs with results, skipping over any 'None' values.
+    outputs_list = nest.flatten(self._func_graph.structured_outputs,
+                                expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
-        if isinstance(o, ops.IndexedSlices):
-          # Repack Tensors for IndexedSlices.
-          if o.dense_shape is not None:
-            outputs_list[i] = ops.IndexedSlices(
-                values=result[j],
-                indices=result[j + 1],
-                dense_shape=result[j + 2])
-            j += 3
-          else:
-            outputs_list[i] = ops.IndexedSlices(
-                values=result[j], indices=result[j + 1])
-            j += 2
-        else:
-          outputs_list[i] = result[j]
-          j += 1
+        outputs_list[i] = result[j]
+        j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                outputs_list)
+                                outputs_list, expand_composites=True)
     return ret
 
 
@@ -1032,7 +1019,8 @@ class FunctionSpec(object):
                         "list, received " + str(type(input_signature)))
 
       self._input_signature = tuple(input_signature)
-      self._flat_input_signature = tuple(nest.flatten(input_signature))
+      self._flat_input_signature = tuple(nest.flatten(input_signature,
+                                                      expand_composites=False))
 
   @property
   def fullargspec(self):
@@ -1142,7 +1130,9 @@ class FunctionSpec(object):
 
 def _convert_numpy_inputs(inputs):
   """Convert numpy array inputs to tensors."""
-  flat_inputs = nest.flatten(inputs)
+  # We assume that any CompositeTensors have already converted their components
+  # from numpy arrays to Tensors, so we don't need to expand composites here.
+  flat_inputs = nest.flatten(inputs, expand_composites=False)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
   # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
@@ -1155,7 +1145,7 @@ def _convert_numpy_inputs(inputs):
       need_packing = True
   if need_packing:
     return nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs)
+        structure=inputs, flat_sequence=flat_inputs, expand_composites=False)
   else:
     return inputs
 
@@ -1168,7 +1158,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
     # signature should throw an error.
     flatten_inputs = nest.flatten_up_to(
         input_signature,
-        inputs[:len(input_signature)])
+        inputs[:len(input_signature)],
+        expand_composites=True)
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
                      "input_signature. Inputs (%s), input_signature(%s)." %
@@ -1198,7 +1189,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   if need_packing:
     inputs = nest.pack_sequence_as(
         structure=input_signature,
-        flat_sequence=flatten_inputs)
+        flat_sequence=flatten_inputs,
+        expand_composites=True)
 
   return inputs
 
@@ -1353,7 +1345,7 @@ class Function(object):
         if not is_same_structure(self.input_signature, args):
           raise ValueError("Structure of Python function inputs does not match "
                            "input_signature.")
-        flat_inputs = nest.flatten(args)
+        flat_inputs = nest.flatten(args, expand_composites=True)
         if any(not isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec))
                for arg in flat_inputs):
           raise ValueError("When input_signature is provided, all inputs to "
@@ -1650,7 +1642,7 @@ def register(func, *args, **kwargs):
 
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature)):
+         for arg in nest.flatten(signature, expand_composites=False)):
     raise TypeError("Invalid input_signature %s; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects.")
 

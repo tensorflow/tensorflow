@@ -3070,8 +3070,8 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   } else if (PyTuple_Check(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
         arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
-  } else if (PyDict_Check(arg)) {
-    tensorflow::Safe_PyObjectPtr keys(PyDict_Keys(arg));
+  } else if (tensorflow::swig::IsMapping(arg)) {
+    tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(arg));
     if (PyList_Sort(keys.get()) == -1) {
       return tensorflow::errors::Internal("Unable to sort keys");
     }
@@ -3083,9 +3083,9 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
       PyObject* key = PyList_GetItem(keys.get(), i);
       TF_RETURN_IF_ERROR(
           TFE_Py_EncodeArgHelper(key, include_tensor_ranks_only, result));
-      PyObject* value = PyDict_GetItem(arg, key);
-      TF_RETURN_IF_ERROR(
-          TFE_Py_EncodeArgHelper(value, include_tensor_ranks_only, result));
+      tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(arg, key));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
+          value.get(), include_tensor_ranks_only, result));
     }
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);

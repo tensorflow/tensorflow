@@ -435,17 +435,12 @@ def convert_entity_to_ast(o, program_ctx):
     nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
   elif tf_inspect.ismethod(o):
     nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
-  # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
   elif hasattr(o, '__class__'):
+    # Note: this should only be raised when attempting to convert the object
+    # directly. converted_call should still support it.
     raise NotImplementedError(
-        'Object conversion is not yet supported. If you are '
-        'trying to convert code that uses an existing object, '
-        'try including the creation of that object in the '
-        'conversion. For example, instead of converting the method '
-        'of a class, try converting the entire class instead. '
-        'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
-        'python/autograph/README.md#using-the-functional-api '
-        'for more information.')
+        'cannot convert entity "{}": object conversion is not yet'
+        ' supported.'.format(o))
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '

@@ -1533,24 +1533,20 @@ class Layer(module.Module):
     self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    match = self._get_existing_metric(name)
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
       # This can happen when a metric instance is created in subclassed model
       # layer `__init__` and we have tracked that instance already in
       # model.__setattr__.
-      match = self._get_existing_metric(name)
       if match:
         result_tensor = value
-        if match.name not in self._metrics_tensors:
-          self._metrics_tensors[match.name] = result_tensor
-          return
-        else:
-          raise ValueError(
-              'We currently do not support reusing a metric instance.')
+        metric_obj = match
       elif hasattr(value, '_metric_obj'):
         # We track the instance using the metadata on the result tensor.
         result_tensor = value
         metric_obj = result_tensor._metric_obj
+        self._metrics.append(metric_obj)
       else:
         raise ValueError(
             'We do not support adding an aggregated metric result tensor that '
@@ -1564,9 +1560,13 @@ class Layer(module.Module):
     else:
       # If a non-aggregated tensor is given as input (ie. `aggregation` is
       # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
-      metric_obj, result_tensor = base_layer_utils.create_mean_metric(
-          value, name)
-    self._metrics.append(metric_obj)
+      if match:
+        result_tensor = match(value)
+        metric_obj = match
+      else:
+        metric_obj, result_tensor = base_layer_utils.create_mean_metric(
+            value, name)
+        self._metrics.append(metric_obj)
     self._metrics_tensors[metric_obj.name] = result_tensor
 
   def _handle_weight_regularization(self, name, variable, regularizer):
@@ -1921,8 +1921,8 @@ class Layer(module.Module):
           [w for w in self._non_trainable_weights if w is not existing_value])
 
   def __setattr__(self, name, value):
-    if (name == '_setattr_tracking' or
-        not getattr(self, '_setattr_tracking', True) or
+    if (name == '_self_setattr_tracking' or
+        not getattr(self, '_self_setattr_tracking', True) or
         getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
@@ -2279,3 +2279,4 @@ def default(method):
 # Avoid breaking users who directly import this symbol from this file.
 # TODO(fchollet): remove this.
 InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name
+

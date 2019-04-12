@@ -81,9 +81,15 @@ class _UserDeviceSpec(object):
 
   def __init__(self, device_name_or_function):
     self._device_name_or_function = device_name_or_function
-
     self.display_name = str(self._device_name_or_function)
-    if callable(self._device_name_or_function):
+    self.function = device_name_or_function
+    self.raw_string = None
+
+    if isinstance(device_name_or_function, pydev.MergeDevice):
+      self.is_null_merge = device_name_or_function.is_null_merge
+
+    elif callable(device_name_or_function):
+      self.is_null_merge = False
       dev_func = self._device_name_or_function
       func_name = function_utils.get_func_name(dev_func)
       func_code = function_utils.get_func_code(dev_func)
@@ -95,13 +101,26 @@ class _UserDeviceSpec(object):
         lineno = -1
       self.display_name = "%s<%s, %d>" % (func_name, fname, lineno)
 
-    self.raw_string = None
+    elif device_name_or_function is None:
+      # NOTE(taylorrobie): This MUST be False. None signals a break in the
+      #   device stack, so `is_null_merge` must be False for such a case to
+      #   allow callers to safely skip over null merges without missing a None.
+      self.is_null_merge = False
 
-    self.function = self._device_name_or_function
-    if not (self._device_name_or_function is None or
-            callable(self._device_name_or_function)):
-      self.raw_string = self._device_name_or_function
-      self.function = pydev.merge_device(self._device_name_or_function)
+    else:
+      self.raw_string = device_name_or_function
+      self.function = pydev.merge_device(device_name_or_function)
+      self.is_null_merge = self.function.is_null_merge
+
+    # We perform this check in __init__ because it is of non-trivial cost,
+    # and self.string_merge is typically called many times.
+    self.fast_string_merge = isinstance(self.function, pydev.MergeDevice)
+
+  def string_merge(self, node_def):
+    if self.fast_string_merge:
+      return self.function.shortcut_string_merge(node_def)
+
+    return compat.as_str(_device_string(self.function(node_def)))
 
 
 class NullContextmanager(object):
@@ -617,7 +636,9 @@ class Tensor(_TensorLike):
 
   def __eq__(self, other):
     # Necessary to support Python's collection membership operators
-    return id(self) == id(other)
+
+    # NOTE(taylorrobie): equivalent to: id(self) == id(other)
+    return self is other
 
   def __copy__(self):
     # TODO(b/77597810): get rid of Tensor copies.
@@ -1743,7 +1764,7 @@ IndexedSlicesValue = collections.namedtuple(
 
 
 def _device_string(dev_spec):
-  if isinstance(dev_spec, pydev.DeviceSpec):
+  if pydev.is_device_spec(dev_spec):
     return dev_spec.to_string()
   else:
     return dev_spec
@@ -2224,10 +2245,22 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
+    self._set_device_from_string(compat.as_str(_device_string(device)))
+
+  def _set_device_from_string(self, device_str):
+    """Fast path to set device if the type is known to be a string.
+
+    This function is called frequently enough during graph construction that
+    there are non-trivial performance gains if the caller can guarantee that
+    the specified device is already a string.
+
+    Args:
+      device_str: A string specifying where to place this op.
+    """
     c_api.SetRequestedDevice(
         self._graph._c_graph,  # pylint: disable=protected-access
         self._c_op,  # pylint: disable=protected-access
-        compat.as_str(_device_string(device)))
+        device_str)
 
   def _update_input(self, index, tensor):
     """Update the input to this operation at the given index.
@@ -4493,10 +4526,21 @@ class Graph(object):
     # We apply here because the result can depend on the Operation's
     # signature, which is computed in the Operation constructor.
     # pylint: disable=protected-access
+    prior_device_string = None
     for device_spec in self._device_function_stack.peek_objs():
+      if device_spec.is_null_merge:
+        continue
+
       if device_spec.function is None:
         break
-      op._set_device(device_spec.function(op))
+
+      device_string = device_spec.string_merge(op)
+
+      # Take advantage of the fact that None is a singleton and Python interns
+      # strings, since identity checks are faster than equality checks.
+      if device_string is not prior_device_string:
+        op._set_device_from_string(device_string)
+        prior_device_string = device_string
     op._device_code_locations = self._snapshot_device_function_stack_metadata()
     # pylint: enable=protected-access
 

@@ -2652,6 +2652,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:training",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
@@ -2661,6 +2662,7 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,

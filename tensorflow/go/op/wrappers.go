@@ -1363,7 +1363,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64, optional ...D
 // (2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:
 //
 // ```
-// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+// [[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
@@ -1385,10 +1385,10 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64, optional ...D
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
 // ```
-// x = [[[1],   [2],  [3],  [4]],
+// x = [[[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
-//      [[13], [14], [15],  [16]]]
+//      [[13], [14], [15],  [16]]]]
 // ```
 //
 // (4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:
@@ -3932,55 +3932,6 @@ func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, c
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Returns the rank of a tensor.
-//
-// This operation returns an integer representing the rank of `input`.
-//
-// For example:
-//
-// ```
-// # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
-// # shape of tensor 't' is [2, 2, 3]
-// rank(t) ==> 3
-// ```
-//
-// **Note**: The rank of a tensor is not the same as the rank of a matrix. The rank
-// of a tensor is the number of indices required to uniquely select each element
-// of the tensor. Rank is also known as "order", "degree", or "ndims."
-func Rank(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Rank",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Serializes the tree ensemble to a proto.
-//
-// Arguments:
-//	tree_ensemble_handle: Handle to the tree ensemble.
-//
-// Returns Stamp token of the tree ensemble resource.Serialized proto of the ensemble.
-func BoostedTreesSerializeEnsemble(scope *Scope, tree_ensemble_handle tf.Output) (stamp_token tf.Output, tree_ensemble_serialized tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesSerializeEnsemble",
-		Input: []tf.Input{
-			tree_ensemble_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // Aggregates the summary of accumulated stats for the batch.
@@ -8617,46 +8568,23 @@ func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes [
 	return op.Output(0)
 }
 
-// Deserialize bucket boundaries and ready flag into current QuantileAccumulator.
-//
-// An op that deserializes bucket boundaries and are boundaries ready flag into current QuantileAccumulator.
+// Creates a dataset that emits the records from one or more TFRecord files.
 //
 // Arguments:
-//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
-//	bucket_boundaries: float; List of Rank 1 Tensors each containing the bucket boundaries for a feature.
-//
-// Returns the created operation.
-func BoostedTreesQuantileStreamResourceDeserialize(scope *Scope, quantile_stream_resource_handle tf.Output, bucket_boundaries []tf.Output) (o *tf.Operation) {
+//	filenames: A scalar or vector containing the name(s) of the file(s) to be
+// read.
+//	compression_type: A scalar containing either (i) the empty string (no
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+//	buffer_size: A scalar representing the number of bytes to buffer. A value of
+// 0 means no buffering will be performed.
+func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
-		Type: "BoostedTreesQuantileStreamResourceDeserialize",
+		Type: "TFRecordDataset",
 		Input: []tf.Input{
-			quantile_stream_resource_handle, tf.OutputList(bucket_boundaries),
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Computes the determinant of one or more square matrices.
-//
-// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices. The output is a tensor containing the determinants
-// for all input submatrices `[..., :, :]`.
-//
-// Arguments:
-//	input: Shape is `[..., M, M]`.
-//
-// Returns Shape is `[...]`.
-func MatrixDeterminant(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixDeterminant",
-		Input: []tf.Input{
-			input,
+			filenames, compression_type, buffer_size,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -9433,6 +9361,32 @@ func MaxPoolGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, grad
 		Type: "MaxPoolGrad",
 		Input: []tf.Input{
 			orig_input, orig_output, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that contains `rate` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	rate: A scalar representing the sample rate of elements from the `input_dataset`
+// that should be taken.
+//	seed: A scalar representing seed of random number generator.
+//	seed2: A scalar representing seed2 of random number generator.
+//
+//
+func SamplingDataset(scope *Scope, input_dataset tf.Output, rate tf.Output, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SamplingDataset",
+		Input: []tf.Input{
+			input_dataset, rate, seed, seed2,
 		},
 		Attrs: attrs,
 	}
@@ -11109,7 +11063,7 @@ func LoadTPUEmbeddingStochasticGradientDescentParameters(scope *Scope, parameter
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
 // ```
-// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+// [[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
@@ -15918,6 +15872,107 @@ func ExperimentalSlidingWindowDataset(scope *Scope, input_dataset tf.Output, win
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Returns the rank of a tensor.
+//
+// This operation returns an integer representing the rank of `input`.
+//
+// For example:
+//
+// ```
+// # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+// # shape of tensor 't' is [2, 2, 3]
+// rank(t) ==> 3
+// ```
+//
+// **Note**: The rank of a tensor is not the same as the rank of a matrix. The rank
+// of a tensor is the number of indices required to uniquely select each element
+// of the tensor. Rank is also known as "order", "degree", or "ndims."
+func Rank(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Rank",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Serializes the tree ensemble to a proto.
+//
+// Arguments:
+//	tree_ensemble_handle: Handle to the tree ensemble.
+//
+// Returns Stamp token of the tree ensemble resource.Serialized proto of the ensemble.
+func BoostedTreesSerializeEnsemble(scope *Scope, tree_ensemble_handle tf.Output) (stamp_token tf.Output, tree_ensemble_serialized tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesSerializeEnsemble",
+		Input: []tf.Input{
+			tree_ensemble_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// ResourceApplyFtrlAttr is an optional argument to ResourceApplyFtrl.
+type ResourceApplyFtrlAttr func(optionalAttr)
+
+// ResourceApplyFtrlUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var and accum tensors will be protected
+// by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyFtrlUseLocking(value bool) ResourceApplyFtrlAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' according to the Ftrl-proximal scheme.
+//
+// accum_new = accum + grad * grad
+// linear += grad - (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+// quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+// var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+// accum = accum_new
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	accum: Should be from a Variable().
+//	linear: Should be from a Variable().
+//	grad: The gradient.
+//	lr: Scaling factor. Must be a scalar.
+//	l1: L1 regulariation. Must be a scalar.
+//	l2: L2 regulariation. Must be a scalar.
+//	lr_power: Scaling factor. Must be a scalar.
+//
+// Returns the created operation.
+func ResourceApplyFtrl(scope *Scope, var_ tf.Output, accum tf.Output, linear tf.Output, grad tf.Output, lr tf.Output, l1 tf.Output, l2 tf.Output, lr_power tf.Output, optional ...ResourceApplyFtrlAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyFtrl",
+		Input: []tf.Input{
+			var_, accum, linear, grad, lr, l1, l2, lr_power,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Adds two `SparseTensor` objects to produce another `SparseTensor`.
@@ -25271,58 +25326,6 @@ func ResizeArea(scope *Scope, images tf.Output, size tf.Output, optional ...Resi
 	return op.Output(0)
 }
 
-// ResourceApplyFtrlAttr is an optional argument to ResourceApplyFtrl.
-type ResourceApplyFtrlAttr func(optionalAttr)
-
-// ResourceApplyFtrlUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var and accum tensors will be protected
-// by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyFtrlUseLocking(value bool) ResourceApplyFtrlAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' according to the Ftrl-proximal scheme.
-//
-// accum_new = accum + grad * grad
-// linear += grad - (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
-// quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
-// var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
-// accum = accum_new
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	accum: Should be from a Variable().
-//	linear: Should be from a Variable().
-//	grad: The gradient.
-//	lr: Scaling factor. Must be a scalar.
-//	l1: L1 regulariation. Must be a scalar.
-//	l2: L2 regulariation. Must be a scalar.
-//	lr_power: Scaling factor. Must be a scalar.
-//
-// Returns the created operation.
-func ResourceApplyFtrl(scope *Scope, var_ tf.Output, accum tf.Output, linear tf.Output, grad tf.Output, lr tf.Output, l1 tf.Output, l2 tf.Output, lr_power tf.Output, optional ...ResourceApplyFtrlAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyFtrl",
-		Input: []tf.Input{
-			var_, accum, linear, grad, lr, l1, l2, lr_power,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Outputs the single element from the given dataset.
 //
 // Arguments:
@@ -28859,6 +28862,52 @@ func Div(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Deserialize bucket boundaries and ready flag into current QuantileAccumulator.
+//
+// An op that deserializes bucket boundaries and are boundaries ready flag into current QuantileAccumulator.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
+//	bucket_boundaries: float; List of Rank 1 Tensors each containing the bucket boundaries for a feature.
+//
+// Returns the created operation.
+func BoostedTreesQuantileStreamResourceDeserialize(scope *Scope, quantile_stream_resource_handle tf.Output, bucket_boundaries []tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceDeserialize",
+		Input: []tf.Input{
+			quantile_stream_resource_handle, tf.OutputList(bucket_boundaries),
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Computes the determinant of one or more square matrices.
+//
+// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. The output is a tensor containing the determinants
+// for all input submatrices `[..., :, :]`.
+//
+// Arguments:
+//	input: Shape is `[..., M, M]`.
+//
+// Returns Shape is `[...]`.
+func MatrixDeterminant(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixDeterminant",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug.
 type RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr func(optionalAttr)
 
@@ -30091,6 +30140,14 @@ func EnqueueTPUEmbeddingSparseTensorBatchDeviceOrdinal(value int64) EnqueueTPUEm
 func EnqueueTPUEmbeddingSparseTensorBatchCombiners(value []string) EnqueueTPUEmbeddingSparseTensorBatchAttr {
 	return func(m optionalAttr) {
 		m["combiners"] = value
+	}
+}
+
+// EnqueueTPUEmbeddingSparseTensorBatchMaxSequenceLengths sets the optional max_sequence_lengths attribute to value.
+// If not specified, defaults to <>
+func EnqueueTPUEmbeddingSparseTensorBatchMaxSequenceLengths(value []int64) EnqueueTPUEmbeddingSparseTensorBatchAttr {
+	return func(m optionalAttr) {
+		m["max_sequence_lengths"] = value
 	}
 }
 
@@ -38022,6 +38079,18 @@ func CombinedNonMaxSuppressionPadPerClass(value bool) CombinedNonMaxSuppressionA
 	}
 }
 
+// CombinedNonMaxSuppressionClipBoxes sets the optional clip_boxes attribute to value.
+//
+// value: If true, assume the box coordinates are between [0, 1] and clip the output boxes
+// if they fall beyond [0, 1]. If false, do not do clipping and output the box
+// coordinates as it is.
+// If not specified, defaults to true
+func CombinedNonMaxSuppressionClipBoxes(value bool) CombinedNonMaxSuppressionAttr {
+	return func(m optionalAttr) {
+		m["clip_boxes"] = value
+	}
+}
+
 // Greedily selects a subset of bounding boxes in descending order of score,
 //
 // This operation performs non_max_suppression on the inputs per batch, across
@@ -38746,7 +38815,7 @@ func ExperimentalStatsAggregatorHandle(scope *Scope, optional ...ExperimentalSta
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
 // ```
-// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+// [[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and
@@ -39787,29 +39856,6 @@ func ShuffleDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output
 			input_dataset, buffer_size, seed, seed2,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset that emits the records from one or more TFRecord files.
-//
-// Arguments:
-//	filenames: A scalar or vector containing the name(s) of the file(s) to be
-// read.
-//	compression_type: A scalar containing either (i) the empty string (no
-// compression), (ii) "ZLIB", or (iii) "GZIP".
-//	buffer_size: A scalar representing the number of bytes to buffer. A value of
-// 0 means no buffering will be performed.
-func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TFRecordDataset",
-		Input: []tf.Input{
-			filenames, compression_type, buffer_size,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

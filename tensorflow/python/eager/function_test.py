@@ -40,6 +40,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -64,6 +65,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -98,6 +100,17 @@ class DefunnedMiniModel(MiniModel):
   @function.defun
   def call(self, inputs, training=True):
     return super(DefunnedMiniModel, self).call(inputs, training=training)
+
+
+def _example_indexed_slices_with_dense_shape():
+  return ops.IndexedSlices(
+      constant_op.constant([1, 2]), constant_op.constant([0, 1]),
+      constant_op.constant([2]))
+
+
+def _example_indexed_slices_without_dense_shape():
+  return ops.IndexedSlices(
+      constant_op.constant([1, 2]), constant_op.constant([0, 1]))
 
 
 class FunctionTest(test.TestCase, parameterized.TestCase):
@@ -913,60 +926,64 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
 
-  def testReturningIndexedSlicesWithDefun(self):
+  @parameterized.parameters([
+      (_example_indexed_slices_with_dense_shape,),
+      (_example_indexed_slices_without_dense_shape,),
+      (ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
+      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
+      (sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+  ])  # pyformat: disable
+  def testReturnCompositeTensorWithDefun(self,
+                                         factory_fn,
+                                         factory_kwargs={},
+                                         input_signature=None):
+    input_ct = factory_fn(**factory_kwargs)
 
-    def validate(indexed_slice):
-      @def_function.function
-      def f():
-        return indexed_slice
+    @def_function.function(input_signature=input_signature)
+    def f():
+      return input_ct
 
-      output = f()
-      self.assertIsInstance(output, ops.IndexedSlices)
-      self.assertAllEqual(indexed_slice.values, output.values)
-      self.assertAllEqual(indexed_slice.indices, output.indices)
-      self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
+    output_ct = f()
+    self.assertIsInstance(output_ct, type(input_ct))
+    nest.assert_same_structure(input_ct, output_ct, expand_composites=True)
 
-      self.assertEqual(
-          f.get_concrete_function().output_shapes,
-          indexed_slice.values.shape)
+    input_flat = nest.flatten(input_ct, expand_composites=True)
+    output_flat = nest.flatten(output_ct, expand_composites=True)
+    for (input_component, output_component) in zip(input_flat, output_flat):
+      self.assertAllEqual(input_component, output_component)
 
-    arg = ops.IndexedSlices(
-        values=constant_op.constant([1, 2]),
-        indices=constant_op.constant([0, 1]),
-        dense_shape=constant_op.constant([2]))
-    validate(arg)
+  @parameterized.parameters([
+      (_example_indexed_slices_with_dense_shape,),
+      (_example_indexed_slices_without_dense_shape,),
+      (ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
+      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
+      (sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+  ])  # pyformat: disable
+  def testCompositeAsArgumentTensorWithDefun(self,
+                                             factory_fn,
+                                             factory_kwargs={},
+                                             input_signature=None):
+    input_ct = factory_fn(**factory_kwargs)
 
-    arg = ops.IndexedSlices(
-        values=constant_op.constant([1, 2]),
-        indices=constant_op.constant([0, 1]),
-        dense_shape=None)
-    validate(arg)
+    @def_function.function(input_signature=input_signature)
+    def f(x):
+      return x
 
-  def testIndexedSliceAsArgumentWithDefun(self):
+    output_ct = f(input_ct)
+    self.assertIsInstance(output_ct, type(input_ct))
+    nest.assert_same_structure(input_ct, output_ct, expand_composites=True)
 
-    @def_function.function
-    def f(indexed_slice):
-      return indexed_slice
+    input_flat = nest.flatten(input_ct, expand_composites=True)
+    output_flat = nest.flatten(output_ct, expand_composites=True)
+    for (input_component, output_component) in zip(input_flat, output_flat):
+      self.assertAllEqual(input_component, output_component)
 
-    def validate(arg):
-      output = f(arg)
-      self.assertIsInstance(output, ops.IndexedSlices)
-      self.assertAllEqual(arg.values, output.values)
-      self.assertAllEqual(arg.indices, output.indices)
-      self.assertAllEqual(arg.dense_shape, output.dense_shape)
-
-    indexed_slice = ops.IndexedSlices(
-        values=constant_op.constant([1]),
-        indices=constant_op.constant([0]),
-        dense_shape=constant_op.constant([1]))
-    validate(indexed_slice)
-
-    # Test that `f` works even when `dense_shape` is None.
-    indexed_slice = ops.IndexedSlices(
-        values=constant_op.constant([1]),
-        indices=constant_op.constant([0]),
-        dense_shape=None)
-    validate(indexed_slice)
 
   @test_util.run_gpu_only
   def testFunctionOnDevice(self):

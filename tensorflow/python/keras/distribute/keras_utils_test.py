@@ -92,7 +92,8 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
         validation_steps=validation_steps,
         callbacks=[counter])
 
-    if isinstance(distribution, tpu_strategy.TPUStrategy):
+    if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                 tpu_strategy.TPUStrategyV1)):
       # TPU Strategy can have multi step training, from extended.steps_per_run
       # if steps_per_run = 1, then num_batch_call_per_epoch = steps_per_epoch
       steps_per_run = distribution.extended.steps_per_run
@@ -481,7 +482,8 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       keras_test_lib.all_strategy_combinations_minus_default())
   def test_save_load_trackable(self, distribution):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
-    if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+    if (isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                  tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       self.skipTest('MultiStep TPU Strategy deadlocks with optimizer restore.')
     with self.cached_session():

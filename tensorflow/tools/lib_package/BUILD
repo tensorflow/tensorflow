@@ -55,7 +55,7 @@ pkg_tar(
     srcs = ["//tensorflow:tensorflow_framework"],
     symlinks = {
         "libtensorflow_framework.so": "libtensorflow_framework.so.%s" % VERSION_MAJOR,
-        "libtensorflow_framework.so.%s" % VERSION_MAJOR: "libtensorflow.so_framework.%s" % VERSION,
+        "libtensorflow_framework.so.%s" % VERSION_MAJOR: "libtensorflow_framework.so.%s" % VERSION,
     },
     tags = ["manual"],
 )
@@ -93,8 +93,8 @@ pkg_tar(
     srcs = ["//tensorflow"],
     package_dir = "lib",
     symlinks = {
-        "lib/libtensorflow.so": "lib/libtensorflow.so.%s" % VERSION_MAJOR,
-        "lib/libtensorflow.so.%s" % VERSION_MAJOR: "lib/libtensorflow.so.%s" % VERSION,
+        "lib/libtensorflow.so": "libtensorflow.so.%s" % VERSION_MAJOR,
+        "lib/libtensorflow.so.%s" % VERSION_MAJOR: "libtensorflow.so.%s" % VERSION,
     },
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352

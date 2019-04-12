@@ -618,7 +618,7 @@ tf_module {
   }
   member_method {
     name: "CombinedNonMaxSuppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "CompareAndBitpack"
@@ -1026,7 +1026,7 @@ tf_module {
   }
   member_method {
     name: "EnqueueTPUEmbeddingSparseTensorBatch"
-    argspec: "args=[\'sample_indices\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'max_sequence_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnsureShape"
@@ -3193,6 +3193,10 @@ tf_module {
     argspec: "args=[\'image_size\', \'bounding_boxes\', \'min_object_covered\', \'seed\', \'seed2\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'[0.75, 1.33]\', \'[0.05, 1]\', \'100\', \'False\', \'None\'], "
   }
   member_method {
+    name: "SamplingDataset"
+    argspec: "args=[\'input_dataset\', \'rate\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Save"
     argspec: "args=[\'filename\', \'tensor_names\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4395,6 +4399,10 @@ tf_module {
   member_method {
     name: "WriteImageSummary"
     argspec: "args=[\'writer\', \'step\', \'tag\', \'tensor\', \'bad_color\', \'max_images\', \'name\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
+  }
+  member_method {
+    name: "WriteRawProtoSummary"
+    argspec: "args=[\'writer\', \'step\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "WriteScalarSummary"

@@ -778,7 +778,6 @@ cc_library(
     srcs = ["fused_eigen_output_kernels.cc"],
     hdrs = ["fused_eigen_output_kernels.h"],
     deps = [
-        ":eigen_contraction_kernel",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",

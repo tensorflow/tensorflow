@@ -250,7 +250,11 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                          filter_shape.dim(1).size() != 1 &&  //
                          filter_shape.dim(2).size() != 1;
 
-  return is_spatial_conv && IsGpuCompatibleConv2D(matched.contraction);
+  // We rely on cuDNN for fused convolution, and it currently supports only Relu
+  // activation.
+  bool is_relu = IsRelu(*matched.activation);
+
+  return is_relu && is_spatial_conv && IsGpuCompatibleConv2D(matched.contraction);
 }
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAdd& matched) {
@@ -881,20 +885,28 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   // and Activation nodes that were fused into a Conv2D node.
   absl::flat_hash_set<const NodeDef*> invalidated_nodes;
 
+  // _FusedMatMul and _FusedConv2D kernels do not have registered gradient
+  // function, so we must not perform rewrite if the graph will be
+  // differentiated later.
+  bool allow_non_differentiable_rewrites =
+      item.optimization_options().allow_non_differentiable_rewrites;
+
   optimized_graph->mutable_node()->Reserve(topo_sorted_item.graph.node_size());
   for (const NodeDef& node : topo_sorted_item.graph.node()) {
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
 
     // Remap {Conv2D,MatMul}+BiasAdd into the _Fused{Conv2D,MatMul}
-    if (FindContractionWithBias(ctx, &node, &contract_with_bias)) {
+    if (allow_non_differentiable_rewrites &&
+        FindContractionWithBias(ctx, &node, &contract_with_bias)) {
       AddFusedContractionNode(ctx, contract_with_bias, optimized_graph,
                               &invalidated_nodes);
       continue;
     }
 
     // Remap {Conv2D,MatMul}+BiasAdd+Activation into the _Fused{Conv2D,MatMul}.
-    if (FindContractionWithBiasAndActivation(
+    if (allow_non_differentiable_rewrites &&
+        FindContractionWithBiasAndActivation(
             ctx, &node, &contract_with_bias_and_activation)) {
       AddFusedContractionNode(ctx, contract_with_bias_and_activation,
                               optimized_graph, &invalidated_nodes);
@@ -909,7 +921,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
 // Remove this once TF-MKL supports _FusedConv2D with these operations.
 #ifndef INTEL_MKL
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
-    if (FindConv2DWithSqueezeAndBias(ctx, &node,
+    if (allow_non_differentiable_rewrites &&
+        FindConv2DWithSqueezeAndBias(ctx, &node,
                                      &contract_with_squeeze_and_bias)) {
       AddFusedConv2DNode(ctx, contract_with_squeeze_and_bias, optimized_graph,
                          &invalidated_nodes);
@@ -917,14 +930,16 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     }
 
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
-    if (FindConv2DWithBatchNorm(ctx, &node, &contract_with_batch_norm)) {
+    if (allow_non_differentiable_rewrites &&
+        FindConv2DWithBatchNorm(ctx, &node, &contract_with_batch_norm)) {
       AddFusedConv2DNode(contract_with_batch_norm, optimized_graph,
                          &invalidated_nodes);
       continue;
     }
 
     // Remap Conv2D+FusedBatchNorm+Activation into the _FusedConv2D;
-    if (FindConv2DWithBatchNormAndActivation(
+    if (allow_non_differentiable_rewrites &&
+        FindConv2DWithBatchNormAndActivation(
             ctx, &node, &contract_with_batch_norm_and_activation)) {
       AddFusedConv2DNode(contract_with_batch_norm_and_activation,
                          optimized_graph, &invalidated_nodes);

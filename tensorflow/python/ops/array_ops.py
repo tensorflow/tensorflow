@@ -2006,7 +2006,7 @@ def ones_like_v2(
   """Creates a tensor with all elements set to zero.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
-  same type and shape as `tensor` with all elements set to zero. Optionally,
+  same type and shape as `tensor` with all elements set to 1. Optionally,
   you can use `dtype` to specify a new type for the returned tensor.
 
   For example:

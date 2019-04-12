@@ -1332,6 +1332,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     del root
     self.assertIsNone(weak_v2())
 
+  def test_variable_attributes_preserved(self, cycles):
+    v = variables.Variable(
+        1.,
+        trainable=False,
+        synchronization=variables.VariableSynchronization.NONE,
+        aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.assertEqual(variables.VariableSynchronization.NONE,
+                     v.synchronization)
+    self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                     v.aggregation)
+    root = util.Checkpoint(v=v)
+    root = self.cycle(root, cycles)
+    self.assertEqual(False, root.v.trainable)
+    self.assertEqual(variables.VariableSynchronization.NONE,
+                     root.v.synchronization)
+    self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                     root.v.aggregation)
+
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
