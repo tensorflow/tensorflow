@@ -6277,7 +6277,8 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
+# (TODO: b/130419137)
+tf_py_test(
     name = "auto_mixed_precision_test",
     size = "small",
     srcs = [
