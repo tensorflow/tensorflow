@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/local_device.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -33,6 +32,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
+ public:
+  explicit EigenThreadPoolWrapper(thread::ThreadPool* pool) : pool_(pool) {}
+  ~EigenThreadPoolWrapper() override {}
+
+  void Schedule(std::function<void()> fn) override {
+    pool_->Schedule(std::move(fn));
+  }
+  int NumThreads() const override { return pool_->NumThreads(); }
+  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
+
+ private:
+  thread::ThreadPool* pool_ = nullptr;
+};
 
 bool OverrideGlobalThreadPoolFromEnvironment() {
   static const bool override_global_threadpool = [] {
