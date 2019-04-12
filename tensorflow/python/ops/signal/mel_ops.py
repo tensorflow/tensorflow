@@ -141,9 +141,9 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
     A `Tensor` of shape `[num_spectrogram_bins, num_mel_bins]`.
 
   Raises:
-    ValueError: If num_mel_bins/num_spectrogram_bins/sample_rate are not
-      positive, lower_edge_hertz is negative, frequency edges are incorrectly
-      ordered, or upper_edge_hertz is larger than the Nyquist frequency.
+    ValueError: If `num_mel_bins`/`num_spectrogram_bins`/`sample_rate` are not
+      positive, `lower_edge_hertz` is negative, frequency edges are incorrectly
+      ordered, or `upper_edge_hertz` is larger than the Nyquist frequency.
 
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
