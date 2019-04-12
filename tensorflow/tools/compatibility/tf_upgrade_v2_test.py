@@ -1698,11 +1698,19 @@ def _log_prob(self, x):
        "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"],
       ["tf.string_split('test', ' ', skip_empty=False)",
        "tf.strings.split(input='test', sep=' ').to_sparse()"],
-      # Split behavior for sep='' changed:
+      # Split behavior for sep=None changed.  (In particular, it now splits on
+      # all whitespace, not just the space character)
       ["tf.string_split(x)",
        "tf.compat.v1.string_split(source=x)"],
+      # Split behavior for sep='' changed:
       ["tf.string_split(x, '')",
-       "tf.compat.v1.string_split(source=x, sep='')"],
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, sep='')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, delimiter='')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, '', result_type='RaggedTensor')",
+       "tf.strings.bytes_split(input=x)"],
       # If sep is a variable, we can't tell if it's empty:
       ["tf.string_split(x, sep)",
        "tf.compat.v1.string_split(source=x, sep=sep)"],

@@ -1073,6 +1073,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "string_bytes_split_op_test",
+    size = "small",
+    srcs = ["string_bytes_split_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
+    ],
+)
+
+tf_py_test(
     name = "string_length_op_test",
     size = "small",
     srcs = ["string_length_op_test.py"],

@@ -2566,6 +2566,10 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
 
 def _rename_to_compat_v1(node, full_name, logs, reason):
   new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
+  return _rename_func(node, full_name, new_name, logs, reason)
+
+
+def _rename_func(node, full_name, new_name, logs, reason):
   logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                "Renamed %r to %r: %s" % (full_name, new_name, reason)))
   new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
@@ -2589,18 +2593,30 @@ def _string_split_transformer(parent, node, full_name, name, logs):
             node, full_name, logs, "tf.string_split's replacement no longer "
             "takes the skip_empty argument.")
 
-  # Check the sep parameter: if it might be an empty string, then use compat.v1.
-  sep_is_nonempty_string = False
+  # Check the sep parameter: if it's definitely an empty string, use
+  # tf.strings.bytes_split().  If we can't tell, then use compat.v1.
+  found_sep = False
   for i, kw in enumerate(node.keywords):
-    if ((kw.arg == "sep" or kw.arg == "delimiter") and
-        isinstance(kw.value, ast.Str) and kw.value.s != ""):
-      sep_is_nonempty_string = True
-  if not sep_is_nonempty_string:
+    if kw.arg == "sep":
+      found_sep = True
+      if isinstance(kw.value, ast.Str):
+        if kw.value.s == "":
+          node = _rename_func(
+              node, full_name, "tf.strings.bytes_split", logs,
+              "Splitting bytes is not handled by tf.strings.bytes_split().")
+          node.keywords.pop(i)
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs,
+            "The semantics for tf.string_split's sep parameter have changed "
+            "when sep is the empty string; but sep is not a string literal, "
+            "so we can't tell if it's an empty string.")
+  if not found_sep:
     return _rename_to_compat_v1(
         node, full_name, logs,
-        "The semantics for tf.string_split's sep parameter have changed when "
-        "sep is the empty string.")
-
+        "The semantics for tf.string_split's sep parameter have changed "
+        "when sep unspecified: it now splits on all whitespace, not just "
+        "the space character.")
   # Check the result_type parameter
   return _string_split_rtype_transformer(parent, node, full_name, name, logs)
 
