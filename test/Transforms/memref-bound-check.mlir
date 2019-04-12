@@ -16,7 +16,7 @@ func @test() {
       %idx0 = affine.apply (d0, d1) -> (d0)(%i, %j)
       %idx1 = affine.apply (d0, d1) -> (d1)(%i, %j)
       // Out of bound access.
-      %x  = load %A[%idx0, %idx1] : memref<9 x 9 x i32>  
+      %x  = load %A[%idx0, %idx1] : memref<9 x 9 x i32>
       // expected-error@-1 {{'std.load' op memref out of upper bound access along dimension #1}}
       // expected-error@-2 {{'std.load' op memref out of lower bound access along dimension #1}}
       // expected-error@-3 {{'std.load' op memref out of upper bound access along dimension #2}}
@@ -56,7 +56,6 @@ func @test_mod_floordiv_ceildiv() {
       %idy1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4)(%i, %j, %j)
       %idy2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4 - 1)(%i, %j, %j)
       store %x, %A[%idy0, %idy1, %idy2] : memref<128 x 64 x 64 x i32> // expected-error {{'std.store' op memref out of lower bound access along dimension #3}}
-      // CHECK-EMPTY
     } // CHECK }
   } // CHECK }
   return
