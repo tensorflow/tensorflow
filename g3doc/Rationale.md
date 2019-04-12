@@ -203,34 +203,6 @@ and described in
 interest
 [starts here](https://www.google.com/url?q=https://youtu.be/Ntj8ab-5cvE?t%3D596&sa=D&ust=1529450150971000&usg=AFQjCNFQHEWL7m8q3eO-1DiKw9zqC2v24Q).
 
-### Signless types
-
-Integers in the MLIR type system have a bitwidth (note that the `int` type is a
-symbolic width equal to the machine word size), but they do not have an
-intrinsic sign. This means that the operation set has instructions like `add`
-and `mul` which do two's complement arithmetic, but some other operations get a
-sign, e.g. `sdiv` vs `udiv` (exact names TBD).
-
-LLVM uses the [same design](http://llvm.org/docs/LangRef.html#integer-type),
-which was introduced in a revamp rolled out
-[in the LLVM 2.0 integer type](http://releases.llvm.org/2.0/docs/LangRef.html#t_derived).
-Prior to that, from
-[LLVM 1.0](http://releases.llvm.org/1.0/docs/LangRef.html#t_classifications) to
-[1.9](http://releases.llvm.org/1.9/docs/LangRef.html#t_classifications), LLVM
-uses signed types like "sbyte" and "ubyte". This shift was important and has
-served LLVM well over the years. The reason this is important is that it is a
-good thing for an intermediate representation to represent the same computation
-with the same instruction. Signed types got in the way, because (e.g.) an "add
-of an sbyte" does the same computation as an "add of a ubyte", but the type
-system made them look artificially different. This split also required casts
-like "cast from sbyte to ubyte" which do nothing at the machine level. Removing
-signs from the type system eliminated these problems, making the compiler
-simpler.
-
-More information about this split is available in an old
-[talk on youtube](https://www.youtube.com/watch?v=VeRaLPupGks) talking about
-LLVM 2.0.
-
 ### Index type disallowed in vector/tensor/memref types
 
 Index types are not allowed as elements of `vector`, `tensor` or `memref` type.
@@ -273,19 +245,50 @@ introduced.
 The bit width is not defined for dialect-specific types at MLIR level. Dialects
 are free to define their own quantities for type sizes.
 
+### Signless types
+
+Integers in the builtin MLIR type system have a bitwidth (note that the `index`
+type has a symbolic width equal to the machine word size), but they do not have
+an intrinsic sign. This means that the "standard ops" operation set has things
+like `addi` and `muli` which do two's complement arithmetic, but some other
+operations get a sign, e.g. `divis` vs `diviu`.
+
+LLVM uses the [same design](http://llvm.org/docs/LangRef.html#integer-type),
+which was introduced in a revamp rolled out
+[in the LLVM 2.0 integer type](http://releases.llvm.org/2.0/docs/LangRef.html#t_derived).
+Prior to that, from
+[LLVM 1.0](http://releases.llvm.org/1.0/docs/LangRef.html#t_classifications) to
+[1.9](http://releases.llvm.org/1.9/docs/LangRef.html#t_classifications), LLVM
+uses signed types like "sbyte" and "ubyte". This shift was important and has
+served LLVM well over the years. The reason this is important is that it is a
+good thing for an intermediate representation to represent the same computation
+with the same instruction. Signed types got in the way, because (e.g.) an "add
+of an sbyte" does the same computation as an "add of a ubyte", but the type
+system made them look artificially different. This split also required casts
+like "cast from sbyte to ubyte" which do nothing at the machine level. Removing
+signs from the type system eliminated these problems, making the compiler
+simpler.
+
+More information about this split is available in an old
+[talk on youtube](https://www.youtube.com/watch?v=VeRaLPupGks) talking about
+LLVM 2.0.
+
+Note that this rationale only applies to the "standard ops" dialect in which we
+can express an opinion about its design. Other dialects generally try to model
+an external system, and should aim to reflect its design as closely as possible.
+
 ### Splitting floating point vs integer operations
 
-The MLIR operation set is likely to
-[follow LLVM](http://llvm.org/docs/LangRef.html#binary-operations) and split
-many integer and floating point operations into different categories, for
-example `addf` vs `addi` and `cmpf` vs `cmpi` (exact names TBD). These
-instructions _are_ polymorphic on the number of elements in the type though, for
-example `addf` is used with scalar floats, vectors of floats, and tensors of
-floats (LLVM does the same thing with its scalar/vector types).
+The MLIR "standard" operation set splits many integer and floating point
+operations into different categories, for example `addf` vs `addi` and `cmpf` vs
+`cmpi`
+([following the design of LLVM](http://llvm.org/docs/LangRef.html#binary-operations)).
+These instructions _are_ polymorphic on the number of elements in the type
+though, for example `addf` is used with scalar floats, vectors of floats, and
+tensors of floats (LLVM does the same thing with its scalar/vector types).
 
-This split is important because floating point and integer operations are
-actually quite different in practice: for example, floating point values include
-NaN's, so
+This split is important because floating point and integer operations are quite
+different in practice: for example, floating point values include NaN's, so
 [integer comparisons](http://llvm.org/docs/LangRef.html#icmp-instruction) and
 [floating point comparisons](http://llvm.org/docs/LangRef.html#fcmp-instruction)
 should use different comparison opcodes. On the arithmetic side of things,
@@ -298,6 +301,10 @@ for performance.
 We are a long way from this sort of thing being a priority to care about in
 MLIR, but since we have experience and know the right way to do this, we'd
 rather design it in from the beginning.
+
+Note that this rationale only applies to the "standard ops" dialect in which we
+can express an opinion about its design. Other dialects generally try to model
+an external system, and should aim to reflect its design as closely as possible.
 
 ### Specifying sign in integer comparison operations
 
@@ -925,7 +932,7 @@ arguments and a yield like terminator in for/if instructions.
 
 The abandoned design of supporting escaping scalars is as follows:
 
-#### For Instruction
+#### affine.for Instruction
 
 Syntax:
 
@@ -955,7 +962,7 @@ func int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
 }
 ```
 
-#### If/else Instruction
+#### affine.if/else Instruction
 
 Syntax:
 
@@ -1007,11 +1014,15 @@ any function share a use list. This means that optimizing multiple functions in
 parallel won't work (at least without some sort of synchronization on the use
 lists, which would be unbearably inefficient).
 
-While this is over the planning horizon for MLIR, we definitely want to support
-multithreaded compilation. We do this through a couple of features: first MLIR
-makes use of extensive uniqued immutable data structures (affine expressions,
-types, etc are all immutable, uniqued, and immortal). Second, constants are
-uniqued to per-function pools, instead of being globally uniqued. Third,
+MLIR now supports a multithreaded pass manager. We do this through several
+design choices:
+
+1) MLIR makes use of extensive uniqued immutable data structures (affine
+expressions, types, etc are all immutable, uniqued, and immortal). 2) constants
+are defined in per-function pools, instead of being globally uniqued. 3)
 functions themselves are not SSA values either, so they don't have the same
-problem as constants. We believe that this will set MLIR up well for the day
-that we want to do efficient multithreaded compilation and code generation.
+problem as constants. 4) FunctionPasses are copied (through their copy ctor)
+into one instances per thread, avoiding sharing of local state across threads.
+
+This allows MLIR function passes to support efficient multithreaded compilation
+and code generation.
