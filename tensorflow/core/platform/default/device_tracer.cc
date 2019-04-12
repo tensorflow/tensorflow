@@ -18,11 +18,13 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include <stdlib.h>
+
 #include <memory>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "cuda/extras/CUPTI/include/cupti.h"
@@ -65,6 +67,15 @@ void LogIfError(const Status& status) {
     return;
   }
   LOG(ERROR) << status.error_message();
+}
+
+bool IsAscii(string& str) {
+  for (auto& ch : str) {
+    if (!absl::ascii_isascii(ch)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 struct KernelRecord {
@@ -600,8 +611,14 @@ class CudaEventCollector {
     auto elapsed_us = GetElasedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
-    std::string node_name =
-        record.annotation ? *record.annotation : record.kernel_name;
+    std::string node_name = record.kernel_name;
+    // Sometimes CUPTI returns invalid characters. See b/129892466.
+    if (!IsAscii(node_name)) {
+      node_name = "<invalid_name>";
+    }
+    if (record.annotation) {
+      node_name = absl::StrCat(*record.annotation, "::", node_name);
+    }
     stats->set_node_name(node_name);
     // TODO(csigg): Report grid size?
     std::string node_label;
@@ -624,6 +641,10 @@ class CudaEventCollector {
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = GetMemcpyName(record);
+    // Sometimes CUPTI returns invalid characters. See b/129892466.
+    if (!IsAscii(node_name)) {
+      node_name = "<invalid_name>";
+    }
     if (record.annotation) {
       node_name = absl::StrCat(*record.annotation, "::", node_name);
     }
