@@ -32,7 +32,8 @@ class Adam(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adam algorithm.
 
   Adam optimization is a stochastic gradient descent method that is based on
-  adaptive estimation of first-order and second-order moments. According to the paper 
+  adaptive estimation of first-order and second-order moments.
+  According to the paper 
   [Adam: A Method for Stochastic Optimization. Kingma et al., 2014](http://arxiv.org/abs/1412.6980),
    the method is "*computationally efficient, has little memory
   requirement, invariant to diagonal rescaling of gradients, and is well suited
