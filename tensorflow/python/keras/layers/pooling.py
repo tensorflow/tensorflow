@@ -156,7 +156,11 @@ class AveragePooling1D(Pooling1D):
   """Average pooling for temporal data.
 
   Arguments:
+<<<<<<< HEAD
     pool_size: Integer, size of the max pooling windows.
+=======
+    pool_size: Integer, size of the avg pooling windows.
+>>>>>>> 4b5b448... Modified average pooling
     strides: Integer, or None. Factor by which to downscale.
       E.g. 2 will halve the input.
       If None, it will default to `pool_size`.
