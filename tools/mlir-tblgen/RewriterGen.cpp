@@ -21,6 +21,7 @@
 
 #include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/Attribute.h"
+#include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
 #include "mlir/TableGen/Pattern.h"
@@ -29,7 +30,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
@@ -223,6 +223,11 @@ private:
   // The next unused ID for newly created values
   unsigned nextValueId;
   raw_ostream &os;
+
+  // Format contexts containing placeholder substitutations for match().
+  FmtContext matchCtx;
+  // Format contexts containing placeholder substitutations for rewrite().
+  FmtContext rewriteCtx;
 };
 } // end anonymous namespace
 
@@ -231,7 +236,10 @@ PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
     : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper),
       symbolResolver(pattern.getSourcePatternBoundArgs(),
                      pattern.getSourcePatternBoundResults()),
-      nextValueId(0), os(os) {}
+      nextValueId(0), os(os) {
+  matchCtx.withBuilder("mlir::Builder(ctx)");
+  rewriteCtx.withBuilder("rewriter");
+}
 
 std::string PatternEmitter::handleConstantAttr(Attribute attr,
                                                StringRef value) {
@@ -240,8 +248,8 @@ std::string PatternEmitter::handleConstantAttr(Attribute attr,
                              " does not have the 'constBuilderCall' field");
 
   // TODO(jpienaar): Verify the constants here
-  return formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
-                 value);
+  return tgfmt(attr.getConstBuilderTemplate(),
+               &rewriteCtx.withBuilder("rewriter"), value);
 }
 
 // Helper function to match patterns.
@@ -311,10 +319,10 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
     // Only need to verify if the matcher's type is different from the one
     // of op definition.
     if (operand->constraint != matcher.getAsConstraint()) {
+      auto self = formatv("op{0}->getOperand({1})->getType()", depth, index);
       os.indent(indent) << "if (!("
-                        << formatv(matcher.getConditionTemplate().c_str(),
-                                   formatv("op{0}->getOperand({1})->getType()",
-                                           depth, index))
+                        << tgfmt(matcher.getConditionTemplate(),
+                                 &matchCtx.withSelf(self))
                         << ")) return matchFailure();\n";
     }
   }
@@ -340,10 +348,10 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
       attr.getStorageType(), namedAttr->getName());
 
   // TODO(antiagainst): This should use getter method to avoid duplication.
-  if (attr.hasDefaultValue()) {
+  if (attr.hasDefaultValueInitializer()) {
     os.indent(indent) << "if (!attr) attr = "
-                      << formatv(attr.getDefaultValueTemplate().c_str(),
-                                 "mlir::Builder(ctx)")
+                      << tgfmt(attr.getConstBuilderTemplate(), &matchCtx,
+                               attr.getDefaultValueInitializer())
                       << ";\n";
   } else if (attr.isOptional()) {
     // For a missing attribut that is optional according to definition, we
@@ -364,7 +372,8 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
     // If a constraint is specified, we need to generate C++ statements to
     // check the constraint.
     os.indent(indent) << "if (!("
-                      << formatv(matcher.getConditionTemplate().c_str(), "attr")
+                      << tgfmt(matcher.getConditionTemplate(),
+                               &matchCtx.withSelf("attr"))
                       << ")) return matchFailure();\n";
   }
 
@@ -410,11 +419,11 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     auto cmd = "if (!{0}) return matchFailure();\n";
 
     if (isa<TypeConstraint>(constraint)) {
+      auto self = formatv("(*{0}->result_type_begin())",
+                          resolveSymbol(entities.front()));
       // TODO(jpienaar): Verify op only has one result.
-      os.indent(4) << formatv(
-          cmd,
-          formatv(condition.c_str(), "(*" + resolveSymbol(entities.front()) +
-                                         "->result_type_begin())"));
+      os.indent(4) << formatv(cmd,
+                              tgfmt(condition, &matchCtx.withSelf(self.str())));
     } else if (isa<AttrConstraint>(constraint)) {
       PrintFatalError(
           loc, "cannot use AttrConstraint in Pattern multi-entity constraints");
@@ -430,8 +439,8 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
         names.push_back(resolveSymbol(entities[i]));
       for (; i < 4; ++i)
         names.push_back("<unused>");
-      os.indent(4) << formatv(cmd, formatv(condition.c_str(), names[0],
-                                           names[1], names[2], names[3]));
+      os.indent(4) << formatv(cmd, tgfmt(condition, &matchCtx, names[0],
+                                         names[1], names[2], names[3]));
     }
   }
 
@@ -584,7 +593,8 @@ std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
     return result;
   }
   if (leaf.isAttrTransformer()) {
-    return formatv(leaf.getTransformationTemplate().c_str(), result);
+    return tgfmt(leaf.getTransformationTemplate(),
+                 &rewriteCtx.withSelf(result));
   }
   PrintFatalError(loc, "unhandled case when rewriting op");
 }
@@ -593,7 +603,7 @@ std::string PatternEmitter::handleOpArgument(DagNode tree) {
   if (!tree.isAttrTransformer()) {
     PrintFatalError(loc, "only tAttr is supported in nested dag attribute");
   }
-  auto tempStr = tree.getTransformationTemplate();
+  auto fmt = tree.getTransformationTemplate();
   // TODO(fengliuai): replace formatv arguments with the exact specified args.
   SmallVector<std::string, 8> attrs(8);
   if (tree.getNumArgs() > 8) {
@@ -603,8 +613,8 @@ std::string PatternEmitter::handleOpArgument(DagNode tree) {
   for (unsigned i = 0, e = tree.getNumArgs(); i != e; ++i) {
     attrs[i] = handleOpArgument(tree.getArgAsLeaf(i), tree.getArgName(i));
   }
-  return formatv(tempStr.c_str(), "rewriter", attrs[0], attrs[1], attrs[2],
-                 attrs[3], attrs[4], attrs[5], attrs[6], attrs[7]);
+  return tgfmt(fmt, &rewriteCtx, attrs[0], attrs[1], attrs[2], attrs[3],
+               attrs[4], attrs[5], attrs[6], attrs[7]);
 }
 
 void PatternEmitter::addSymbol(DagNode node) {

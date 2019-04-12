@@ -20,36 +20,40 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/Operator.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
 
+using llvm::CodeInit;
+using llvm::DefInit;
+using llvm::Init;
+using llvm::Record;
+using llvm::StringInit;
+
 // Returns the initializer's value as string if the given TableGen initializer
 // is a code or string initializer. Returns the empty StringRef otherwise.
-static StringRef getValueAsString(const llvm::Init *init) {
-  if (const auto *code = dyn_cast<llvm::CodeInit>(init))
+static StringRef getValueAsString(const Init *init) {
+  if (const auto *code = dyn_cast<CodeInit>(init))
     return code->getValue().trim();
-  else if (const auto *str = dyn_cast<llvm::StringInit>(init))
+  else if (const auto *str = dyn_cast<StringInit>(init))
     return str->getValue().trim();
   return {};
 }
 
-tblgen::AttrConstraint::AttrConstraint(const llvm::Record *record)
+tblgen::AttrConstraint::AttrConstraint(const Record *record)
     : Constraint(Constraint::CK_Attr, record) {
   assert(def->isSubClassOf("AttrConstraint") &&
          "must be subclass of TableGen 'AttrConstraint' class");
 }
 
-tblgen::Attribute::Attribute(const llvm::Record *record)
-    : AttrConstraint(record) {
+tblgen::Attribute::Attribute(const Record *record) : AttrConstraint(record) {
   assert(record->isSubClassOf("Attr") &&
          "must be subclass of TableGen 'Attr' class");
 }
 
-tblgen::Attribute::Attribute(const llvm::DefInit *init)
-    : Attribute(init->getDef()) {}
+tblgen::Attribute::Attribute(const DefInit *init) : Attribute(init->getDef()) {}
 
 bool tblgen::Attribute::isDerivedAttr() const {
   return def->isSubClassOf("DerivedAttr");
@@ -92,26 +96,18 @@ StringRef tblgen::Attribute::getConstBuilderTemplate() const {
   return getValueAsString(init);
 }
 
-bool tblgen::Attribute::hasDefaultValue() const {
+bool tblgen::Attribute::hasDefaultValueInitializer() const {
   const auto *init = def->getValueInit("defaultValue");
   return !getValueAsString(init).empty();
 }
 
-bool tblgen::Attribute::isOptional() const {
-  return def->getValueAsBit("isOptional");
+StringRef tblgen::Attribute::getDefaultValueInitializer() const {
+  const auto *init = def->getValueInit("defaultValue");
+  return getValueAsString(init);
 }
 
-std::string tblgen::Attribute::getDefaultValueTemplate() const {
-  assert(isConstBuildable() && "requiers constBuilderCall");
-  StringRef defaultValue = getValueAsString(def->getValueInit("defaultValue"));
-  // TODO(antiagainst): This is a temporary hack to support array initializers
-  // because '{' is the special marker for placeholders for formatv. Remove this
-  // after switching to our own formatting utility and $-placeholders.
-  bool needsEscape =
-      defaultValue.startswith("{") && !defaultValue.startswith("{{");
-
-  return llvm::formatv(getConstBuilderTemplate().str().c_str(), "{0}",
-                       needsEscape ? "{" + defaultValue : defaultValue);
+bool tblgen::Attribute::isOptional() const {
+  return def->getValueAsBit("isOptional");
 }
 
 StringRef tblgen::Attribute::getTableGenDefName() const {
@@ -123,8 +119,7 @@ StringRef tblgen::Attribute::getDerivedCodeBody() const {
   return def->getValueAsString("body");
 }
 
-tblgen::ConstantAttr::ConstantAttr(const llvm::DefInit *init)
-    : def(init->getDef()) {
+tblgen::ConstantAttr::ConstantAttr(const DefInit *init) : def(init->getDef()) {
   assert(def->isSubClassOf("ConstantAttr") &&
          "must be subclass of TableGen 'ConstantAttr' class");
 }

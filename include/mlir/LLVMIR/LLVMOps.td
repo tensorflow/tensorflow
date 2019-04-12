@@ -29,7 +29,7 @@ include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 // LLVM IR type wrapped in MLIR.
-def LLVM_Type : Type<CPred<"{0}.isa<::mlir::LLVM::LLVMType>()">,
+def LLVM_Type : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMType>()">,
                      "LLVM dialect type">;
 
 // Base class for LLVM operations.  All operations get an "llvm." prefix in

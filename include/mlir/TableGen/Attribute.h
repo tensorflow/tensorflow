@@ -84,16 +84,13 @@ public:
   // the constant value.
   StringRef getConstBuilderTemplate() const;
 
-  // Returns whether this attribute has a default value.
-  bool hasDefaultValue() const;
+  // Returns whether this attribute has a default value's initializer.
+  bool hasDefaultValueInitializer() const;
+  // Returns the default value's initializer for this attribute.
+  StringRef getDefaultValueInitializer() const;
 
   // Returns whether this attribute is optional.
   bool isOptional() const;
-
-  // Returns the template that can be used to produce the default value of
-  // the attribute.
-  // Syntax: {0} should be replaced with a builder.
-  std::string getDefaultValueTemplate() const;
 
   StringRef getTableGenDefName() const;
 

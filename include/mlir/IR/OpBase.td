@@ -44,6 +44,24 @@ class Pred;
 // predicate from the perspective of TableGen and the "interface" between
 // TableGen and C++. What is inside is already C++ code, which will be treated
 // as opaque strings with special placeholders to be substituted.
+//
+// ## Special placeholders
+//
+// Special placeholders can be used to refer to entities in the context where
+// this predicate is used. They serve as "hooks" to the enclosing environment.
+// The following special placeholders are supported in constraints for an op:
+//
+// * `$_builder` will be replaced by a mlir::Builder instance.
+// * `$_op` will be replaced by the current operation.
+// * `$_self` will be replaced with the entity this predicate is attached to.
+//   E.g., `BoolAttr` is an attribute constraint that wraps a
+//   `CPred<"$_self.isa<BoolAttr>()">` (see the following sections for details).
+//   Then for `F32:$attr`,`$_self` will be replaced by `$attr`.
+//   For type constraints, it's a little bit special since we want the
+//   constraints on each type definition reads naturally and we want to attach
+//   type constraints directly to an operand/result, $_self will be replaced
+//   by the operand/result's type. E.g., for `F32` in `F32:$operand`, its
+//   `$_self` will be expanded as `getOperand(...)->getType()`.
 class CPred<code pred> : Pred {
   code predExpr = "(" # pred # ")";
 }
@@ -118,7 +136,6 @@ class Concat<string pre, Pred child, string suf> :
 // provide nice error messages, etc.
 class Constraint<Pred pred, string desc = ""> {
   // The predicates that this constraint requires.
-  // Format: {0} will be expanded to the op operand/result's type or attribute.
   Pred predicate = pred;
   // User-readable description used in error reporting messages. If empty, a
   // generic message will be used.
@@ -157,23 +174,23 @@ class AttrConstraint<Pred predicate, string description = ""> :
 //===----------------------------------------------------------------------===//
 
 // Whether a type is a VectorType.
-def IsVectorTypePred : CPred<"{0}.isa<VectorType>()">;
+def IsVectorTypePred : CPred<"$_self.isa<VectorType>()">;
 
 // Whether a type is a TensorType.
-def IsTensorTypePred : CPred<"{0}.isa<TensorType>()">;
+def IsTensorTypePred : CPred<"$_self.isa<TensorType>()">;
 
 // Whether a type is a VectorOrTensorType.
-def IsVectorOrTensorTypePred : CPred<"{0}.isa<VectorOrTensorType>()">;
+def IsVectorOrTensorTypePred : CPred<"$_self.isa<VectorOrTensorType>()">;
 
 // Whether a type is a TupleType.
-def IsTupleTypePred : CPred<"{0}.isa<TupleType>()">;
+def IsTupleTypePred : CPred<"$_self.isa<TupleType>()">;
 
 // Whether a type is a MemRefType.
-def IsMemRefTypePred : CPred<"{0}.isa<MemRefType>()">;
+def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
 
 // For a TensorType, verify that it is a statically shaped tensor.
 def IsStaticShapeTensorTypePred :
-  CPred<"{0}.cast<TensorType>().hasStaticShape()">;
+  CPred<"$_self.cast<TensorType>().hasStaticShape()">;
 
 //===----------------------------------------------------------------------===//
 // Type definitions
@@ -224,14 +241,14 @@ class AnyTypeOf<list<Type> allowedTypes, string description> : Type<
 class IntegerBase<CPred pred, string descr> : Type<pred, descr>;
 
 // Any integer type irrespective of its width.
-def Integer : IntegerBase<CPred<"{0}.isa<IntegerType>()">, "integer">;
+def Integer : IntegerBase<CPred<"$_self.isa<IntegerType>()">, "integer">;
 
 // Index type.
-def Index : IntegerBase<CPred<"{0}.isa<IndexType>()">, "index">;
+def Index : IntegerBase<CPred<"$_self.isa<IndexType>()">, "index">;
 
 // Integer type of a specific width.
 class I<int width>
-    : IntegerBase<CPred<"{0}.isInteger(" # width # ")">,
+    : IntegerBase<CPred<"$_self.isInteger(" # width # ")">,
                   width # "-bit integer">,
       BuildableType<"getIntegerType(" # width # ")"> {
   int bitwidth = width;
@@ -246,11 +263,11 @@ def I64 : I<64>;
 class FloatBase<CPred pred, string descr> : Type<pred, descr>;
 
 // Any float type irrespective of its width.
-def Float : FloatBase<CPred<"{0}.isa<FloatType>()">, "floating-point">;
+def Float : FloatBase<CPred<"$_self.isa<FloatType>()">, "floating-point">;
 
 // Float type of a specific width.
 class F<int width>
-    : FloatBase<CPred<"{0}.isF" # width # "()">,
+    : FloatBase<CPred<"$_self.isF" # width # "()">,
                 width # "-bit float">,
       BuildableType<"getF" # width # "Type()"> {
   int bitwidth = width;
@@ -260,7 +277,7 @@ def F16 : F<16>;
 def F32 : F<32>;
 def F64 : F<64>;
 
-def BF16 : Type<CPred<"{0}.isBF16()">, "bfloat16 type">,
+def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
 // A container type is a type that has another type embedded within it.
@@ -269,7 +286,7 @@ class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
     // First, check the container predicate.  Then, substitute the extracted
     // element into the element type checker.
     Type<AllOf<[containerPred,
-                SubstLeaves<"{0}", !cast<string>(elementTypeCall),
+                SubstLeaves<"$_self", !cast<string>(elementTypeCall),
                 etype.predicate>]>,
          descr # " of " # etype.description # " values"> {
   // The type of elements in the container.
@@ -281,16 +298,16 @@ class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
 
 // Vector types.
 class TypedVector<Type t> : ContainerType<t, IsVectorTypePred,
-    "{0}.cast<VectorType>().getElementType()", "vector">;
+    "$_self.cast<VectorType>().getElementType()", "vector">;
 
 class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
     IsVectorTypePred,
     // Match dims. Construct an ArrayRef with the elements of `dims` by folding
     // over the list.
-    CPred<"{0}.cast<VectorType>().getShape() == ArrayRef{{" #
+    CPred<"$_self.cast<VectorType>().getShape() == ArrayRef{{" #
       !foldl("", dims, sum, element, sum #
        !if(!empty(sum), "", ",") # !cast<string>(element)) # "}">]>,
-    "{0}.cast<VectorType>().getElementType()",
+    "$_self.cast<VectorType>().getElementType()",
     "vector"> {
   list<int> dimensions = dims;
 }
@@ -312,7 +329,7 @@ def StaticShapeTensor
 // For typed tensors.
 class TypedTensor<Type t>
     : ContainerType<t, Tensor.predicate,
-                    "{0}.cast<TensorType>().getElementType()",
+                    "$_self.cast<TensorType>().getElementType()",
                     "tensor">;
 
 class TypedStaticShapeTensor<Type t>
@@ -340,7 +357,7 @@ def Tuple : Type<IsTupleTypePred, "tuple">;
 // Memrefs are blocks of data with fixed type and rank.
 class MemRef<Type t>
     : ContainerType<t, IsMemRefTypePred,
-                    "{0}.cast<MemRefType>().getElementType()", "memref">;
+                    "$_self.cast<MemRefType>().getElementType()", "memref">;
 
 // Memref declarations handle any memref, independent of rank, size, (static or
 // dynamic), layout, or memory space.
@@ -385,20 +402,19 @@ class Attr<Pred condition, string descr = ""> :
   // type. For example, an enum can be stored as an int but returned as an
   // enum class.
   //
-  // Format: {0} will be expanded to the attribute.
+  // Format: $_self will be expanded to the attribute.
   //
-  // For example, `{0}.getValue().getSExtValue()` for `IntegerAttr val` will
+  // For example, `$_self.getValue().getSExtValue()` for `IntegerAttr val` will
   // expand to `getAttrOfType<IntegerAttr>("val").getValue().getSExtValue()`.
-  code convertFromStorage = "{0}.getValue()";
+  code convertFromStorage = "$_self.getValue()";
 
   // The call expression to build an attribute from a constant value.
   //
-  // Format: {0} will be expanded to an instance of mlir::Builder,
-  //         {1} will be expanded to the constant value of the attribute.
+  // Format: $0 will be expanded to the constant value of the attribute.
   //
-  // For example, `{0}.getStringAttr("{1}")` for `StringAttr:"foo"` will expand
-  // to `builder.getStringAttr("foo")`.
-  code constBuilderCall = ?;
+  // For example, `$_builder.getStringAttr("$0")` for `StringAttr:"foo"` will
+  // expand to `builder.getStringAttr("foo")`.
+  string constBuilderCall = ?;
 
   // Default value for attribute.
   // Requires a constBuilderCall defined.
@@ -430,7 +446,7 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   // Note: this has to be kept up to date with Attr above.
   let storageType = attr.storageType;
   let returnType = "Optional<" # attr.returnType #">";
-  let convertFromStorage = "{0} ? " # returnType # "(" #
+  let convertFromStorage = "$_self ? " # returnType # "(" #
                            attr.convertFromStorage # ") : (llvm::None)";
   let isOptional = 0b1;
 }
@@ -440,8 +456,8 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
 class TypedAttrBase<BuildableType attrValType, string attrKind,
                     Pred condition, string descr> :
     Attr<condition, descr> {
-  let constBuilderCall = "{0}.get" # attrKind # "({0}." #
-                         attrValType.builderCall # ", {1})";
+  let constBuilderCall = "$_builder.get" # attrKind # "($_builder." #
+                         attrValType.builderCall # ", $0)";
   let storageType = attrKind;
 }
 
@@ -449,21 +465,21 @@ class TypedAttrBase<BuildableType attrValType, string attrKind,
 def AnyAttr : Attr<CPred<"true">, "any attribute"> {
   let storageType = "Attribute";
   let returnType = "Attribute";
-  let convertFromStorage = "{0}";
-  let constBuilderCall = "{1}";
+  let convertFromStorage = "$_self";
+  let constBuilderCall = "$0";
 }
 
-def BoolAttr : Attr<CPred<"{0}.isa<BoolAttr>()">, "bool attribute"> {
+def BoolAttr : Attr<CPred<"$_self.isa<BoolAttr>()">, "bool attribute"> {
   let storageType = [{ BoolAttr }];
   let returnType = [{ bool }];
-  let constBuilderCall = [{ {0}.getBoolAttr({1}) }];
+  let constBuilderCall = "$_builder.getBoolAttr($0)";
 }
 
 // Base class for integer attributes of fixed width.
 class IntegerAttrBase<I attrValType, string descr> :
     TypedAttrBase<attrValType, "IntegerAttr",
-              AllOf<[CPred<"{0}.isa<IntegerAttr>()">,
-                     CPred<"{0}.cast<IntegerAttr>().getType()."
+              AllOf<[CPred<"$_self.isa<IntegerAttr>()">,
+                     CPred<"$_self.cast<IntegerAttr>().getType()."
                            "isInteger(" # attrValType.bitwidth # ")">]>,
               descr> {
   let returnType = [{ APInt }];
@@ -475,8 +491,8 @@ def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :
     TypedAttrBase<attrValType, "FloatAttr",
-              AllOf<[CPred<"{0}.isa<FloatAttr>()">,
-                     CPred<"{0}.cast<FloatAttr>().getType().isF" #
+              AllOf<[CPred<"$_self.isa<FloatAttr>()">,
+                     CPred<"$_self.cast<FloatAttr>().getType().isF" #
                            attrValType.bitwidth # "()">]>,
               descr> {
   let returnType = [{ APFloat }];
@@ -487,17 +503,17 @@ def F64Attr : FloatAttrBase<F64, "64-bit float attribute">;
 
 // An attribute backed by a string type.
 class StringBasedAttr<Pred condition, string descr> : Attr<condition, descr> {
-  let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
+  let constBuilderCall = "$_builder.getStringAttr(\"$0\")";
   let storageType = [{ StringAttr }];
   let returnType = [{ StringRef }];
 }
 
-def StrAttr : StringBasedAttr<CPred<"{0}.isa<StringAttr>()">,
+def StrAttr : StringBasedAttr<CPred<"$_self.isa<StringAttr>()">,
                               "string attribute">;
 
 // An enum attribute case.
 class EnumAttrCase<string sym> : StringBasedAttr<
-    CPred<"{0}.cast<StringAttr>().getValue() == \"" # sym # "\"">,
+    CPred<"$_self.cast<StringAttr>().getValue() == \"" # sym # "\"">,
     "case " # sym> {
   // The C++ enumerant symbol
   string symbol = sym;
@@ -521,10 +537,10 @@ class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
   let returnType = [{ ElementsAttr }];
-  let convertFromStorage = "{0}";
+  let convertFromStorage = "$_self";
 }
 
-def ElementsAttr: ElementsAttrBase<CPred<"{0}.isa<ElementsAttr>()">,
+def ElementsAttr: ElementsAttrBase<CPred<"$_self.isa<ElementsAttr>()">,
                                    "constant vector/tensor attribute">;
 
 // Base class for array attributes.
@@ -532,10 +548,10 @@ class ArrayAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ArrayAttr }];
   let returnType = [{ ArrayAttr }];
-  let convertFromStorage = "{0}";
+  let convertFromStorage = "$_self";
 }
 
-def ArrayAttr : ArrayAttrBase<CPred<"{0}.isa<ArrayAttr>()">,
+def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
                               "array attribute">;
 
 // Base class for array attributes whose elements are of the same kind.
@@ -543,41 +559,40 @@ def ArrayAttr : ArrayAttrBase<CPred<"{0}.isa<ArrayAttr>()">,
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
     AllOf<[
       // Guranatee this is an ArrayAttr first
-      CPred<"{0}.isa<ArrayAttr>()">,
+      CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
-      Concat<"llvm::all_of({0}.cast<ArrayAttr>(), "
-                          "[](Attribute attr) {{ return ",
-                             SubstLeaves<"{0}", "attr", element.predicate>,
+      Concat<"llvm::all_of($_self.cast<ArrayAttr>(), "
+                          "[](Attribute attr) { return ",
+                             SubstLeaves<"$_self", "attr", element.predicate>,
                           "; })">]>,
     description> {
-  let constBuilderCall = [{ {0}.getArrayAttr({1}) }];
+  let constBuilderCall = "$_builder.getArrayAttr($0)";
 }
 
 def I32ArrayAttr : TypedArrayAttrBase<I32Attr,
                                       "32-bit integer array attribute"> {
-  let constBuilderCall = "{0}.getI32ArrayAttr({1})";
+  let constBuilderCall = "$_builder.getI32ArrayAttr($0)";
 }
 def I64ArrayAttr : TypedArrayAttrBase<I64Attr,
                                       "64-bit integer array attribute"> {
-  let constBuilderCall = "{0}.getI64ArrayAttr({1})";
+  let constBuilderCall = "$_builder.getI64ArrayAttr($0)";
 }
 def F32ArrayAttr : TypedArrayAttrBase<F32Attr, "32-bit float array attribute"> {
-  let constBuilderCall = "{0}.getF32ArrayAttr({1})";
+  let constBuilderCall = "$_builder.getF32ArrayAttr($0)";
 }
 def F64ArrayAttr : TypedArrayAttrBase<F64Attr, "64-bit float array attribute"> {
-  let constBuilderCall = "{0}.getF64ArrayAttr({1})";
+  let constBuilderCall = "$_builder.getF64ArrayAttr($0)";
 }
 def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute"> {
-  let constBuilderCall = "{0}.getStrArrayAttr({1})";
+  let constBuilderCall = "$_builder.getStrArrayAttr($0)";
 }
 
 // Attributes containing functions.
-def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">,
+def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
                         "function attribute"> {
   let storageType = [{ FunctionAttr }];
   let returnType = [{ Function * }];
-  let convertFromStorage = [{ {0}.getValue() }];
-  let constBuilderCall = [{ {0}.getFunctionAttr({1}) }];
+  let constBuilderCall = "$_builder.getFunctionAttr($0)";
 }
 
 // Base class for attributes containing types. Example:
@@ -585,12 +600,12 @@ def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">,
 // defines a type attribute containing an integer type.
 class TypeAttrBase<string retType, string description> :
     Attr<AllOf<[
-      CPred<"{0}.isa<TypeAttr>()">,
-      CPred<"{0}.cast<TypeAttr>().getValue().isa<" # retType # ">()">]>,
+      CPred<"$_self.isa<TypeAttr>()">,
+      CPred<"$_self.cast<TypeAttr>().getValue().isa<" # retType # ">()">]>,
     description> {
   let storageType = [{ TypeAttr }];
   let returnType = retType;
-  let convertFromStorage = "{0}.getValue().cast<" # retType # ">()";
+  let convertFromStorage = "$_self.getValue().cast<" # retType # ">()";
 }
 
 // DerivedAttr are attributes whose value is computed from properties
@@ -611,9 +626,7 @@ class DerivedTypeAttr<code body> : DerivedAttr<"Type", body>;
 // If used as a constraint, it generates a matcher on a constant attribute by
 // using the constant value builder of the attribute and the value.
 class ConstantAttr<Attr attribute, string val> : AttrConstraint<
-    CPred<"{0} == " #
-      !subst("{0}", "mlir::Builder(ctx)", !subst("{1}", val,
-        !cast<string>(attribute.constBuilderCall)))>,
+    CPred<"$_self == " # !subst("$0", val, attribute.constBuilderCall)>,
     "constant attribute " # val> {
   Attr attr = attribute;
   string value = val;
@@ -651,25 +664,25 @@ class AllAttrConstraintsOf<list<AttrConstraint> constraints> : AttrConstraint<
 }
 
 class IntMinValue<int n> : AttrConstraint<
-    CPred<"{0}.cast<IntegerAttr>().getInt() >= " # n>,
+    CPred<"$_self.cast<IntegerAttr>().getInt() >= " # n>,
     "whose minimal value is " # n>;
 
 class ArrayMinCount<int n> : AttrConstraint<
-    CPred<"{0}.cast<ArrayAttr>().size() >= " # n>,
+    CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,
     "with at least " # n # " elements">;
 
 class IntArrayNthElemEq<int index, int value> : AttrConstraint<
     AllOf<[
-      CPred<"{0}.cast<ArrayAttr>().size() > " # index>,
-      CPred<"{0}.cast<ArrayAttr>().getValue()[" # index # "]"
+      CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
+      CPred<"$_self.cast<ArrayAttr>().getValue()[" # index # "]"
         ".cast<IntegerAttr>().getInt() == " # value>
        ]>,
     "whose " # index # "-th element must be " # value>;
 
 class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
     AllOf<[
-      CPred<"{0}.cast<ArrayAttr>().size() > " # index>,
-      CPred<"{0}.cast<ArrayAttr>().getValue()[" # index # "]"
+      CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
+      CPred<"$_self.cast<ArrayAttr>().getValue()[" # index # "]"
         ".cast<IntegerAttr>().getInt() >= " # min>
         ]>,
     "whose " # index # "-th element must be at least " # min>;
@@ -843,10 +856,10 @@ class Results<dag rets> {
 
 // Type Constraint operand `idx`'s Vector or Tensor Element type is `type`.
 class TCopVTEtIs<int idx, Type type> : AllOf<[
-   CPred<"{0}.getNumOperands() > " # idx>,
-   SubstLeaves<"{0}",  "{0}.getOperand(" # idx # ")->getType()",
+   CPred<"$_op.getNumOperands() > " # idx>,
+   SubstLeaves<"$_self",  "$_op.getOperand(" # idx # ")->getType()",
      IsVectorOrTensorTypePred>,
-   SubstLeaves<"{0}",  "{0}.getOperand(" # idx #
+   SubstLeaves<"$_self",  "$_op.getOperand(" # idx #
      ")->getType().cast<VectorOrTensorType>().getElementType()",
      type.predicate>]>;
 
@@ -855,14 +868,14 @@ class TCopVTEtIs<int idx, Type type> : AllOf<[
 // Type Constraint operand `i`'s Vector or Tensor Element type is Same As
 // operand `j`'s element type.
 class TCopVTEtIsSameAs<int i, int j> : AllOf<[
-    CPred<"{0}.getNumOperands() > std::max(" # i # "," # j # ")">,
-    SubstLeaves<"{0}",  "{0}.getOperand(" # i # ")->getType()",
+    CPred<"$_op.getNumOperands() > std::max(" # i # "," # j # ")">,
+    SubstLeaves<"$_self",  "$_op.getOperand(" # i # ")->getType()",
       IsVectorOrTensorTypePred>,
-    SubstLeaves<"{0}",  "{0}.getOperand(" # j # ")->getType()",
+    SubstLeaves<"$_self",  "$_op.getOperand(" # j # ")->getType()",
       IsVectorOrTensorTypePred>,
     // TODO: This could be made into C++ function instead.
-    CPred<"{0}.getOperand(" # i # ")->getType().cast<VectorOrTensorType>()."
-          "getElementType() == {0}.getOperand(" # j # ")->getType()."
+    CPred<"$_op.getOperand(" # i # ")->getType().cast<VectorOrTensorType>()."
+          "getElementType() == $_op.getOperand(" # j # ")->getType()."
           "cast<VectorOrTensorType>().getElementType()">]>;
 
 // Predicate to verify that the i'th result and the j'th operand have the same
@@ -870,15 +883,15 @@ class TCopVTEtIsSameAs<int i, int j> : AllOf<[
 // Type Constraint result`i`'s Vector or Tensor Element type is Same As
 // Type Constraint Operand `j`'s Vector or Tensor Element type.
 class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
-    CPred<"{0}.getNumResults() > " # i>,
-    CPred<"{0}.getNumOperands() > " # j>,
-    SubstLeaves<"{0}",  "{0}.getResult(" # i # ")->getType()",
+    CPred<"$_op.getNumResults() > " # i>,
+    CPred<"$_op.getNumOperands() > " # j>,
+    SubstLeaves<"$_self",  "$_op.getResult(" # i # ")->getType()",
       IsVectorOrTensorTypePred>,
-    SubstLeaves<"{0}",  "{0}.getOperand(" # j # ")->getType()",
+    SubstLeaves<"$_self",  "$_op.getOperand(" # j # ")->getType()",
       IsVectorOrTensorTypePred>,
     // TODO: This could be made into C++ function instead.
-    CPred<"{0}.getResult(" # i # ")->getType().cast<VectorOrTensorType>()."
-          "getElementType() == {0}.getOperand(" # j # ")->getType()."
+    CPred<"$_op.getResult(" # i # ")->getType().cast<VectorOrTensorType>()."
+          "getElementType() == $_op.getOperand(" # j # ")->getType()."
           "cast<VectorOrTensorType>().getElementType()">]>;
 
 //===----------------------------------------------------------------------===//
@@ -949,19 +962,20 @@ class Pat<dag pattern, dag result, list<dag> preds = [],
 
 // Attribute transformation. This is the base class to specify a transformation
 // of matched attributes. Used on the output attribute of a rewrite rule.
+//
+// ## Placeholders
+//
+// The following special placeholders are supported
+//
+// * `$_builder` will be replaced by the current `mlir::PatternRewriter`.
+// * `$_self` will be replaced with the entity this transformer is attached to.
+//   E.g., with the definition `def transform : tAttr<$_self...>`, `$_self` in
+//   `transform:$attr` will be replaced by  the value for `$att`.
+
+// Besides, if this is used as a DAG node, i.e., `(tAttr <arg0>, ..., <argN>)`,
+// then positional placeholders are supported and placholder `$N` will be
+// replaced by `<argN>`.
 class tAttr<code transform> {
-  // Code to transform the attributes.
-  // Format:
-  //   - When it is used as a dag node, {0} represents the builder, {i}
-  //     represents the (i-1)-th attribute argument when i >= 1. For example:
-  //       def attr: tAttr<"{0}.compose({{{1}, {2}})"> for '(attr $a, $b)' will
-  //       expand to '(builder.compose({foo, bar}))'.
-  //   - When it is used as a dag leaf, {0} represents the attribute.
-  //     For example:
-  //       def attr: tAttr<"{0}.cast<FloatAttr>()"> for 'attr:$a' will expand to
-  //       'foo.cast<FloatAttr>()'.
-  //   In both examples, `foo` and `bar` are the C++ bounded attribute variables
-  //   of $a and $b.
   code attrTransform = transform;
 }
 
@@ -976,6 +990,7 @@ class tAttr<code transform> {
 // the DAG specified. It is the responsibility of this function to replace the
 // matched op(s) using the rewriter. This is intended for the long tail op
 // creation and replacement.
+// TODO(antiagainst): Unify this and tAttr into a single creation mechanism.
 class cOp<string f> {
   // Function to invoke with the given arguments to construct a new op. The
   // operands will be passed to the function first followed by the attributes

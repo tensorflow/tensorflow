@@ -22,7 +22,7 @@ def OpD : Op<"op_d", []> {
   let results = (outs I32:$result);
 }
 
-def hasOneUse: Constraint<CPred<"{0}->hasOneUse()">, "has one use">;
+def hasOneUse: Constraint<CPred<"$0->hasOneUse()">, "has one use">;
 
 def : Pattern<(OpA:$res_a $operand, $attr),
               [(OpC:$res_c (OpB:$res_b $operand)),

@@ -5,8 +5,8 @@ include "mlir/IR/OpBase.td"
 def SomeAttr : Attr<CPred<"some-condition">, "some attribute kind"> {
   let storageType = "some-attr-kind";
   let returnType = "some-return-type";
-  let convertFromStorage = "{0}.some-convert-from-storage()";
-  let constBuilderCall = "some-const-builder-call({0}, {1})";
+  let convertFromStorage = "$_self.some-convert-from-storage()";
+  let constBuilderCall = "some-const-builder-call($_builder, $0)";
 }
 
 // Test required, optional, default-valued attributes

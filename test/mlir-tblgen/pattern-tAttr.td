@@ -6,7 +6,7 @@ include "mlir/IR/OpBase.td"
 def T : BuildableType<"buildT()">;
 def T_Attr : TypedAttrBase<T, "Attribute",CPred<"true">, "attribute of T type">;
 def T_Const_Attr : ConstantAttr<T_Attr, "attrValue">;
-def T_Compose_Attr : tAttr<"{0}.getArrayAttr({{{1}, {2}})">;
+def T_Compose_Attr : tAttr<"$_builder.getArrayAttr({$0, $1})">;
 
 // Define ops to rewrite.
 def Y_Op : Op<"y.op"> {

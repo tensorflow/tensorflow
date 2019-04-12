@@ -34,7 +34,7 @@ class quant_TypedPrimitiveOrContainer<Type etype> :
 
 // An implementation of QuantizedType.
 def quant_QuantizedType :
-    Type<CPred<"{0}.isa<mlir::quant::QuantizedType>()">, "QuantizedType">;
+    Type<CPred<"$_self.isa<mlir::quant::QuantizedType>()">, "QuantizedType">;
 
 // A primitive type that can represent a real value. This is either a
 // floating point value or a quantized type.
@@ -63,7 +63,7 @@ def quant_RealOrStorageValueType :
 
 // An implementation of UniformQuantizedType.
 def quant_UniformQuantizedType :
-    Type<CPred<"{0}.isa<UniformQuantizedType>()">, "UniformQuantizedType">;
+    Type<CPred<"$_self.isa<UniformQuantizedType>()">, "UniformQuantizedType">;
 
 // Predicate for detecting a container or primitive of UniformQuantizedType.
 def quant_UniformQuantizedValueType :

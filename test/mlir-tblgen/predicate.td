@@ -2,7 +2,7 @@
 
 include "mlir/IR/OpBase.td"
 
-def I32OrF32 : Type<CPred<"{0}.isInteger(32) || {0}.isF32()">,
+def I32OrF32 : Type<CPred<"$_self.isInteger(32) || $_self.isF32()">,
                     "32-bit integer or floating-point type">;
 
 def OpA : Op<"op_for_CPred_containing_multiple_same_placeholder", []> {
