@@ -122,13 +122,10 @@ ConvolutionScaledInplaceCacheKey GetConvolutionScaledInplaceCacheKey(
 
 BiasApplyCacheKey GetBiasApplyCacheKey(
     const poplar::Tensor& input, const poplar::Tensor& deltas,
-    const std::vector<std::size_t>& reduction_dims,
-    const bool learning_rate_is_constant, const double learning_rate,
-    const uint64 device_id) {
+    const std::vector<std::size_t>& reduction_dims, const uint64 device_id) {
   return std::make_tuple(graph_caching_util::GetPoplarTensorSignature(input),
                          graph_caching_util::GetPoplarTensorSignature(deltas),
-                         reduction_dims, learning_rate_is_constant,
-                         learning_rate, device_id);
+                         reduction_dims, device_id);
 }
 }  // namespace
 
@@ -315,47 +312,6 @@ Status DoCachedConvolutionScaledInplace(
 }
 
 namespace {
-Status DoCachedBiasApplyConstLearningRate(
-    poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
-    const poplar::Tensor& deltas,
-    const std::vector<std::size_t>& reduction_dims, const uint64 device_id,
-    poplar::program::Sequence& prog, const HloInstruction* inst,
-    TensorMap& tensor_map) {
-  const auto* root_inst =
-      inst->fused_instructions_computation()->root_instruction();
-
-  // Get the constant learning rate.
-  const auto* const_inst = root_inst->operand(1)->operand(1)->operand(0);
-  CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
-
-  TF_ASSIGN_OR_RETURN(float const_lr,
-                      LiteralScalarToNativeType<float>(const_inst->literal()));
-
-  std::vector<poplar::Tensor> args = {in, deltas};
-
-  auto key = GetBiasApplyCacheKey(in, deltas, reduction_dims, true, const_lr,
-                                  device_id);
-  auto it = res.bias_apply_graph_cache.find(key);
-  if (it != res.bias_apply_graph_cache.end() &&
-      !res.disable_graph_convolution_caching) {
-    auto& f = it->second;
-    f(args, prog);
-    return Status::OK();
-  }
-
-  using namespace poputil::graphfn;
-  auto f = VoidFunction(
-      graph, {inout(in, "in"), input(deltas, "deltas")},
-      [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
-        popops::reduceWithOutput(graph, args[1], args[0], reduction_dims,
-                                 {popops::Operation::ADD, -const_lr, true}, seq,
-                                 GetDebugName(inst));
-      });
-  res.bias_apply_graph_cache.emplace(key, f);
-  f(args, prog);
-  return Status::OK();
-}
-
 Status DoCachedBiasApplyVariableLearningRate(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
     const poplar::Tensor& deltas, const poplar::Tensor& scale,
@@ -364,8 +320,7 @@ Status DoCachedBiasApplyVariableLearningRate(
     TensorMap& tensor_map) {
   std::vector<poplar::Tensor> args = {in, deltas, scale};
 
-  auto key =
-      GetBiasApplyCacheKey(in, deltas, reduction_dims, false, 0.0, device_id);
+  auto key = GetBiasApplyCacheKey(in, deltas, reduction_dims, device_id);
   auto it = res.bias_apply_graph_cache.find(key);
   if (it != res.bias_apply_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
@@ -379,20 +334,40 @@ Status DoCachedBiasApplyVariableLearningRate(
       graph,
       {inout(in, "input"), input(deltas, "deltas"), input(scale, "scale")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
-        // TODO T6513 - replace this with just a reduceWithOutput
-        // Clone the input layout
-        auto input_clone = graph.clone(args[0]);
-        // Reduce - do not update or scale.
-        popops::reduceWithOutput(graph, args[1], input_clone, reduction_dims,
-                                 {popops::Operation::ADD, 1.0, false}, seq,
+        // Reduce with scale and update in place
+        popops::mapInPlace(graph, popops::expr::UnaryOpType::NEGATE, args[2],
+                           seq, GetDebugName(inst) + "/negate");
+        popops::reduceWithOutput(graph, args[1], args[0], reduction_dims,
+                                 {popops::Operation::ADD, true, args[2]}, seq,
                                  GetDebugName(inst));
-        // Do the scale and apply separately
-        TF_CHECK_OK(ScaledInplaceConstantOrTensor(
-            graph, args[0], input_clone, args[2], seq, HloOpcode::kSubtract,
-            GetDebugName(inst)));
       });
   res.bias_apply_graph_cache.emplace(key, f);
   f(args, prog);
+  return Status::OK();
+}
+
+Status DoCachedBiasApplyConstLearningRate(
+    poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
+    const poplar::Tensor& deltas,
+    const std::vector<std::size_t>& reduction_dims, const uint64 device_id,
+    poplar::program::Sequence& prog, const HloInstruction* inst,
+    TensorMap& tensor_map) {
+  // Get the constant learning rate.
+  const auto* root_inst =
+      inst->fused_instructions_computation()->root_instruction();
+  const auto* const_inst = root_inst->operand(1)->operand(1)->operand(0);
+  CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
+
+  TF_ASSIGN_OR_RETURN(Literal lit, const_inst->literal().Convert(F32));
+
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor scale,
+      AddConstantTensor(graph, {const_inst, 0}, const_inst->shape(), lit, res,
+                        tensor_map));
+
+  DoCachedBiasApplyVariableLearningRate(graph, res, in, deltas, scale,
+                                        reduction_dims, device_id, prog, inst,
+                                        tensor_map);
   return Status::OK();
 }
 }  // namespace
