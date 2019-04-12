@@ -19,7 +19,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'filenames\', \'compression_type\', \'buffer_size\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'filenames\', \'compression_type\', \'buffer_size\', \'num_parallel_reads\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
