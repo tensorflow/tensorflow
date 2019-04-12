@@ -47,8 +47,8 @@ _LOCAL_GPU_0 = "/device:GPU:0"
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
-@tf_export("distribute.experimental.ParameterServerStrategy")
-class ParameterServerStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
+class ParameterServerStrategy(distribute_lib.Strategy):
   """A parameter server DistributionStrategy.
 
   This strategy class works for both local training and between-graph replicated
@@ -89,6 +89,17 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   def __init__(self):
     """Initializes this strategy with default TFConfigClusterResolver."""
     super(ParameterServerStrategy, self).__init__(
+        ParameterServerStrategyExtended(self))
+
+
+@tf_export(v1=["distribute.experimental.ParameterServerStrategy"])
+class ParameterServerStrategyV1(distribute_lib.StrategyV1):
+
+  __doc__ = ParameterServerStrategy.__doc__
+
+  def __init__(self):
+    """Initializes this strategy with default TFConfigClusterResolver."""
+    super(ParameterServerStrategyV1, self).__init__(
         ParameterServerStrategyExtended(self))
 
 

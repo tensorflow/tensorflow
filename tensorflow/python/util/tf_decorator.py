@@ -60,7 +60,8 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
-import traceback as _traceback
+
+from tensorflow.python.util import tf_stack
 
 
 def make_decorator(target,
@@ -83,9 +84,8 @@ def make_decorator(target,
     The `decorator_func` argument with new metadata attached.
   """
   if decorator_name is None:
-    frame = _traceback.extract_stack(limit=2)[0]
-    # frame name is tuple[2] in python2, and object.name in python3
-    decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
+    frame = tf_stack.extract_stack(limit=2)[0]
+    decorator_name = frame[2]  # Caller's name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)

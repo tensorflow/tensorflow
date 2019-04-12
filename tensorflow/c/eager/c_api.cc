@@ -143,7 +143,9 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    auto* eager_client = remote_eager_workers->GetClient(remote_worker);
+    tensorflow::eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(
+        remote_eager_workers->GetClient(remote_worker, &eager_client));
     if (eager_client == nullptr) {
       return tensorflow::errors::Internal(
           "Cannot find a client for the given target:", remote_worker);

@@ -421,7 +421,11 @@ class TensorTracer(object):
   def is_enabled():
     """Returns True if TensorTracer is enabled."""
 
-    return TensorTracer._is_flag_on(_FLAG_NAME_ENABLE)
+    if TensorTracer._is_flag_on(_FLAG_NAME_ENABLE):
+      logging.info('Tensor Tracer is enabled.')
+      return True
+    else:
+      return False
 
   @staticmethod
   def use_test_undeclared_outputs_dir():
@@ -811,6 +815,11 @@ class TensorTracer(object):
         return True
       for opname_re in self._included_opname_re_list:
         if opname_re.match(op.name):
+          self._included_op_full_names.add(op.name)
+          return True
+
+      for optype_re in self._included_optype_re_list:
+        if optype_re.match(op.type):
           self._included_op_full_names.add(op.name)
           return True
 

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 
 #include <numeric>
+
+#include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -208,6 +210,12 @@ TEST_F(ShapeTest, ProgramShapeToString) {
       "-> "
       "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
       prog.ToString());
+}
+
+TEST_F(ShapeTest, SupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
+       nested_tuple_, dyanmic_matrix_}));
 }
 
 }  // namespace

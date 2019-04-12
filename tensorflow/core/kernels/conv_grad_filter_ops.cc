@@ -861,9 +861,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    LogConvAutotuneResults(ctx->op_kernel().def(), transformed_input,
-                           pre_transformed_filter_backprop,
-                           transformed_out_backprop, stream->parent(), results);
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_FILTER,
+                           se::dnn::ToDataType<T>::value, input_desc,
+                           filter_desc, output_desc, conv_desc,
+                           stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);

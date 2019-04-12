@@ -80,6 +80,7 @@ class VariableSynchronization(enum.Enum):
   ON_READ = 3
 
 
+# LINT.IfChange
 @tf_export("VariableAggregation", v1=[])
 class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
@@ -125,11 +126,52 @@ class VariableAggregation(enum.Enum):
 
   def __hash__(self):
     return hash(self.value)
-
+# LINT.ThenChange(//tensorflow/core/framework/variable.proto)
+#
+# Note that we are currently relying on the integer values of the Python enums
+# matching the integer values of the proto enums.
 
 VariableAggregation.__doc__ = (
     VariableAggregationV2.__doc__ +
     "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
+
+
+def validate_synchronization_aggregation_trainable(
+    synchronization, aggregation, trainable, name):
+  """Given user-provided variable properties, sets defaults and validates."""
+  if aggregation is None:
+    aggregation = VariableAggregation.NONE
+  else:
+    if not isinstance(aggregation,
+                      (VariableAggregation, VariableAggregationV2)):
+      try:
+        aggregation = VariableAggregationV2(aggregation)
+      except ValueError:
+        raise ValueError(
+            "Invalid variable aggregation mode: {} for variable: {}".format(
+                aggregation, name))
+  if synchronization is None:
+    synchronization = VariableSynchronization.AUTO
+  else:
+    try:
+      synchronization = VariableSynchronization(synchronization)
+    except ValueError:
+      raise ValueError(
+          "Invalid variable synchronization mode: {} for variable: {}".format(
+              synchronization, name))
+  if synchronization == VariableSynchronization.ON_READ:
+    if trainable:
+      raise ValueError(
+          "Synchronization value can be set to "
+          "VariableSynchronization.ON_READ only for non-trainable variables. "
+          "You have specified trainable=True and "
+          "synchronization=VariableSynchronization.ON_READ.")
+    else:
+      # Set trainable to be false when variable is to be synced on read.
+      trainable = False
+  elif trainable is None:
+    trainable = True
+  return synchronization, aggregation, trainable
 
 
 class VariableMetaclass(type):
@@ -453,6 +495,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   @property
   def trainable(self):
+    raise NotImplementedError
+
+  @property
+  def synchronization(self):
+    raise NotImplementedError
+
+  @property
+  def aggregation(self):
     raise NotImplementedError
 
   def eval(self, session=None):
@@ -844,6 +894,22 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  def sparse_read(self, indices, name=None):
+    r"""Gather slices from params axis axis according to indices.
+
+    This function supports a subset of tf.gather, see tf.gather for details on
+    usage.
+
+    Args:
+      indices: The index `Tensor`.  Must be one of the following types: `int32`,
+        `int64`. Must be in range `[0, params.shape[axis])`.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `params`.
+    """
+    raise AttributeError
+
   def gather_nd(self, indices, name=None):
     r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
 
@@ -857,7 +923,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor`. Has the same type as `params`.
     """
-    raise NotImplementedError
+    raise AttributeError
 
   @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
@@ -1378,7 +1444,9 @@ class RefVariable(VariableV1):
                dtype=None,
                expected_shape=None,
                import_scope=None,
-               constraint=None):
+               constraint=None,
+               synchronization=None,
+               aggregation=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -1430,6 +1498,15 @@ class RefVariable(VariableV1):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1455,7 +1532,9 @@ class RefVariable(VariableV1):
           name=name,
           dtype=dtype,
           expected_shape=expected_shape,
-          constraint=constraint)
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -1475,7 +1554,9 @@ class RefVariable(VariableV1):
                       name=None,
                       dtype=None,
                       expected_shape=None,
-                      constraint=None):
+                      constraint=None,
+                      synchronization=None,
+                      aggregation=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -1512,6 +1593,15 @@ class RefVariable(VariableV1):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1540,6 +1630,11 @@ class RefVariable(VariableV1):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    synchronization, aggregation, trainable = (
+        validate_synchronization_aggregation_trainable(
+            synchronization, aggregation, trainable, name))
+    self._synchronization = synchronization
+    self._aggregation = aggregation
     self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
@@ -1650,7 +1745,15 @@ class RefVariable(VariableV1):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
-    self._trainable = getattr(variable_def, "trainable", True)
+    synchronization, aggregation, trainable = (
+        validate_synchronization_aggregation_trainable(
+            variable_def.synchronization,
+            variable_def.aggregation,
+            variable_def.trainable,
+            variable_def.variable_name))
+    self._synchronization = synchronization
+    self._aggregation = aggregation
+    self._trainable = trainable
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -1725,6 +1828,14 @@ class RefVariable(VariableV1):
   @property
   def trainable(self):
     return self._trainable
+
+  @property
+  def synchronization(self):
+    return self._synchronization
+
+  @property
+  def aggregation(self):
+    return self._aggregation
 
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
@@ -2258,6 +2369,8 @@ class RefVariable(VariableV1):
         var_def.initial_value_name = ops.strip_name_scope(
             self._initial_value.name, export_scope)
       var_def.trainable = self.trainable
+      var_def.synchronization = self.synchronization.value
+      var_def.aggregation = self.aggregation.value
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(

@@ -857,6 +857,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",
@@ -867,5 +868,40 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+    ],
+)
+
+distribute_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    main = "metrics_v1_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "zero_batch_test",
+    srcs = ["zero_batch_test.py"],
+    main = "zero_batch_test.py",
+    deps = [
+        ":combinations",
+        ":mirrored_strategy",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        "//tensorflow/python:layers",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

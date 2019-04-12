@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <fstream>
 
-#include "testing/base/public/googletest.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/split.h"

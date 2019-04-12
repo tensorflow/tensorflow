@@ -22,58 +22,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('config.gpu.get_per_process_memory_fraction')
-def get_gpu_per_process_memory_fraction():
-  """Get fraction of the available GPU memory to allocate for each process.
-
-  1.0 means to allocate all of the GPU memory, 0.5 means the process allocates
-  up to half of the available GPU memory.
-
-  Returns:
-    Current GPU per process memory fraction
-  """
-  return context.context().gpu_per_process_memory_fraction
-
-
-@tf_export('config.gpu.set_per_process_memory_fraction')
-def set_gpu_per_process_memory_fraction(fraction):
-  """Set fraction of the available GPU memory to allocate for each process.
-
-  1.0 means to allocate all of the GPU memory, 0.5 means the process allocates
-  up to half of the available GPU memory.
-
-  Args:
-    fraction: Fraction of GPU memory to allocate
-  """
-  context.context().gpu_per_process_memory_fraction = fraction
-
-
-@tf_export('config.gpu.get_per_process_memory_growth')
-def get_gpu_per_process_memory_growth():
-  """Get if GPU memory should be pre-allocated or allowed to grow.
-
-  Returns:
-    If GPU memory growth should be enabled
-  """
-  return context.context().gpu_per_process_memory_growth
-
-
-@tf_export('config.gpu.set_per_process_memory_growth')
-def set_gpu_per_process_memory_growth(enabled):
-  """Set if GPU memory should be pre-allocated or allowed to grow.
-
-  Args:
-    enabled: Indicates if GPU memory growth should be enabled
-  """
-  context.context().gpu_per_process_memory_growth = enabled
-
-
 @tf_export('config.threading.intra_op_parallelism_threads')
 def get_intra_op_parallelism_threads():
   """Get number of threads used within an individual op for parallelism.
 
   Certain operations like matrix multiplication and reductions can utilize
-  parellel threads for speed ups. A value of 0 means the system picks an
+  parallel threads for speed ups. A value of 0 means the system picks an
   appropriate number.
 
   Returns:

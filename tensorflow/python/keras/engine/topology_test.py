@@ -919,6 +919,14 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
       MyNetwork()
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_int_input_shape(self):
+    inputs = keras.Input(10)
+    self.assertEqual([None, 10], inputs.shape.as_list())
+
+    inputs_with_batch = keras.Input(batch_size=20, shape=5)
+    self.assertEqual([20, 5], inputs_with_batch.shape.as_list())
+
 
 class DeferredModeTest(test.TestCase):
 

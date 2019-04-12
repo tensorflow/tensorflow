@@ -179,6 +179,7 @@ def inf_nan_callback(op_type,
             "T", outputs[0].dtype.as_datatype_enum)
         # TODO(cais): Consider moving this into execute.py.
         # pylint: disable=protected-access
+        ctx.ensure_initialized()
         pywrap_tensorflow.TFE_Py_Execute(
             ctx._handle, output.device, "CheckNumerics", [output],
             check_numerics_op_attrs, 1)

@@ -31,7 +31,7 @@ CoreParameterServerExtended = parameter_server_strategy.ParameterServerStrategyE
 # pylint: enable=protected-access,invalid-name,line-too-long
 
 
-class ParameterServerStrategy(distribute_lib.DistributionStrategy):
+class ParameterServerStrategy(distribute_lib.StrategyV1):
   """A parameter server DistributionStrategy.
 
   *** contrib version ***

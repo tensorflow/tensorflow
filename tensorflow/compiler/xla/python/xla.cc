@@ -75,7 +75,9 @@ PYBIND11_MODULE(xla_extension, m) {
             if (layout) {
               return ShapeUtil::MakeShapeWithLayout(type, dims, *layout);
             } else {
-              return ShapeUtil::MakeShape(type, dims);
+              Shape shape = ShapeUtil::MakeShape(type, dims);
+              shape.clear_layout();
+              return shape;
             }
           },
           "Makes an array shape.", py::arg("type"), py::arg("dims"),
@@ -87,7 +89,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("tuple_shapes",
            static_cast<const std::vector<Shape>& (Shape::*)() const>(
                &Shape::tuple_shapes))
-      .def("__repr__", [](const Shape& shape) { return shape.ToString(); });
+      .def("__repr__", [](const Shape& shape) {
+        return shape.ToString(/*print_layouts=*/true);
+      });
 
   py::class_<ProgramShape>(m, "ProgramShape")
       .def(py::init(

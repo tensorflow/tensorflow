@@ -368,6 +368,51 @@ class Generator(tracking.AutoTrackable):
           self.state.handle, self.algorithm, shape=shape,
           dtype=dtype, name=name)
 
+  def binomial(self, shape, counts, probs, dtype=dtypes.int32, name=None):
+    """Outputs random values from a binomial distribution.
+
+    The generated values follow a binomial distribution with specified count and
+    probability of success parameters.
+
+    Example:
+
+    ```python
+    counts = [10., 20.]
+    # Probability of success.
+    probs = [0.8, 0.9]
+
+    rng = tf.random.experimental.Generator(seed=234)
+    binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
+    ```
+
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      counts: A 0/1-D Tensor or Python value`. The counts of the binomial
+        distribution.
+      probs: A 0/1-D Tensor or Python value`. The probability of success for the
+        binomial distribution.
+      dtype: The type of the output. Default: tf.int32
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random binomial values.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    with ops.name_scope(name, "binomial", [shape, counts, probs]) as name:
+      counts = ops.convert_to_tensor(counts, name="counts")
+      probs = ops.convert_to_tensor(probs, name="probs")
+      shape_tensor = _shape_tensor(shape)
+      return gen_stateful_random_ops.stateful_random_binomial(
+          self.state.handle,
+          self.algorithm,
+          shape=shape_tensor,
+          counts=counts,
+          probs=probs,
+          dtype=dtype,
+          name=name)
+
   # TODO(wangpeng): implement other distributions
 
   def _make_int64_keys(self, shape=()):

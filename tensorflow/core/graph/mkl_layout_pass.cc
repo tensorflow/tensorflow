@@ -265,6 +265,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.dequantize = "Dequantize";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
+    csinfo_.fused_batch_norm_v2 = "FusedBatchNormV2";
+    csinfo_.fused_batch_norm_grad_v2 = "FusedBatchNormGradV2";
     csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
     csinfo_.leakyrelu = "LeakyRelu";
@@ -404,6 +406,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.fused_batch_norm_grad,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
          CopyAttrsFusedBatchNorm, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_v2,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v2),
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_grad_v2,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v2),
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite});
     rinfo_.push_back({csinfo_.identity,
@@ -710,6 +720,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string dequantize;
     string fused_batch_norm;
     string fused_batch_norm_grad;
+    string fused_batch_norm_v2;
+    string fused_batch_norm_grad_v2;
     string fused_conv2d;
     string identity;
     string leakyrelu;
@@ -1560,6 +1572,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                   bool change_format = false);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
                                       bool change_format = false);
+  static void CopyAttrsFusedBatchNormV2(const Node* orig_node, NodeBuilder* nb,
+                                        bool change_format = false);
   static void CopyAttrsLeakyRelu(const Node* orig_node, NodeBuilder* nb,
                                  bool change_format = false);
   static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
@@ -2680,6 +2694,16 @@ void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
   nb->Attr("epsilon", epsilon);
   nb->Attr("data_format", data_format);
   nb->Attr("is_training", is_training);
+}
+
+void MklLayoutRewritePass::CopyAttrsFusedBatchNormV2(const Node* orig_node,
+                                                     NodeBuilder* nb,
+                                                     bool change_format) {
+  CopyAttrsFusedBatchNorm(orig_node, nb, change_format);
+
+  DataType U;
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "U", &U));
+  nb->Attr("U", U);
 }
 
 void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,

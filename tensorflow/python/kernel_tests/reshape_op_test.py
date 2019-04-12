@@ -45,6 +45,18 @@ class ReshapeTest(test.TestCase):
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
+  def _testZeroDimReshape(self, x, shape, expected, use_gpu=False):
+    with self.cached_session(use_gpu=use_gpu):
+      y = array_ops.reshape(x, shape)
+      out = self.evaluate(y)
+      self.assertEqual(expected, out.shape)
+
+      # Repeat with an int64 shape tensor.
+      shape64 = constant_op.constant(shape, dtype=dtypes.int64)
+      y = array_ops.reshape(x, shape64)
+      out = self.evaluate(y)
+      self.assertEqual(expected, out.shape)
+
   def _testBothReshape(self, x, y):
     self._testReshape(x, y, False)
     self._testReshape(x, y, True)
@@ -89,6 +101,18 @@ class ReshapeTest(test.TestCase):
     x = np.arange(1., 7.).reshape([6]).astype(np.float32)
     self._testBothReshape(x, [3, -1])
 
+  def testZeroDimBasic(self):
+    x = np.zeros([0, 6]).astype(np.float32)
+    self._testBothReshape(x, [0, 2, 3])
+
+  def testZeroDimReshapeR1(self):
+    x = np.zeros([0, 6]).astype(np.float32)
+    self._testBothReshape(x, [-1])
+
+  def testZeroDimReshapeR3(self):
+    x = np.zeros([0, 6]).astype(np.float32)
+    self._testBothReshape(x, [-1, 2, 3])
+
   # TODO(vrv): Add tests for failure conditions once python test_util
   # reports errors.
 
@@ -112,6 +136,13 @@ class ReshapeTest(test.TestCase):
     self._testBothReshape(x, [1, 2, 0])
     self._testBothReshape(x, [0, 0, 0])
     self._testBothReshape(x, [1, -1, 5])
+
+  def testZeroDimWithUnspecifiedDim(self):
+    for use_gpu in (True, False):
+      self._testZeroDimReshape(x=np.zeros([0, 6]).astype(np.float32),
+                               shape=[0, -1, 3],
+                               expected=(0, 2, 3),
+                               use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
   def testErrors(self):

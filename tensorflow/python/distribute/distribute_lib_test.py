@@ -54,7 +54,7 @@ def _test_input_fn(input_context):
   return dataset_ops.DatasetV2.from_tensors(1.).repeat()
 
 
-class _TestStrategy(distribute_lib.DistributionStrategy):
+class _TestStrategy(distribute_lib.Strategy):
 
   def __init__(self):
     super(_TestStrategy, self).__init__(_TestExtended(self))

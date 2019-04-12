@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import base as trackable
@@ -436,7 +437,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "type"])
 
 
-class DistributedVariable(DistributedDelegate):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   """Holds a map from device to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
@@ -555,6 +556,24 @@ class DistributedVariable(DistributedDelegate):
                          " or a `tf.distribute.Strategy.update()` call.")
     return self.get(device=device).handle
 
+  def eval(self, session=None):
+    return self._get_closest().eval(session)
+
+  @property
+  def _save_slice_info(self):
+    return self.primary._save_slice_info  # pylint: disable=protected-access
+
+  def _get_save_slice_info(self):
+    return self.primary._get_save_slice_info()  # pylint: disable=protected-access
+
+  def _set_save_slice_info(self, save_slice_info):
+    for v in self._values:
+      v._set_save_slice_info(save_slice_info)  # pylint: disable=protected-access
+
+  @property
+  def device(self):
+    return self._get_closest().device
+
   @property
   def trainable(self):
     return self.primary.trainable
@@ -655,8 +674,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
         for v in self._mirrored_variable.values))
 
 
-class MirroredVariable(DistributedVariable, Mirrored,
-                       trackable.Trackable):
+class MirroredVariable(DistributedVariable, Mirrored):
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(
@@ -778,7 +796,7 @@ def _enclosing_tpu_context():
 # tpu.replicate() because it assumes that you're in a device context where you
 # can operate on a single version of the variable, but a tpu.replicate()
 # operates on all variables and is replicated during a rewrite pass.
-class TPUMirroredVariable(trackable.Trackable):
+class TPUMirroredVariable(variables_lib.Variable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
   def __init__(
@@ -1251,7 +1269,7 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
-class SyncOnReadVariable(DistributedVariable, PerReplica, trackable.Trackable):
+class SyncOnReadVariable(DistributedVariable, PerReplica):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(
@@ -1478,8 +1496,7 @@ def value_container(val):
   return val
 
 
-# TODO(josh11b): Descend from Variable.
-class AggregatingVariable(trackable.Trackable):
+class AggregatingVariable(variables_lib.Variable):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -1542,6 +1559,24 @@ class AggregatingVariable(trackable.Trackable):
   def assign(self, *args, **kwargs):
     assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
     return self._assign_func(f=assign_fn, *args, **kwargs)
+
+  def initializer(self):
+    return self._v.initializer()
+
+  def eval(self, session=None):
+    return self._v.eval(session)
+
+  @property
+  def graph(self):
+    return self._v.graph
+
+  @property
+  def device(self):
+    return self._v.device
+
+  @property
+  def shape(self):
+    return self._v.shape
 
   @property
   def aggregation(self):

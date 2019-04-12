@@ -66,21 +66,23 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   ~GrpcEagerClientCache() override { threads_.clear(); }
 
-  EagerClient* GetClient(const string& target) override {
+  Status GetClient(const string& target, EagerClient** client) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
-      // TODO(b/129072590): The check here is to prevent a segfault if 'target'
-      // is unknown. Return a Status here instead.
-      CHECK(shared) << "Unknown gRPC target " << target;
+      if (shared == nullptr) {
+        return errors::InvalidArgument("Client for target ", target,
+                                       " not found.");
+      }
       auto worker = std::unique_ptr<EagerClient>(new GrpcEagerClient(
           shared, threads_[AssignClientToThread(target)].completion_queue()));
 
       it = clients_.emplace(target, std::move(worker)).first;
     }
 
-    return it->second.get();
+    *client = it->second.get();
+    return Status::OK();
   }
 
  private:

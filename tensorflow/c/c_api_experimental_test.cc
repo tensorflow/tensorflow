@@ -376,5 +376,60 @@ TEST_F(AddEagerOpToGraphTest, ListInputsAreAddedCorrectly) {
   TFE_DeleteOp(identityn);
 }
 
+TEST_F(AddEagerOpToGraphTest, NumberAttributesAreHandledCorrectly) {
+  TFE_TensorHandle* matrix = TestMatrixTensorHandle();
+  TFE_TensorHandle* axis = TestAxisTensorHandle();
+  TFE_Op* concatv2 = TFE_NewOp(eager_ctx_, "ConcatV2", status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  TFE_OpSetAttrType(concatv2, "T", TF_FLOAT);
+  TFE_OpSetAttrInt(concatv2, "N", 2);
+  TFE_OpSetAttrType(concatv2, "Tidx", TF_INT32);
+  constexpr size_t kNumInputs = 2;
+  for (size_t i = 0; i < kNumInputs; ++i) {
+    TFE_OpAddInput(concatv2, matrix, status_);
+    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  }
+  TFE_OpAddInput(concatv2, axis, status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  AddEagerOpToGraphAndCheck(
+      concatv2, [this, kNumInputs](TF_Operation* graph_op) {
+        EXPECT_EQ(TF_OperationNumInputs(graph_op), kNumInputs + 1);
+        int64_t attrN;
+        TF_OperationGetAttrInt(graph_op, "N", &attrN, status_);
+        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+        EXPECT_EQ(attrN, kNumInputs);
+        EXPECT_EQ(TF_OperationInputListLength(graph_op, "values", status_),
+                  kNumInputs);
+        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+      });
+  TFE_DeleteTensorHandle(axis);
+  TFE_DeleteTensorHandle(matrix);
+  TFE_DeleteOp(concatv2);
+}
+
+TEST_F(AddEagerOpToGraphTest,
+       GeneratesInternalErrorsForInvalidNumberAttributes) {
+  TFE_TensorHandle* matrix = TestMatrixTensorHandle();
+  TFE_TensorHandle* axis = TestAxisTensorHandle();
+  int num_retvals = 5;
+  TFE_TensorHandle* retvals[5];
+
+  TFE_Op* concatv2 = TFE_NewOp(eager_ctx_, "ConcatV2", status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  TFE_OpSetAttrType(concatv2, "T", TF_FLOAT);
+  TFE_OpSetAttrInt(concatv2, "N", -1);
+  TFE_OpSetAttrType(concatv2, "Tidx", TF_INT32);
+
+  TF_Operation* graph_op = TFE_AddEagerOpToGraph(concatv2, trace_ctx_, retvals,
+                                                 &num_retvals, status_);
+  EXPECT_EQ(graph_op, nullptr);
+  EXPECT_EQ(status_->status.error_message(),
+            "Number attribute for length should be >=0!");
+
+  TFE_DeleteOp(concatv2);
+  TFE_DeleteTensorHandle(axis);
+  TFE_DeleteTensorHandle(matrix);
+}
+
 }  // namespace
 }  // namespace tensorflow

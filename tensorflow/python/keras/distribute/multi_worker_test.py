@@ -86,12 +86,8 @@ def _get_model(input_shape):
           activation='relu',
           input_shape=input_shape,
           kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-  # model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
-  # model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-  # model.add(keras.layers.Dropout(0.25))
+  model.add(keras.layers.BatchNormalization())
   model.add(keras.layers.Flatten())
-  # model.add(keras.layers.Dense(128, activation='relu'))
-  # model.add(keras.layers.Dropout(0.5))
   model.add(
       keras.layers.Dense(
           10,
@@ -254,7 +250,7 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
   def worker_fn(strategy):
     with ops.Graph().as_default():
       batch_size = 64
-      steps = 10
+      steps = 2
 
       with strategy.scope():
         train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
@@ -353,7 +349,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph
         batch_size = 64
-        steps = 10
+        steps = 2
         train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
         with strategy.scope():
           model = _get_model((28, 28, 1))
@@ -408,7 +404,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       with test.mock.patch.object(dc, '_run_std_server',
                                   self._make_mock_run_std_server()):
         batch_size = 64
-        steps = 10
+        steps = 2
         strategy = strategy_cls()
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph

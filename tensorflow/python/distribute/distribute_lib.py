@@ -310,12 +310,11 @@ class InputContext(object):
 # Base classes for all distribution strategies.
 
 
-@tf_export("distribute.Strategy")
-class DistributionStrategy(object):
+@tf_export("distribute.Strategy", v1=[])
+class Strategy(object):
   """A list of devices with a state & compute distribution policy.
 
-  See [tensorflow/contrib/distribute/README.md](
-  https://www.tensorflow.org/code/tensorflow/contrib/distribute/README.md)
+  See [the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy)
   for overview and examples.
   """
 
@@ -349,72 +348,21 @@ class DistributionStrategy(object):
     """
     return self._extended._scope(self)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
+  @doc_controls.do_not_doc_inheritable  # DEPRECATED, moving to `extended`
   def colocate_vars_with(self, colocate_with_variable):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def make_dataset_iterator(self, dataset):
-    """Makes an iterator for input provided via `dataset`.
-
-    Data from the given dataset will be distributed evenly across all the
-    compute replicas. We will assume that the input dataset is batched by the
-    global batch size. With this assumption, we will make a best effort to
-    divide each batch across all the replicas (one or more workers).
-    If this effort fails, an error will be thrown, and the user should instead
-    use `make_input_fn_iterator` which provides more control to the user, and
-    does not try to divide a batch across replicas.
-
-    The user could also use `make_input_fn_iterator` if they want to
-    customize which input is fed to which replica/worker etc.
-
-    Args:
-      dataset: `tf.data.Dataset` that will be distributed evenly across all
-        replicas.
-
-    Returns:
-      An `tf.distribute.InputIterator` which returns inputs for each step of the
-      computation.  User should call `initialize` on the returned iterator.
-    """
+    """DEPRECATED TF 1.x ONLY."""
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def make_input_fn_iterator(self,
                              input_fn,
                              replication_mode=InputReplicationMode.PER_WORKER):
-    """Returns an iterator split across replicas created from an input function.
-
-    The `input_fn` should take an `tf.distribute.InputContext` object where
-    information about batching and input sharding can be accessed:
-
-    ```
-    def input_fn(input_context):
-      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
-      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
-      return d.shard(input_context.num_input_pipelines,
-                     input_context.input_pipeline_id)
-    with strategy.scope():
-      iterator = strategy.make_input_fn_iterator(input_fn)
-      replica_results = strategy.experimental_run(replica_fn, iterator)
-    ```
-
-    The `tf.data.Dataset` returned by `input_fn` should have a per-replica
-    batch size, which may be computed using
-    `input_context.get_per_replica_batch_size`.
-
-    Args:
-      input_fn: A function taking a `tf.distribute.InputContext` object and
-        returning a `tf.data.Dataset`.
-      replication_mode: an enum value of `tf.distribute.InputReplicationMode`.
-        Only `PER_WORKER` is supported currently, which means there will be
-        a single call to `input_fn` per worker. Replicas will dequeue from the
-        local `tf.data.Dataset` on their worker.
-
-    Returns:
-      An iterator object that should first be `.initialize()`-ed. It may then
-      either be passed to `strategy.experimental_run()` or you can
-      `iterator.get_next()` to get the next value to pass to
-      `strategy.extended.call_for_each_replica()`.
-    """
+    """DEPRECATED TF 1.x ONLY."""
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
           "Input replication mode not supported: %r" % replication_mode)
@@ -422,7 +370,7 @@ class DistributionStrategy(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED
+  @doc_controls.do_not_doc_inheritable  # DEPRECATED
   def experimental_make_numpy_iterator(
       self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
     """Makes an iterator for input provided via a nest of numpy arrays.
@@ -459,35 +407,9 @@ class DistributionStrategy(object):
     ds = ds.batch(batch_size, drop_remainder=drop_remainder)
     return self.make_dataset_iterator(ds)
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
-    """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
-
-    When eager execution is enabled, executes ops specified by `fn` on each
-    replica. Otherwise, builds a graph to execute the ops on each replica.
-
-    Each replica will take a single, different input from the inputs provided by
-    one `get_next` call on the input iterator.
-
-    `fn` may call `tf.distribute.get_replica_context()` to access members such
-    as `replica_id_in_sync_group`.
-
-    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
-    used, and whether eager execution is enabled, `fn` may be called one or more
-    times (once for each replica).
-
-    Args:
-      fn: The function to run. The inputs to the function must match the outputs
-        of `input_iterator.get_next()`. The output must be a `tf.nest` of
-        `Tensor`s.
-      input_iterator: (Optional) input iterator from which the inputs are taken.
-
-    Returns:
-      Merged return value of `fn` across replicas. The structure of the return
-      value is the same as the return value from `fn`. Each element in the
-      structure can either be `PerReplica` (if the values are unsynchronized),
-      `Mirrored` (if the values are kept in sync), or `Tensor` (if running on a
-      single replica).
-    """
+    """DEPRECATED TF 1.x ONLY."""
     with self.scope():
       args = (input_iterator.get_next(),) if input_iterator is not None else ()
     return self.experimental_run_v2(fn, args=args)
@@ -520,23 +442,94 @@ class DistributionStrategy(object):
     with self.scope():
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  def reduce(self, reduce_op, value):
+  def reduce(self, reduce_op, value, axis=None):
     """Reduce `value` across replicas.
+
+    Given a per-replica value returned by `experimental_run_v2`, say a
+    per-example loss, the batch will be divided across all the replicas.  This
+    function allows you to aggregate across replicas and optionally also across
+    batch elements.  For example, if you have a global batch size of 8 and 2
+    replicas, values for examples `[0, 1, 2, 3]` will be on replica 0 and
+    `[4, 5, 6, 7]` will be on replica 1. By default, `reduce` will just
+    aggregate across replicas, returning `[0+4, 1+5, 2+6, 3+7]`. This is useful
+    when each replica is computing a scalar or some other value that doesn't
+    have a "batch" dimension (like a gradient). More often you will want to
+    aggregate across the global batch, which you can get by specifying the batch
+    dimension as the `axis`, typically `axis=0`. In this case it would return a
+    scalar `0+1+2+3+4+5+6+7`.
+
+    If there is a last partial batch, you will need to specify an axis so
+    that the resulting shape is consistent across replicas. So if the last
+    batch has size 6 and it is divided into [0, 1, 2, 3] and [4, 5], you
+    would get a shape mismatch unless you specify `axis=0`. If you specify
+    `tf.distribute.ReduceOp.MEAN`, using `axis=0` will use the correct
+    denominator of 6. Contrast this with computing `reduce_mean` to get a
+    scalar value on each replica and this function to average those means,
+    which will weigh some values `1/8` and others `1/4`.
 
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
         be combined.
-      value: A "per replica" value to be combined into a single tensor.
+      value: A "per replica" value, e.g. returned by `experimental_run_v2` to
+        be combined into a single tensor.
+      axis: Optional. Specifies the dimension to reduce along within each
+        replica's tensor. Should typically be set to the batch dimension.
 
     Returns:
       A `Tensor`.
     """
+    # TODO(josh11b): support `value` being a nest.
     _require_cross_replica_or_default_context_extended(self._extended)
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
-    return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
+    if axis is None:
+      return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
+    if reduce_op == reduce_util.ReduceOp.SUM:
+      value = self.experimental_run_v2(
+          lambda v: math_ops.reduce_sum(v, axis=axis), args=(value,))
+      return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
+    if reduce_op != reduce_util.ReduceOp.MEAN:
+      raise TypeError("Expected `reduce_op` to be a `tf.distribute.ReduceOp`, "
+                      "not: %r" % reduce_op)
+    # TODO(josh11b): Support list/tuple and tensor axis values.
+    if not isinstance(axis, six.integer_types):
+      raise TypeError("Expected `axis` to be an integer not: %r" % axis)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED
+    def mean_reduce_helper(v, axis=axis):
+      """Computes the numerator and denominator on each replica."""
+      numer = math_ops.reduce_sum(v, axis=axis)
+      if v.shape.rank is not None:
+        # Note(joshl): We support axis < 0 to be consistent with the
+        # tf.math.reduce_* operations.
+        if axis < 0:
+          if axis + v.shape.rank < 0:
+            raise ValueError(
+                "`axis` = %r out of range for `value` with rank %d" %
+                (axis, v.shape.rank))
+          axis += v.shape.rank
+        elif axis >= v.shape.rank:
+          raise ValueError(
+              "`axis` = %r out of range for `value` with rank %d" %
+              (axis, v.shape.rank))
+        if v.shape[axis] is not None:
+          # By returning a python value in the static shape case, we can
+          # maybe get a fast path for reducing the denominator.
+          return numer, v.shape[axis]
+      elif axis < 0:
+        axis = axis + array_ops.rank(v)
+      denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
+      # reduce is complete?
+      return numer, denom
+
+    numer, denom = self.experimental_run_v2(mean_reduce_helper, args=(value,))
+    # TODO(josh11b): Should batch reduce here instead of doing two.
+    numer = self._extended._reduce(reduce_util.ReduceOp.SUM, numer)  # pylint: disable=protected-access
+    denom = self._extended._reduce(reduce_util.ReduceOp.SUM, denom)  # pylint: disable=protected-access
+    denom = math_ops.cast(denom, numer.dtype)
+    return math_ops.truediv(numer, denom)
+
+  @doc_controls.do_not_doc_inheritable  # DEPRECATED
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
@@ -577,7 +570,7 @@ class DistributionStrategy(object):
     """
     return self._extended._local_results(value)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED: TF v1.x only
+  @doc_controls.do_not_doc_inheritable  # DEPRECATED: TF v1.x only
   def group(self, value, name=None):
     """Shortcut for `tf.group(self.experimental_local_results(value))`."""
     return self._extended._group(value, name)  # pylint: disable=protected-access
@@ -587,7 +580,7 @@ class DistributionStrategy(object):
     """Returns number of replicas over which gradients are aggregated."""
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, being replaced by a new API.
+  @doc_controls.do_not_doc_inheritable  # DEPRECATED: see doc string
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -607,19 +600,9 @@ class DistributionStrategy(object):
     return self._extended._configure(  # pylint: disable=protected-access
         session_config, cluster_spec, task_type, task_id)
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED
   def update_config_proto(self, config_proto):
-    """Returns a copy of `config_proto` modified for use with this strategy.
-
-    The updated config has something needed to run a strategy, e.g.
-    configuration to run collective ops, or device filters to improve
-    distributed training performance.
-
-    Args:
-      config_proto: a `tf.ConfigProto` object.
-
-    Returns:
-      The updated copy of the `config_proto`.
-    """
+    """DEPRECATED TF 1.x ONLY."""
     return self._extended._update_config_proto(config_proto)  # pylint: disable=protected-access
 
   def __deepcopy__(self, memo):
@@ -636,6 +619,136 @@ class DistributionStrategy(object):
 
   def __copy__(self):
     raise RuntimeError("Must only deepcopy DistributionStrategy.")
+
+
+# TF v1.x version has additional deprecated APIs
+@tf_export(v1=["distribute.Strategy"])
+class StrategyV1(Strategy):
+  """A list of devices with a state & compute distribution policy.
+
+  See [the guide](https://www.tensorflow.org/guide/distribute_strategy)
+  for overview and examples.
+  """
+
+  def make_dataset_iterator(self, dataset):
+    """Makes an iterator for input provided via `dataset`.
+
+    DEPRECATED: This method is not available in TF 2.x.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. We will assume that the input dataset is batched by the
+    global batch size. With this assumption, we will make a best effort to
+    divide each batch across all the replicas (one or more workers).
+    If this effort fails, an error will be thrown, and the user should instead
+    use `make_input_fn_iterator` which provides more control to the user, and
+    does not try to divide a batch across replicas.
+
+    The user could also use `make_input_fn_iterator` if they want to
+    customize which input is fed to which replica/worker etc.
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
+
+  def make_input_fn_iterator(self,  # pylint: disable=useless-super-delegation
+                             input_fn,
+                             replication_mode=InputReplicationMode.PER_WORKER):
+    """Returns an iterator split across replicas created from an input function.
+
+    DEPRECATED: This method is not available in TF 2.x.
+
+    The `input_fn` should take an `tf.distribute.InputContext` object where
+    information about batching and input sharding can be accessed:
+
+    ```
+    def input_fn(input_context):
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
+      return d.shard(input_context.num_input_pipelines,
+                     input_context.input_pipeline_id)
+    with strategy.scope():
+      iterator = strategy.make_input_fn_iterator(input_fn)
+      replica_results = strategy.experimental_run(replica_fn, iterator)
+    ```
+
+    The `tf.data.Dataset` returned by `input_fn` should have a per-replica
+    batch size, which may be computed using
+    `input_context.get_per_replica_batch_size`.
+
+    Args:
+      input_fn: A function taking a `tf.distribute.InputContext` object and
+        returning a `tf.data.Dataset`.
+      replication_mode: an enum value of `tf.distribute.InputReplicationMode`.
+        Only `PER_WORKER` is supported currently, which means there will be
+        a single call to `input_fn` per worker. Replicas will dequeue from the
+        local `tf.data.Dataset` on their worker.
+
+    Returns:
+      An iterator object that should first be `.initialize()`-ed. It may then
+      either be passed to `strategy.experimental_run()` or you can
+      `iterator.get_next()` to get the next value to pass to
+      `strategy.extended.call_for_each_replica()`.
+    """
+    return super(StrategyV1, self).make_input_fn_iterator(
+        input_fn, replication_mode)
+
+  def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
+    """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
+
+    DEPRECATED: This method is not available in TF 2.x. Please switch
+    to using `experimental_run_v2` instead.
+
+    When eager execution is enabled, executes ops specified by `fn` on each
+    replica. Otherwise, builds a graph to execute the ops on each replica.
+
+    Each replica will take a single, different input from the inputs provided by
+    one `get_next` call on the input iterator.
+
+    `fn` may call `tf.distribute.get_replica_context()` to access members such
+    as `replica_id_in_sync_group`.
+
+    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
+    used, and whether eager execution is enabled, `fn` may be called one or more
+    times (once for each replica).
+
+    Args:
+      fn: The function to run. The inputs to the function must match the outputs
+        of `input_iterator.get_next()`. The output must be a `tf.nest` of
+        `Tensor`s.
+      input_iterator: (Optional) input iterator from which the inputs are taken.
+
+    Returns:
+      Merged return value of `fn` across replicas. The structure of the return
+      value is the same as the return value from `fn`. Each element in the
+      structure can either be `PerReplica` (if the values are unsynchronized),
+      `Mirrored` (if the values are kept in sync), or `Tensor` (if running on a
+      single replica).
+    """
+    return super(StrategyV1, self).experimental_run(
+        fn, input_iterator)
+
+  def update_config_proto(self, config_proto):
+    """Returns a copy of `config_proto` modified for use with this strategy.
+
+    DEPRECATED: This method is not available in TF 2.x.
+
+    The updated config has something needed to run a strategy, e.g.
+    configuration to run collective ops, or device filters to improve
+    distributed training performance.
+
+    Args:
+      config_proto: a `tf.ConfigProto` object.
+
+    Returns:
+      The updated copy of the `config_proto`.
+    """
+    return self._extended._update_config_proto(config_proto)  # pylint: disable=protected-access
 
 
 @tf_export("distribute.StrategyExtended")
@@ -870,21 +983,21 @@ class DistributionStrategyExtended(object):
     self._require_static_shapes = False
 
   def _container_strategy(self):
-    """Get the containing `DistributionStrategy`.
+    """Get the containing `tf.distribute.Strategy`.
 
     This should not generally be needed except when creating a new
     `ReplicaContext` and to validate that the caller is in the correct
     `scope()`.
 
     Returns:
-      The `DistributionStrategy` such that `strategy.extended` is `self`.
+      The `tf.distribute.Strategy` such that `strategy.extended` is `self`.
     """
     container_strategy = self._container_strategy_weakref()
     assert container_strategy is not None
     return container_strategy
 
   def _scope(self, strategy):
-    """Implementation of DistributionStrategy.scope()."""
+    """Implementation of tf.distribute.Strategy.scope()."""
     def creator_with_resource_vars(*args, **kwargs):
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
@@ -1381,21 +1494,21 @@ class DistributionStrategyExtended(object):
 
 # A note about the difference between the context managers
 # `ReplicaContext` (defined here) and `_CurrentDistributionContext`
-# (defined above) used by `DistributionStrategy.scope()`:
+# (defined above) used by `tf.distribute.Strategy.scope()`:
 #
 # * a ReplicaContext is only present during a `call_for_each_replica()`
 #   call (except during a `merge_run` call) and in such a scope it
 #   will be returned by calls to `get_replica_context()`.  Implementers of new
-#   DistributionStrategy descendants will frequently also need to
+#   Strategy descendants will frequently also need to
 #   define a descendant of ReplicaContext, and are responsible for
 #   entering and exiting this context.
 #
-# * DistributionStrategy.scope() sets up a variable_creator scope that
+# * Strategy.scope() sets up a variable_creator scope that
 #   changes variable creation calls (e.g. to make mirrored
 #   variables). This is intended as an outer scope that users enter once
 #   around their model creation and graph definition. There is no
 #   anticipated need to define descendants of _CurrentDistributionContext.
-#   It sets the current DistributionStrategy for purposes of
+#   It sets the current Strategy for purposes of
 #   `get_strategy()` and `has_strategy()`
 #   and switches the thread mode to a "cross-replica context".
 @tf_export("distribute.ReplicaContext")
@@ -1562,7 +1675,7 @@ def _batch_reduce_destination(x):
 # ------------------------------------------------------------------------------
 
 
-class _DefaultDistributionStrategy(DistributionStrategy):
+class _DefaultDistributionStrategy(StrategyV1):
   """Default `tf.distribute.Strategy` if none is explicitly selected."""
 
   def __init__(self):

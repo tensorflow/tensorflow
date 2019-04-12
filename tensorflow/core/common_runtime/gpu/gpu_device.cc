@@ -745,6 +745,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 }
 
+void BaseGPUDevice::CopyTensorInSameDevice(const Tensor* input_tensor,
+                                           Tensor* output_tensor,
+                                           const DeviceContext* device_context,
+                                           StatusCallback done) {
+  GPUUtil::CopyGPUTensorToSameGPU(static_cast<Device*>(this), device_context,
+                                  input_tensor, output_tensor, std::move(done));
+}
+
 namespace {
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:

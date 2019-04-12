@@ -454,7 +454,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
       lambda *args: _grad_fn(ys, xs, args, body_graph),
       args, {},
       func_graph=_WhileBodyGradFuncGraph(name, cond_graph, body_graph,
-                                         maximum_iterations))
+                                         maximum_iterations, while_op))
 
   # Add the popped accumulators to the list of outputs.
   for internal_capture in grad_func_graph.internal_captures:
@@ -691,7 +691,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   """
 
   def __init__(self, name, forward_cond_graph, forward_body_graph,
-               maximum_iterations):
+               maximum_iterations, forward_while_op):
     super(_WhileBodyGradFuncGraph, self).__init__(name)
     self.empty_tensor_lists = []
     self.popped_tensor_lists = {}
@@ -700,6 +700,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     # FuncGraph for the cond of the forward While op.
     self._forward_cond_graph = forward_cond_graph
     self._maximum_iterations = maximum_iterations
+    self._forward_while_op = forward_while_op
     # Dict from forward intermediate tensor to its indirectly captured tensor
     # in this graph. Indirect capturing happens in two ways:
     # 1. For non-resource tensors we capture their accumulators from the forward
@@ -762,10 +763,25 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     accumulator = _get_accumulator(tensor)
     if accumulator is None:
       # Create the initial empty tensor list.
+      #
+      # Note: We clear the control dependencies to avoid a cycle in case a
+      # control tensor has an input path to an output of the  forward While.
+      #
+      # E.g.:
+      # x = tf.while_loop(...)
+      # y = f(x)
+      # with tf.control_dependencies([y]):
+      #   tf.gradients(y, x)
+      #
+      # Since the EmptyTensorList is fed back into the forward While, not
+      # removing the control edge would cause a cycle.
       with self._forward_graph.outer_graph.as_default():
-        tensor_list = list_ops.empty_tensor_list(
-            element_dtype=tensor.dtype, element_shape=tensor.shape,
-            max_num_elements=self._maximum_iterations)
+        with util.clear_control_inputs():
+          tensor_list = list_ops.empty_tensor_list(
+              element_dtype=tensor.dtype,
+              element_shape=tensor.shape,
+              max_num_elements=self._maximum_iterations,
+              name=_build_accumulator_name(tensor))
       self.empty_tensor_lists.append(tensor_list)
 
       # Push the intermediate tensor to the tensor list. This captures
@@ -919,5 +935,10 @@ def _build_maximum_iterations_loop_var(maximum_iterations):
   # EmptyTensorList expects `max_num_elements` to be of type int32.
   return ops.convert_to_tensor(
       maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
+
+
+def _build_accumulator_name(tensor):
+  # Tensor name may be of the form "pow/y:0". Name scope does not allow ":".
+  return "{}/accumulator".format(tensor.name).replace(":", "_")
 
 # pylint: enable=protected-access
