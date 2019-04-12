@@ -39,8 +39,14 @@ class Record;
 namespace mlir {
 namespace tblgen {
 
-// Mapping from TableGen Record to Operator wrapper object
-using RecordOperatorMap = llvm::DenseMap<const llvm::Record *, Operator>;
+// Mapping from TableGen Record to Operator wrapper object.
+//
+// We allocate each wrapper object in heap to make sure the pointer to it is
+// valid throughout the lifetime of this map. This is important because this map
+// is shared among multiple patterns to avoid creating the wrapper object for
+// the same op again and again. But this map will continuously grow.
+using RecordOperatorMap =
+    llvm::DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
 
 class Pattern;
 
