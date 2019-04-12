@@ -78,6 +78,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
