@@ -44606,6 +44606,22 @@ op {
   is_stateful: true
 }
 op {
+  name: "WriteRawProtoSummary"
+  input_arg {
+    name: "writer"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "step"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "tensor"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "WriteScalarSummary"
   input_arg {
     name: "writer"
