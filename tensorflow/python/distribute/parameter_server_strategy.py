@@ -103,8 +103,8 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
         ParameterServerStrategyExtended(self))
 
 
-class ParameterServerStrategyExtended(
-    distribute_lib.DistributionStrategyExtended):
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of ParameterServerStrategy."""
 
   def __init__(self,

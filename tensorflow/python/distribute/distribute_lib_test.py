@@ -60,7 +60,7 @@ class _TestStrategy(distribute_lib.Strategy):
     super(_TestStrategy, self).__init__(_TestExtended(self))
 
 
-class _TestExtended(distribute_lib.DistributionStrategyExtended):
+class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def __init__(self, distribute):
     super(_TestExtended, self).__init__(distribute)

@@ -452,7 +452,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):
     super(MirroredStrategyV1, self).__init__(extended)
 
 
-class MirroredExtended(distribute_lib.DistributionStrategyExtended):
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
