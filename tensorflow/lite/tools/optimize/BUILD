@@ -58,6 +58,17 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "operator_property",
+    srcs = ["operator_property.cc"],
+    hdrs = ["operator_property.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
@@ -164,11 +175,11 @@ cc_library(
     hdrs = ["quantize_model.h"],
     deps = [
         ":model_utils",
-        ":subgraph_quantizer",
+        ":operator_property",
+        ":quantization_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
 )
