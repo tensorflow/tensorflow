@@ -626,6 +626,9 @@ class DatasetV2(object):
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
+    Note that if the dataset was batched using `Dataset.batch`, each element is
+    a batch and this operation will prefetch `buffer_size` batches.
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
         maximum number of elements that will be buffered when prefetching.
