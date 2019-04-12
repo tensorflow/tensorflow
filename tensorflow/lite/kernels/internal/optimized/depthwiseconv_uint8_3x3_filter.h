@@ -7562,7 +7562,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     TFLITE_DCHECK(depth_micro_repeats > 0);
     const int width_micro_stride = 4 * 8;
@@ -7631,8 +7631,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           uint8* output_data = output_data_base;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
-          bias_data += bias_increment;
+          bias_data += kBiasIncrement;
 
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg = vld1q_s8(next_input_data);
@@ -8046,10 +8045,9 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         uint8* output_data_base = output_data_depthwise;
 
         const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
-        bias_data += bias_increment;
+        bias_data += kBiasIncrement;
         const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
-        bias_data += bias_increment;
-        TFLITE_DCHECK_EQ(bias_increment, 4);
+        bias_data += kBiasIncrement;
 
         for (int k_height = 0; k_height < block_height; ++k_height) {
           const int8* next_input_data = input_data_base;
@@ -8179,8 +8177,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         function_params->output_width_micro_repeats;
     const int depth_micro_repeats = function_params->depth_micro_repeats;
     const int depth = function_params->input_depth;
-    const int stride_val = function_params->stride;
-    const int four_over_stride = function_params->four_over_stride;
+    constexpr int kStrideVal = 2;
+    constexpr int kFourOverStride = 2;
+    TFLITE_DCHECK_EQ(function_params->stride, kStrideVal);
+    TFLITE_DCHECK_EQ(function_params->four_over_stride, kFourOverStride);
 
     const int workspace_width_micro_repeats =
         function_params->workspace_width_micro_repeats;
@@ -8189,7 +8189,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     TFLITE_DCHECK(depth_micro_repeats > 0);
     const int width_micro_stride = 4 * 8;
@@ -8220,7 +8220,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
     constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
 
-    TFLITE_DCHECK_EQ(stride_val, 2);
     TFLITE_DCHECK_LE(block_height, 2);
 
     for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
@@ -8244,7 +8243,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           const int8* input_data_0 = scratch_data + s * 2 * 8;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
 
           // Load first sub-micro block of data into operational banks.
           int8x16_t left_bank_0_reg = vld1q_s8(input_data_0);
@@ -8281,8 +8279,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
                   : output_width_overall_micro_repeats;
 
           for (; i_width < adjusted_width_micro_repeats; ++i_width) {
-            const int output_width = four_over_stride;
-            TFLITE_DCHECK_LE(output_width * stride_val, 4);
+            const int output_width = kFourOverStride;
+            TFLITE_DCHECK_LE(output_width * kStrideVal, 4);
             const int8* input_data =
                 input_data_0 + width_micro_stride * i_width;
             acc0 = adjusted_bias_data;
@@ -8370,7 +8368,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
             left_bank_4_reg = right_bank_4_reg;
           }
           for (; i_width < output_width_overall_micro_repeats; ++i_width) {
-            TFLITE_DCHECK_NE(residual_width, four_over_stride);
+            TFLITE_DCHECK_NE(residual_width, kFourOverStride);
 
             // No need to load next ("right") block of data.
 
@@ -8419,7 +8417,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
               vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
             }
           }
-          bias_data += bias_increment;
+          bias_data += kBiasIncrement;
         }
       } else {
         int8x16_t filter_reg_0_a;
@@ -8442,10 +8440,9 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         const int8* input_data_0 = scratch_data;
 
         const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
-        bias_data += bias_increment;
+        bias_data += kBiasIncrement;
         const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
-        bias_data += bias_increment;
-        TFLITE_DCHECK_EQ(bias_increment, 4);
+        bias_data += kBiasIncrement;
 
         // Load first sub-micro block of data into operational banks.
         int8x16_t left_bank_0_reg_a = vld1q_s8(input_data_0);
@@ -8473,8 +8470,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
              ++i_width) {
           const int output_width = i_width == output_width_micro_repeats
                                        ? residual_width
-                                       : four_over_stride;
-          TFLITE_DCHECK_LE(output_width * stride_val, 4);
+                                       : kFourOverStride;
+          TFLITE_DCHECK_LE(output_width * kStrideVal, 4);
           const int8* input_data = input_data_0 + width_micro_stride * i_width;
           const bool no_right_block = i_width == output_width_micro_repeats &&
                                       output_width_overall_micro_repeats ==
@@ -8611,11 +8608,9 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     TFLITE_DCHECK(depth_micro_repeats > 0);
-
-    TFLITE_DCHECK_EQ(bias_increment, 4);
 
     const int32 output_activation_min =
         function_params->quantized_activation_min;
@@ -8686,8 +8681,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
           uint8* output_data = output_data_base;
 
           const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
-          TFLITE_DCHECK_EQ(bias_increment, 4);
-          bias_data += bias_increment;
+          bias_data += kBiasIncrement;
 
           int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
           int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
@@ -9140,10 +9134,9 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         uint8* output_data_base = output_data_depthwise;
 
         const int32x4_t adjusted_bias_data_a = vld1q_s32(bias_data);
-        bias_data += bias_increment;
+        bias_data += kBiasIncrement;
         const int32x4_t adjusted_bias_data_b = vld1q_s32(bias_data);
-        bias_data += bias_increment;
-        TFLITE_DCHECK_EQ(bias_increment, 4);
+        bias_data += kBiasIncrement;
 
         for (int k_height = 0; k_height < block_height; ++k_height) {
           const int8* next_input_data =
@@ -9251,14 +9244,15 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         function_params->output_width_micro_repeats;
     const int depth_micro_repeats = function_params->depth_micro_repeats;
     const int output_depth = function_params->output_depth;
-    const int stride_val = function_params->stride;
+    constexpr int kStrideVal = 2;
+    TFLITE_DCHECK_EQ(function_params->stride, kStrideVal);
 
     const int output_width_overall_micro_repeats =
         function_params->output_width_overall_micro_repeats;
     const int block_height = function_params->outbound_block_height;
     const int residual_width = function_params->output_residual_width;
     const int output_height_stride = function_params->output_height_stride;
-    const int bias_increment = function_params->bias_increment;
+    constexpr int kBiasIncrement = 4;
 
     const int32 output_activation_min =
         function_params->quantized_activation_min;
@@ -9275,7 +9269,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     TFLITE_DCHECK_LT(output_offset, 32768);
 
     TFLITE_DCHECK_GE(depth_micro_repeats, 1);
-    TFLITE_DCHECK_EQ(bias_increment, 4);
 
     const int16x8_t output_offset_vec =
         vdupq_n_s16(static_cast<int16>(output_offset));
@@ -9305,11 +9298,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
       filter_reg_2_b = vld1q_s8(filter_workspace);
       filter_workspace += 16;
 
-      TFLITE_DCHECK_EQ(bias_increment, 4);
       const int32x4_t adjusted_bias_data_s_0 = vld1q_s32(bias_data);
-      bias_data += bias_increment;
+      bias_data += kBiasIncrement;
       const int32x4_t adjusted_bias_data_s_1 = vld1q_s32(bias_data);
-      bias_data += bias_increment;
+      bias_data += kBiasIncrement;
 
       if (block_height == 2) {
         const int8* scratch_data = scratch_block_data;
@@ -9644,7 +9636,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 
           TFLITE_DCHECK_LE(output_width, 2);
           TFLITE_DCHECK_GE(output_width, 1);
-          TFLITE_DCHECK_LE(output_width * stride_val, 4);
+          TFLITE_DCHECK_LE(output_width * kStrideVal, 4);
           const int8* input_data = scratch_data + 4 + 4 * i_width;
 
           // Load next sub-micro block of data.
