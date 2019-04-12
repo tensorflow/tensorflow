@@ -90,6 +90,10 @@ class BaseGPUDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override;
+
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
