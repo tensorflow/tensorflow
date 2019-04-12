@@ -781,6 +781,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.debugging.assert_rank_at_least",
         "tf.debugging.assert_rank_in":
             "tf.compat.v1.debugging.assert_rank_in",
+        "tf.errors.exception_type_from_error_code":
+            "tf.compat.v1.errors.exception_type_from_error_code",
+        "tf.errors.error_code_from_exception_type":
+            "tf.compat.v1.errors.error_code_from_exception_type",
+        "tf.errors.raise_exception_on_not_ok_status":
+            "tf.compat.v1.errors.raise_exception_on_not_ok_status",
         "tf.assert_rank":
             "tf.compat.v1.assert_rank",
         "tf.nn.max_pool":
