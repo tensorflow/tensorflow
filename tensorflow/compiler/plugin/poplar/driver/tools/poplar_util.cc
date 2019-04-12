@@ -6,6 +6,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include <algorithm>
@@ -18,7 +19,6 @@ using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
-static const char* s_dump_oom_profiler = "TF_DUMP_OOM_PROFILER";
 
 poplar::Graph& GetMasterGraph(CompilerResources& res) { return res.main_graph; }
 
@@ -193,8 +193,8 @@ void SetFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
 
 void DumpIfPoplarOutOfMemoryAllocationException(
     poplar::OptionFlags report_options) {
-  char* dump_filename = getenv(s_dump_oom_profiler);
-  if (dump_filename) {
+  auto dump_filename = tensorflow::GetPoplarXlaFlags().save_oom_profiler;
+  if (!dump_filename.empty()) {
     try {
       std::rethrow_exception(std::current_exception());
     } catch (const poplar::graph_memory_allocation_error& p_e) {

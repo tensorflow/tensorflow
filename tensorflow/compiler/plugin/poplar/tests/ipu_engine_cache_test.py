@@ -22,14 +22,15 @@ class IpuEngineCacheTest(test_util.TensorFlowTestCase):
   def testWriteToCache(self):
     cache_dir = self.get_temp_dir()
 
+    os.environ[
+        'TF_POPLAR_FLAGS'] = "--use_ipu_model --executable_cache_path=" + cache_dir
+
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [2, 2], name="a")
       pb = array_ops.placeholder(np.float32, [2, 2], name="b")
       output = pa + pb
 
     tu.configure_ipu_system()
-
-    os.environ['TF_POPLAR_ENGINE_CACHE'] = cache_dir
 
     with session_lib.Session() as sess:
 

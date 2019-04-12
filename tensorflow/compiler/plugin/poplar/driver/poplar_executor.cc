@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hlo_hash.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
@@ -110,11 +111,6 @@ namespace se = ::stream_executor;
 
 namespace xla {
 namespace poplarplugin {
-
-static const char* s_cache_env_variable = "TF_POPLAR_ENGINE_CACHE";
-static const char* s_max_compilation_threads_variable =
-    "TF_POPLAR_MAX_COMPILATION_THREADS";
-static const char* s_force_ipu_model = "TF_POPLAR_FORCE_IPU_MODEL";
 
 std::string GetInputCopyHandle(int64 parameter, int64 index) {
   return tensorflow::strings::Printf("%lld.%lld", parameter, index);
@@ -588,14 +584,6 @@ static bool DeviceConfigurationsEqual(const IpuOptions& a,
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
 }
 
-static absl::optional<int64> GetMaxCompilationThreads() {
-  if (const char* env_c = std::getenv(s_max_compilation_threads_variable)) {
-    std::string env(env_c);
-    return std::stoll(env);
-  }
-  return absl::nullopt;
-}
-
 Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
   if (!DeviceConfigurationsEqual(cfg, current_config_) &&
       hardware_configured_) {
@@ -622,7 +610,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
       hardware_configured_ = true;
     }
 
-    const bool force_ipu_model = getenv(s_force_ipu_model) != nullptr;
+    const bool force_ipu_model = tensorflow::GetPoplarXlaFlags().use_ipu_model;
 
     if (!force_ipu_model) {
       auto device_list = GetDeviceManager().getDevices();
@@ -764,10 +752,11 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
     report_options_.set(opt.option(), opt.value());
   }
 
-  auto max_compilation_threads = GetMaxCompilationThreads();
-  if (max_compilation_threads) {
+  const auto max_compilation_threads =
+      tensorflow::GetPoplarXlaFlags().max_compilation_threads;
+  if (max_compilation_threads > 0) {
     option_flags_.set("opt.maxCompilationThreads",
-                      std::to_string(*max_compilation_threads));
+                      std::to_string(max_compilation_threads));
   }
 
   for (auto opt : option_flags_) {
@@ -805,7 +794,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
 }
 
 bool PoplarExecutor::HaveExecutableCache() const {
-  return getenv(s_cache_env_variable) != nullptr;
+  return !tensorflow::GetPoplarXlaFlags().executable_cache_path.empty();
 }
 
 std::string PoplarExecutor::CachedExecutableFilename(
@@ -816,9 +805,8 @@ std::string PoplarExecutor::CachedExecutableFilename(
 
   std::string filename = tensorflow::strings::Printf("%0llx.xla_engine", hash);
 
-  const auto& dir = std::string(getenv(s_cache_env_variable));
-
-  return tensorflow::io::JoinPath(dir, filename);
+  return tensorflow::io::JoinPath(
+      tensorflow::GetPoplarXlaFlags().executable_cache_path, filename);
 }
 
 bool PoplarExecutor::HaveCachedExecutable(const std::string& filename) const {

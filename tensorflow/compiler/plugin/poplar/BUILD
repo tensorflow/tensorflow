@@ -112,6 +112,7 @@ cc_library(
         "driver/tools/custom_ops/tanh.cc",
         "driver/tools/custom_ops/truncated_normal.cc",
         "driver/tools/find_all_users.cc",
+        "driver/tools/flags.cc",
         "driver/tools/hlo_hash.cc",
         "driver/tools/hlo_matcher.cc",
         "driver/tools/input_output_aliasing_map.cc",
@@ -162,6 +163,7 @@ cc_library(
         "driver/tools/custom_ops/tanh.h",
         "driver/tools/custom_ops/truncated_normal.h",
         "driver/tools/find_all_users.h",
+        "driver/tools/flags.h",
         "driver/tools/hlo_hash.h",
         "driver/tools/hlo_matcher.h",
         "driver/tools/input_output_aliasing_map.h",
@@ -1066,6 +1068,28 @@ py_test(
 )
 
 py_test(
+    name = "synthetic_data_test",
+    size = "small",
+    srcs = ["tests/synthetic_data_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "multi_run_test",
     size = "small",
     srcs = ["tests/multi_run_test.py"],
@@ -1491,6 +1515,7 @@ test_suite(
         "simple_network_test",
         "sort_op_test",
         "sync_list_scheduler_test",
+        "synthetic_data_test",
         "tensor_array_test",
         "topk_onehot_test",
         "update_op_dependencies_test",

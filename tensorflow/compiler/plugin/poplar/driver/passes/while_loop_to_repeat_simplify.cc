@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/while_loop_util.h"
 
@@ -35,11 +36,9 @@ namespace poplarplugin {
 namespace {
 // Allow user to change the upper bound of the brute force method
 int64 GetMaxLoopTripCount() {
-  if (const char* env_c = std::getenv("TF_POPLAR_MAX_WHILE_LOOP_TRIP_COUNT")) {
-    std::string env(env_c);
-    return std::stoll(env);
-  }
-  return 128;
+  auto max_trip_count =
+      tensorflow::GetPoplarXlaFlags().while_loop_brute_force_max_trip_count;
+  return max_trip_count < 0 ? 128 : max_trip_count;
 }
 
 StatusOr<int64> ConvertWhileToRepeat(HloInstruction* while_inst) {

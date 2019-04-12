@@ -21,6 +21,7 @@ limitations under the License.
 #include <unistd.h>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <random>
 
 #include "absl/strings/str_cat.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/entry_visitor.h"
 
@@ -104,6 +106,8 @@ using ::absl::StrCat;
 namespace xla {
 namespace poplarplugin {
 namespace {
+std::once_flag help_flag_printed;
+
 std::string GetPathToGraphProgFile(std::string filename) {
   Dl_info dlInfo;
   static const void* dummy;
@@ -313,6 +317,8 @@ void ConnectSeedCallback(poplar::Engine& engine, int replication_factor,
   engine.connectStreamToCallback(stream, callback);
 }
 
+void PrintHelpString() { LOG(INFO) << tensorflow::GetFlagUsageString(); }
+
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
@@ -329,6 +335,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   if (stream_exec == nullptr) {
     return tensorflow::errors::Unknown(
         "NULL stream pointer in poplar compiler");
+  }
+
+  if (tensorflow::GetPoplarXlaFlags().help) {
+    std::call_once(help_flag_printed, &PrintHelpString);
   }
 
   VLOG(1) << "Begin compilation: " << module->name() << " for ordinal  "
@@ -559,9 +569,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     progs.push_back(seed_setup.first);
     progs.push_back(visitor.GetDeviceToHost());
 
-    char* vertex_filename = getenv("TF_DUMP_VERTEX_GRAPH");
-    if (vertex_filename) {
-      std::ofstream stream(vertex_filename);
+    if (!tensorflow::GetPoplarXlaFlags().save_vertex_graph.empty()) {
+      std::ofstream stream(tensorflow::GetPoplarXlaFlags().save_vertex_graph);
       resources.main_graph.outputVertexGraph(stream, progs);
     }
 

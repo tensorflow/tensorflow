@@ -1,4 +1,5 @@
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -257,12 +258,7 @@ const HloInstruction* GetOperandLookThroughInterIpuCopy(
 }
 
 bool UseSyntheticData() {
-  if (const char* env_c = std::getenv("TF_POPLAR_USE_SYNTHETIC_DATA")) {
-    std::string env(env_c);
-    std::transform(env.begin(), env.end(), env.begin(), ::tolower);
-    return env == "true";
-  }
-  return false;
+  return tensorflow::GetPoplarXlaFlags().use_synthetic_data;
 }
 
 std::string GetDebugName(const HloInstruction* inst) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/while_loop_to_repeat_simplify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -777,59 +778,6 @@ ENTRY entry {
   int64 loop_start =
       LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
   EXPECT_EQ(loop_start, 0);
-}
-
-using WhileLoopToRepeatSimplifyTestChangedEnv = HloTestBase;
-
-TEST_F(WhileLoopToRepeatSimplifyTestChangedEnv,
-       SingleConditionalF32ChangeBruteForceMaxTripCount) {
-  putenv("TF_POPLAR_MAX_WHILE_LOOP_TRIP_COUNT=9");
-  const char* const hlo_string = R"(
-HloModule ModuleWithWhile
-
-body {
-  p_body = (f32[],f32[]) parameter(0)
-  p_body.0 = f32[] get-tuple-element((f32[],f32[]) p_body), index=0
-  const = f32[] constant(1)
-  add = f32[] add(p_body.0, const)
-  p_body.1 = f32[] get-tuple-element((f32[],f32[]) p_body), index=1
-  ROOT root = (f32[],f32[]) tuple(add, p_body.1)
-}
-
-condition {
-  p_cond = (f32[],f32[]) parameter(0)
-  p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
-  const = f32[] constant(10)
-  ROOT result = pred[] compare(p_cond.0, const), direction=LT
-}
-
-ENTRY entry {
-  const_0 = f32[] constant(0)
-  const_1 = f32[] constant(10)
-  repeat_init = (f32[],f32[]) tuple(const_0, const_1)
-  ROOT while = (f32[],f32[]) while(repeat_init), condition=condition, body=body
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
-
-  // We didn't get the trip count due to the bound being too low
-  EXPECT_FALSE(changed);
-
-  // Re run with increased trip count
-  putenv("TF_POPLAR_MAX_WHILE_LOOP_TRIP_COUNT=10");
-  TF_ASSERT_OK_AND_ASSIGN(changed, wltrs.Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  // Get the trip count
-  auto* root = module.get()->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
-                          root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
-  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 }
 
 }  // namespace
