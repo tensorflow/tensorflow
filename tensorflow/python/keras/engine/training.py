@@ -285,7 +285,8 @@ class Model(network.Network):
     # Set DistributionStrategy specific parameters.
     self._distributed_model_cache = {}
 
-    if self._distribution_strategy is not None:
+    if (not context.executing_eagerly() and
+        self._distribution_strategy is not None):
       # Ensures a Session is created and configured correctly for Distribution
       # Strategy.
       K.configure_and_create_distributed_session(self._distribution_strategy)
