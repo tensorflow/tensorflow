@@ -373,10 +373,10 @@ def sparse_add(a, b, threshold=None, thresh=None):
 
   Then,
 
-      * `thresh == 0` (the default): all 5 index/value pairs will be returned.
-      * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
-          index/value pairs will be returned.
-      * `thresh == 0.21`: .1, 0, and -.2 will vanish.
+  * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+  * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
+      index/value pairs will be returned.
+  * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
@@ -434,11 +434,10 @@ def sparse_add_v2(a, b, threshold=0):
 
   Then,
 
-      * `threshold == 0` (the default): all 5 index/value pairs will be
-          returned.
-      * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
-          index/value pairs will be returned.
-      * `threshold == 0.21`: .1, 0, and -.2 will vanish.
+  * `threshold == 0` (the default): all 5 index/value pairs will be returned.
+  * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
+      index/value pairs will be returned.
+  * `threshold == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
