@@ -656,7 +656,124 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   }
 }
 
-// TODO(ahentz): tests for tensors, inputs, outputs, opcodes and operators.
+class TensorExportTest : public ::testing::Test {
+ protected:
+  void ResetOperators() { input_model_.operators.clear(); }
+
+  void BuildTensorTestModel() {
+    input_model_.GetOrCreateArray("inputs");
+    input_model_.GetOrCreateArray("weights");
+    {
+      auto* op = new ConvOperator;
+      op->padding.type = PaddingType::kSame;
+      op->inputs = {"inputs", "weights"};
+      op->outputs = {"output"};
+
+      toco::InputArray* input_array = input_model_.flags.add_input_arrays();
+      input_array->set_name(op->inputs[0]);
+
+      toco::InputArray* weight_array = input_model_.flags.add_input_arrays();
+      weight_array->set_name(op->inputs[1]);
+
+      input_model_.flags.add_output_arrays(op->outputs[0]);
+
+      Array& filter_array = input_model_.GetArray(op->inputs[1]);
+      Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+      filter_array.data_type = ArrayDataType::kFloat;
+      output_array.data_type = ArrayDataType::kFloat;
+      input_model_.operators.emplace_back(op);
+    }
+  }
+  Model input_model_;
+};
+
+TEST_F(TensorExportTest, InputTensors) {
+  BuildTensorTestModel();
+
+  details::TensorsMap tensors_table;
+  details::LoadTensorsMap(input_model_, &tensors_table);
+  string result;
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.enable_select_tf_ops = false;
+  params.quantize_weights = false;
+
+  Export(input_model_, &result, params);
+
+  auto* model = ::tflite::GetModel(result.data());
+  auto subgraph = model->subgraphs();
+  auto inputs = (*subgraph)[0]->inputs();
+
+  EXPECT_EQ((*inputs)[0], tensors_table["inputs"]);
+  EXPECT_EQ((*inputs)[1], tensors_table["weights"]);
+}
+
+TEST_F(TensorExportTest, OutputTensors) {
+  BuildTensorTestModel();
+
+  details::TensorsMap tensors_table;
+  details::LoadTensorsMap(input_model_, &tensors_table);
+  string result;
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.enable_select_tf_ops = false;
+  params.quantize_weights = false;
+
+  Export(input_model_, &result, params);
+
+  auto* model = ::tflite::GetModel(result.data());
+  auto subgraph = model->subgraphs();
+  auto outputs = (*subgraph)[0]->outputs();
+
+  EXPECT_EQ((*outputs)[0], tensors_table["output"]);
+}
+
+TEST_F(TensorExportTest, Tensors) {
+  BuildTensorTestModel();
+
+  details::TensorsMap tensors_table;
+  details::LoadTensorsMap(input_model_, &tensors_table);
+  string result;
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.enable_select_tf_ops = false;
+  params.quantize_weights = false;
+
+  Export(input_model_, &result, params);
+
+  auto* model = ::tflite::GetModel(result.data());
+  auto subgraph = model->subgraphs();
+  auto tensors = (*subgraph)[0]->tensors();
+
+  EXPECT_EQ(0, tensors_table[(*tensors)[0]->name()->c_str()]);
+  EXPECT_EQ(1, tensors_table[(*tensors)[1]->name()->c_str()]);
+  EXPECT_EQ(2, tensors_table[(*tensors)[2]->name()->c_str()]);
+}
+
+TEST_F(TensorExportTest, Opcode) {
+  BuildTensorTestModel();
+
+  details::OperatorsMap operators;
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
+  string result;
+
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.enable_select_tf_ops = false;
+  params.quantize_weights = false;
+
+  Export(input_model_, &result, params);
+
+  auto* model = ::tflite::GetModel(result.data());
+  auto operator_codes = model->operator_codes();
+
+  EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
+            (*operator_codes)[0]->builtin_code());
+}
 
 }  // namespace
 }  // namespace tflite
