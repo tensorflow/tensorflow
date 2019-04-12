@@ -104,7 +104,7 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build -s --explain=mm.txt --verbose_explanations --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build -s --explain=mm.txt --verbose_explanations --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package 2>&1 || exit $?
 cat mm.txt
 
 if [[ "$SKIP_TEST" == 1 ]]; then
