@@ -3957,8 +3957,8 @@ def make_expand_dims_tests(options):
 
   test_parameters = [{
       "input_type": [tf.float32, tf.int32],
-      "input_shape": [[5, 4, 3]],
-      "axis_value": [0, 1, 2, -1, -2],
+      "input_shape": [[5, 4]],
+      "axis_value": [0, 1, 2, -1, -2, -3],
       "constant_axis": [True, False],
   }]
 
