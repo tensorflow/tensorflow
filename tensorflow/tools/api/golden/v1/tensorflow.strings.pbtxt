@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "split"
-    argspec: "args=[\'input\', \'sep\', \'maxsplit\', \'result_type\', \'source\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'-1\', \'SparseTensor\', \'None\'], "
+    argspec: "args=[\'input\', \'sep\', \'maxsplit\', \'result_type\', \'source\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'-1\', \'SparseTensor\', \'None\', \'None\'], "
   }
   member_method {
     name: "strip"
