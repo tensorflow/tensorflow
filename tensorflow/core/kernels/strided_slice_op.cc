@@ -529,6 +529,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
 REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
+                            .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
                             .HostMemory("strides"),
