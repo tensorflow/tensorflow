@@ -2202,7 +2202,9 @@ tf_proto_library(
     srcs = ["protobuf/conv_autotuning.proto"],
     cc_api_version = 2,
     default_header = True,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/stream_executor:dnn_proto",
+    ],
     provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",

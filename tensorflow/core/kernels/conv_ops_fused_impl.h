@@ -580,8 +580,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           conv_parameters, launch, context, stream,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvAutotuneResults(
-                context->op_kernel().def(), input, transformed_filter,
-                transformed_output, bias, nullptr, stream->parent(), results);
+                se::dnn::ConvolutionKind::FORWARD,
+                se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
+                stream->parent(), results);
           },
           &algorithm_config);
       OP_REQUIRES_OK(context, status);
