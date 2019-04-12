@@ -39,8 +39,6 @@ renames = {
         'tf.compat.v1.ConditionalAccumulatorBase',
     'tf.ConfigProto':
         'tf.compat.v1.ConfigProto',
-    'tf.DeviceSpec':
-        'tf.compat.v1.DeviceSpec',
     'tf.Dimension':
         'tf.compat.v1.Dimension',
     'tf.Event':
@@ -577,8 +575,12 @@ renames = {
         'tf.math.lgamma',
     'tf.lin_space':
         'tf.linspace',
+    'tf.linalg.transpose':
+        'tf.linalg.matrix_transpose',
     'tf.lite.TocoConverter':
         'tf.compat.v1.lite.TocoConverter',
+    'tf.lite.constants.INT8':
+        'tf.compat.v1.lite.constants.INT8',
     'tf.lite.toco_convert':
         'tf.compat.v1.lite.toco_convert',
     'tf.local_variables':
@@ -704,7 +706,7 @@ renames = {
     'tf.matrix_solve_ls':
         'tf.linalg.lstsq',
     'tf.matrix_transpose':
-        'tf.linalg.transpose',
+        'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
     'tf.metrics.accuracy':
