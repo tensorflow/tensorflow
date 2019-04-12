@@ -2,17 +2,32 @@ syntax = "proto3";
 
 package xla;
 
+//import "tensorflow/compiler/xla/xla_data.proto";
+
+message PoplarExecutableIoMap {
+  int32 num_streaming_inputs = 1;
+  int32 num_streaming_outputs = 2;
+}
+
+// Configuration for one of the infeed/outfeed streams
+message FeedConfig {
+  string stream_prefix = 1;
+  string config = 2;
+  //ShapeProto shape = 3;
+}
+
 message PoplarExecutableProto {
 
   // The serialized Engine
   string engine = 1;
 
   // Map from outputs to inputs for in-place updates
-  map<int32, int32> output_map = 2;
+  PoplarExecutableIoMap io_map = 2;
 
-  // Vector of indicators for whether to stream an input
-  repeated bool input_streamed = 3;
+  // Names of the infeed instructions
+  repeated FeedConfig infeeds = 3;
 
-  // Vector of indicators for whether to stream an output
-  repeated bool output_streamed = 4;
+  // Names of the outfeed instructions
+  repeated FeedConfig outfeeds = 4;
+
 };

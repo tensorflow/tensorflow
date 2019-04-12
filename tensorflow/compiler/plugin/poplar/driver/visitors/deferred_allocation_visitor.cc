@@ -150,8 +150,8 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
   // We allow the same infeed queue to be dequeued multiple times, however
   // we don't support multiple infeed queues in the same program.
   if (absl::c_any_of(resources_.annotations.infeed_infos,
-                     [&](const HloInfeedInstruction* inst) {
-                       return inst->infeed_config() != infeed->infeed_config();
+                     [&](const FeedInfo& info) {
+                       return info.config != infeed->infeed_config();
                      })) {
     return xla::FailedPrecondition(
         "Currently multiple IPUInfeedQueue in the same program are not "
@@ -167,7 +167,13 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
     }
   }
   has_infeed_ = true;
-  resources_.annotations.infeed_infos.insert(infeed);
+
+  FeedInfo info;
+  info.stream_prefix = infeed->name();
+  info.config = infeed->infeed_config();
+  info.shape = infeed->shape();
+
+  resources_.annotations.infeed_infos.push_back(info);
 
   return Status::OK();
 }

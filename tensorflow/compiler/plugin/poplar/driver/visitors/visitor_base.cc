@@ -481,7 +481,12 @@ Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
     seq.add(poplar::program::Copy(in, fifo, false));
   }
 
-  resources_.annotations.outfeed_infos.insert(inst);
+  FeedInfo info;
+  info.stream_prefix = outfeed->name();
+  info.config = outfeed->outfeed_config();
+  info.shape = outfeed->operands()[0]->shape();
+
+  resources_.annotations.outfeed_infos.push_back(info);
 
   return Status::OK();
 }

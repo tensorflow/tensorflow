@@ -528,7 +528,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
-  XLA_VLOG_LINES(1, module->ToString(GetPrintOptions()));
+  if (VLOG_IS_ON(1)) {
+    XLA_VLOG_LINES(1, module->ToString(GetPrintOptions()));
+  }
 
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;

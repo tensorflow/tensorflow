@@ -159,15 +159,15 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
                                  int device_ordinal) {
   auto* xfeed_manager = GetXfeedManager(device_ordinal);
   for (const auto& outfeed_info : outfeed_infos) {
-    if (outfeed_info->outfeed_config() == "get_last") {
-      const auto& outfeed_shape = outfeed_info->outfeed_shape();
+    if (outfeed_info.config == "get_last") {
+      const auto& outfeed_shape = outfeed_info.shape;
       if (outfeed_shape.IsTuple()) {
         const auto num_elements = ShapeUtil::TupleElementCount(outfeed_shape);
         xfeed_manager->outfeed()->set_size(num_elements);
       } else {
         xfeed_manager->outfeed()->set_size(1);
       }
-    } else if (outfeed_info->outfeed_config() == "all") {
+    } else if (outfeed_info.config == "all") {
       xfeed_manager->outfeed()->set_size(
           PoplarXfeedQueueManager::DEFAULT_QUEUE_SIZE);
     }
@@ -243,9 +243,7 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
   }
 
   for (const auto& infeed_info : infeed_infos) {
-    const HloInfeedInstruction* inst = infeed_info;
-
-    auto itr = infeed_dataset_iterators_.find(inst->infeed_config());
+    auto itr = infeed_dataset_iterators_.find(infeed_info.config);
     if (itr == infeed_dataset_iterators_.end()) {
       LOG(FATAL) << "Trying to access an infeed dataset iterator which has not "
                     "been created."
@@ -255,7 +253,7 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
     auto tensor_count = infeed_dataset_iterator->shapes.size();
     for (auto j = 0; j < tensor_count; ++j) {
       current_engine_->connectStreamToCallback(
-          GetInfeedCopyHandle(inst->name(), j),
+          GetInfeedCopyHandle(infeed_info.stream_prefix, j),
           [this, j, infeed_dataset_iterator](void* dest) {
             auto infeed_queue_manager = GetXfeedManager(ordinal_)->infeed();
             auto buffer = infeed_queue_manager->BlockingDequeueBuffer();
@@ -304,7 +302,7 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
     se::StreamExecutor* executor, const OutfeedInfos& outfeed_infos,
     const uint32 replication_factor) {
   for (const auto& outfeed_info : outfeed_infos) {
-    const auto& operand_shape = outfeed_info->operands()[0]->shape();
+    const auto& operand_shape = outfeed_info.shape;
     auto flat_shapes = FlattenedXlaShape(operand_shape);
 
     std::vector<std::pair<Shape, size_t>> shapes_sizes;
@@ -314,14 +312,14 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
       shapes_sizes.emplace_back(std::make_pair(output_shape, size));
     }
 
-    const bool clear_if_full = outfeed_info->outfeed_config() == "get_last";
+    const bool clear_if_full = outfeed_info.config == "get_last";
 
     for (unsigned j = 0; j < shapes_sizes.size(); ++j) {
       const Shape shape = std::get<0>(shapes_sizes[j]);
       size_t byte_size = std::get<1>(shapes_sizes[j]);
 
       current_engine_->connectStreamToCallback(
-          GetOutfeedCopyHandle(outfeed_info->name(), j),
+          GetOutfeedCopyHandle(outfeed_info.stream_prefix, j),
           [this, shape, byte_size, clear_if_full](void* src) {
             auto* xfeed_manager = GetXfeedManager(ordinal_);
 
@@ -346,9 +344,7 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
   std::vector<InfeedDatasetIterator*> infeed_dataset_iterators;
   infeed_dataset_iterators.reserve(infeed_infos.size());
   for (const auto& infeed_info : infeed_infos) {
-    const HloInfeedInstruction* inst = infeed_info;
-
-    auto itr = infeed_dataset_iterators_.find(inst->infeed_config());
+    auto itr = infeed_dataset_iterators_.find(infeed_info.config);
     if (itr == infeed_dataset_iterators_.end()) {
       LOG(FATAL)
           << "Trying to access an infeed context which has not been created."

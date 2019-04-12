@@ -32,12 +32,14 @@ namespace xla {
 class HloInfeedInstruction;
 namespace poplarplugin {
 
-using OutfeedInfo = const HloInstruction*;
-using OutfeedInfos = absl::flat_hash_set<OutfeedInfo>;
+struct FeedInfo {
+  std::string stream_prefix;
+  std::string config;
+  Shape shape;
+};
+using OutfeedInfos = std::vector<FeedInfo>;
+using InfeedInfos = std::vector<FeedInfo>;
 
-// The only info we currently store for infeeds is the instruction.
-using InfeedInfo = const HloInfeedInstruction*;
-using InfeedInfos = absl::flat_hash_set<InfeedInfo>;
 // This structure contains all information which we generate that pertains
 // to the XLA graph, as opposed to the poplar lowering of that graph.
 struct CompilerAnnotations {

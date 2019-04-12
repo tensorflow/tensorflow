@@ -45,8 +45,7 @@ PoplarExecutable::PoplarExecutable(
       execution_count_(0),
       replication_factor_(replication_factor),
       infeed_infos_(std::move(infeed_infos)),
-      outfeed_infos_(std::move(outfeed_infos)) {
-}
+      outfeed_infos_(std::move(outfeed_infos)) {}
 
 PoplarExecutable::~PoplarExecutable() {
   if (poplar_engine_.get() != nullptr) {
@@ -153,12 +152,36 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
   PoplarExecutableProto proto;
 
   // TODO expand this when poplar engine serialization support is ready
-  return ReadBinaryProto(tensorflow::Env::Default(), filename, &proto);
+  TF_RETURN_IF_ERROR(
+      ReadBinaryProto(tensorflow::Env::Default(), filename, &proto));
+
+  // Load poplar executable
+  std::string poplar_executable_filename = filename + ".poplar_exec";
+
+  // Can we verify that the streams in the loaded poplar executable match the
+  // streams in the TF PoplarExecutable.
+
+  return Status::OK();
 }
 
 /*static*/ Status PoplarExecutable::Serialize(
     const PoplarExecutable& executable, const std::string& filename) {
   PoplarExecutableProto proto;
+
+  if (executable.is_constant_graph_) {
+    return xla::FailedPrecondition("Cannot serialize constant module %s.",
+                                   executable.module().name().c_str());
+  }
+
+  if (executable.is_remap_graph_) {
+    return xla::FailedPrecondition("Cannot serialize remap module %s.",
+                                   executable.module().name().c_str());
+  }
+
+  // Write engine to a file
+  std::string poplar_executable_filename = filename + ".poplar_exec";
+
+  proto.set_engine(poplar_executable_filename);
 
   // TODO expand this when poplar engine serialization support is ready
   return WriteBinaryProto(tensorflow::Env::Default(), filename, proto);
