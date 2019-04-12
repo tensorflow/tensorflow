@@ -357,11 +357,11 @@ def fftshift(x, axes=None, name=None):
         x = _ops.convert_to_tensor(x)
         if axes is None:
             axes = tuple(range(x.shape.ndims))
-            shift = [dim // 2 for dim in x.shape]
+            shift = [int(dim // 2) for dim in x.shape]
         elif isinstance(axes, int):
-            shift = x.shape[axes] // 2
+            shift = int(x.shape[axes] // 2)
         else:
-            shift = [x.shape[ax] // 2 for ax in axes]
+            shift = [int((x.shape[ax]) // 2) for ax in axes]
 
         return manip_ops.roll(x, shift, axes)
 
@@ -398,11 +398,11 @@ def ifftshift(x, axes=None, name=None):
         x = _ops.convert_to_tensor(x)
         if axes is None:
             axes = tuple(range(x.shape.ndims))
-            shift = [-(dim // 2) for dim in x.shape]
+            shift = [-int(dim // 2) for dim in x.shape]
         elif isinstance(axes, int):
-            shift = -(x.shape[axes] // 2)
+            shift = -int(x.shape[axes] // 2)
         else:
-            shift = [-(x.shape[ax] // 2) for ax in axes]
+            shift = [-int(x.shape[ax] // 2) for ax in axes]
 
         return manip_ops.roll(x, shift, axes)
 
