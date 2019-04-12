@@ -884,8 +884,7 @@ TEST_F(ParallelInterleaveDatasetOpTest, IteratorOutputPrefix) {
   EXPECT_EQ(iterator->prefix(), "Iterator::ParallelInterleaveV2");
 }
 
-// TODO(b/130309946): Re-enable once deflaked.
-TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DISABLED_Roundtrip) {
+TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {
   int thread_num = 2, cpu_num = 2;
   const TestCase &test_case = GetParam();
   TF_ASSERT_OK(InitThreadPool(thread_num));
@@ -937,6 +936,8 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DISABLED_Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
+    TF_ASSERT_OK(parallel_interleave_dataset->MakeIterator(
+        iterator_ctx.get(), "Iterator", &iterator));
     TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
 
     while (cur_iteration <= breakpoint) {
