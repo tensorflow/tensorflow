@@ -24,10 +24,13 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -119,6 +122,27 @@ class FlatMapTest(test_base.DatasetTestBase):
     for i in range(10):
       for j in range(2):
         expected_output.append([i, 0] if j % 2 == 0 else [0, -i])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  def testTensorArray(self):
+    def _map_fn(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(
+              dtype=dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i)))
+
+    def _flat_map_fn(x):
+      self.assertIsInstance(x, tensor_array_ops.TensorArray)
+      return dataset_ops.Dataset.from_tensor_slices(x.stack())
+
+    dataset = dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
+
+    expected_output = []
+    for i in range(10):
+      for j in range(i):
+        expected_output.append(j)
+
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
 

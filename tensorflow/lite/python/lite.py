@@ -57,9 +57,11 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
+from tensorflow.python.keras.saving import saving_utils as _saving_utils
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
+from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -74,15 +76,22 @@ class Optimize(enum.Enum):
   # Optimize for size.
   #
   # Optimizations that reduce the size of the model.
-  # The model size will be reduced. Optimizations can include quantizing the
-  # weights of the floating point model.
+  # The model size will be reduced.
+  # Current behavior:
+  # - If RepresentativeDataset is not provided, weights will be quantized and
+  #   activations will remain float.
+  # - If RepresentativeDataset is provided, weights and activations will be
+  #   quantized.
   OPTIMIZE_FOR_SIZE = "OPTIMIZE_FOR_SIZE"
 
   # Optimize for latency.
   #
   # Optimizations that reduce the latency of the model.
-  # The model latency will be reduced. Optimizations can include quantizing the
-  # weights of the floating point model.
+  # Current behavior:
+  # - If RepresentativeDataset is not provided, weights will be quantized and
+  #   activations will remain float.
+  # - If RepresentativeDataset is provided, weights and activations will be
+  #   quantized.
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
 
   def __str__(self):
@@ -143,11 +152,11 @@ class TFLiteConverterV2(object):
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When false any unknown operation is an error. When true, custom ops are
       created for any op that is unknown. The developer will need to provide
-      these to the TensorFlow Lite runtime with a custom resolver. (default
-      False)
+      these to the TensorFlow Lite runtime with a custom resolver.
+      (default False)
     target_spec: Experimental flag, subject to change. Specification of target
       device.
-    optimizations: Experimental flag, subject to change, A list of optimizations
+    optimizations: Experimental flag, subject to change. A list of optimizations
       to apply when converting the model. The converter applies the
       optimizations by giving priority to the optimizations specified earlier in
       the list. E.g. `[optimize.OPTIMIZE_FOR_SIZE,
@@ -161,42 +170,107 @@ class TFLiteConverterV2(object):
   Example usage:
 
     ```python
-    # Converting a GraphDef from a ConcreteFunction.
-    converter = lite.TFLiteConverter.from_concrete_function(func)
+    # Converting a SavedModel to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
-    open("converted_model.tflite", "wb").write(tflite_model)
+
+    # Converting a tf.Keras model to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_keras_model(model)
+    tflite_model = converter.convert()
+
+    # Converting ConcreteFunctions to a TensorFlow Lite model.
+    converter = lite.TFLiteConverter.from_concrete_functions([func])
+    tflite_model = converter.convert()
     ```
   """
 
-  def __init__(self, func):
+  def __init__(self, funcs, trackable_obj=None):
     """Constructor for TFLiteConverter.
 
     Args:
-      func: TensorFlow ConcreteFunction.
+      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+        duplicate elements.
+      trackable_obj: tf.AutoTrackable object associated with `funcs`. A
+        reference to this object needs to be maintained so that Variables do not
+        get garbage collected since functions have a weak reference to
+        Variables. This is only required when the tf.AutoTrackable object is not
+        maintained by the user (e.g. `from_saved_model`).
     """
-    self._func = func
+    self._funcs = funcs
+    self._trackable_obj = trackable_obj
     self.allow_custom_ops = False
     self.target_spec = TargetSpec()
     self.representative_dataset = None
     self.optimizations = []
 
   @classmethod
-  def from_concrete_function(cls, func):
-    """Creates a TFLiteConverter class from a ConcreteFunction.
+  def from_concrete_functions(cls, funcs):
+    """Creates a TFLiteConverter object from ConcreteFunctions.
 
     Args:
-      func: TensorFlow ConcreteFunction.
+      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+        duplicate elements.
 
     Returns:
-      TFLiteConverter class.
+      TFLiteConverter object.
+
+    Raises:
+      Invalid input type.
     """
-    if not isinstance(func, _function.ConcreteFunction):
-      message = "This function takes in a ConcreteFunction."
-      if isinstance(func, _def_function.Function):
-        message += (" To get the ConcreteFunction from a Function,"
-                    " call from_concrete_function.")
-      raise ValueError(message)
-    return cls(func)
+    for func in funcs:
+      if not isinstance(func, _function.ConcreteFunction):
+        message = "This function takes in a list of ConcreteFunction."
+        if isinstance(func, _def_function.Function):
+          message += (" To get the ConcreteFunction from a Function,"
+                      " call from_concrete_function.")
+        raise ValueError(message)
+    return cls(funcs)
+
+  @classmethod
+  def from_saved_model(cls, saved_model_dir, signature_keys=None, tags=None):
+    """Creates a TFLiteConverter object from a SavedModel directory.
+
+    Args:
+      saved_model_dir: SavedModel directory to convert.
+      signature_keys: List of keys identifying SignatureDef containing inputs
+        and outputs. Elements should not be duplicated. By default the
+        `signatures` attribute of the MetaGraphdef is used. (default
+        saved_model.signatures)
+      tags: Set of tags identifying the MetaGraphDef within the SavedModel to
+        analyze. All tags in the tag set must be present. (default set(SERVING))
+
+    Returns:
+      TFLiteConverter object.
+
+    Raises:
+      Invalid signature keys.
+    """
+    saved_model = _load(saved_model_dir, tags)
+    if not signature_keys:
+      signature_keys = saved_model.signatures
+
+    funcs = []
+    for key in signature_keys:
+      if key not in saved_model.signatures:
+        raise ValueError("Invalid signature key '{}' found. Valid keys are "
+                         "'{}'.".format(key, ",".join(saved_model.signatures)))
+      funcs.append(saved_model.signatures[key])
+
+    return cls(funcs, saved_model)
+
+  @classmethod
+  def from_keras_model(cls, model):
+    """Creates a TFLiteConverter object from a Keras model.
+
+    Args:
+      model: tf.Keras.Model
+
+    Returns:
+      TFLiteConverter object.
+    """
+    func = _saving_utils.trace_model_call(model)
+    concrete_func = func.get_concrete_function()
+    return cls([concrete_func])
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -206,11 +280,18 @@ class TFLiteConverterV2(object):
 
     Raises:
       ValueError:
+        Multiple concrete functions are specified.
         Input shape is not specified.
-        None value for dimension in input_tensor.
+        Invalid quantization parameters.
     """
+    # TODO(b/130297984): Add support for converting multiple function.
+    if len(self._funcs) != 1:
+      raise ValueError("This converter can only convert a single "
+                       "ConcreteFunction. Converting multiple functions is "
+                       "under development.")
+
     frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-        self._func)
+        self._funcs[0])
     input_tensors = [
         tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
@@ -285,18 +366,32 @@ class TFLiteConverterV2(object):
 
 @_tf_export(v1=["lite.TFLiteConverter"])
 class TFLiteConverter(object):
-  """Convert a TensorFlow model into `output_format` using TOCO.
+  """Convert a TensorFlow model into `output_format`.
 
   This is used to convert from a TensorFlow GraphDef or SavedModel into either a
   TFLite FlatBuffer or graph visualization.
 
   Attributes:
-
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8}`. (default tf.float32)
+      Must be `{tf.float32, tf.uint8}`. If `optimzations` are provided, this
+      parameter is ignored. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays in the case of quantization.
-      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
+      for a different type for input arrays.
+      If an integer type is provided and `optimizations` are not used,
+      `quantized_inputs_stats` must be provided.
+      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
+      model from a quantization-aware trained input model, then
+      `inference_input_type` defaults to tf.uint8.
+      In all other cases, `inference_input_type` defaults to tf.float32.
+      Must be `{tf.float32, tf.uint8, tf.int8}`
+    inference_output_type: Target data type of real-number output arrays. Allows
+      for a different type for output arrays.
+      If `inference_type` is tf.uint8, signaling conversion to a fully quantized
+      model from a quantization-aware trained output model, then
+      `inference_output_type` defaults to tf.uint8.
+      In all other cases, `inference_output_type` must be tf.float32, an error
+      will be thrown otherwise.
+      Must be `{tf.float32, tf.uint8, tf.int8}`
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
@@ -403,6 +498,7 @@ class TFLiteConverter(object):
     self._output_tensors = output_tensors
     self.inference_type = constants.FLOAT
     self.inference_input_type = None
+    self.inference_output_type = None
     self.output_format = constants.TFLITE
     self.quantized_input_stats = {}
     self.default_ranges_stats = None
@@ -693,9 +789,6 @@ class TFLiteConverter(object):
         raise ValueError(
             "Provide an input generator for representative_dataset")
 
-    # TODO(shashishekhar): For now use optimizations order is ignored.
-    # Both size and latency optimizations decide whether to apply post
-    # training optimizations.
     post_training_optimize = bool(
         len(set(self.optimizations) & set([Optimize.OPTIMIZE_FOR_LATENCY,
                                            Optimize.OPTIMIZE_FOR_SIZE])))
@@ -703,9 +796,37 @@ class TFLiteConverter(object):
     weights_only_quantize_flag = (
         post_training_optimize and (self.representative_dataset is None))
 
+    toco_inference_input_type = self.inference_input_type
+    inference_input_type = self.inference_input_type
+    inference_output_type = self.inference_output_type
+    if post_training_optimize:
+      # Post training optimizations require that TOCO outputs a float model.
+      if self.inference_type != constants.FLOAT:
+        raise ValueError(
+            "`optimizations` require that `inference_type` is set to float.")
+      toco_inference_input_type = constants.FLOAT
+      # Set up default values.
+      if inference_input_type is None:
+        inference_input_type = constants.FLOAT
+      if inference_output_type is None:
+        inference_output_type = constants.FLOAT
+
+    if weights_only_quantize_flag:
+      # Currently, weight only quantization requires float inputs and outputs.
+      if (inference_input_type != constants.FLOAT or
+          inference_output_type != constants.FLOAT):
+        raise ValueError(
+            "Provide an inference_input_type and inference_output_type of type "
+            "tf.float32.")
+
+    if not post_training_optimize and self.inference_output_type is not None:
+      raise ValueError(
+          "inference_output_type is currently not supported if optimizations "
+          "are not enabled.")
+
     converter_kwargs = {
         "inference_type": self.inference_type,
-        "inference_input_type": self.inference_input_type,
+        "inference_input_type": toco_inference_input_type,
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "output_format": self.output_format,
         "quantized_input_stats": quantized_stats,
@@ -750,7 +871,8 @@ class TFLiteConverter(object):
     if self.representative_dataset and post_training_optimize:
       calibrate_quantize = _calibrator.Calibrator(result)
       result = calibrate_quantize.calibrate_and_quantize(
-          self.representative_dataset.input_gen)
+          self.representative_dataset.input_gen, inference_input_type,
+          inference_output_type)
 
     return result
 

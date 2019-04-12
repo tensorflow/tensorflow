@@ -948,6 +948,7 @@ tf_cuda_library(
         "util/events_writer.h",
         "util/example_proto_fast_parsing.h",
         "util/example_proto_helper.h",
+        "util/gpu_kernel_helper.h",
         "util/guarded_philox_random.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
@@ -1497,6 +1498,7 @@ cc_library(
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
+        "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
@@ -1687,6 +1689,7 @@ filegroup(
         ":protos_all_proto_text_srcs",
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2199,7 +2202,9 @@ tf_proto_library(
     srcs = ["protobuf/conv_autotuning.proto"],
     cc_api_version = 2,
     default_header = True,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/stream_executor:dnn_proto",
+    ],
     provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
@@ -2909,7 +2914,10 @@ cc_library(
 
 tf_cuda_library(
     name = "cuda_device_functions",
-    hdrs = ["util/cuda_device_functions.h"],
+    hdrs = [
+        "util/cuda_device_functions.h",
+        "util/gpu_device_functions.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [":framework_lite"],
 )
@@ -4319,9 +4327,9 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_only_cc_test(
-    name = "util_cuda_kernel_helper_test",
+    name = "util_gpu_kernel_helper_test",
     srcs = [
-        "util/cuda_kernel_helper_test.cu.cc",
+        "util/gpu_kernel_helper_test.cu.cc",
     ],
     deps = [
         ":test",

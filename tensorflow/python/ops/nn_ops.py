@@ -2743,9 +2743,8 @@ def relu6(features, name=None):
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
-  "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
-  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
-  https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf
+  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models. 
+  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
 
   Args:
     features: A `Tensor` representing preactivation values. Must be one of

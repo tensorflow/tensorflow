@@ -441,19 +441,48 @@ class MarkForCompilationPassImpl {
     bool has_xla_compile_attr;
   };
 
-  // Nodes that XLA can compile are put in `candidates`.  Nodes put in
-  // `isolated_nodes` must either be unclustered or be put in trivial
+  // ---------------------------------------------------------------------------
+  // The pass proceeds in four steps, out of which `RunEdgeContractionLoop` and
+  // `CreateClusters` do most of the heavy lifting.
+
+  // Initialize some internal data structures.
+  Status Initialize();
+
+  // Contracts as many edges as possible to create XLA clusters.  After this
+  // finishes the clustering decisions made are implicitly stored in
+  // `clusters_`.
+  Status RunEdgeContractionLoop();
+
+  // Manifests the clustering decisions into the TF graph by tagging nodes with
+  // an `_XlaCluster` attribute.  Also some basic filter logic, like
+  // tf_xla_min_cluster_size, are applied here.
+  Status CreateClusters();
+
+  Status DumpDebugInfo();
+
+  bool IsCompilationCandidate(Node* n) const {
+    return compilation_candidates_.find(n) != compilation_candidates_.end();
+  }
+
+  // Tries to contract the edge from cluster `from` to cluster `to`.  Returns
+  // true if successful.
+  StatusOr<bool> TryToContractEdge(const Cluster& from, int to);
+
+  // Tries to contract each edge from `cluster_from`.  Returns true as soon as a
+  // single edge contraction is successful.  Returns true if no edges were
+  // contracted.
+  StatusOr<bool> TryToContractEdgeFrom(Cluster* cluster_from);
+
+  // Nodes that XLA can compile are put in `candidates_`.  Nodes put in
+  // `isolated_nodes_` must either be unclustered or be put in trivial
   // single-node clusters.
-  StatusOr<std::pair<OrderedNodeSet, absl::flat_hash_set<Node*>>>
-  FindCompilationCandidates();
+  Status FindCompilationCandidates();
 
   bool CompilationDisallowedByXlaCompileAttr(Node* node,
                                              const DeviceType& jit_device_type);
 
-  Status BuildInitialClusterSet(const OrderedNodeSet& compilation_candidates,
-                                const DeadnessAnalysis* deadness_analysis,
-                                std::vector<UnionFind<Cluster>>* clusters,
-                                std::deque<UnionFind<Cluster>*>* worklist);
+  // Populates `clusters_` and `worklist_`.
+  Status BuildInitialClusterSet();
 
   StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
 
@@ -461,9 +490,7 @@ class MarkForCompilationPassImpl {
 
   bool HasMismatchingXlaScope(Node* node_from, Node* node_to);
 
-  StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
-      int to_node_id, const OrderedNodeSet& compilation_candidates,
-      absl::Span<UnionFind<Cluster>> clusters, const GraphCycles& cycles);
+  StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(int to);
 
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
@@ -481,13 +508,217 @@ class MarkForCompilationPassImpl {
   OptimizerOptions::GlobalJitLevel global_jit_level_;
   absl::flat_hash_map<int, bool> should_compile_cluster_cache_;
   DeviceInfoCache device_info_cache_;
+
+  bool initialized_ = false;
+  bool edges_contracted_ = false;
+  bool clusters_created_ = false;
+
+  std::vector<UnionFind<Cluster>> clusters_;
+  std::deque<UnionFind<Cluster>*> worklist_;
+  GraphCycles graph_cycles_;
+  OrderedNodeSet compilation_candidates_;
+  absl::flat_hash_set<Node*> isolated_nodes_;
+  std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
+  int64 iteration_count_ = 0;
 };
+
+Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
+                                         const Node& n, bool* ignore) {
+  // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
+  // ignore it during resource operation safety analysis.  We need this hack
+  // because of two reasons:
+  //
+  //  1. Operations assigned to XLA_CPU and XLA_GPU have to always be compiled.
+  //  2. We don't support live-out values of type DT_RESOURCE and live-in values
+  //     of type DT_RESOURCE that are not resource variables.
+  //
+  // Together these imply we cannot let resource variable safety analysis
+  // constrain e.g. a TensorArrayV3->TensorArrayAssignV3 edge to be in different
+  // clusters: both of them will have to be clustered because of (1) and we
+  // won't be able to keep the edge between the two as neither the input to the
+  // second XLA cluster nor the output from the first XLA cluster are supported
+  // because of (2).
+  //
+  // TODO(b/113100872): This can be fixed if the TensorFlow representation for
+  // TensorArray and Stack on the XLA_{C|G}PU devices were the same in XLA; then
+  // (2) would no longer hold.
+
+  if (n.assigned_device_name().empty()) {
+    *ignore = false;
+    return Status::OK();
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      const XlaOpRegistry::DeviceRegistration* registration,
+      device_info_cache->GetCompilationDevice(n.assigned_device_name()));
+
+  if (!registration) {
+    *ignore = true;
+  } else {
+    *ignore = registration->cluster_resource_variable_ops_unsafely;
+  }
+  return Status::OK();
+}
+
+Status MarkForCompilationPassImpl::Initialize() {
+  TF_RET_CHECK(!initialized_ && !edges_contracted_ && !clusters_created_);
+  initialized_ = true;
+
+  TF_RETURN_IF_ERROR(FindCompilationCandidates());
+
+  if (compilation_candidates_.empty()) {
+    VLOG(2) << "No compilable candidates";
+    return Status::OK();
+  }
+
+  TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
+                      CreateCycleDetectionGraph(graph_, &graph_cycles_));
+  if (!cycle_detection_graph_ok) {
+    return Status::OK();
+  }
+
+  auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
+    return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
+  };
+
+  TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
+      graph_, flib_def_, ignore_resource_ops, &graph_cycles_));
+
+  if (!debug_options_.ignore_deadness_checks) {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
+    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis_));
+  }
+
+  // Each compilation candidate belongs to a cluster. The cluster's
+  // representative names the node in the 'cycles' graph that represents the
+  // cluster.
+  return BuildInitialClusterSet();
+}
+
+Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
+  TF_RET_CHECK(initialized_ && !edges_contracted_ && !clusters_created_);
+  edges_contracted_ = true;
+
+  // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
+  // example, from the Grappler fusion pass).
+  while (!worklist_.empty()) {
+    UnionFind<Cluster>* cluster_from = worklist_.front();
+    worklist_.pop_front();
+
+    TF_ASSIGN_OR_RETURN(bool contracted_one_edge,
+                        TryToContractEdgeFrom(&cluster_from->Get()));
+
+    if (contracted_one_edge) {
+      worklist_.push_back(cluster_from);
+    }
+  }
+
+  VLOG(1) << iteration_count_ << " iterations in inner loop for graph with "
+          << compilation_candidates_.size()
+          << " compilation candidates.  Iterations per compilation candidate: "
+          << ((1.0 * iteration_count_) / compilation_candidates_.size());
+
+  return Status::OK();
+}
+
+Status MarkForCompilationPassImpl::CreateClusters() {
+  TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
+  clusters_created_ = true;
+
+  static std::atomic<int64> cluster_sequence_num;
+
+  // Count the number of non-trivial elements in each cluster.
+  std::vector<int> effective_cluster_sizes(graph_->num_node_ids());
+
+  // has_functional_control_flow remembers if a cluster contains a functional
+  // control flow node.
+  std::vector<bool> has_functional_control_flow(graph_->num_node_ids());
+
+  for (const Node* n : compilation_candidates_) {
+    int cluster = clusters_[n->id()].Get().representative;
+    // We want clusters to be big enough that the benefit from XLA's
+    // optimizations offsets XLA related overhead (for instance we add some
+    // Switch/Merge nodes into the graph to implement lazy compilation).  To
+    // this end, we don't count Identity and Constant nodes because they do not
+    // enable interesting optimizations by themselves.
+    if (!n->IsIdentity() && !n->IsConstant()) {
+      effective_cluster_sizes[cluster]++;
+    }
+    if (n->type_string() == "While" || n->type_string() == "If") {
+      has_functional_control_flow[cluster] = true;
+    }
+  }
+
+  // Names for each cluster.
+  std::unordered_map<int, string> cluster_names;
+
+  if (debug_options_.dump_graphs) {
+    DumpGraphToFile("before_mark_for_compilation", *graph_, flib_def_);
+  }
+
+  // Mark clusters for compilation that:
+  // * are placed on a device that requires compilation (an XlaDevice),
+  // * are explicitly marked for compilation (_XlaCompile=true), or
+  // * have more than debug_options_.xla_min_cluster_size elements (applicable
+  //   only if compilation is enabled, otherwise there will be no such
+  //   candidates).
+  for (Node* n : compilation_candidates_) {
+    const Cluster& cluster = clusters_[n->id()].Get();
+    TF_ASSIGN_OR_RETURN(bool should_compile_cluster,
+                        ShouldCompileCluster(cluster));
+    if (!should_compile_cluster) {
+      continue;
+    }
+
+    int cluster_repr = cluster.representative;
+
+    // Compile if the user marked this node _XlaCompile=true
+    bool compile_attr = false;
+    bool marked_for_compilation = false;
+    if (GetNodeAttr(n->attrs(), kXlaCompileAttr, &compile_attr).ok()) {
+      marked_for_compilation = compile_attr;
+    } else if (flib_def_->GetAttr(*n, kXlaCompileAttr, &compile_attr).ok()) {
+      marked_for_compilation = compile_attr;
+    }
+
+    // We assume that functional If and While nodes have at least
+    // min_cluster_size non-trivial nodes in them.  It would be more principled
+    // to (recursively) verify this fact, but that's probably not worth the
+    // trouble.
+
+    if (effective_cluster_sizes[cluster_repr] >=
+            debug_options_.min_cluster_size ||
+        has_functional_control_flow[cluster_repr] || marked_for_compilation) {
+      string& name = cluster_names[cluster_repr];
+
+      if (name.empty()) {
+        name = absl::StrCat("cluster_", cluster_sequence_num++);
+      }
+      n->AddAttr(kXlaClusterAttr, name);
+      n->AddAttr(kXlaAlreadyClustered, true);
+      VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status MarkForCompilationPassImpl::DumpDebugInfo() {
+  TF_RET_CHECK(initialized_ && edges_contracted_ && clusters_created_);
+
+  if (debug_options_.dump_graphs) {
+    DumpPostClusteringGraphs();
+  }
+
+  VLogClusteringSummary();
+
+  return Status::OK();
+}
 
 StatusOr<bool>
 MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
-    int to_node_id, const OrderedNodeSet& compilation_candidates,
-    absl::Span<UnionFind<Cluster>> clusters, const GraphCycles& cycles) {
-  const Cluster& cluster_to = clusters[to_node_id].Get();
+    int to) {
+  const Cluster& cluster_to = clusters_[to].Get();
 
   // If any of the consumer's producers are on a different device, do not
   // cluster these nodes. This prevents other work on this device from being
@@ -499,14 +730,14 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   //
   // TODO(b/117085735): We probably want to handle the reciprocal of this case
   // where a cluster is producing data for multiple devices.
-  for (const auto& in_id : cycles.Predecessors(to_node_id)) {
+  for (const auto& in_id : graph_cycles_.Predecessors(to)) {
     if (in_id >= graph_->num_node_ids()) {
       continue;
     }
 
     Node* in = graph_->FindNodeId(in_id);
-    const Cluster& cluster_in = clusters[in_id].Get();
-    if (compilation_candidates.find(in) != compilation_candidates.cend()) {
+    const Cluster& cluster_in = clusters_[in_id].Get();
+    if (IsCompilationCandidate(in)) {
       TF_ASSIGN_OR_RETURN(bool devices_compatible,
                           AreDevicesCompatible(cluster_to, cluster_in));
       if (!devices_compatible) {
@@ -537,20 +768,17 @@ bool MarkForCompilationPassImpl::HasMismatchingXlaScope(Node* node_from,
          from_scope != to_scope;
 }
 
-Status MarkForCompilationPassImpl::BuildInitialClusterSet(
-    const OrderedNodeSet& compilation_candidates,
-    const DeadnessAnalysis* deadness_analysis,
-    std::vector<UnionFind<Cluster>>* clusters,
-    std::deque<UnionFind<Cluster>*>* worklist) {
-  clusters->resize(graph_->num_node_ids());
-  for (Node* node : compilation_candidates) {
-    Cluster* cluster = &(*clusters)[node->id()].Get();
+Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
+  clusters_.resize(graph_->num_node_ids());
+
+  for (Node* node : compilation_candidates_) {
+    Cluster* cluster = &clusters_[node->id()].Get();
     cluster->representative = node->id();
 
-    if (deadness_analysis) {
+    if (deadness_analysis_) {
       TF_ASSIGN_OR_RETURN(
           cluster->deadness_predicate,
-          deadness_analysis->GetPredicateFor(node, Graph::kControlSlot));
+          deadness_analysis_->GetPredicateFor(node, Graph::kControlSlot));
     }
 
     const string& device = !node->assigned_device_name().empty()
@@ -572,17 +800,14 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet(
     }
 
     cluster->devices.insert(device);
-    worklist->push_back(&(*clusters)[node->id()]);
+
+    worklist_.push_back(&clusters_[node->id()]);
   }
 
   return Status::OK();
 }
 
-StatusOr<std::pair<OrderedNodeSet, absl::flat_hash_set<Node*>>>
-MarkForCompilationPassImpl::FindCompilationCandidates() {
-  OrderedNodeSet candidates;
-  absl::flat_hash_set<Node*> isolated_nodes;
-
+Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env_, TF_GRAPH_DEF_VERSION,
@@ -698,17 +923,18 @@ MarkForCompilationPassImpl::FindCompilationCandidates() {
         if (!is_tensor_array_or_stack_op) {
           VLOG(2) << "Isolating " << node->name()
                   << ": must-be-constant stateful op";
-          isolated_nodes.insert(node);
+          isolated_nodes_.insert(node);
         }
       }
     }
 
-    candidates.insert(node);
+    compilation_candidates_.insert(node);
     --(*debug_options_.fuel);
   }
 
-  VLOG(2) << "candidates->size() = " << candidates.size();
-  return {{candidates, isolated_nodes}};
+  VLOG(2) << "compilation_candidates_.size() = "
+          << compilation_candidates_.size();
+  return Status::OK();
 }
 
 bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
@@ -753,47 +979,119 @@ bool IsShapeConsumerOp(const Node& node) {
          node.type_string() == "Size";
 }
 
-Status IgnoreResourceOpForSafetyAnalysis(DeviceInfoCache* device_info_cache,
-                                         const Node& n, bool* ignore) {
-  // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
-  // ignore it during resource operation safety analysis.  We need this hack
-  // because of two reasons:
-  //
-  //  1. Operations assigned to XLA_CPU and XLA_GPU have to always be compiled.
-  //  2. We don't support live-out values of type DT_RESOURCE and live-in values
-  //     of type DT_RESOURCE that are not resource variables.
-  //
-  // Together these imply we cannot let resource variable safety analysis
-  // constrain e.g. a TensorArrayV3->TensorArrayAssignV3 edge to be in different
-  // clusters: both of them will have to be clustered because of (1) and we
-  // won't be able to keep the edge between the two as neither the input to the
-  // second XLA cluster nor the output from the first XLA cluster are supported
-  // because of (2).
-  //
-  // TODO(b/113100872): This can be fixed if the TensorFlow representation for
-  // TensorArray and Stack on the XLA_{C|G}PU devices were the same in XLA; then
-  // (2) would no longer hold.
-
-  if (n.assigned_device_name().empty()) {
-    *ignore = false;
-    return Status::OK();
+StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(
+    const Cluster& cluster_from, int to) {
+  Node* node_to = graph_->FindNodeId(to);
+  if (!IsCompilationCandidate(node_to)) {
+    return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      const XlaOpRegistry::DeviceRegistration* registration,
-      device_info_cache->GetCompilationDevice(n.assigned_device_name()));
-
-  if (!registration) {
-    *ignore = true;
-  } else {
-    *ignore = registration->cluster_resource_variable_ops_unsafely;
+  const Cluster& cluster_to = clusters_[to].Get();
+  DCHECK(cluster_from.deadness_predicate.has_value() ==
+         cluster_to.deadness_predicate.has_value());
+  if (cluster_from.deadness_predicate != cluster_to.deadness_predicate) {
+    return false;
   }
-  return Status::OK();
+
+  TF_ASSIGN_OR_RETURN(bool devices_compatible,
+                      AreDevicesCompatible(cluster_from, cluster_to));
+  if (!devices_compatible) {
+    return false;
+  }
+
+  if (isolated_nodes_.contains(node_to)) {
+    return false;
+  }
+
+  int from = cluster_from.representative;
+  Node* node_from = graph_->FindNodeId(from);
+
+  if (HasMismatchingXlaScope(node_from, node_to)) {
+    return false;
+  }
+
+  // Ops that consume shapes cannot be the root of a cluster. This is an
+  // optimization.
+  if (clusters_[from].Size() == 1 && IsShapeConsumerOp(*node_from)) {
+    return false;
+  }
+
+  // Don't exceed the maximum cluster size.
+  if (clusters_[from].Size() + clusters_[to].Size() >
+      debug_options_.max_cluster_size) {
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool will_introduce_cross_device_dependency,
+                      ClusteringWillIntroduceInterDeviceDependency(to));
+
+  if (will_introduce_cross_device_dependency) {
+    return false;
+  }
+
+  // If contracting the edge would create a cycle, bail out.  However, just
+  // because we can't merge the clusters now does not mean we won't be able
+  // to merge them in the future.  e.g., if we have edges 1->2, 2->3 and
+  // 1->3, we cannot contract edge 1->3. But if we first contract 1->2 then
+  // we can later contract 1->3.
+  return graph_cycles_.ContractEdge(from, to);
+}
+
+StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgeFrom(
+    Cluster* cluster_from) {
+  int from = cluster_from->representative;
+
+  Node* node_from = graph_->FindNodeId(from);
+  if (node_from->IsControlFlow()) {
+    // Control flow nodes aren't compilation candidates and should never
+    // appear.
+    return errors::Internal("Found control flow node in clustering worklist: ",
+                            node_from->type_string());
+  }
+
+  if (!IsCompilationCandidate(node_from)) {
+    return false;
+  }
+
+  if (isolated_nodes_.count(node_from)) {
+    return false;
+  }
+
+  for (int to : graph_cycles_.Successors(from)) {
+    iteration_count_++;
+    if (to >= graph_->num_node_ids()) {
+      // Node is a fictitious node that is present only in the cycle detection
+      // graph. No clustering is possible.
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(bool contracted_edge,
+                        TryToContractEdge(*cluster_from, to));
+
+    if (!contracted_edge) {
+      continue;
+    }
+
+    const Cluster& cluster_to = clusters_[to].Get();
+
+    // Merge the clusters. ContractEdge uses 'from' as the number of the
+    // merged node, so make sure 'from' is the chosen representative.
+    cluster_from->devices.insert(cluster_to.devices.begin(),
+                                 cluster_to.devices.end());
+    if (!cluster_to.resource_op_device.empty()) {
+      cluster_from->resource_op_device = cluster_to.resource_op_device;
+    }
+
+    cluster_from->has_xla_compile_attr |= cluster_to.has_xla_compile_attr;
+    clusters_[from].Merge(&clusters_[to]);
+
+    return true;
+  }
+
+  return false;
 }
 
 Status MarkForCompilationPassImpl::Run() {
-  static std::atomic<int64> cluster_sequence_num;
-
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
 
@@ -801,232 +1099,10 @@ Status MarkForCompilationPassImpl::Run() {
   // some one-time work.
   XLA_SCOPED_LOGGING_TIMER_LEVEL("MarkForCompilationPassImpl::Run", 1);
 
-  OrderedNodeSet compilation_candidates;
-  absl::flat_hash_set<Node*> isolated_nodes;
-  TF_ASSIGN_OR_RETURN(std::tie(compilation_candidates, isolated_nodes),
-                      FindCompilationCandidates());
-
-  if (compilation_candidates.empty()) {
-    VLOG(2) << "No compilable candidates";
-    return Status::OK();
-  }
-
-  GraphCycles cycles;
-  TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
-                      CreateCycleDetectionGraph(graph_, &cycles));
-  if (!cycle_detection_graph_ok) {
-    return Status::OK();
-  }
-
-  auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
-    return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
-  };
-
-  TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
-      graph_, flib_def_, ignore_resource_ops, &cycles));
-
-  std::unique_ptr<DeadnessAnalysis> deadness_analysis;
-  if (!debug_options_.ignore_deadness_checks) {
-    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
-    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis));
-  }
-
-  // Each compilation candidate belongs to a cluster. The cluster's
-  // representative names the node in the 'cycles' graph that represents the
-  // cluster.
-  std::vector<UnionFind<Cluster>> clusters;
-  std::deque<UnionFind<Cluster>*> worklist;
-  TF_RETURN_IF_ERROR(BuildInitialClusterSet(
-      compilation_candidates, deadness_analysis.get(), &clusters, &worklist));
-
-  int64 iteration_count = 0;
-
-  // Repeatedly contract edges between clusters that are on the same device,
-  // provided the contraction would not create a cycle.
-  //
-  // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
-  // example, from the Grappler fusion pass).
-  while (!worklist.empty()) {
-    Cluster* cluster_from = &worklist.front()->Get();
-    int from = cluster_from->representative;
-    worklist.pop_front();
-
-    Node* node_from = graph_->FindNodeId(from);
-    if (node_from->IsControlFlow()) {
-      // Control flow nodes aren't compilation candidates and should never
-      // appear.
-      return errors::Internal(
-          "Found control flow node in clustering worklist: ",
-          node_from->type_string());
-    }
-
-    if (isolated_nodes.count(node_from)) {
-      continue;
-    }
-
-    for (int to : cycles.Successors(from)) {
-      iteration_count++;
-      if (to >= graph_->num_node_ids()) {
-        // Node is a fictitious node that is present only in the cycle detection
-        // graph. No clustering is possible.
-        continue;
-      }
-
-      const Cluster& cluster_to = clusters[to].Get();
-      Node* node_to = graph_->FindNodeId(to);
-      if (compilation_candidates.find(node_to) ==
-          compilation_candidates.cend()) {
-        continue;
-      }
-
-      DCHECK(cluster_from->deadness_predicate.has_value() ==
-             cluster_to.deadness_predicate.has_value());
-      if (cluster_from->deadness_predicate != cluster_to.deadness_predicate) {
-        continue;
-      }
-
-      TF_ASSIGN_OR_RETURN(bool devices_compatible,
-                          AreDevicesCompatible(*cluster_from, cluster_to));
-      if (!devices_compatible) {
-        continue;
-      }
-
-      if (isolated_nodes.count(node_to)) {
-        continue;
-      }
-
-      if (HasMismatchingXlaScope(node_from, node_to)) {
-        continue;
-      }
-
-      // Ops that consume shapes cannot be the root of a cluster. This is an
-      // optimization.
-      if (clusters[from].Size() == 1 && IsShapeConsumerOp(*node_from)) {
-        continue;
-      }
-
-      // Don't exceed the maximum cluster size.
-      if (clusters[from].Size() + clusters[to].Size() >
-          debug_options_.max_cluster_size) {
-        continue;
-      }
-
-      TF_ASSIGN_OR_RETURN(
-          bool will_introduce_cross_device_dependency,
-          ClusteringWillIntroduceInterDeviceDependency(
-              to, compilation_candidates, absl::MakeSpan(clusters), cycles));
-
-      if (will_introduce_cross_device_dependency) {
-        continue;
-      }
-
-      // If contracting the edge would create a cycle, bail out.  However, just
-      // because we can't merge the clusters now does not mean we won't be able
-      // to merge them in the future.  e.g., if we have edges 1->2, 2->3 and
-      // 1->3, we cannot contract edge 1->3. But if we first contract 1->2 then
-      // we can later contract 1->3.
-      if (!cycles.ContractEdge(from, to)) {
-        continue;
-      }
-
-      // Merge the clusters. ContractEdge uses 'from' as the number of the
-      // merged node, so make sure 'from' is the chosen representative.
-      cluster_from->devices.insert(cluster_to.devices.begin(),
-                                   cluster_to.devices.end());
-      if (!cluster_to.resource_op_device.empty()) {
-        cluster_from->resource_op_device = cluster_to.resource_op_device;
-      }
-      cluster_from->has_xla_compile_attr |= cluster_to.has_xla_compile_attr;
-      clusters[from].Merge(&clusters[to]);
-
-      worklist.push_back(&clusters[from]);
-      break;
-    }
-  }
-
-  VLOG(1) << iteration_count << " iterations in inner loop for graph with "
-          << compilation_candidates.size()
-          << " compilation candidates.  Iterations per compilation candidate: "
-          << ((1.0 * iteration_count) / compilation_candidates.size());
-
-  // Count the number of non-trivial elements in each cluster.
-  std::vector<int> effective_cluster_sizes(graph_->num_node_ids());
-
-  // has_functional_control_flow remembers if a cluster contains a functional
-  // control flow node.
-  std::vector<bool> has_functional_control_flow(graph_->num_node_ids());
-
-  for (const Node* n : compilation_candidates) {
-    int cluster = clusters[n->id()].Get().representative;
-    // We want clusters to be big enough that the benefit from XLA's
-    // optimizations offsets XLA related overhead (for instance we add some
-    // Switch/Merge nodes into the graph to implement lazy compilation).  To
-    // this end, we don't count Identity and Constant nodes because they do not
-    // enable interesting optimizations by themselves.
-    if (!n->IsIdentity() && !n->IsConstant()) {
-      effective_cluster_sizes[cluster]++;
-    }
-    if (n->type_string() == "While" || n->type_string() == "If") {
-      has_functional_control_flow[cluster] = true;
-    }
-  }
-
-  // Names for each cluster.
-  std::unordered_map<int, string> cluster_names;
-
-  if (debug_options_.dump_graphs) {
-    DumpGraphToFile("before_mark_for_compilation", *graph_, flib_def_);
-  }
-
-  // Mark clusters for compilation that:
-  // * are placed on a device that requires compilation (an XlaDevice),
-  // * are explicitly marked for compilation (_XlaCompile=true), or
-  // * have more than debug_options_.xla_min_cluster_size elements (applicable
-  //   only if compilation is enabled, otherwise there will be no such
-  //   candidates).
-  for (Node* n : compilation_candidates) {
-    const Cluster& cluster = clusters[n->id()].Get();
-    TF_ASSIGN_OR_RETURN(bool should_compile_cluster,
-                        ShouldCompileCluster(cluster));
-    if (!should_compile_cluster) {
-      continue;
-    }
-
-    int cluster_repr = cluster.representative;
-
-    // Compile if the user marked this node _XlaCompile=true
-    bool compile_attr = false;
-    bool marked_for_compilation = false;
-    if (GetNodeAttr(n->attrs(), kXlaCompileAttr, &compile_attr).ok()) {
-      marked_for_compilation = compile_attr;
-    } else if (flib_def_->GetAttr(*n, kXlaCompileAttr, &compile_attr).ok()) {
-      marked_for_compilation = compile_attr;
-    }
-
-    // We assume that functional If and While nodes have at least
-    // min_cluster_size non-trivial nodes in them.  It would be more principled
-    // to (recursively) verify this fact, but that's probably not worth the
-    // trouble.
-
-    if (effective_cluster_sizes[cluster_repr] >=
-            debug_options_.min_cluster_size ||
-        has_functional_control_flow[cluster_repr] || marked_for_compilation) {
-      string& name = cluster_names[cluster_repr];
-
-      if (name.empty()) {
-        name = absl::StrCat("cluster_", cluster_sequence_num++);
-      }
-      n->AddAttr(kXlaClusterAttr, name);
-      n->AddAttr(kXlaAlreadyClustered, true);
-      VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;
-    }
-  }
-
-  if (debug_options_.dump_graphs) {
-    DumpPostClusteringGraphs();
-  }
-
-  VLogClusteringSummary();
+  TF_RETURN_IF_ERROR(Initialize());
+  TF_RETURN_IF_ERROR(RunEdgeContractionLoop());
+  TF_RETURN_IF_ERROR(CreateClusters());
+  TF_RETURN_IF_ERROR(DumpDebugInfo());
 
   return Status::OK();
 }

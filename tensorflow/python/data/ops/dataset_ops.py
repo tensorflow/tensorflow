@@ -224,11 +224,7 @@ class DatasetV2(object):
     Raises:
       RuntimeError: If eager execution is not enabled.
     """
-    if context.executing_eagerly():
-      return iterator_ops.EagerIterator(self)
-    else:
-      raise RuntimeError("dataset.__iter__() is only supported when eager "
-                         "execution is enabled.")
+    return iterator_ops.IteratorV2(self)
 
   @abc.abstractproperty
   def _element_structure(self):
@@ -1423,7 +1419,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.EagerIterator(self)
+      return iterator_ops.IteratorV2(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -1880,7 +1876,7 @@ def get_structure(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A `tf.data.experimental.Structure` representing the structure of the
@@ -1908,7 +1904,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A nested structure of `tf.TensorShape` objects corresponding to each
@@ -1926,7 +1922,7 @@ def get_legacy_output_types(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A nested structure of `tf.DType` objects corresponding to each component
@@ -1944,7 +1940,7 @@ def get_legacy_output_classes(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A nested structure of Python `type` or `tf.data.experimental.Structure`
@@ -2074,13 +2070,7 @@ class TensorDataset(DatasetSource):
 
   def __init__(self, tensors):
     """See `Dataset.from_tensors()` for details."""
-    with ops.name_scope("tensors"):
-      tensors = nest.pack_sequence_as(tensors, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(tensors))
-      ])
+    tensors = structure_lib.normalize_tensors(tensors)
     self._structure = structure_lib.Structure.from_value(tensors)
     self._tensors = self._structure._to_tensor_list(tensors)  # pylint: disable=protected-access
 

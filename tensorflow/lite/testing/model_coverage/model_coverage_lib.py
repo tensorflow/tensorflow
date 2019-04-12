@@ -405,7 +405,7 @@ def test_saved_model_v2(directory,
   concrete_func = model.signatures[signature_key]
   concrete_func.inputs[0].set_shape(input_shape)
 
-  converter = _lite.TFLiteConverterV2.from_concrete_function(concrete_func)
+  converter = _lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
   tflite_model = _convert(converter, **kwargs)
 
   compare_models_v2(tflite_model, concrete_func, input_data=input_data)

@@ -60,8 +60,7 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     config.set_device_policy('silent')
     config.set_intra_op_parallelism_threads(2)
 
-    # Excute a dummy op to ensure that the context has been initialized
-    constant_op.constant(1)
+    context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
       cpu_tensor = constant_op.constant(1, dtype=dtype)
@@ -119,44 +118,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(context.ASYNC, context.context().execution_mode)
 
   @reset_eager
-  def testGpuPerProcessMemoryFraction(self):
-    config.set_gpu_per_process_memory_fraction(0.5)
-    self.assertEqual(
-        config.get_gpu_per_process_memory_fraction(),
-        context.context().gpu_per_process_memory_fraction)
-
-    constant_op.constant(1)
-    with self.assertRaises(RuntimeError):
-      config.set_gpu_per_process_memory_fraction(0.5)
-
-  @reset_eager
-  def testGpuPerProcessMemoryGrowth(self):
-    self.assertFalse(config.get_gpu_per_process_memory_growth())
-
-    config.set_gpu_per_process_memory_growth(True)
-    self.assertTrue(config.get_gpu_per_process_memory_growth())
-    self.assertEqual(
-        config.get_gpu_per_process_memory_growth(),
-        context.context().gpu_per_process_memory_growth)
-
-    config.set_gpu_per_process_memory_growth(False)
-    self.assertFalse(config.get_gpu_per_process_memory_growth())
-    self.assertEqual(
-        config.get_gpu_per_process_memory_growth(),
-        context.context().gpu_per_process_memory_growth)
-
-    constant_op.constant(1)
-    with self.assertRaises(RuntimeError):
-      config.set_gpu_per_process_memory_growth(True)
-
-  @reset_eager
   def testIntraOpParallelismThreads(self):
     config.set_intra_op_parallelism_threads(10)
     self.assertEqual(
         config.get_intra_op_parallelism_threads(),
         context.context().intra_op_parallelism_threads)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_intra_op_parallelism_threads(1)
 
@@ -167,7 +136,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         config.get_inter_op_parallelism_threads(),
         context.context().inter_op_parallelism_threads)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_inter_op_parallelism_threads(1)
 
@@ -221,7 +191,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         context.get_log_device_placement(),
         context.context().log_device_placement)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
     with self.assertRaises(RuntimeError):

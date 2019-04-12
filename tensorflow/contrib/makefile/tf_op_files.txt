@@ -126,6 +126,7 @@ tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/fft_ops.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
+tensorflow/core/kernels/fused_eigen_output_kernels.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/gather_nd_op.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_0.cc

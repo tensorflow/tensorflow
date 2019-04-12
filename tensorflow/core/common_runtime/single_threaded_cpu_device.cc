@@ -47,18 +47,14 @@ class SingleThreadedCpuDevice : public Device {
                                                   DeviceLocality())) {
     eigen_worker_threads_.num_threads = kNumThreads;
     eigen_worker_threads_.workers = GraphRunnerThreadPool();
-    eigen_threadpool_wrapper_.reset(
-        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
     eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
+        eigen_worker_threads_.workers->AsEigenThreadPool(),
+        eigen_worker_threads_.num_threads));
     set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
     set_eigen_cpu_device(eigen_device_.get());
   }
 
-  ~SingleThreadedCpuDevice() override {
-    eigen_threadpool_wrapper_.reset();
-    eigen_device_.reset();
-  }
+  ~SingleThreadedCpuDevice() override { eigen_device_.reset(); }
 
   Status Sync() override { return Status::OK(); }
 
@@ -79,7 +75,6 @@ class SingleThreadedCpuDevice : public Device {
 
  private:
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 

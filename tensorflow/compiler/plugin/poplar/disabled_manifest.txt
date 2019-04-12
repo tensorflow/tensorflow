@@ -62,6 +62,7 @@ SvdOpTest # Seg fault
 CondTest.testCondConstPropagation # Switch node in cluster
 SegmentReductionOpsTest.testUnsortedSegmentOps1DIndices1DDataNegativeIndices #Scatter negative indices
 CategoricalTest.testCategoricalIsNotConstant # disable until poplar CPU random works
+CategoricalTest.testStatelessMultinomialIsInRange # No U64
 RandomOpsTest.testRandomNormalIsNotConstant # disable until poplar CPU random works
 RandomOpsTest.testRandomUniformIsNotConstant # disable until poplar CPU random works
 RandomOpsTest.testTruncatedNormalIsNotConstant # disable until poplar CPU random works

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -78,6 +79,29 @@ REGISTER_OP("NonDeterministicInts")
       using shape_inference::ShapeHandle;
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
+
+REGISTER_OP("StatefulRandomBinomial")
+    .Input("resource: resource")
+    .Input("algorithm: int64")
+    .Input("shape: S")
+    .Input("counts: T")
+    .Input("probs: T")
+    .Output("output: dtype")
+    .Attr("S: {int32, int64}")
+    .Attr("T: {half, float, double, int32, int64} = DT_DOUBLE")
+    .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(3), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &unused));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &out));
       c->set_output(0, out);
       return Status::OK();
     });

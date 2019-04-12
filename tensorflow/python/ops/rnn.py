@@ -1403,7 +1403,10 @@ def static_rnn(cell,
     return (outputs, state)
 
 
-@tf_export("nn.static_state_saving_rnn")
+@deprecation.deprecated(
+    None, "Please use `keras.layers.RNN(cell, stateful=True)`, "
+    "which is equivalent to this API")
+@tf_export(v1=["nn.static_state_saving_rnn"])
 def static_state_saving_rnn(cell,
                             inputs,
                             state_saver,

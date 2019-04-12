@@ -149,6 +149,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":dense_update_functor",
+        ":inplace_ops",
         ":ops_util",
         ":training_op_helpers",
         ":variable_ops",
@@ -769,6 +770,17 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "fused_eigen_output_kernels",
+    srcs = ["fused_eigen_output_kernels.cc"],
+    hdrs = ["fused_eigen_output_kernels.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3430,6 +3442,7 @@ tf_kernel_library(
     name = "matmul_op",
     srcs = [
         "matmul_op.cc",
+        "matmul_op_fused.cc",
     ] + if_mkl([
         "mkl_matmul_op.cc",
     ]),
@@ -3443,6 +3456,7 @@ tf_kernel_library(
     }),
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
+        ":fused_eigen_output_kernels",
         ":gpu_utils",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
@@ -3627,11 +3641,16 @@ tf_cuda_cc_test(
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -3872,6 +3891,7 @@ tf_kernel_library(
         ":eigen_contraction_kernel",
         ":image_resizer_state",
         ":fill_functor",
+        ":fused_eigen_output_kernels",
         ":ops_util",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
@@ -5222,6 +5242,38 @@ tf_cuda_cc_test(
 )
 
 tf_kernel_library(
+    name = "random_binomial_op",
+    prefix = "random_binomial_op",
+    deps = [
+        ":cwise_op",
+        ":random_ops",
+        ":resource_variable_ops",
+        ":stateful_random_ops",
+        ":training_op_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:random_ops_op_lib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "random_binomial_op_test",
+    size = "small",
+    srcs = ["random_binomial_op_test.cc"],
+    deps = [
+        ":ops_util",
+        ":random_binomial_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
     name = "random_poisson_op",
     prefix = "random_poisson_op",
     deps = [
@@ -5685,6 +5737,8 @@ filegroup(
         "gemm_functors.h",
         "image_resizer_state.h",
         "initializable_lookup_table.h",
+        "inplace_ops.cc",
+        "inplace_ops_functor.h",
         "logging_ops.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
@@ -5815,10 +5869,14 @@ filegroup(
         "depthwise_conv_op.cc",
         "dynamic_partition_op.cc",
         "encode_wav_op.cc",
+        "eigen_contraction_kernel.cc",
+        "eigen_contraction_kernel.h",
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fifo_queue_op.cc",
         "fused_batch_norm_op.cc",
+        "fused_eigen_output_kernels.cc",
+        "fused_eigen_output_kernels.h",
         "listdiff_op.cc",
         "population_count_op.cc",
         "population_count_op.h",

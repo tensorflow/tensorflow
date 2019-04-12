@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_ops.h"
+#include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -69,28 +70,6 @@ class AutotuneResult;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-// Supported Conv2D fusions. Not all of them supported on all type of devices.
-enum class FusedComputationType {
-  kUndefined,
-  // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports
-  // identity activation function, it in theory should allow to fuse convolution
-  // with BiasAdd, but in practice it doesn't work, cuDNN ignores this parameter
-  // and always does Relu activation.
-  kBiasAdd,                  // CPU
-  kBiasAddWithRelu,          // CPU and GPU
-  kBiasAddWithRelu6,         // CPU
-  kBiasAddWithElu,           // CPU
-  kFusedBatchNorm,           // CPU
-  kFusedBatchNormWithRelu,   // CPU
-  kFusedBatchNormWithRelu6,  // CPU
-  kFusedBatchNormWithElu     // CPU
-};
-
-// We have to pass around additional arguments for all possible fusion types.
-struct FusedComputationArgs {
-  float epsilon = 0.0;  // Used by `FusedBatchNorm` fusion only
-};
-
 template <typename Device, typename T>
 struct LaunchFusedConv2DOp {
   void operator()(OpKernelContext* context, bool use_cudnn,
@@ -100,165 +79,6 @@ struct LaunchFusedConv2DOp {
                   const Conv2DParameters& params,
                   const Conv2DDimensions& dimensions, Tensor* output);
 };
-
-// Type alias for the tensor contraction output mapper.
-template <typename Scalar, typename Index>
-using ContractionOutputMapper =
-    Eigen::internal::blas_data_mapper<Scalar, Index, Eigen::ColMajor>;
-
-// Returns input expression without any transformations.
-struct Identity {
-  template <typename XprType>
-  static auto apply(XprType expr) -> XprType {
-    return expr;
-  };
-};
-
-// Applies `Relu` to the passed input expression.
-struct Relu {
-  template <typename XprType>
-  static auto apply(XprType expr)
-      -> decltype(expr.cwiseMax(std::declval<typename XprType::Scalar>())) {
-    return expr.cwiseMax(static_cast<typename XprType::Scalar>(0));
-  };
-};
-
-// Applies `Relu6` to the passed input expression.
-struct Relu6 {
-  template <typename XprType>
-  static auto apply(XprType expr)
-      -> decltype(expr.cwiseMax(std::declval<typename XprType::Scalar>())
-                      .cwiseMin(std::declval<typename XprType::Scalar>())) {
-    return expr.cwiseMax(static_cast<typename XprType::Scalar>(0))
-        .cwiseMin(static_cast<typename XprType::Scalar>(6));
-  };
-};
-
-// Applies `Elu` to the passed input expression.
-struct Elu {
-  template <typename XprType>
-  static auto apply(XprType expr) -> decltype(
-      (expr < std::declval<typename XprType::Scalar>())
-          .select(expr.exp() -
-                      expr.constant(std::declval<typename XprType::Scalar>()),
-                  expr)) {
-    return (expr < static_cast<typename XprType::Scalar>(0))
-        .select(expr.exp() -
-                    expr.constant(static_cast<typename XprType::Scalar>(1)),
-                expr);
-  };
-};
-
-// TensorContraction swaps lhs with rhs, and changes layout from RowMajor
-// (default in Tensorflow) to ColMajor (preferred in Eigen), and computes matmul
-// using these tensors.
-//
-// TensorContraction output matrix (before reshape) has a ColMajor layout, and
-// has dimensions:
-//  - rows: output_channels
-//  - cols: all other dimensions
-//
-// First element in every column is:
-//   [batch ??, height ??, width ??, out_channel = i]
-//
-// We do not know what are the values of the 'batch', 'height', and 'width' here
-// (if we know original dimensions, they can be computed from 'j').
-//
-// Each column of an output block is a continuous slice along the output channel
-// dimension, so we can use it to efficiently compute any transformation that
-// depends only on a channel value (e.g. add channel bias).
-
-// Output kernel that fuses BiasAdd operation into the output of tensor
-// contraction + activation function defined by Activation.
-template <typename T, typename Activation = Identity>
-struct BiasAddOutputKernel {
-  explicit BiasAddOutputKernel(const T* bias_data) : bias_data(bias_data) {}
-
-  template <typename Index, typename Scalar>
-  EIGEN_ALWAYS_INLINE void operator()(
-      const ContractionOutputMapper<Scalar, Index>& output_mapper,
-      const Eigen::TensorContractionParams& params, Index i, Index j,
-      Index num_rows, Index num_cols) const {
-    DCHECK(params.swapped_arguments);
-
-    const T* bias_base = bias_data + i;
-    typename TTypes<T>::UnalignedConstTensor bias(bias_base, num_rows);
-
-    for (int col = 0; col < num_cols; ++col) {
-      T* output_base = &output_mapper(0, col);
-      typename TTypes<T>::UnalignedTensor output(output_base, num_rows);
-      const auto expr = output + bias;
-      output = Activation::template apply<decltype(expr)>(expr);
-    }
-  }
-
- private:
-  const T* bias_data;
-};
-
-// Output kernel that fuses FusedBatchNorm operation into the output of tensor
-// contraction + activation function defined by Activation.
-template <typename T, typename Activation = Identity>
-struct FusedBatchNormOutputKernel {
-  FusedBatchNormOutputKernel(T epsilon, const T* scaling_factor_data,
-                             const T* offset_data, const T* estimated_mean_data)
-      : epsilon(epsilon),
-        scaling_factor_data(scaling_factor_data),
-        offset_data(offset_data),
-        estimated_mean_data(estimated_mean_data) {}
-
-  template <typename Index, typename Scalar>
-  EIGEN_ALWAYS_INLINE void operator()(
-      const ContractionOutputMapper<Scalar, Index>& output_mapper,
-      const Eigen::TensorContractionParams& params, Index i, Index j,
-      Index num_rows, Index num_cols) const {
-    DCHECK(params.swapped_arguments);
-
-    const T* scaling_factor_base = scaling_factor_data + i;
-    const T* offset_base = offset_data + i;
-    const T* mean_base = estimated_mean_data + i;
-
-    typename TTypes<T>::UnalignedConstTensor scaling_factor(scaling_factor_base,
-                                                            num_rows);
-    typename TTypes<T>::UnalignedConstTensor offset(offset_base, num_rows);
-    typename TTypes<T>::UnalignedConstTensor mean(mean_base, num_rows);
-
-    for (int col = 0; col < num_cols; ++col) {
-      T* output_base = &output_mapper(0, col);
-      typename TTypes<T>::UnalignedTensor output(output_base, num_rows);
-
-      auto scaled = (output - mean) * scaling_factor;
-      auto shifted = scaled + offset;
-
-      output = Activation::template apply<decltype(shifted)>(shifted);
-    }
-  }
-
- private:
-  T epsilon;
-  const T* scaling_factor_data;
-  const T* offset_data;
-  const T* estimated_mean_data;
-};
-
-// Type aliases for the output kernels, purely for the sake of better launch
-// dispatching code readability.
-template <typename T>
-using WithBiasAdd = BiasAddOutputKernel<T>;
-template <typename T>
-using WithBiasAddAndRelu = BiasAddOutputKernel<T, Relu>;
-template <typename T>
-using WithBiasAddAndRelu6 = BiasAddOutputKernel<T, Relu6>;
-template <typename T>
-using WithBiasAddAndElu = BiasAddOutputKernel<T, Elu>;
-template <typename T>
-using WithFusedBatchNorm = FusedBatchNormOutputKernel<T>;
-template <typename T>
-using WithFusedBatchNormAndRelu = FusedBatchNormOutputKernel<T, Relu>;
-template <typename T>
-using WithFusedBatchNormAndRelu6 = FusedBatchNormOutputKernel<T, Relu6>;
-template <typename T>
-using WithFusedBatchNormAndElu = FusedBatchNormOutputKernel<T, Elu>;
 
 // This is CPU-only implementation that uses Eigen contraction output kernels.
 //
@@ -346,8 +166,17 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                 errors::Unimplemented("Fused conv implementation only supports "
                                       "NHWC tensor format for now."));
 
-    BiasAddArgs bias_add;
-    FusedBatchNormArgs fused_batch_norm;
+    BiasAddArgs<T> bias_add_args;
+    if (BiasAddArgs<T>::IsSupported(fusion)) {
+      OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+    }
+
+    FusedBatchNormArgs<T> fused_batch_norm_args;
+    if (FusedBatchNormArgs<T>::IsSupported(fusion)) {
+      OP_REQUIRES_OK(context,
+                     InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                            &fused_batch_norm_args));
+    }
 
     LaunchFusedConv2DWithOutputKernel<T> conv2d(
         dimensions.stride_rows, dimensions.stride_cols,
@@ -357,148 +186,43 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
         break;
-
       case FusedComputationType::kBiasAdd:
-        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
-        conv2d(WithBiasAdd<T>(bias_add.bias_add_data), context, input, filter,
+        conv2d(WithBiasAdd<T>(bias_add_args), context, input, filter, output);
+        break;
+      case FusedComputationType::kBiasAddWithRelu:
+        conv2d(WithBiasAddAndRelu<T>(bias_add_args), context, input, filter,
                output);
         break;
-
-      case FusedComputationType::kBiasAddWithRelu:
-        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
-        conv2d(WithBiasAddAndRelu<T>(bias_add.bias_add_data), context, input,
-               filter, output);
-        break;
-
       case FusedComputationType::kBiasAddWithRelu6:
-        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
-        conv2d(WithBiasAddAndRelu6<T>(bias_add.bias_add_data), context, input,
-               filter, output);
+        conv2d(WithBiasAddAndRelu6<T>(bias_add_args), context, input, filter,
+               output);
         break;
-
       case FusedComputationType::kBiasAddWithElu:
-        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add));
-        conv2d(WithBiasAddAndElu<T>(bias_add.bias_add_data), context, input,
-               filter, output);
+        conv2d(WithBiasAddAndElu<T>(bias_add_args), context, input, filter,
+               output);
         break;
-
       case FusedComputationType::kFusedBatchNorm:
-        OP_REQUIRES_OK(context,
-                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                              &fused_batch_norm));
-        conv2d(WithFusedBatchNorm<T>(fusion_args.epsilon,
-                                     fused_batch_norm.scaling_factor.data(),
-                                     fused_batch_norm.offset_data,
-                                     fused_batch_norm.estimated_mean_data),
-               context, input, filter, output);
+        conv2d(
+            WithFusedBatchNorm<T>(fusion_args.epsilon, fused_batch_norm_args),
+            context, input, filter, output);
         break;
-
       case FusedComputationType::kFusedBatchNormWithRelu:
-        OP_REQUIRES_OK(context,
-                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                              &fused_batch_norm));
-        conv2d(WithFusedBatchNormAndRelu<T>(
-                   fusion_args.epsilon, fused_batch_norm.scaling_factor.data(),
-                   fused_batch_norm.offset_data,
-                   fused_batch_norm.estimated_mean_data),
+        conv2d(WithFusedBatchNormAndRelu<T>(fusion_args.epsilon,
+                                            fused_batch_norm_args),
                context, input, filter, output);
         break;
-
       case FusedComputationType::kFusedBatchNormWithRelu6:
-        OP_REQUIRES_OK(context,
-                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                              &fused_batch_norm));
-        conv2d(WithFusedBatchNormAndRelu6<T>(
-                   fusion_args.epsilon, fused_batch_norm.scaling_factor.data(),
-                   fused_batch_norm.offset_data,
-                   fused_batch_norm.estimated_mean_data),
+        conv2d(WithFusedBatchNormAndRelu6<T>(fusion_args.epsilon,
+                                             fused_batch_norm_args),
                context, input, filter, output);
         break;
-
       case FusedComputationType::kFusedBatchNormWithElu:
-        OP_REQUIRES_OK(context,
-                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                              &fused_batch_norm));
-        conv2d(WithFusedBatchNormAndElu<T>(
-                   fusion_args.epsilon, fused_batch_norm.scaling_factor.data(),
-                   fused_batch_norm.offset_data,
-                   fused_batch_norm.estimated_mean_data),
+        conv2d(WithFusedBatchNormAndElu<T>(fusion_args.epsilon,
+                                           fused_batch_norm_args),
                context, input, filter, output);
         break;
     }
   }
-
- private:
-  struct BiasAddArgs {
-    const T* bias_add_data = nullptr;
-  };
-
-  struct FusedBatchNormArgs {
-    const T* scale_data = nullptr;
-    const T* offset_data = nullptr;
-    const T* estimated_mean_data = nullptr;
-    const T* estimated_variance_data = nullptr;
-
-    // Precomputed expression:
-    //   scaling_factor = (estimated_variance + epsilon).rsqrt() * scale
-    Eigen::Tensor<T, 1, Eigen::RowMajor> scaling_factor;
-  };
-
-#define TF_REQUIRES(EXP, STATUS) \
-  if (!TF_PREDICT_TRUE(EXP)) return (STATUS)
-
-  void InitDataPtr(const Tensor& tensor, const T** ptr) const {
-    *ptr = reinterpret_cast<const T*>(tensor.tensor_data().data());
-  }
-
-  Status InitBiasAddArgs(OpKernelContext* context, BiasAddArgs* args) const {
-    // Bias of the following dimensions: [ output_depth ]
-    const Tensor& bias = context->input(2);
-
-    TF_REQUIRES(bias.dims() == 1,
-                errors::InvalidArgument("bias must be 1-dimensional",
-                                        bias.shape().DebugString()));
-
-    InitDataPtr(bias, &args->bias_add_data);
-
-    return Status::OK();
-  }
-
-  Status InitFusedBatchNormArgs(OpKernelContext* context, float epsilon,
-                                FusedBatchNormArgs* args) const {
-    const Tensor& scale = context->input(2);
-    const Tensor& offset = context->input(3);
-    const Tensor& estimated_mean = context->input(4);
-    const Tensor& estimated_variance = context->input(5);
-
-    TF_REQUIRES(scale.dims() == 1,
-                errors::InvalidArgument("scale must be 1-dimensional",
-                                        scale.shape().DebugString()));
-    TF_REQUIRES(offset.dims() == 1,
-                errors::InvalidArgument("offset must be 1-dimensional",
-                                        offset.shape().DebugString()));
-    TF_REQUIRES(estimated_mean.dims() == 1,
-                errors::InvalidArgument("estimated_mean must be 1-dimensional",
-                                        estimated_mean.shape().DebugString()));
-    TF_REQUIRES(
-        estimated_variance.dims() == 1,
-        errors::InvalidArgument("estimated_variance must be 1-dimensional",
-                                estimated_variance.shape().DebugString()));
-
-    InitDataPtr(scale, &args->scale_data);
-    InitDataPtr(offset, &args->offset_data);
-    InitDataPtr(estimated_mean, &args->estimated_mean_data);
-    InitDataPtr(estimated_variance, &args->estimated_variance_data);
-
-    // Precompute scaling factor once for all output blocks (kernels).
-    args->scaling_factor =
-        (estimated_variance.flat<T>() + static_cast<T>(epsilon)).rsqrt() *
-        scale.flat<T>();
-
-    return Status::OK();
-  }
-
-#undef TF_REQUIRES
 };
 
 #if GOOGLE_CUDA
@@ -856,8 +580,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           conv_parameters, launch, context, stream,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvAutotuneResults(
-                context->op_kernel().def(), input, transformed_filter,
-                transformed_output, bias, nullptr, stream->parent(), results);
+                se::dnn::ConvolutionKind::FORWARD,
+                se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
+                stream->parent(), results);
           },
           &algorithm_config);
       OP_REQUIRES_OK(context, status);
@@ -894,66 +620,33 @@ class FusedConv2DOp : public OpKernel {
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
 
-    // 'fused_ops' and 'num_args' attributes are specified by the Grappler
-    // Remapper optimizer (see grappler/optimizers/remapper.cc).
-
-    std::vector<string> fused_ops;
-    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
-    OP_REQUIRES(context, !fused_ops.empty(),
-                errors::InvalidArgument(
-                    "Fused Conv2D must have at least one fused op."));
-
-    int num_args;
-    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
-
-    // TODO(ezhulenev): Add support for fusion element-wise op chains defined
-    // at runtime, e.g. Relu+Sqrt+Tanh+etc.
-
     using FCT = FusedComputationType;
-    std::vector<std::pair<FusedConv2DPattern, FusedComputationType>> mappings =
-        {{{{"BiasAdd"}, true}, FCT::kBiasAdd},
-         {{{"BiasAdd", "Relu"}, false}, FCT::kBiasAddWithRelu},
-         {{{"BiasAdd", "Relu6"}, true}, FCT::kBiasAddWithRelu6},
-         {{{"BiasAdd", "Elu"}, true}, FCT::kBiasAddWithElu},
-         {{{"FusedBatchNorm"}, true}, FCT::kFusedBatchNorm},
-         {{{"FusedBatchNorm", "Relu"}, true}, FCT::kFusedBatchNormWithRelu},
-         {{{"FusedBatchNorm", "Relu6"}, true}, FCT::kFusedBatchNormWithRelu6},
-         {{{"FusedBatchNorm", "Elu"}, true}, FCT::kFusedBatchNormWithElu}};
 
-    // Match op fusion to one of hte supported patterns.
-    for (const auto& mapping : mappings) {
-      const FusedConv2DPattern& pattern = mapping.first;
-      if (FusedOpsMatchAndSupportedOnDevice(fused_ops, pattern.fused_ops,
-                                            pattern.cpu_only)) {
-        fused_computation_ = mapping.second;
-      }
-    }
-    if (fused_computation_ == FusedComputationType::kUndefined) {
-      OP_REQUIRES(context, false,
-                  errors::Unimplemented("Fusion is not implemented: [",
-                                        absl::StrJoin(fused_ops, ","), "]"));
+    std::vector<FusedComputationPattern> patterns;
+    if (std::is_same<Device, CPUDevice>::value) {
+      patterns = {
+          {FCT::kBiasAdd, {"BiasAdd"}},
+          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+          {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
+          {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
+          {FCT::kFusedBatchNorm, {"FusedBatchNorm"}},
+          {FCT::kFusedBatchNormWithRelu, {"FusedBatchNorm", "Relu"}},
+          {FCT::kFusedBatchNormWithRelu6, {"FusedBatchNorm", "Relu6"}},
+          {FCT::kFusedBatchNormWithElu, {"FusedBatchNorm", "Elu"}},
+      };
     }
 
-    // Depending on a picked fusion type validate fusion-specific arguments.
-    if (fused_computation_ == FusedComputationType::kBiasAdd ||
-        fused_computation_ == FusedComputationType::kBiasAddWithRelu ||
-        fused_computation_ == FusedComputationType::kBiasAddWithRelu6 ||
-        fused_computation_ == FusedComputationType::kBiasAddWithElu) {
-      OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
-                      "Fused Conv2D must have one extra argument: bias."));
+    // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports
+    // identity activation function, it in theory should allow to fuse
+    // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
+    // this parameter and always does Relu activation.
+    if (std::is_same<Device, GPUDevice>::value) {
+      patterns = {{FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
     }
 
-    if (fused_computation_ == FusedComputationType::kFusedBatchNorm ||
-        fused_computation_ == FusedComputationType::kFusedBatchNormWithRelu ||
-        fused_computation_ == FusedComputationType::kFusedBatchNormWithRelu6 ||
-        fused_computation_ == FusedComputationType::kFusedBatchNormWithElu) {
-      OP_REQUIRES(
-          context, num_args == 4,
-          errors::InvalidArgument("Fused FusedBatchNorm must have four extra "
-                                  "arguments: scale, offset, mean, variance."));
-      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon_));
-    }
+    OP_REQUIRES_OK(context, InitializeFusedComputation(
+                                context, "Conv2D", patterns,
+                                &fused_computation_, &fused_computation_args_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -995,36 +688,19 @@ class FusedConv2DOp : public OpKernel {
       return;
     }
 
-    FusedComputationArgs args;
-    args.epsilon = epsilon_;
-
     LaunchFusedConv2DOp<Device, T>()(context, use_cudnn_, cudnn_use_autotune_,
-                                     input, filter, fused_computation_, args,
-                                     params_, dimensions, output);
+                                     input, filter, fused_computation_,
+                                     fused_computation_args_, params_,
+                                     dimensions, output);
   }
 
  private:
-  struct FusedConv2DPattern {
-    std::vector<string> fused_ops;
-    bool cpu_only;
-  };
-
-  bool FusedOpsMatchAndSupportedOnDevice(const std::vector<string>& fused_ops,
-                                         const std::vector<string>& expected,
-                                         bool cpu_only) const {
-    if (std::is_same<Device, GPUDevice>::value && cpu_only) {
-      return false;
-    }
-    return fused_ops == expected;
-  }
-
   Conv2DParameters params_;
   bool use_cudnn_;
   bool cudnn_use_autotune_;
 
   FusedComputationType fused_computation_ = FusedComputationType::kUndefined;
-
-  float epsilon_;  // Used only in FusedBatchNorm fusion
+  FusedComputationArgs fused_computation_args_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FusedConv2DOp);
 };

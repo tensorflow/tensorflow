@@ -54,6 +54,7 @@ from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=rede
 # pylint: enable=redefined-builtin
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.ops.control_flow_ops import while_loop
+from tensorflow.python.ops.batch_ops import *
 from tensorflow.python.ops.critical_section_ops import *
 from tensorflow.python.ops.data_flow_ops import *
 from tensorflow.python.ops.functional_ops import *

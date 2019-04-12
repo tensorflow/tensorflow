@@ -275,6 +275,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // After canonicalization, there may be more batch dots that can be
+  // simplified.
+  pipeline.AddPass<BatchDotSimplification>();
   auto cost_model = [](HloInstruction* conv) {
     // We need a cost model for CPUs. Currently, do nothing.
     return false;

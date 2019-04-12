@@ -35,6 +35,12 @@ class ResourceMgr;
 namespace data {
 
 class CapturedFunction;
+class InstantiatedCapturedFunction;
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
@@ -116,6 +122,7 @@ class CapturedFunction {
   struct Params {
     bool use_inter_op_parallelism = true;
     bool is_multi_device_function = false;
+    std::shared_ptr<FunctionLibraryDefinition> lib_def = nullptr;
   };
 
   // Creates a new instance using a list of named attributes, fetching captured
@@ -157,21 +164,20 @@ class CapturedFunction {
 
   // Returns the transitive set of function definition required to instantiate
   // this function.
-  const FunctionLibraryDefinition* lib_def() const { return &lib_def_; }
+  const FunctionLibraryDefinition* lib_def() const { return lib_def_.get(); }
 
   // Indicates whether the function should use inter op parallelism.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
  private:
   CapturedFunction(const NameAttrList& func,
-                   std::vector<Tensor> captured_inputs,
-                   FunctionLibraryDefinition&& flib_def, Params params);
+                   std::vector<Tensor> captured_inputs, Params params);
 
   const NameAttrList func_;
   const std::vector<Tensor> captured_inputs_;
   const bool use_inter_op_parallelism_;
   const bool is_multi_device_function_;
-  const FunctionLibraryDefinition lib_def_;
+  std::shared_ptr<const FunctionLibraryDefinition> lib_def_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests that show that DistributionStrategy works with canned Estimator."""
+"""Tests that show that DistributionStrategy works with optimizer v2."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -41,8 +41,7 @@ from tensorflow.python.platform import test
 # pylint: disable=g-long-lambda
 parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
     'ParameterServer2GPUs',
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
+    lambda: parameter_server_strategy.ParameterServerStrategy(),
     required_gpus=2)
 
 
@@ -62,6 +61,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
           ],
           mode=['graph', 'eager']))
   def testKerasOptimizerWithUnequalInput(self, distribution):
+    self.skipTest('b/130309197')
     with distribution.scope():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
@@ -118,7 +118,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
           ],
           mode=['graph', 'eager']))
   def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
-
+    self.skipTest('b/130309197')
     with self.cached_session():
       with distribution.scope():
         model = get_model()

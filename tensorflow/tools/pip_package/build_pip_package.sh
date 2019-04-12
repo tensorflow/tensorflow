@@ -125,7 +125,7 @@ function prepare_src() {
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow} > /dev/null
-  for header in $(find protobuf_archive -name \*.h); do
+  for header in $(find protobuf_archive -regex ".*\.\(h\|inc\)"); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done
@@ -135,6 +135,9 @@ function prepare_src() {
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
+
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
 }
 
 function build_wheel() {

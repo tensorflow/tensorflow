@@ -81,9 +81,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  @test_util.run_gpu_only
   def testGPUInt64(self):
-    if not context.context().num_gpus():
-      return
     with context.eager_mode(), context.device("gpu:0"):
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
       self.assertAllEqual(1, v.numpy())

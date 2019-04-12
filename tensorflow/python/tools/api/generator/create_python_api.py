@@ -85,6 +85,16 @@ def format_import(source_module_name, source_name, dest_name):
       return 'import %s as %s' % (source_name, dest_name)
 
 
+def is_supported_type_for_deprecation(symbol):
+  # Exclude Exception subclasses since users should be able to
+  # "except" the same type of exception that was "raised" (i.e. we
+  # shouldn't wrap it with deprecation alias).
+  # Also, exclude subclasses of namedtuples for now.
+  return tf_inspect.isfunction(symbol) or (
+      tf_inspect.isclass(symbol) and not issubclass(symbol, Exception)
+      and tuple not in tf_inspect.getmro(symbol))
+
+
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
@@ -330,10 +340,9 @@ def add_imports_for_symbol(
       dest_module = _join_modules(output_module_prefix, dest_module)
       # Add deprecated alias if only some of the endpoints are deprecated
       # and symbol is not under compat.v*.
-      # TODO(annarev): handle deprecated class endpoints as well.
       if (export not in exports_v2 and canonical_endpoint and
           not dest_module.startswith(_COMPAT_MODULE_PREFIX) and
-          tf_inspect.isfunction(symbol)):
+          is_supported_type_for_deprecation(symbol)):
         module_code_builder.add_deprecated_endpoint(
             id(symbol), dest_module, source_module_name, source_name, dest_name,
             canonical_endpoint)

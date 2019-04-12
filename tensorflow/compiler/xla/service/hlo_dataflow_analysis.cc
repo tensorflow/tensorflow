@@ -957,7 +957,6 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 //
 // Returns true if:
 //
-//  * fusion is a loop or input fusion, AND
 //  * fusion_param is used by the root of dynamic-update-slice as the "base" of
 //    the update, i.e. the thing being updated, AND
 //  * all other uses of fusion_param are dynamic-slices that slice the same
@@ -976,13 +975,6 @@ static bool CanDoInPlaceDynamicUpdateSlice(HloInstruction* fusion,
   auto* fusion_param = fusion_param_value.instruction();
   CHECK_EQ(fusion_param->opcode(), HloOpcode::kParameter);
   CHECK_EQ(fusion_param->parent(), fusion->fused_instructions_computation());
-
-  // fusion must be a loop or input fusion.
-  auto kind = fusion->fusion_kind();
-  if (kind != HloInstruction::FusionKind::kLoop &&
-      kind != HloInstruction::FusionKind::kInput) {
-    return false;
-  }
 
   // fusion_param must be used by the root as the "base" of the
   // dynamic-update-slice.  The natural way to check this would be

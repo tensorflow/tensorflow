@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -546,6 +547,13 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
+  meta_graph_def.meta_info_def.tensorflow_version = versions.__version__
+  meta_graph_def.meta_info_def.tensorflow_git_version = (
+      versions.__git_version__)
+  # We currently always strip default attributes.
+  meta_graph_def.meta_info_def.stripped_default_attrs = True
+  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   meta_graph_def.asset_file_def.extend(asset_info.asset_defs)
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
@@ -582,6 +590,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.variable.SetInParent()
     proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
+    proto.variable.synchronization = obj.synchronization.value
+    proto.variable.aggregation = obj.aggregation.value
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(

@@ -519,7 +519,7 @@ Status XlaDevice::RefreshStatus() {
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
   // Any op assigned to the device that isn't rewritten by the graph rewriter
-  // gets executed by a n XlaCompileOnDemandOp, which compiles it and executes
+  // gets executed by an XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
   OpKernel* (*factory)(OpKernelConstruction*) =
       [](OpKernelConstruction* context) -> OpKernel* {

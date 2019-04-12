@@ -560,6 +560,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",

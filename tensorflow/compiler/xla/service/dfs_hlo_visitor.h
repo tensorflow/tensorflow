@@ -291,6 +291,7 @@ class DfsHloVisitorBase {
   // This call is purely a performance hint and can be omitted without
   // affecting correctness.
   void ReserveVisitStates(int num) { visit_state_.reserve(num); }
+  size_t VisitStateSize() const { return visit_state_.size(); }
 
   // Useful when we want to visit the same computation more than once with the
   // same visitor.
