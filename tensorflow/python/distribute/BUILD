@@ -277,6 +277,18 @@ py_library(
 )
 
 py_library(
+    name = "central_storage_strategy",
+    srcs = ["central_storage_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":parameter_server_strategy",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
@@ -531,11 +543,11 @@ py_library(
     srcs = ["strategy_combinations.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":central_storage_strategy",
         ":combinations",
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
-        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
