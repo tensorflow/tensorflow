@@ -86,7 +86,9 @@ TEST_F(SingleMachineTest, CostModel) {
     if (node.name()[0] == '_' || node.name().find("/_") != string::npos) {
       continue;
     }
+#ifndef INTEL_MKL
     EXPECT_EQ(1, node.output_info_size());
+#endif
     EXPECT_LE(8, node.output_info(0).size());
     const TensorShapeProto& shape = node.output_info(0).shape();
     EXPECT_EQ(2, shape.dim_size());
@@ -129,7 +131,9 @@ TEST_F(SingleMachineTest, MultipleItems) {
           node.name() == "queue") {
         continue;
       }
+#ifndef INTEL_MKL
       EXPECT_EQ(1, node.output_info_size());
+#endif
       const TensorShapeProto& shape = node.output_info(0).shape();
       EXPECT_EQ(2, shape.dim_size());
       EXPECT_EQ(10, shape.dim(0).size());
