@@ -202,6 +202,8 @@ class ReplicaDeviceMap(DeviceMap):
     replica_id = replica_context.replica_id_in_sync_group
     if not isinstance(replica_id, int):
       replica_id = tensor_util.constant_value(replica_id)
+    if replica_id is None:
+      replica_id = 0
     return values[replica_id]
 
   def replica_for_device(self, device):
