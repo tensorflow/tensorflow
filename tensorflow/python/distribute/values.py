@@ -1560,8 +1560,9 @@ class AggregatingVariable(variables_lib.Variable):
     assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
+  @property
   def initializer(self):
-    return self._v.initializer()
+    return self._v.initializer
 
   def eval(self, session=None):
     return self._v.eval(session)
