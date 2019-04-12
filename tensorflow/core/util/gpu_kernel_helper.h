@@ -16,11 +16,31 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_
 #define TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA
 #include "cuda/include/cuda_fp16.h"
+#endif
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+
+#if GOOGLE_CUDA
+#define TF_RED_WARPSIZE 32
+#elif TENSORFLOW_USE_ROCM
+#define TF_RED_WARPSIZE 64
+#endif
+
+#if GOOGLE_CUDA
+#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
+                          shared_mem, stream, ...) \
+  kernel<<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
+#elif TENSORFLOW_USE_ROCM
+#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
+                          shared_mem, stream, ...) \
+  hipLaunchKernelGGL(kernel, \
+    block_count, threads_per_block, shared_mem, stream, \
+    __VA_ARGS__);
+#endif
 
 // Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
 #define CUDA_1D_KERNEL_LOOP(i, n) \
@@ -28,6 +48,28 @@ limitations under the License.
 // Deprecated, use 'for(int i : CudaGridRange?(n))' instead.
 #define CUDA_AXIS_KERNEL_LOOP(i, n, axis) \
   for (int i : ::tensorflow::CudaGridRange##axis<int>(n))
+
+#if GOOGLE_CUDA
+#define gpuSuccess cudaSuccess
+#define GPUGETERRORSTRING(error) cudaGetErrorString(error)
+using gpuStream_t = cudaStream_t;
+#define GPUGETLASTERROR() cudaGetLastError()
+using gpuError_t = cudaError_t;
+#define GPUSUCCESSS cudaSuccess
+#elif TENSORFLOW_USE_ROCM
+#define gpuSuccess hipSuccess
+#define GPUGETERRORSTRING(error) hipGetErrorString(error)
+using gpuStream_t = hipStream_t;
+#define GPUGETLASTERROR() hipGetLastError()
+using gpuError_t = hipError_t;
+#define GPUSUCCESSS hipSuccess
+#endif
+
+#if GOOGLE_CUDA
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
+#elif TENSORFLOW_USE_ROCM
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
+#endif
 
 namespace tensorflow {
 __host__ __device__ inline tensorflow::bfloat16 CudaLdg(
@@ -135,5 +177,5 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
 }  // namespace cuda_helper
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
 #define TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
 
@@ -155,10 +155,27 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   int block_count = 0;
   int thread_per_block = 0;
 
+#if GOOGLE_CUDA
   cudaError_t err = cudaOccupancyMaxPotentialBlockSize(
       &block_count, &thread_per_block, func, dynamic_shared_memory_size,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
+#elif TENSORFLOW_USE_ROCM
+  // ROCM TODO re-enable this after hipOccupancyMaxPotentialBlockSize is
+  // implemented
+  //hipError_t err = hipOccupancyMaxPotentialBlockSize(
+  //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
+  //    block_size_limit);
+  //CHECK_EQ(err, hipSuccess);
+
+  const int physical_thread_count = std::min(
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
+      work_element_count);
+  thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
+  block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               d.getNumGpuMultiProcessors());
+#endif
 
   block_count =
       std::min(block_count, DivUp(work_element_count, thread_per_block));
@@ -181,11 +198,28 @@ inline CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
   CudaLaunchConfig config;
   int block_count = 0;
 
+#if GOOGLE_CUDA
   cudaError_t err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &block_count, func, fixed_block_size, dynamic_shared_memory_size);
   CHECK_EQ(err, cudaSuccess);
   block_count = std::min(block_count * d.getNumGpuMultiProcessors(),
                          DivUp(work_element_count, fixed_block_size));
+#elif TENSORFLOW_USE_ROCM
+  // ROCM TODO re-enable this after hipOccupancyMaxActiveBlocksPerMultiprocessor is
+  // implemented
+  //hipError_t err = hipOccupancyMaxActiveBlocksPerMultiprocessor(
+  //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
+  //    block_size_limit);
+  //CHECK_EQ(err, hipSuccess);
+
+  const int physical_thread_count = std::min(
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
+      work_element_count);
+  int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
+  block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               d.getNumGpuMultiProcessors());
+#endif
 
   config.virtual_thread_count = work_element_count;
   config.thread_per_block = fixed_block_size;
@@ -243,9 +277,15 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
   }
 
   int dev;
+#if GOOGLE_CUDA
   cudaGetDevice(&dev);
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, dev);
+#elif TENSORFLOW_USE_ROCM
+  hipGetDevice(&dev);
+  hipDeviceProp_t deviceProp;
+  hipGetDeviceProperties(&deviceProp, dev);
+#endif
   int xthreadlimit = deviceProp.maxThreadsDim[0];
   int ythreadlimit = deviceProp.maxThreadsDim[1];
   int zthreadlimit = deviceProp.maxThreadsDim[2];
@@ -255,10 +295,27 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
 
   int block_count = 0;
   int thread_per_block = 0;
+
+#if GOOGLE_CUDA
   cudaError_t err = cudaOccupancyMaxPotentialBlockSize(
       &block_count, &thread_per_block, func, dynamic_shared_memory_size,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
+#elif TENSORFLOW_USE_ROCM
+  // ROCM TODO re-enable this after hipOccupancyMaxPotentialBlockSize is
+  // implemented
+  //hipError_t err = hipOccupancyMaxPotentialBlockSize(
+  //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
+  //    block_size_limit);
+  //CHECK_EQ(err, hipSuccess);
+
+  const int physical_thread_count =
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
+  thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
+  block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               d.getNumGpuMultiProcessors());
+#endif
 
   int threadsx = std::min({xdim, thread_per_block, xthreadlimit});
   int threadsy =
@@ -287,6 +344,7 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(
                                dynamic_shared_memory_size, block_size_limit);
 }
 
+#if GOOGLE_CUDA
 // Returns a raw reference to the current cuda stream.  Required by a
 // number of kernel calls (for which StreamInterface* does not work), i.e.
 // CUB and certain cublas primitives.
@@ -298,6 +356,7 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
                                                 ->GpuStreamMemberHack()));
   return *ptr;
 }
+#endif // GOOGLE_CUDA
 
 namespace detail {
 template <typename... Ts, size_t... Is>
@@ -324,6 +383,7 @@ constexpr bool NoneIsReference() {
 }
 }  // namespace detail
 
+#if GOOGLE_CUDA
 // Launches a CUDA kernel through cudaLaunchKernel with the given arguments.
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
@@ -344,9 +404,10 @@ Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   }
   return Status::OK();
 }
+#endif // GOOGLE_CUDA
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
