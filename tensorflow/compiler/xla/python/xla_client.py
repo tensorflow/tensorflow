@@ -64,6 +64,13 @@ class Backend(object):
   def buffer_from_pyval(self, pyval, device=0):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
+  def buffers_from_pyvals(self, pyvals_and_devices):
+    """Allocates buffers and populates them with `pyvals`."""
+    return [
+        self.buffer_from_pyval(pyval, device)
+        for pyval, device in zip(pyvals_and_devices)
+    ]
+
   @abc.abstractmethod
   def delete_buffer(self, c_buffer):
     """Deletes buffer `c_buffer`."""
@@ -107,6 +114,10 @@ class LocalBackend(Backend):
 
   def buffer_from_pyval(self, pyval, device=0):
     return _xla.LocalShapedBuffer.FromPython(pyval, self.client, device)
+
+  def buffers_from_pyvals(self, pyvals_and_devices):
+    return _xla.LocalShapedBuffer.FromPythonValues(pyvals_and_devices,
+                                                   self.client)
 
   def delete_buffer(self, c_buffer):
     c_buffer.Delete()
@@ -285,11 +296,32 @@ class Buffer(object):
 
   @staticmethod
   def from_pyval(pyval, device=0, backend=None):
-    """Allocate and copy to XLA the given python value."""
+    """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
     pyval = require_numpy_array_layout(pyval)
     cbuf = backend.buffer_from_pyval(pyval, device)
     return Buffer(cbuf, backend, device)
+
+  @staticmethod
+  def from_pyvals(pyvals_and_devices, backend=None):
+    """Copies multiple Python values to freshly allocated on-device buffers.
+
+    Arguments:
+      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is
+      a Python value to copy (e.g., a NumPy array), and `device` is an integer
+      device ordinal.
+      backend: a Backend object, or `None` to use the default local backend.
+    Returns:
+      A list of `Buffer` objects corresponding to `pyvals_and_devices`.
+    """
+    backend = backend or get_local_backend()
+    pyvals_and_devices = [(require_numpy_array_layout(pyval), device)
+                          for pyval, device in pyvals_and_devices]
+    cbufs = backend.buffers_from_pyvals(pyvals_and_devices)
+    return [
+        Buffer(cbuf, backend, device)
+        for cbuf, (_, device) in zip(cbufs, pyvals_and_devices)
+    ]
 
   def to_py(self):
     return self.c_buffer.ToPython()
@@ -737,16 +769,25 @@ class Executable(object):
     return self.Execute(arguments).to_py()
 
   def ExecuteWithPythonValuesPerReplica(self, arguments):
-    """Execute on many replicas with Python values as arguments and output."""
+    """Execute on many replicas with Python values as arguments and output.
 
-    def put(arg, device):
-      return Buffer.from_pyval(arg, device, backend=self._backend)
+    Arguments:
+      arguments: a list of lists of Python values indexed by
+        `[replica][arg_num]` to pass as inputs.
 
+    Returns:
+      A list of python values, one per replica.
+    """
     # pylint: disable=g-complex-comprehension
-    arguments = [[
-        put(arg, self._device_ordinals[replica]) for arg in replica_args
-    ] for replica, replica_args in enumerate(arguments)]
-    return [out.to_py() for out in self.ExecutePerReplica(arguments)]
+    flat_args = [(arg, self._device_ordinals[replica])
+                 for replica, replica_args in enumerate(arguments)
+                 for arg in replica_args]
+    flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=self._backend)
+    arg_buffers = []
+    for replica_args in arguments:
+      arg_buffers.append(flat_arg_buffers[:len(replica_args)])
+      flat_arg_buffers = flat_arg_buffers[len(replica_args):]
+    return [out.to_py() for out in self.ExecutePerReplica(arg_buffers)]
 
   def __del__(self):
     self._backend.delete_executable(self._c_executable)

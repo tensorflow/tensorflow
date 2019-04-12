@@ -39,9 +39,32 @@ namespace xla_python {
 Status RegisterCpuCustomCallTarget(const std::string& fn_name,
                                    pybind11::capsule capsule);
 
-// Initializes a local XLA client for `platform_name`. Returns an error if no
-// such platform exists, or if the platform has no visible devices.
-StatusOr<LocalClient*> GetLocalClient(const std::string& platform_name);
+class PyLocalClient {
+ public:
+  // Initializes a local XLA client for `platform_name`. Returns an error if no
+  // such platform exists, or if the platform has no visible devices.
+  static StatusOr<std::unique_ptr<PyLocalClient>> Get(
+      const std::string& platform_name);
+
+  explicit PyLocalClient(LocalClient* client);
+
+  Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
+  StatusOr<pybind11::object> TransferFromOutfeed(const Shape& shape,
+                                                 int device_ordinal);
+
+  int device_count() const { return client_->device_count(); }
+  LocalClient* client() const { return client_; }
+
+  tensorflow::thread::ThreadPool* h2d_transfer_pool() {
+    return &h2d_transfer_pool_;
+  }
+  tensorflow::thread::ThreadPool* execute_pool() { return &execute_pool_; }
+
+ private:
+  LocalClient* client_;
+  tensorflow::thread::ThreadPool h2d_transfer_pool_;
+  tensorflow::thread::ThreadPool execute_pool_;
+};
 
 // Represents a reference to literals that live in a device-allocated buffer via
 // XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
@@ -49,11 +72,17 @@ StatusOr<LocalClient*> GetLocalClient(const std::string& platform_name);
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer> FromPython(
-      const pybind11::object& argument, LocalClient* client,
+      const pybind11::object& argument, PyLocalClient* client,
       int device_ordinal);
 
+  // Converts multiple (python object, device ordinal) pairs into
+  // LocalShapedBuffers in parallel.
+  static StatusOr<std::vector<LocalShapedBuffer>> FromPythonValues(
+      const std::vector<std::pair<pybind11::object, int>>& argument,
+      PyLocalClient* client);
+
   LocalShapedBuffer() = default;
-  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer, LocalClient* client);
+  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer, PyLocalClient* client);
   StatusOr<pybind11::object> ToPython() const;
   const Shape& shape() const;
   const ScopedShapedBuffer* shaped_buffer() const;
@@ -73,21 +102,20 @@ class LocalShapedBuffer {
 
  private:
   absl::optional<ScopedShapedBuffer> shaped_buffer_;
-  LocalClient* client_ = nullptr;
+  PyLocalClient* client_ = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps an XLA LocalExecutable.
-class LocalExecutableWrapper {
+class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
-  static StatusOr<std::unique_ptr<LocalExecutableWrapper>> Compile(
+  static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
       const XlaComputation& computation, std::vector<Shape> argument_layouts,
-      const ExecutableBuildOptions* build_options, LocalClient* client);
+      const ExecutableBuildOptions* build_options, PyLocalClient* client);
 
-  LocalExecutableWrapper(std::unique_ptr<LocalExecutable> executable,
-                         DeviceAssignment device_assignment,
-                         LocalClient* client);
+  PyLocalExecutable(std::unique_ptr<LocalExecutable> executable,
+                    DeviceAssignment device_assignment, PyLocalClient* client);
 
   int num_replicas() const {
     return executable_->build_options().num_replicas();
@@ -114,7 +142,7 @@ class LocalExecutableWrapper {
  private:
   std::unique_ptr<LocalExecutable> executable_;
   const DeviceAssignment device_assignment_;
-  LocalClient* const client_;
+  PyLocalClient* const client_;
 };
 
 // Converts a computation to a serialized HloModuleProto
