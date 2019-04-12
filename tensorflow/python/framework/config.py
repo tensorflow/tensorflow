@@ -54,7 +54,7 @@ def set_intra_op_parallelism_threads(num_threads):
 def get_inter_op_parallelism_threads():
   """Get number of threads used for parallelism between independent operations.
 
-  Determines the number of threads used by independent non-blokcing operations.
+  Determines the number of threads used by independent non-blocking operations.
   0 means the system picks an appropriate number.
 
   Returns:
@@ -67,7 +67,7 @@ def get_inter_op_parallelism_threads():
 def set_inter_op_parallelism_threads(num_threads):
   """Set number of threads used for parallelism between independent operations.
 
-  Determines the number of threads used by independent non-blokcing operations.
+  Determines the number of threads used by independent non-blocking operations.
   0 means the system picks an appropriate number.
 
   Args:
@@ -287,3 +287,126 @@ def set_synchronous_execution(enable):
     context.context().execution_mode = context.SYNC
   else:
     context.context().execution_mode = context.ASYNC
+
+
+def list_physical_devices(device_type=None):
+  """Return a list of physical devices visible to the runtime.
+
+  Physical devices are hardware devices that are locally present on the current
+  machine. By default all discovered CPU and GPU devices are considered visible.
+
+  Args:
+    device_type: (optional) Device type to filter by such as "CPU" or "GPU"
+
+  Returns:
+    List of PhysicalDevice objects
+  """
+  return context.context().list_physical_devices(device_type)
+
+
+def list_logical_devices(device_type=None):
+  """Return a list of logical devices created by runtime.
+
+  Logical devices may correspond to physical devices or remote devices in the
+  cluster. Operations and tensors may be placed on these devices by using the
+  `name` of the LogicalDevice in `tf.device(logical_device.name)`.
+
+  Args:
+    device_type: (optional) Device type to filter by such as "CPU" or "GPU"
+
+  Returns:
+    List of LogicalDevice objects
+  """
+  return context.context().list_logical_devices(device_type=device_type)
+
+
+def get_visible_devices(device_type=None):
+  """Get the list of visible physical devices.
+
+  Returns a list of PhysicalDevice objects that are current marked as visible to
+  the runtime. Any visible devices will have LogicalDevices assigned to them
+  once the runtime is initialized.
+
+  Args:
+    device_type: (optional) Device types to limit query to.
+
+  Returns:
+    List of PhysicalDevice objects
+  """
+  return context.context().get_visible_devices(device_type)
+
+
+def set_visible_devices(devices, device_type=None):
+  """Set the list of visible devices.
+
+  Sets the list of PhysicalDevices to be marked as visible to the runtime. Any
+  devices that are not marked as visible means TensorFlow will not allocate
+  memory on it and will not be able to place any operations on it as no
+  LogicalDevice will be created on it. By default all discovered devices are
+  marked as visible.
+
+  Args:
+    devices: (optional) List of PhysicalDevice objects to make visible
+    device_type: (optional) Device types to limit visibility configuration to.
+      Other device types will be left unaltered.
+  """
+  context.context().set_visible_devices(devices, device_type)
+
+
+def get_memory_growth(device):
+  """Get if memory growth is enabled for a PhysicalDevice.
+
+  A PhysicalDevice with memory growth set will not allocate all memory on the
+  device upfront.
+
+  Args:
+    device: PhysicalDevice to query
+
+  Returns:
+    Current memory growth setting.
+  """
+  return context.context().get_memory_growth(device)
+
+
+def set_memory_growth(device, enable):
+  """Set if memory growth should be enabled for a PhysicalDevice.
+
+  A PhysicalDevice with memory growth set will not allocate all memory on the
+  device upfront. Memory growth cannot be configured on a PhysicalDevice with
+  virtual devices configured.
+
+  Args:
+    device: PhysicalDevice to configure
+    enable: Whether to enable or disable memory growth
+  """
+  context.context().set_memory_growth(device, enable)
+
+
+def get_virtual_device_configuration(device):
+  """Get the virtual device configuration for a PhysicalDevice.
+
+  Returns the list of VirtualDeviceConfiguration objects previously configured
+  by a call to `set_virtual_device_configuration()``.
+
+  Args:
+    device: PhysicalDevice to query
+
+  Returns:
+    List of VirtualDeviceConfiguration objects
+  """
+  return context.context().get_virtual_device_configuration(device)
+
+
+def set_virtual_device_configuration(device, virtual_devices):
+  """Set the virtual device configuration for a PhysicalDevice.
+
+  A PhysicalDevice marked as visible will by default have a single LogicalDevice
+  allocated to it once the runtime is configured. Specifying a list of
+  VirtualDeviceConfiguration objects allows multiple devices to be configured
+  that utilize the same PhysicalDevice.
+
+  Args:
+    device: (optional) Need to update
+    virtual_devices: (optional) Need to update
+  """
+  context.context().set_virtual_device_configuration(device, virtual_devices)
