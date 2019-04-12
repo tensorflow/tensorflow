@@ -8591,6 +8591,93 @@ func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Outp
 	return op.Output(0)
 }
 
+// Creates a dataset that emits the records from one or more binary files.
+//
+// Arguments:
+//	filenames: A scalar or a vector containing the name(s) of the file(s) to be
+// read.
+//	header_bytes: A scalar representing the number of bytes to skip at the
+// beginning of a file.
+//	record_bytes: A scalar representing the number of bytes in each record.
+//	footer_bytes: A scalar representing the number of bytes to skip at the end
+// of a file.
+//	buffer_size: A scalar representing the number of bytes to buffer. Must be > 0.
+func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf.Output, record_bytes tf.Output, footer_bytes tf.Output, buffer_size tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FixedLengthRecordDataset",
+		Input: []tf.Input{
+			filenames, header_bytes, record_bytes, footer_bytes, buffer_size,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that caches elements from `input_dataset`.
+//
+// A CacheDataset will iterate over the input_dataset, and store tensors. If the
+// cache already exists, the cache will be used. If the cache is inappropriate
+// (e.g. cannot be opened, contains tensors of the wrong shape / size), an error
+// will the returned when used.
+//
+// Arguments:
+//
+//	filename: A path on the filesystem where we should cache the dataset. Note: this
+// will be a directory.
+//
+//
+func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "CacheDataset",
+		Input: []tf.Input{
+			input_dataset, filename,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that shuffles and repeats elements from `input_dataset`
+//
+// pseudorandomly.
+//
+// Arguments:
+//
+//	buffer_size: The number of output elements to buffer in an iterator over
+// this dataset. Compare with the `min_after_dequeue` attr when creating a
+// `RandomShuffleQueue`.
+//	seed: A scalar seed for the random number generator. If either `seed` or
+// `seed2` is set to be non-zero, the random number generator is seeded
+// by the given seed.  Otherwise, a random seed is used.
+//	seed2: A second scalar seed to avoid seed collision.
+//	count: A scalar representing the number of times the underlying dataset
+// should be repeated. The default is `-1`, which results in infinite repetition.
+//
+//
+func ShuffleAndRepeatDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ShuffleAndRepeatDataset",
+		Input: []tf.Input{
+			input_dataset, buffer_size, seed, seed2, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the mean along segments of a tensor.
 //
 // Read
@@ -10711,35 +10798,6 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 		Input: []tf.Input{
 			value, bias,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset that caches elements from `input_dataset`.
-//
-// A CacheDataset will iterate over the input_dataset, and store tensors. If the
-// cache already exists, the cache will be used. If the cache is inappropriate
-// (e.g. cannot be opened, contains tensors of the wrong shape / size), an error
-// will the returned when used.
-//
-// Arguments:
-//
-//	filename: A path on the filesystem where we should cache the dataset. Note: this
-// will be a directory.
-//
-//
-func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "CacheDataset",
-		Input: []tf.Input{
-			input_dataset, filename,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -17251,39 +17309,6 @@ func InfeedDequeueTuple(scope *Scope, dtypes []tf.DataType, shapes []tf.Shape) (
 	return outputs
 }
 
-// Creates a dataset that shuffles and repeats elements from `input_dataset`
-//
-// pseudorandomly.
-//
-// Arguments:
-//
-//	buffer_size: The number of output elements to buffer in an iterator over
-// this dataset. Compare with the `min_after_dequeue` attr when creating a
-// `RandomShuffleQueue`.
-//	seed: A scalar seed for the random number generator. If either `seed` or
-// `seed2` is set to be non-zero, the random number generator is seeded
-// by the given seed.  Otherwise, a random seed is used.
-//	seed2: A second scalar seed to avoid seed collision.
-//	count: A scalar representing the number of times the underlying dataset
-// should be repeated. The default is `-1`, which results in infinite repetition.
-//
-//
-func ShuffleAndRepeatDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "ShuffleAndRepeatDataset",
-		Input: []tf.Input{
-			input_dataset, buffer_size, seed, seed2, count,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // LoadTPUEmbeddingADAMParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingADAMParametersGradAccumDebug.
 type LoadTPUEmbeddingADAMParametersGradAccumDebugAttr func(optionalAttr)
 
@@ -18675,6 +18700,62 @@ func ResourceSparseApplyProximalGradientDescent(scope *Scope, var_ tf.Output, al
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// QuantizedDepthwiseConv2DWithBiasAttr is an optional argument to QuantizedDepthwiseConv2DWithBias.
+type QuantizedDepthwiseConv2DWithBiasAttr func(optionalAttr)
+
+// QuantizedDepthwiseConv2DWithBiasOutType sets the optional out_type attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_QINT32
+func QuantizedDepthwiseConv2DWithBiasOutType(value tf.DataType) QuantizedDepthwiseConv2DWithBiasAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedDepthwiseConv2DWithBiasDilations sets the optional dilations attribute to value.
+//
+// value: List of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedDepthwiseConv2DWithBiasDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes quantized depthwise Conv2D with Bias.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	bias: The original bias tensor.
+//	min_input: The float value that the minimum quantized input value represents.
+//	max_input: The float value that the maximum quantized input value represents.
+//	min_filter: The float value that the minimum quantized filter value represents.
+//	max_filter: The float value that the maximum quantized filter value represents.
+//	strides: List of stride values.
+//
+//
+// Returns The output tensor.The float value that the minimum quantized output value represents.The float value that the maximum quantized output value represents.
+func QuantizedDepthwiseConv2DWithBias(scope *Scope, input tf.Output, filter tf.Output, bias tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedDepthwiseConv2DWithBiasAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedDepthwiseConv2DWithBias",
+		Input: []tf.Input{
+			input, filter, bias, min_input, max_input, min_filter, max_filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // ArgMaxAttr is an optional argument to ArgMax.
@@ -27977,6 +28058,64 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 	return op.Output(0), op.Output(1)
 }
 
+// QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr is an optional argument to QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize.
+type QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr func(optionalAttr)
+
+// QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType sets the optional out_type attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_QUINT8
+func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType(value tf.DataType) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations sets the optional dilations attribute to value.
+//
+// value: List of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes quantized depthwise Conv2D with Bias, Relu and Requantize.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	bias: The original bias tensor.
+//	min_input: The float value that the minimum quantized input value represents.
+//	max_input: The float value that the maximum quantized input value represents.
+//	min_filter: The float value that the minimum quantized filter value represents.
+//	max_filter: The float value that the maximum quantized filter value represents.
+//	min_freezed_output: The minimum float value of the output tensor.
+//	max_freezed_output: The maximum float value of the output tensor.
+//	strides: List of stride values.
+//
+//
+// Returns The output tensor.The float value that the minimum quantized output value represents.The float value that the maximum quantized output value represents.
+func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize(scope *Scope, input tf.Output, filter tf.Output, bias tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, min_freezed_output tf.Output, max_freezed_output tf.Output, strides []int64, padding string, optional ...QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize",
+		Input: []tf.Input{
+			input, filter, bias, min_input, max_input, min_filter, max_filter, min_freezed_output, max_freezed_output,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // ResourceScatterNdUpdateAttr is an optional argument to ResourceScatterNdUpdate.
 type ResourceScatterNdUpdateAttr func(optionalAttr)
 
@@ -29036,6 +29175,134 @@ func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// QuantizedDepthwiseConv2DAttr is an optional argument to QuantizedDepthwiseConv2D.
+type QuantizedDepthwiseConv2DAttr func(optionalAttr)
+
+// QuantizedDepthwiseConv2DOutType sets the optional out_type attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_QINT32
+func QuantizedDepthwiseConv2DOutType(value tf.DataType) QuantizedDepthwiseConv2DAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedDepthwiseConv2DDilations sets the optional dilations attribute to value.
+//
+// value: List of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedDepthwiseConv2DDilations(value []int64) QuantizedDepthwiseConv2DAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes quantized depthwise Conv2D.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	min_input: The float value that the minimum quantized input value represents.
+//	max_input: The float value that the maximum quantized input value represents.
+//	min_filter: The float value that the minimum quantized filter value represents.
+//	max_filter: The float value that the maximum quantized filter value represents.
+//	strides: List of stride values.
+//
+//
+// Returns The output tensor.The float value that the minimum quantized output value represents.The float value that the maximum quantized output value represents.
+func QuantizedDepthwiseConv2D(scope *Scope, input tf.Output, filter tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedDepthwiseConv2DAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedDepthwiseConv2D",
+		Input: []tf.Input{
+			input, filter, min_input, max_input, min_filter, max_filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// QuantizedDepthwiseConv2DWithBiasAndReluAttr is an optional argument to QuantizedDepthwiseConv2DWithBiasAndRelu.
+type QuantizedDepthwiseConv2DWithBiasAndReluAttr func(optionalAttr)
+
+// QuantizedDepthwiseConv2DWithBiasAndReluOutType sets the optional out_type attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_QINT32
+func QuantizedDepthwiseConv2DWithBiasAndReluOutType(value tf.DataType) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedDepthwiseConv2DWithBiasAndReluDilations sets the optional dilations attribute to value.
+//
+// value: List of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedDepthwiseConv2DWithBiasAndReluDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes quantized depthwise Conv2D with Bias and Relu.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	bias: The original bias tensor.
+//	min_input: The float value that the minimum quantized input value represents.
+//	max_input: The float value that the maximum quantized input value represents.
+//	min_filter: The float value that the minimum quantized filter value represents.
+//	max_filter: The float value that the maximum quantized filter value represents.
+//	strides: List of stride values.
+//
+//
+// Returns The output tensor.The float value that the minimum quantized output value represents.The float value that the maximum quantized output value represents.
+func QuantizedDepthwiseConv2DWithBiasAndRelu(scope *Scope, input tf.Output, filter tf.Output, bias tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedDepthwiseConv2DWithBiasAndReluAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedDepthwiseConv2DWithBiasAndRelu",
+		Input: []tf.Input{
+			input, filter, bias, min_input, max_input, min_filter, max_filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Deprecated, use python implementation tf.linalg.matrix_exponential.
+//
+// DEPRECATED at GraphDef version 27: Use Python implementation tf.linalg.matrix_exponential instead.
+func MatrixExponential(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixExponential",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Outputs a tensor containing the reduction across all input tensors.
@@ -35438,23 +35705,6 @@ func LogMatrixDeterminant(scope *Scope, input tf.Output) (sign tf.Output, log_ab
 	return op.Output(0), op.Output(1)
 }
 
-// Deprecated, use python implementation tf.linalg.matrix_exponential.
-//
-// DEPRECATED at GraphDef version 27: Use Python implementation tf.linalg.matrix_exponential instead.
-func MatrixExponential(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixExponential",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the Cholesky decomposition of one or more square matrices.
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
@@ -35590,31 +35840,6 @@ func CholeskyGrad(scope *Scope, l tf.Output, grad tf.Output) (output tf.Output) 
 		Type: "CholeskyGrad",
 		Input: []tf.Input{
 			l, grad,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset that emits the records from one or more binary files.
-//
-// Arguments:
-//	filenames: A scalar or a vector containing the name(s) of the file(s) to be
-// read.
-//	header_bytes: A scalar representing the number of bytes to skip at the
-// beginning of a file.
-//	record_bytes: A scalar representing the number of bytes in each record.
-//	footer_bytes: A scalar representing the number of bytes to skip at the end
-// of a file.
-//	buffer_size: A scalar representing the number of bytes to buffer. Must be > 0.
-func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf.Output, record_bytes tf.Output, footer_bytes tf.Output, buffer_size tf.Output) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "FixedLengthRecordDataset",
-		Input: []tf.Input{
-			filenames, header_bytes, record_bytes, footer_bytes, buffer_size,
 		},
 	}
 	op := scope.AddOperation(opspec)
