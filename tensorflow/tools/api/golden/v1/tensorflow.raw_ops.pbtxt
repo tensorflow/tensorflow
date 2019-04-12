@@ -4401,6 +4401,10 @@ tf_module {
     argspec: "args=[\'writer\', \'step\', \'tag\', \'tensor\', \'bad_color\', \'max_images\', \'name\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
   }
   member_method {
+    name: "WriteRawProtoSummary"
+    argspec: "args=[\'writer\', \'step\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "WriteScalarSummary"
     argspec: "args=[\'writer\', \'step\', \'tag\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
