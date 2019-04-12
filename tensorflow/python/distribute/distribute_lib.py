@@ -370,43 +370,6 @@ class Strategy(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
-  @doc_controls.do_not_doc_inheritable  # DEPRECATED
-  def experimental_make_numpy_iterator(
-      self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
-    """Makes an iterator for input provided via a nest of numpy arrays.
-
-    DEPRECATED: Use `extended.experimental_make_numpy_dataset` instead.
-
-    Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
-      batch_size: The number of entries from the array we should consume in one
-        step of the computation, across all replicas. This is the global batch
-        size. It should be divisible by `num_replicas_in_sync`.
-      num_epochs: The number of times to iterate through the examples. A value
-        of `None` means repeat forever.
-      shuffle: Size of buffer to use for shuffling the input examples.
-        Use `None` to disable shuffling.
-      session: (TensorFlow v1.x graph execution only) A session used for
-        initialization.
-
-    Returns:
-      An `tf.distribute.InputIterator` which returns inputs for each step of the
-      computation.  User should call `initialize` on the returned iterator.
-    """
-    ds = self.extended.experimental_make_numpy_dataset(
-        numpy_input, session=session)
-    if shuffle:
-      ds = ds.shuffle(shuffle)
-    if num_epochs != 1:
-      ds = ds.repeat(num_epochs)
-    # We need to use the drop_remainder argument to get a known static
-    # input shape which is required for TPUs.
-    drop_remainder = self.extended.experimental_require_static_shapes
-    ds = ds.batch(batch_size, drop_remainder=drop_remainder)
-    return self.make_dataset_iterator(ds)
-
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
