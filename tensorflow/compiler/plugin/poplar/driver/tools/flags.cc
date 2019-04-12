@@ -41,6 +41,9 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
       {"use_ipu_model",
        "If enabled, this computation will be executed on the IPU model. "
        "(bool)"},
+      {"force_replicated_mode",
+       "If enabled, we allow replicated graphs with no AllReduce operations in "
+       "them to still run in replicated mode. (bool)"},
       {"while_loop_brute_force_max_trip_count",
        "When trying to convert a while loop to a repeat loop, we can try and "
        "use a brute force method to simulate the conditional part of the while "
@@ -73,6 +76,10 @@ void AllocateAndParseFlags() {
   // If enabled, this computation will be executed on the IPU model.
   poplar_xla_flags->use_ipu_model = false;
 
+  // If enabled, we allow replicated graphs with no AllReduce operations in them
+  // to still run in replicated mode.
+  poplar_xla_flags->force_replicated_mode = false;
+
   // When trying to convert a while loop to a repeat loop, we can try and use a
   // brute force method to simulate the conditional part of the while and find
   // the number of iterations. This flag sets how many iterations of the while
@@ -98,10 +105,11 @@ void AllocateAndParseFlags() {
   std::vector<Flag> flag_list = {
 #define ADD_FLAG(FLAG_NAME) \
   Flag(#FLAG_NAME, &poplar_xla_flags->FLAG_NAME, flag_usage.at(#FLAG_NAME)),
-// clang-format off
+      // clang-format off
     ADD_FLAG(help)
     ADD_FLAG(use_synthetic_data)
     ADD_FLAG(use_ipu_model)
+    ADD_FLAG(force_replicated_mode)
     ADD_FLAG(while_loop_brute_force_max_trip_count)
     ADD_FLAG(max_compilation_threads)
     ADD_FLAG(save_oom_profiler)
@@ -110,9 +118,7 @@ void AllocateAndParseFlags() {
 // clang-format on
 #undef ADD_FLAG
   };
-  std::cerr << poplar_xla_flags->while_loop_brute_force_max_trip_count << "\n";
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_POPLAR_FLAGS", flag_list);
-  std::cerr << poplar_xla_flags->while_loop_brute_force_max_trip_count << "\n";
 }
 
 }  // namespace

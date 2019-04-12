@@ -34,6 +34,10 @@ struct PoplarXlaFlags {
   // If enabled, this computation will be executed on the IPU model.
   bool use_ipu_model;
 
+  // If enabled, we allow replicated graphs with no AllReduce operations in them
+  // to still run in replicated mode.
+  bool force_replicated_mode;
+
   // When trying to convert a while loop to a repeat loop, we can try and use a
   // brute force method to simulate the conditional part of the while and find
   // the number of iterations. This flag sets how many iterations of the while

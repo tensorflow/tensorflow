@@ -189,9 +189,8 @@ bool AnyComputationHasSideEffects(const HloModule* module) {
 }
 
 bool ShardingEnabled(const HloModule* module) {
-  std::vector<HloComputation*> comps = module->MakeNonfusionComputations();
-  for (const auto* c : comps) {
-    for (const auto* inst : c->instructions()) {
+  for (const auto* comp : module->MakeNonfusionComputations()) {
+    for (const auto* inst : comp->instructions()) {
       if (inst->has_sharding()) {
         auto sharding = inst->sharding();
         if (IsSupportedSharding(sharding)) {
@@ -204,10 +203,9 @@ bool ShardingEnabled(const HloModule* module) {
 }
 
 int64 MaximalShard(const HloModule* module) {
-  std::vector<HloComputation*> comps = module->MakeNonfusionComputations();
   int64 maximal_shard = 0;
-  for (const auto* c : comps) {
-    for (const auto* inst : c->instructions()) {
+  for (const auto* comp : module->MakeNonfusionComputations()) {
+    for (const auto* inst : comp->instructions()) {
       if (inst->has_sharding()) {
         auto sharding = inst->sharding();
         if (IsSupportedSharding(sharding)) {
@@ -220,6 +218,23 @@ int64 MaximalShard(const HloModule* module) {
     }
   }
   return maximal_shard;
+}
+
+bool IsValidReplicatedGraph(const HloModule* module) {
+  // If the graph has an infeed and no all-reduces, then we make an executive
+  // decision for the user that they should use the CrossReplicaOptimizer.
+  bool has_infeed = false;
+  bool has_all_reduce = false;
+  for (const auto* comp : module->MakeNonfusionComputations()) {
+    for (const auto* inst : comp->instructions()) {
+      has_infeed |= inst->opcode() == HloOpcode::kInfeed;
+      has_all_reduce |= inst->opcode() == HloOpcode::kAllReduce;
+    }
+  }
+  // TODO T8122
+  // If the graph has no infeed then we don't mind whether there is an all
+  // reduce or not.
+  return has_infeed ? has_all_reduce : true;
 }
 
 bool AreAllOutputsParameters(
@@ -396,6 +411,20 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   const auto replication_factor = resources.replication_factor;
   if (replication_factor > 1) {
+    if (!IsValidReplicatedGraph(module.get())) {
+      if (!tensorflow::GetPoplarXlaFlags().force_replicated_mode) {
+        return xla::FailedPrecondition(
+            "This is not a valid replicated graph because no All-Reduce "
+            "operations were found. Did you use the "
+            "`tensorflow.contrib.ipu.ipu_optimizer.CrossReplicaOptimizer` "
+            "optimizer?\nIf you want the graph to still run in replicated "
+            "mode with no All-Reduce operations use "
+            "`TF_POPLAR_FLAGS=\"--force_replicated_mode\"`.");
+      } else {
+        LOG(INFO) << "A graph is being forced to run in replicated mode.";
+      }
+    }
+
     resources.replicated_graph =
         resources.main_graph.createReplicatedGraph(replication_factor);
     VLOG(1) << "Created " << replication_factor << " replica IPU graphs.";

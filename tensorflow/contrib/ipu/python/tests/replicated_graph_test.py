@@ -22,6 +22,7 @@ import test_util as tu
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as sl
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import constant_op
@@ -328,6 +329,41 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
       # Check output equals the expected value
       self.assertAllClose(result, ref)
+
+  def testErrorWhenNoAllReduce(self):
+    shape = [2]
+    dataset = tu.create_single_increasing_dataset(3, shape)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
+        dataset, replication_factor=2)
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+
+    def body(v, x):
+      outfeed = outfeed_queue.enqueue(v)
+      return (v + x, outfeed)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=shape, dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[])
+
+    outfed = outfeed_queue.dequeue()
+
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      sess.run(infeed_queue.initializer)
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          'This is not a valid replicated graph because'):
+        result = sess.run(res)
 
 
 if __name__ == "__main__":
