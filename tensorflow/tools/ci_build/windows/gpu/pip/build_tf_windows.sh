@@ -48,6 +48,7 @@ rm -f "${TMP_BAZELRC}"
 touch "${TMP_BAZELRC}"
 
 function cleanup {
+  cat mm.txt
   # Remove all options in .tmp.bazelrc
   echo "" > "${TMP_BAZELRC}"
 }
