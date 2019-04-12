@@ -636,7 +636,7 @@ def lecun_normal(seed=None):
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -662,7 +662,7 @@ def lecun_uniform(seed=None):
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -686,7 +686,7 @@ def he_normal(seed=None):
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
@@ -707,7 +707,7 @@ def he_uniform(seed=None):
       seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
