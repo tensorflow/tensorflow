@@ -68,6 +68,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python:loss_scale",
+    "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
