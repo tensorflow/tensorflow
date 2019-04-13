@@ -1598,18 +1598,6 @@ Status AllowDataTypes(const OpConverterParams& params,
   return Status::OK();
 }
 
-TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
-                                    const TRT_ShapedWeights& weights_src) {
-  TRT_ShapedWeights weights =
-      store->GetTempWeights(nvinfer1::DataType::kHALF, weights_src.shape_);
-  const float* src = static_cast<const float*>(weights_src.GetValues());
-  Eigen::half* dst = static_cast<Eigen::half*>(weights.GetValues());
-  for (int64_t i = 0; i < weights_src.count(); i++) {
-    dst[i] = Eigen::half_impl::float_to_half_rtne(src[i]);
-  }
-  return weights;
-}
-
 // ****************************************************************************
 // Constant folding functions for weights.
 // TODO(laigd): we should probably use eigen directly.
@@ -1781,10 +1769,6 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
         params->converter->TransposeTensor(tensor, permutation, &tensor));
   }
 
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
-  }
-
   // Prepare weights
   TRT_ShapedWeights shift_weights(weights.TrtDType());
   TRT_ShapedWeights scale_weights(weights.TrtDType());
@@ -1946,9 +1930,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights_rsck = ConvertFP32ToFP16(params->weight_store, weights_rsck);
-  }
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
   // Therefore, this reorder will work for both cases.
@@ -3047,9 +3028,6 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
-  }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   if (weights.shape_.d[0] == 1) {
     mode = nvinfer1::ScaleMode::kUNIFORM;
