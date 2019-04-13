@@ -23,7 +23,7 @@ limitations under the License.
 #include <sstream>
 
 #ifdef _WIN32
-# undef ERROR
+#undef ERROR
 #endif
 
 namespace tflite {

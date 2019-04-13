@@ -122,7 +122,14 @@ $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
 
+BUILD_WITH_MMAP=true
 ifeq ($(BUILD_TYPE),micro)
+	BUILD_WITH_MMAP=false
+endif
+ifeq ($(BUILD_TYPE),windows)
+	BUILD_WITH_MMAP=false
+endif
+ifeq ($(BUILD_WITH_MMAP),true)
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
@@ -162,7 +169,6 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
-	tensorflow/lite/testing/init_tensorflow.cc \
 	$(wildcard $(TESTING_SRCS_DIR)/*.cc) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS)

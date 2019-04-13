@@ -24,9 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/simple_memory_arena.h"
 #include "tensorflow/lite/string.h"
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 namespace tflite {
 
@@ -62,11 +59,6 @@ class MMAPAllocation : public Allocation {
   int mmap_fd_ = -1;  // mmap file descriptor
   const void* mmapped_buffer_;
   size_t buffer_size_bytes_ = 0;
-
-#ifdef _WIN32
-  HANDLE file_handle_;
-  HANDLE file_mapping_;
-#endif
 };
 
 class FileCopyAllocation : public Allocation {
