@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Enmeration to get target specific intrinsics.
+// Enmeration to get target specific function information.
 enum class TargetFunctionID {
   kShflDownF32 = 0,
   kShflDownI32,
@@ -44,7 +44,8 @@ enum class TargetFunctionID {
   kBarrierId,
 };
 
-// Emits a call to the specified target intrinsic with the given operands.
+// Emits a call to the specified target function  with the given operands.
+// Target function can either be an intrinsic or a device function.
 
 // Overloaded intrinsics (for example, "minnum") must include a type
 // in overloaded_types  for each overloaded type. Typically, overloaded
