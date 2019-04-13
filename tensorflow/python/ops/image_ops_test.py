@@ -278,7 +278,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       image = image_ops.adjust_gamma(x, gamma=y)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, err_msg):
         self.evaluate(image)
 
   def _test_adjust_gamma_uint8(self, gamma):
