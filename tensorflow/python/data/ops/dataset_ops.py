@@ -1781,6 +1781,9 @@ class DatasetV1Adapter(DatasetV1):
   def _inputs(self):
     return self._dataset._inputs()  # pylint: disable=protected-access
 
+  def _functions(self):
+    return self._dataset._functions()  # pylint: disable=protected-access
+
   def options(self):
     return self._dataset.options()
 
