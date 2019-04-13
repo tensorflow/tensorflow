@@ -112,11 +112,11 @@ We maintain `tensorflow-rocm` whl packages on PyPI [here](https://pypi.org/proje
 For Python 2-based systems:
 ```
 # Pip install the whl package from PyPI
-pip install --user tensorflow-rocm
+pip install --user tensorflow-rocm --upgrade
 ```
 
 For Python 3-based systems:
 ```
 # Pip3 install the whl package from PyPI
-pip3 install --user tensorflow-rocm
+pip3 install --user tensorflow-rocm --upgrade
 ```

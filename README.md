@@ -32,7 +32,7 @@ subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 
 **Tensorflow ROCm port**
-This project is based on TensorFlow 1.13.1. It has been verified to work with the latest ROCm2.2 release.
+This project is based on TensorFlow 1.13.1. It has been verified to work with the latest ROCm2.3 release.
 Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
 A docker container: **rocm/tensorflow:latest(https://hub.docker.com/r/rocm/tensorflow/)** is readily available to be used:
 ```
@@ -45,7 +45,7 @@ We maintain `tensorflow-rocm` whl packages on PyPI [here](https://pypi.org/proje
 sudo apt install rocm-libs miopen-hip cxlactivitylogger
 
 # Pip3 install the whl package from PyPI
-pip3 install --user tensorflow-rocm
+pip3 install --user tensorflow-rocm --upgrade
 ```
 For details on Tensorflow ROCm port, please take a look at the [ROCm-specific README file](README.ROCm.md).
 
