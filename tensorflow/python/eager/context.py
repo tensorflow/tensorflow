@@ -231,6 +231,7 @@ class LogicalDevice(
   pass
 
 
+@tf_export("config.experimental.VirtualDeviceConfiguration")
 class VirtualDeviceConfiguration(
     collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
   """Configuration class for virtual devices for a PhysicalDevice.
