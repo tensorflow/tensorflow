@@ -68,19 +68,50 @@ def softmax(x, axis=-1):
 
 @keras_export('keras.activations.elu')
 def elu(x, alpha=1.0):
-  """Exponential linear unit.
+  """
+  The exponential linear unit (ELU) with `alpha` > 0 is:
+  `x` if `x > 0` and `alpha * (exp(x)-1)` if `x < 0`
+  The ELU hyperparameter `alpha` (α) controls the value to which an
+  ELU saturates for negative net inputs.ELUs diminish the
+  vanishing gradient effect.
+
+  ELUs have negative values which pushes the mean of the activations
+  closer to zero.
+  Mean activations that are closer to zero enable faster learning as they
+  bring the gradient closer to the natural gradient.
+  ELUs saturate to a negative value when the argument gets smaller.
+  Saturation means a small derivative which decreases the variation
+  and the information that is propagated to the next layer.
+
+  [https://akiraaptx.files.wordpress.com/2017/01/screen-shot-2017-01-14-at-1-39-39-pm.png]
+  (Courtesy: Blog post on TensorFlow Activation Functions by
+  https://akiraaptx.blog/2017/01/14/tensorflowactivationfunction/)
+
+  Example Usage:
+
+  ```python3
+  model = models.Sequential()
+  model.add(layers.Conv2D(32, (3, 3), activation='elu', input_shape=(28, 28, 1)))
+  model.add(layers.MaxPooling2D((2, 2)))
+  model.add(layers.Conv2D(64, (3, 3), activation='elu'))
+  model.add(layers.MaxPooling2D((2, 2)))
+  model.add(layers.Conv2D(64, (3, 3), activation='elu'))
+  ```
 
   Arguments:
       x: Input tensor.
       alpha: A scalar, slope of negative section.
+      `alpha` controls the value to which an ELU saturates for
+      negative net inputs.
 
   Returns:
-      The exponential linear activation: `x` if `x > 0` and
-        `alpha * (exp(x)-1)` if `x < 0`.
+      The exponential linear unit (ELU) activation function: `x` if `x > 0` and
+      `alpha * (exp(x) - 1)` if `x < 0`.
+
 
   Reference:
-      - [Fast and Accurate Deep Network Learning by Exponential
-        Linear Units (ELUs)](https://arxiv.org/abs/1511.07289)
+  [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
+  (Clevert et al, 2015)](https://arxiv.org/abs/1511.07289)
   """
   return K.elu(x, alpha)
 
