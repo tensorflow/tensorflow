@@ -3626,7 +3626,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
@@ -3665,7 +3665,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
 
         flat_output = nest.flatten(output)
@@ -3690,7 +3690,7 @@ def rnn(step_function,
 
   # static shape inference
   def set_shape(output_):
-    if hasattr(output_, 'set_shape'):
+    if isinstance(output_, ops.Tensor):
       shape = output_.shape.as_list()
       shape[0] = time_steps
       shape[1] = batch
