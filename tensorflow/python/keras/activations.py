@@ -42,17 +42,26 @@ _TF_ACTIVATIONS_V2 = {
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
-  """Softmax activation function.
+  """Applies the softmax activation function.
+
+  This activation, often used to generate outputs representing probabilities, first applies the standard exponential function to the input and then normalizes the result.
+
+  ```python
+  t = tf.constant([[-1.1, 1.1, .7])
+  softmax(t).numpy() # ==> [[0.06220971, 0.5614435 , 0.37634683]]
+  sum(sum(softmax(t))).numpy() # ==> 1.0
+  ```
 
   Arguments:
-      x : Input tensor.
-      axis: Integer, axis along which the softmax normalization is applied.
+      `x` : A `Tensor` or `Variable`.
+      `axis`: An `integer` giving the axis along which the softmax normalization is to be applied.
 
   Returns:
-      Tensor, output of softmax transformation.
+      A `Tensor` representing the softmax transformation of the input tensor.
 
   Raises:
-      ValueError: In case `dim(x) == 1`.
+      ValueError: if the dimension of `x` is 1.
+      ValueError: if an element of the input is not of a permissible `float`, `half`, or `double` type.
   """
   ndim = K.ndim(x)
   if ndim == 2:
@@ -158,7 +167,7 @@ def relu(x, alpha=0., max_value=None, threshold=0.):
   ```
 
   Arguments:
-    `x`: A tensor or variable.
+    `x`: A `Tensor` or `Variable`.
     `alpha`: A `float` that governs the slope of the activation function for values lower than the threshold. By default, this is `0.`; small positive values correspond to 'leaky' ReLUs.
     `max_value`: A `float` or `None` giving the saturation threshold (the largest value the function can take). The default is `None`, indicating that there is no such threshold.
     `threshold`: A `float` giving the threshold value below which values will be damped or set to zero (`0.` by default).
