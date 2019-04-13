@@ -906,6 +906,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    tf_http_archive(
+        name = "seastar",
+        urls = [
+            "https://github.com/liutongxuan/seastar/blob/features/tensorflow_rpc/archive/seastar-tf.tar.gz",
+        ],
+        sha256 = "b16e6d83cc2ef91e67eee71e5c65ef25a576085e461ebaae86771781c76f41db",
+        strip_prefix = "seastar",
+        build_file = clean_dep("//third_party:seastar.BUILD"),
+    )
+
     ##############################################################################
     # BIND DEFINITIONS
     #
