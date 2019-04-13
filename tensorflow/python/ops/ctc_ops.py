@@ -881,9 +881,9 @@ def dense_labels_to_sparse(dense, length):
 
 @tf_export("nn.ctc_unique_labels")
 def ctc_unique_labels(labels, name=None):
-  """Get unique labels and indices for batched labels for tf.nn.ctc_loss.
+  """Get unique labels and indices for batched labels for `tf.nn.ctc_loss`.
 
-  For use with tf.nn.ctc_loss_v2 optional argument `unique`: This op can be
+  For use with `tf.nn.ctc_loss_v2` optional argument `unique`: This op can be
   used to preprocess labels in input pipeline to for better speed/memory use
   computing the ctc loss on TPU.
 

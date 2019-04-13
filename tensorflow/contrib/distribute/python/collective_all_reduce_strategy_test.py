@@ -57,7 +57,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-class MockCollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
+class MockCollectiveAllReduceStrategy(distribute_lib.StrategyV1):
   """Mock the strategy to allow cluster resolver as an argument."""
 
   def __init__(self, cluster_resolver):

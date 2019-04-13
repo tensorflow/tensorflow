@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.util.tf_export import keras_export
 
 
 class BaseDenseAttention(Layer):
@@ -165,6 +166,7 @@ class BaseDenseAttention(Layer):
             'value_mask]. Given length: {}'.format(class_name, len(mask)))
 
 
+@keras_export('keras.layers.Attention')
 class Attention(BaseDenseAttention):
   """Dot-product attention layer, a.k.a. Luong-style attention.
 

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import itertools
 import json
 import os
 
@@ -34,11 +35,11 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -129,6 +130,14 @@ class Network(base_layer.Layer):
       return self.layer1(inputs)
   ```
   """
+
+  # See tf.Module for the usage of this property.
+  # The key of _layer_call_argspecs is a layer. tf.Module._flatten will fail to
+  # flatten the key since it is trying to convert Trackable/Layer to a string.
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+      ('_layer_call_argspecs',),
+      base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES
+  ))
 
   def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called
     # Signature detection
@@ -396,7 +405,7 @@ class Network(base_layer.Layer):
           layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
-    if not getattr(self, '_setattr_tracking', True):
+    if not getattr(self, '_self_setattr_tracking', True):
       super(Network, self).__setattr__(name, value)
       return
 
@@ -1281,8 +1290,12 @@ class Network(base_layer.Layer):
       model._insert_layers(ancillary_layers)
     return model
 
-  def save(self, filepath, overwrite=True, include_optimizer=True):
-    """Saves the model to a single HDF5 file.
+  def save(self,
+           filepath,
+           overwrite=True,
+           include_optimizer=True,
+           save_format=None):
+    """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
         - The model architecture, allowing to re-instantiate the model.
@@ -1299,10 +1312,14 @@ class Network(base_layer.Layer):
     was never compiled in the first place).
 
     Arguments:
-        filepath: String, path to the file to save the weights to.
+        filepath: String, path to SavedModel or H5 file to save the model.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
+        save_format: Either 'tf' or 'h5', indicating whether to save the model
+          to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
+          will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
+          disabled (use `tf.keras.experimental.export_saved_model` instead).
 
     Example:
 
@@ -1317,16 +1334,7 @@ class Network(base_layer.Layer):
     model = load_model('my_model.h5')
     ```
     """
-    if not self._is_graph_network:
-      raise NotImplementedError(
-          'The `save` method requires the model to be a Functional model or a '
-          'Sequential model. It does not work for subclassed models, '
-          'because such models are defined via the body of a Python method, '
-          'which isn\'t safely serializable. Consider '
-          'using `save_weights`, in order to save the weights of the model.')
-
-    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
-    save_model(self, filepath, overwrite, include_optimizer)
+    saving.save_model(self, filepath, overwrite, include_optimizer, save_format)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.
@@ -1407,7 +1415,7 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
+        saving.save_weights_to_hdf5_group(f, self.layers)
     else:
       if context.executing_eagerly():
         session = None
@@ -1507,9 +1515,9 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        hdf5_format.load_weights_from_hdf5_group_by_name(f, self.layers)
+        saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
-        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+        saving.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
     """Util shared between different serialization methods.

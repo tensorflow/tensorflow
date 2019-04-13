@@ -291,6 +291,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         else:
           self._device = device
 
+      def _set_device_from_string(self, device_str):
+        self._device = device_str
+
     if self._outside_compilation_cluster:
       raise NotImplementedError("Cannot nest outside_compilation clusters")
     if cluster:

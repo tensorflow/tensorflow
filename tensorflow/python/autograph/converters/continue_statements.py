@@ -36,8 +36,22 @@ class _Continue(object):
 
 
 class _Block(object):
+  """Tracks information about lexical blocks as they are visited in the AST.
+
+  Mainly, this object tracks the creation of block guards that replace
+  `continue` statements (e.g. `if not continue_:`).
+
+  Attributes:
+    guard_created: bool, whether the guard has been created for the last
+      continue statement.
+    create_guard: bool, whether a guard should be created because a continue
+      statement has just been encountered.
+  """
 
   def __init__(self):
+    self.reset_guard_state()
+
+  def reset_guard_state(self):
     self.guard_created = False
     self.create_guard = False
 
@@ -47,6 +61,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def visit_Continue(self, node):
     self.state[_Continue].used = True
+    self.state[_Block].reset_guard_state()
     template = """
       var_name = True
     """

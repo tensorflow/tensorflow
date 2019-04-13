@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -2226,11 +2227,20 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
   }
   if (abort_run) {
     TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+    // Create a "derived" status for cancelling the rendezvous and collective
+    // executor. Derived status messages are ignored when aggregating errors
+    // across devices: this allows us to prefer our original status message over
+    // any cancellation related errors.
+    Status derived_status = s;
+    if (!StatusGroup::IsDerived(s)) {
+      derived_status = StatusGroup::MakeDerived(s);
+    }
+
     if (rendezvous_) {
-      rendezvous_->StartAbort(s);
+      rendezvous_->StartAbort(derived_status);
     }
     if (collective_executor_) {
-      collective_executor_->StartAbort(s);
+      collective_executor_->StartAbort(derived_status);
     }
     if (cancellation_manager_) {
       cancellation_manager_->StartCancel();

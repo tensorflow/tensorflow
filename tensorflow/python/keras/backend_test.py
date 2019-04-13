@@ -1477,19 +1477,35 @@ class TestCTC(test.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class TestRandomOps(test.TestCase):
 
+  def test_random_normal(self):
+    np.random.seed(123)
+    x = keras.backend.random_normal((500, 500))
+    val = keras.backend.eval(x)
+    self.assertAllClose(np.mean(val), 0., atol=0.01)
+    self.assertAllClose(np.std(val), 1., atol=0.01)
+
+  def test_random_uniform(self):
+    np.random.seed(123)
+    x = keras.backend.random_uniform((500, 500))
+    val = keras.backend.eval(x)
+    self.assertAllClose(np.mean(val), 0.5, atol=0.01)
+    self.assertAllClose(np.max(val), 1., atol=0.01)
+    self.assertAllClose(np.min(val), 0., atol=0.01)
+
   def test_random_binomial(self):
     np.random.seed(123)
-    x = keras.backend.random_binomial((1000, 1000), p=0.5)
-    self.assertAllClose(np.mean(keras.backend.eval(x)), 0.5, atol=0.1)
+    x = keras.backend.random_binomial((500, 500), p=0.5)
+    self.assertAllClose(np.mean(keras.backend.eval(x)), 0.5, atol=0.01)
 
   def test_truncated_normal(self):
     np.random.seed(123)
+    x = keras.backend.truncated_normal((500, 500), mean=0.0, stddev=1.0)
     x = keras.backend.truncated_normal((1000, 1000), mean=0.0, stddev=1.0)
     y = keras.backend.eval(x)
-    self.assertAllClose(np.mean(y), 0., atol=0.1)
-    self.assertAllClose(np.std(y), 0.88, atol=0.1)
-    self.assertAllClose(np.max(y), 2., atol=0.1)
-    self.assertAllClose(np.min(y), -2., atol=0.1)
+    self.assertAllClose(np.mean(y), 0., atol=0.01)
+    self.assertAllClose(np.std(y), 0.88, atol=0.01)
+    self.assertAllClose(np.max(y), 2., atol=0.01)
+    self.assertAllClose(np.min(y), -2., atol=0.01)
 
   def test_string_input(self):
     seq = keras.Sequential([

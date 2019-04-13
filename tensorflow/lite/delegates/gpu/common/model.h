@@ -520,6 +520,44 @@ Status RemoveFollowingNode(Graph<TensorT>* graph, const Node* to_remove,
   return graph->DeleteNode(to_remove->id);
 }
 
+// Removes to_remove node.
+// Requires that node has one input and one output;
+// If to_remove doesn't have producer, all consumers of to_remove, will use
+//   to_remove input as input
+// If to_remove doesn't have consumers, producer of to_remove will have output
+//   of to_remove.
+// If to_remove has producer and consumer(s), consumer(s) will have as input
+//   output of producer
+template <typename TensorT>
+Status RemoveOneInputOneOutputNode(Graph<TensorT>* graph,
+                                   const Node* to_remove) {
+  auto inputs = graph->FindInputs(to_remove->id);
+  auto outputs = graph->FindOutputs(to_remove->id);
+  if (inputs.size() != 1 || outputs.size() != 1) {
+    return InvalidArgumentError(
+        "To_remove node must have 1 input and 1 output");
+  }
+  auto input_id = inputs[0]->id;
+  auto output_id = outputs[0]->id;
+  Node* producer = graph->FindProducer(input_id);
+  auto consumers = graph->FindConsumers(output_id);
+  if (!producer && consumers.empty()) {  // degenerate case
+    RETURN_IF_ERROR(graph->DeleteNode(to_remove->id));
+    RETURN_IF_ERROR(graph->DeleteValue(input_id));
+    return graph->DeleteValue(output_id);
+  }
+  if (!producer) {
+    RETURN_IF_ERROR(graph->DeleteNode(to_remove->id));
+    RETURN_IF_ERROR(graph->DeleteValue(output_id));
+    for (auto& consumer : consumers) {
+      RETURN_IF_ERROR(graph->AddConsumer(consumer->id, input_id));
+    }
+    return OkStatus();
+  }
+  return RemoveFollowingNode(graph, to_remove, producer);
+  return OkStatus();
+}
+
 template <typename TensorT>
 Status AddOutput(Graph<TensorT>* graph, const Node* from_node,
                  Value<TensorT>** output) {

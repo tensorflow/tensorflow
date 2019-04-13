@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -56,6 +57,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                constraint=None,
                add_initializers_to=None,
                lifted_initializer_graph=None,
+               synchronization=None,
+               aggregation=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -90,6 +93,15 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         initializer tensor will be added to this map in addition to adding the
         assignment to the function.
       lifted_initializer_graph: FuncGraph to try to lift initializers to.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -118,9 +130,12 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
-    if trainable is None:
-      trainable = True
+    synchronization, aggregation, trainable = (
+        variables.validate_synchronization_aggregation_trainable(
+            synchronization, aggregation, trainable, name))
     self._trainable = trainable
+    self._synchronization = synchronization
+    self._aggregation = aggregation
     self._save_slice_info = None
     self._initial_value = None
     self._initializer_op = None
@@ -280,8 +295,6 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
-    # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
-    # same FunctionSpec. Consider removing it from both and passing in instead.
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._autograph = autograph
@@ -316,12 +329,15 @@ class Function(object):
         return weak_wrapped_fn().__wrapped__(*args, **kwds)
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
+    return self._defun(tf_decorator.make_decorator(
+        self._python_function,
+        wrapped_fn))
+
+  def _defun(self, fn):
+    """Returns a defun generated from the input function."""
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(
-            self._python_function,
-            wrapped_fn,
-            decorator_argspec=self._function_spec.fullargspec),
+        fn,
         input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)
@@ -399,6 +415,7 @@ class Function(object):
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
+    context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
     if self._created_variables:

@@ -202,7 +202,7 @@ Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
         "The `thread_num` argument should be positive but got: ", thread_num);
   }
   thread_pool_ = absl::make_unique<thread::ThreadPool>(
-      Env::Default(), ThreadOptions(), "inter_op", thread_num);
+      Env::Default(), ThreadOptions(), "test_thread_pool", thread_num);
   return Status::OK();
 }
 

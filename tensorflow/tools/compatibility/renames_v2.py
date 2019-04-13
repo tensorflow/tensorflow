@@ -39,8 +39,6 @@ renames = {
         'tf.compat.v1.ConditionalAccumulatorBase',
     'tf.ConfigProto':
         'tf.compat.v1.ConfigProto',
-    'tf.DeviceSpec':
-        'tf.compat.v1.DeviceSpec',
     'tf.Dimension':
         'tf.compat.v1.Dimension',
     'tf.Event':
@@ -339,6 +337,10 @@ renames = {
         'tf.math.erfc',
     'tf.estimator.experimental.KMeans':
         'tf.compat.v1.estimator.experimental.KMeans',
+    'tf.estimator.experimental.dnn_logit_fn_builder':
+        'tf.compat.v1.estimator.experimental.dnn_logit_fn_builder',
+    'tf.estimator.experimental.linear_logit_fn_builder':
+        'tf.compat.v1.estimator.experimental.linear_logit_fn_builder',
     'tf.estimator.inputs.numpy_input_fn':
         'tf.compat.v1.estimator.inputs.numpy_input_fn',
     'tf.estimator.inputs.pandas_input_fn':
@@ -577,8 +579,26 @@ renames = {
         'tf.math.lgamma',
     'tf.lin_space':
         'tf.linspace',
+    'tf.linalg.transpose':
+        'tf.linalg.matrix_transpose',
+    'tf.lite.OpHint':
+        'tf.compat.v1.lite.OpHint',
     'tf.lite.TocoConverter':
         'tf.compat.v1.lite.TocoConverter',
+    'tf.lite.constants.GRAPHVIZ_DOT':
+        'tf.compat.v1.lite.constants.GRAPHVIZ_DOT',
+    'tf.lite.constants.INT8':
+        'tf.compat.v1.lite.constants.INT8',
+    'tf.lite.constants.TFLITE':
+        'tf.compat.v1.lite.constants.TFLITE',
+    'tf.lite.experimental.convert_op_hints_to_stubs':
+        'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.nn.TFLiteLSTMCell':
+        'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
+    'tf.lite.experimental.nn.TfLiteRNNCell':
+        'tf.compat.v1.lite.experimental.nn.TfLiteRNNCell',
+    'tf.lite.experimental.nn.dynamic_rnn':
+        'tf.compat.v1.lite.experimental.nn.dynamic_rnn',
     'tf.lite.toco_convert':
         'tf.compat.v1.lite.toco_convert',
     'tf.local_variables':
@@ -704,7 +724,7 @@ renames = {
     'tf.matrix_solve_ls':
         'tf.linalg.lstsq',
     'tf.matrix_transpose':
-        'tf.linalg.transpose',
+        'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
     'tf.metrics.accuracy':
@@ -841,6 +861,8 @@ renames = {
         'tf.compat.v1.nn.static_bidirectional_rnn',
     'tf.nn.static_rnn':
         'tf.compat.v1.nn.static_rnn',
+    'tf.nn.static_state_saving_rnn':
+        'tf.compat.v1.nn.static_state_saving_rnn',
     'tf.nn.uniform_candidate_sampler':
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':

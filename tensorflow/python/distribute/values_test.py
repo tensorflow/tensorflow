@@ -23,7 +23,6 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -37,16 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
-
-
-# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
-# third_party/tensorflow/python/distribute/strategy_combinations.py
-# pylint: disable=g-long-lambda
-parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
-    "ParameterServer2GPUs",
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
-    required_gpus=2)
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class DistributedValuesTest(test.TestCase):
@@ -85,9 +75,6 @@ class DistributedValuesTest(test.TestCase):
     self.assertEqual(canonical_cpu, v.devices)
     v = values.DistributedValues(values.SingleDeviceMap("/CPU:0"), (42,))
     self.assertEqual(canonical_cpu, v.devices)
-    with self.assertRaises(AssertionError):
-      v = values.DistributedValues(
-          values.SingleDeviceMap("/device:cpu:0"), (42,))
 
   def testIsTensorLike(self):
     with context.graph_mode(), \
@@ -563,7 +550,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[parameter_server_strategy_with_two_gpus],
+          distribution=[
+              strategy_combinations.central_storage_strategy_with_two_gpus
+          ],
           mode=["graph", "eager"]))
   def testAssignOutOfScope_aggregating(self, distribution):
     with distribution.scope():
@@ -572,6 +561,54 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.evaluate(aggregating.assign(3.))
     self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
     self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testExtendsVariable(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(1.)
+    self.assertIsInstance(v, variables_lib.Variable)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testCheckpointing(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(constant_op.constant([1., 2., 3., 4]))
+
+    self.evaluate(v.initializer)
+    before_save = self.evaluate(v.read_value())
+
+    # Save random weights into checkpoint.
+    checkpoint = trackable_utils.Checkpoint(v=v)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.test_session():
+      save_path = checkpoint.save(prefix)
+
+    # Assign inverted value.
+    self.evaluate(v.assign(constant_op.constant([4., 3., 2., 1.])))
+    after_assign = self.evaluate(v.read_value())
+    self.assertNotAllClose(before_save, after_assign)
+
+    # Restore from the checkpoint.
+    with self.test_session():
+      checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    after_restore = self.evaluate(v)
+    self.assertAllClose(before_save, after_restore)
+
 
 _devices = ("/device:GPU:0", "/device:CPU:0")
 

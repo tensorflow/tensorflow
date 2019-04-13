@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -1350,10 +1351,18 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   // the dims are unknown or need to be inferred. And we don't do further checks
   // but rely on the caller to not make mistakes.
   // Otherwise we do simple check to make sure the total sizes are the same.
-  if (AreDimsStaticWithDifferentSize(input_dims, dims, input.is_tensor())) {
+  // If an input is a weight, it is going to become a tensor via
+  // CreateConstantLayer. So we can treat it as a tensor for
+  // AreDimsStaticWithDifferentSize(). This really only matters for 0-D tensors.
+  if (AreDimsStaticWithDifferentSize(input_dims, dims, /*is_tensor=*/true)) {
     return errors::InvalidArgument(
         "Incompatible shapes: ", DebugString(input_dims), " vs. ",
         DebugString(dims));
+  }
+  // ConstantLayer requires static shapes (cannot infer -1).
+  if (input.is_weights() && !HasStaticShape(dims)) {
+    return errors::InvalidArgument("Shape is not fully defined: ",
+                                   DebugString(dims));
   }
   if (validation_only) {
     *tensor = nullptr;
@@ -1589,18 +1598,6 @@ Status AllowDataTypes(const OpConverterParams& params,
   return Status::OK();
 }
 
-TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
-                                    const TRT_ShapedWeights& weights_src) {
-  TRT_ShapedWeights weights =
-      store->GetTempWeights(nvinfer1::DataType::kHALF, weights_src.shape_);
-  const float* src = static_cast<const float*>(weights_src.GetValues());
-  Eigen::half* dst = static_cast<Eigen::half*>(weights.GetValues());
-  for (int64_t i = 0; i < weights_src.count(); i++) {
-    dst[i] = Eigen::half_impl::float_to_half_rtne(src[i]);
-  }
-  return weights;
-}
-
 // ****************************************************************************
 // Constant folding functions for weights.
 // TODO(laigd): we should probably use eigen directly.
@@ -1614,7 +1611,7 @@ struct LambdaFactory {
     switch (op) {
       case OP_CATEGORY::RSQRT: {
         VLOG(2) << "RSQRT GETS DONE";
-        return [](T t) -> T { return 1.0 / sqrt(t); };
+        return [](T t) -> T { return 1.0 / std::sqrt(t); };
       }
       case OP_CATEGORY::NEG:
         return [](T t) -> T { return -t; };
@@ -1633,7 +1630,7 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
     case OP_CATEGORY::RSQRT: {
       VLOG(2) << "RSQRT GETS DONE";
       return [](Eigen::half t) {
-        return Eigen::half(1.0 / sqrt(static_cast<float>(t)));
+        return Eigen::half(1.0 / std::sqrt(static_cast<float>(t)));
       };
     }
     case OP_CATEGORY::NEG:
@@ -1770,10 +1767,6 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
     permutation[dims_t.nbDims] = 1;
     TF_RETURN_IF_ERROR(
         params->converter->TransposeTensor(tensor, permutation, &tensor));
-  }
-
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
 
   // Prepare weights
@@ -1937,9 +1930,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights_rsck = ConvertFP32ToFP16(params->weight_store, weights_rsck);
-  }
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
   // Therefore, this reorder will work for both cases.
@@ -3038,9 +3028,6 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights = ConvertFP32ToFP16(params->weight_store, weights);
-  }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   if (weights.shape_.d[0] == 1) {
     mode = nvinfer1::ScaleMode::kUNIFORM;
@@ -4237,6 +4224,95 @@ Status ConvertTopK(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  TFAttrs attrs(node_def);
+  const int block_size = attrs.get<int64>("block_size");
+  if (block_size < 2) {
+    return errors::InvalidArgument("Block size must be 2 or greater, at ",
+                                   node_def.name());
+  }
+  const string data_format = attrs.get<string>("data_format");
+  if (data_format != "NCHW" && data_format != "NHWC") {
+    return errors::Unimplemented("Data format ", data_format,
+                                 " is not supported, at ", node_def.name());
+  }
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  if (dims.nbDims != 3) {
+    return errors::InvalidArgument("The input to ", node_def.op(),
+                                   " must be rank 4, at ", node_def.name());
+  }
+  const int num_channels = data_format == "NCHW" ? dims.d[0] : dims.d[2];
+  const int h = data_format == "NCHW" ? dims.d[1] : dims.d[0];
+  const int w = data_format == "NCHW" ? dims.d[2] : dims.d[1];
+  // Get shuffle parameters.
+  nvinfer1::Dims first_shuffle_shape;
+  nvinfer1::Permutation transpose_perm;
+  nvinfer1::Dims second_shuffle_shape;
+  if (node_def.op() == "DepthToSpace") {
+    if (num_channels % (block_size * block_size) != 0) {
+      return errors::InvalidArgument(
+          "Number of channels must be divisible by block_size*block_size, at ",
+          node_def.name());
+    }
+    // First Reshape [C, H, W] - > [r, r, C/(r*r), H, W]
+    first_shuffle_shape = {
+        /*nbDims=*/5,
+        /*d=*/{block_size, block_size, num_channels / (block_size * block_size),
+               h, w}};
+    // Transpose [r, r, C/(r*r), H, W] -> [C/(r*r), H, r, W, r]
+    transpose_perm = {2, 3, 0, 4, 1};
+    // Second Reshape [C/(r*r), H, r, W, r] -> [C/(r*r), H * r, W * r]
+    second_shuffle_shape =
+        nvinfer1::DimsCHW(num_channels / (block_size * block_size),
+                          h * block_size, w * block_size);
+  } else if (node_def.op() == "SpaceToDepth") {
+    if (h % block_size != 0 || w % block_size != 0) {
+      return errors::InvalidArgument(
+          "Width and height must be divisible by block_size, at ",
+          node_def.name());
+    }
+    // First Reshape [C, H, W] -> [C, H/r, r, W/r, r]
+    first_shuffle_shape = {/*nbDims=*/5,
+                           /*d=*/{num_channels, h / block_size, block_size,
+                                  w / block_size, block_size}};
+    // Transpose [C, H/r, r, W/r, r] -> [r, r, C, H/r, W/r]
+    transpose_perm = {2, 4, 0, 1, 3};
+    // Second Reshape  [r, r, C, H/r, W/r] -> [C*r*r, H/r, W/r]
+    second_shuffle_shape = nvinfer1::DimsCHW(
+        num_channels * block_size * block_size, h / block_size, w / block_size);
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IShuffleLayer* first_shuffle =
+      params->converter->network()->addShuffle(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(first_shuffle, node_def.name());
+  if (data_format == "NHWC") {
+    first_shuffle->setFirstTranspose({2, 0, 1});
+  }
+  first_shuffle->setReshapeDimensions(first_shuffle_shape);
+  first_shuffle->setSecondTranspose(transpose_perm);
+
+  nvinfer1::IShuffleLayer* second_shuffle =
+      params->converter->network()->addShuffle(*first_shuffle->getOutput(0));
+  TFTRT_RETURN_ERROR_IF_NULLPTR(second_shuffle, node_def.name());
+  second_shuffle->setReshapeDimensions(second_shuffle_shape);
+  if (data_format == "NHWC") {
+    second_shuffle->setSecondTranspose({1, 2, 0});
+  }
+
+  params->converter->MarkQuantizationRangesAsInferrable(
+      inputs.at(0).tensor(), first_shuffle->getOutput(0));
+  params->converter->MarkQuantizationRangesAsInferrable(
+      first_shuffle->getOutput(0), second_shuffle->getOutput(0));
+  params->outputs->push_back(TRT_TensorOrWeights(second_shuffle->getOutput(0)));
+  return Status::OK();
+}
+
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
@@ -4416,6 +4492,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
+  (*registration)["DepthToSpace"] = ConvertDepthSpaceShuffle;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["GatherV2"] = ConvertGather;
@@ -4430,6 +4507,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
   (*registration)["Softmax"] = ConvertSoftmax;
+  (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
   (*registration)["Split"] = ConvertSplit;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;

@@ -648,7 +648,7 @@ class RepeatVector(Layer):
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
-  The `Lambda` layer exists so that aribtrary TensorFlow functions
+  The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
   quick experimentation. For more advanced use cases, subclassing
@@ -747,7 +747,7 @@ class Lambda(Layer):
   def compute_output_shape(self, input_shape):
     if self._output_shape is None:
       # Make use of existing autocomputation but provide Lambda-specific
-      # error message. This is always safe to run even whn the outer context
+      # error message. This is always safe to run even when the outer context
       # is Graph mode because Lambda layers don't have side effects such as
       # `add_loss`.
       with context.eager_mode():

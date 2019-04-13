@@ -39,6 +39,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@StatsOptions
 @@Structure
 @@TFRecordWriter
+@@TensorArrayStructure
 @@TensorStructure
 @@ThreadingOptions
 
@@ -137,6 +138,7 @@ from tensorflow.python.data.ops.optional_ops import OptionalStructure
 from tensorflow.python.data.util.structure import NestedStructure
 from tensorflow.python.data.util.structure import SparseTensorStructure
 from tensorflow.python.data.util.structure import Structure
+from tensorflow.python.data.util.structure import TensorArrayStructure
 from tensorflow.python.data.util.structure import TensorStructure
 # pylint: enable=unused-import
 

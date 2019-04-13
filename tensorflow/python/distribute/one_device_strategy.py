@@ -34,19 +34,29 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
+# TODO(josh11b): Do we wrap values in types to generate errors if you are
+# doing something that won't work with other DistributionStrategy
+# implementations?
 
-@tf_export("distribute.OneDeviceStrategy")
-class OneDeviceStrategy(distribute_lib.DistributionStrategy):
+
+@tf_export("distribute.OneDeviceStrategy", v1=[])
+class OneDeviceStrategy(distribute_lib.Strategy):
   """A distribution strategy for running on a single device."""
-  # TODO(josh11b): Do we wrap values in types to generate errors if you are
-  # doing something that won't work with other DistributionStrategy
-  # implementations?
 
   def __init__(self, device):
     super(OneDeviceStrategy, self).__init__(OneDeviceExtended(self, device))
 
 
-class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
+@tf_export(v1=["distribute.OneDeviceStrategy"])
+class OneDeviceStrategyV1(distribute_lib.StrategyV1):
+  """A distribution strategy for running on a single device."""
+
+  def __init__(self, device):
+    super(OneDeviceStrategyV1, self).__init__(OneDeviceExtended(self, device))
+
+
+# TODO(josh11b): Switch to V2 after callers have been updated to only V2 APIs.
+class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of OneDeviceStrategy."""
 
   def __init__(self, container_strategy, device):

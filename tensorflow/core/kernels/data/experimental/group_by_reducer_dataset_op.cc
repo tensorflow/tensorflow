@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -30,34 +31,52 @@ namespace {
 class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByReducerDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
+      : UnaryDatasetOpKernel(ctx),
+        lib_def_(std::make_shared<FunctionLibraryDefinition>(
+            ctx->function_library()
+                ->GetFunctionLibraryDefinition()
+                ->default_registry(),
+            FunctionDefLibrary{})) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("init_func", &init_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("finalize_func", &finalize_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+
+    for (const auto& func :
+         {key_func_, init_func_, reduce_func_, finalize_func_}) {
+      std::shared_ptr<FunctionLibraryDefinition> result;
+      OP_REQUIRES_OK(
+          ctx, CreateFunctionLibraryDefinition(
+                   ctx->function_library()->GetFunctionLibraryDefinition(),
+                   func.name(), &result));
+      OP_REQUIRES_OK(ctx, lib_def_->AddLibrary(*result));
+    }
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
+    CapturedFunction::Params params;
+    params.lib_def = lib_def_;
+
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            key_func_, ctx, "key_func_other_arguments",
-                            /*params=*/{}, &captured_key_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+                                                 "key_func_other_arguments",
+                                                 params, &captured_key_func));
     std::unique_ptr<CapturedFunction> captured_init_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            init_func_, ctx, "init_func_other_arguments",
-                            /*params=*/{}, &captured_init_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(init_func_, ctx,
+                                                 "init_func_other_arguments",
+                                                 params, &captured_init_func));
     std::unique_ptr<CapturedFunction> captured_reduce_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(
                             reduce_func_, ctx, "reduce_func_other_arguments",
-                            /*params=*/{}, &captured_reduce_func));
+                            params, &captured_reduce_func));
     std::unique_ptr<CapturedFunction> captured_finalize_func;
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(finalize_func_, ctx,
-                                      "finalize_func_other_arguments",
-                                      /*params=*/{}, &captured_finalize_func));
+                                      "finalize_func_other_arguments", params,
+                                      &captured_finalize_func));
 
     *output = new Dataset(
         ctx, input, std::move(captured_key_func), std::move(captured_init_func),
@@ -416,6 +435,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList init_func_;
   NameAttrList reduce_func_;
   NameAttrList finalize_func_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(

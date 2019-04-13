@@ -77,7 +77,15 @@ cc_library(
     ],
 )
 
-# TODO(impjdi): Add unit test for model_builder.
+cc_test(
+    name = "model_builder_test",
+    srcs = ["model_builder_test.cc"],
+    deps = [
+        ":model_builder",
+        "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
 
 cc_library(
     name = "model_transformer",

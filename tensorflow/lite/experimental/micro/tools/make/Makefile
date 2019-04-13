@@ -1,4 +1,8 @@
 
+ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
+  $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
+endif
+
 MAKEFILE_DIR := tensorflow/lite/experimental/micro/tools/make
 
 # Pull in some convenience functions.

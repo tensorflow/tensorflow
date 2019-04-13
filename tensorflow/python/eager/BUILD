@@ -87,6 +87,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:device",
+        "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",

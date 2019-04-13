@@ -44,6 +44,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.layers import core
@@ -106,6 +107,26 @@ class MirroredTwoDeviceDistributionTest(
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
+  def testReduceAxisToCpu(self, distribution):
+    for dtype in (dtypes.float32, dtypes.int32):
+      def replica_squared_fn(dtype=dtype):
+        # Lists with different lengths on different replicas.
+        replica_id = _replica_id_as_int()
+        return math_ops.cast([replica_id] * (replica_id + 1), dtype)
+
+      with distribution.scope():
+        num_replicas = distribution.num_replicas_in_sync
+        result = distribution.extended.call_for_each_replica(replica_squared_fn)
+        # sum
+        reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=0)
+        expected = sum(x * (x + 1) for x in range(num_replicas))
+        self.assertNear(expected, self.evaluate(reduced), 0.00001)
+
+        # mean
+        reduced = distribution.reduce(reduce_util.ReduceOp.MEAN, result, axis=0)
+        expected /= sum(x + 1 for x in range(num_replicas))
+        self.assertNear(expected, self.evaluate(reduced), 0.00001)
+
   def testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
@@ -137,8 +158,8 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values, test_reinitialize=False)
 
-  def testNumpyIterator(self, distribution):
-    self._test_numpy_iterator(distribution)
+  def testNumpyDataset(self, distribution):
+    self._test_numpy_dataset(distribution)
 
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
@@ -1608,6 +1629,13 @@ def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
+  return replica_id
+
+
+def _replica_id_as_int():
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if isinstance(replica_id, ops.Tensor):
+    replica_id = tensor_util.constant_value(replica_id)
   return replica_id
 
 

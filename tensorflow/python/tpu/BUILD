@@ -56,6 +56,18 @@ py_library(
 )
 
 py_library(
+    name = "preempted_hook_py",
+    srcs = ["preempted_hook.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session_run_hook",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+    ],
+)
+
+py_library(
     name = "tpu_estimator",
     srcs = [
         "_tpu_estimator_embedding.py",
@@ -70,6 +82,7 @@ py_library(
         ":async_checkpoint",
         ":feature_column",
         ":functional",
+        ":preempted_hook_py",
         ":tpu_embedding",
         ":tpu_lib",
         "//tensorflow/core:protos_all_py",
@@ -125,7 +138,6 @@ py_library(
         "__init__.py",
         "bfloat16.py",
         "device_assignment.py",
-        "profile_logger.py",
         "session_support.py",
         "tensor_tracer.py",
         "topology.py",

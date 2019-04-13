@@ -560,7 +560,7 @@ class OptimizerV2(trackable.Trackable):
       else:
         initial_value = initializer
       strategy = distribute_ctx.get_strategy()
-      with strategy.colocate_vars_with(var):
+      with strategy.extended.colocate_vars_with(var):
         weight = tf_variables.Variable(
             name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
             dtype=var.dtype,

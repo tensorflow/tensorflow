@@ -57,6 +57,11 @@ const uint32_t kMaxNumString = UINT_MAX / sizeof(int32_t) - 2;
 bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                               ErrorReporter* error_reporter) {
   uint32_t buffer_size = buffer.data()->size();
+  if (buffer_size < sizeof(uint32_t)) {
+    ReportError(error_reporter, "String tensor %s is invalid (empty)",
+                tensor.name()->c_str());
+    return false;
+  }
   const char* buffer_ptr = reinterpret_cast<const char*>(buffer.data()->data());
 
   uint32_t num_strings = *GetIntPtr(buffer_ptr);

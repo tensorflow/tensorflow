@@ -24,6 +24,7 @@ import sys
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -861,22 +862,36 @@ def strided_slice(input_,
       """Closure that holds all the arguments to create an assignment."""
 
       if var is None:
-        raise ValueError("Sliced assignment is only supported for variables")
+        if name is None:
+          name = parent_name + "_strided_slice_update"
 
-      if name is None:
-        name = parent_name + "_assign"
+        return gen_array_ops.tensor_strided_slice_update(
+            input=var,
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=val,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
+      else:
+        if name is None:
+          name = parent_name + "_assign"
 
-      return var._strided_slice_assign(
-          begin=begin,
-          end=end,
-          strides=strides,
-          value=val,
-          name=name,
-          begin_mask=begin_mask,
-          end_mask=end_mask,
-          ellipsis_mask=ellipsis_mask,
-          new_axis_mask=new_axis_mask,
-          shrink_axis_mask=shrink_axis_mask)
+        return var._strided_slice_assign(
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=val,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
 
     op.assign = assign
   return op
@@ -1605,7 +1620,7 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
                     [10, 11, 12]]])
 
   # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `linalg.transpose`)
+  # (this common operation has a shorthand `linalg.matrix_transpose`)
   tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
                                    #   [2,  5],
                                    #   [3,  6]],
@@ -1673,7 +1688,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
                     [10, 11, 12]]])
 
   # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `linalg.transpose`)
+  # (this common operation has a shorthand `linalg.matrix_transpose`)
   tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
                                    #   [2,  5],
                                    #   [3,  6]],
@@ -1717,8 +1732,10 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
 
 # pylint: disable=invalid-name
-@tf_export("linalg.transpose", v1=["linalg.transpose", "matrix_transpose"])
-@deprecation.deprecated_endpoints("matrix_transpose")
+@tf_export(
+    "linalg.matrix_transpose",
+    v1=["linalg.transpose", "linalg.matrix_transpose", "matrix_transpose"])
+@deprecation.deprecated_endpoints("matrix_transpose", "linalg.transpose")
 def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   """Transposes last two dimensions of tensor `a`.
 
@@ -1726,19 +1743,19 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
   ```python
   x = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.linalg.transpose(x)  # [[1, 4],
-                          #  [2, 5],
-                          #  [3, 6]]
+  tf.linalg.matrix_transpose(x)  # [[1, 4],
+                                 #  [2, 5],
+                                 #  [3, 6]]
 
   x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
                    [4 + 4j, 5 + 5j, 6 + 6j]])
-  tf.linalg.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
-                                          #  [2 - 2j, 5 - 5j],
-                                          #  [3 - 3j, 6 - 6j]]
+  tf.linalg.matrix_transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
+                                                 #  [2 - 2j, 5 - 5j],
+                                                 #  [3 - 3j, 6 - 6j]]
 
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
-  # tf.linalg.transpose(x) is shape [1, 2, 4, 3]
+  # tf.linalg.matrix_transpose(x) is shape [1, 2, 4, 3]
   ```
 
   Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
@@ -1749,22 +1766,22 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   tf.matmul(matrix, b, transpose_b=True)
 
   # Inefficient!
-  tf.matmul(matrix, tf.linalg.transpose(b))
+  tf.matmul(matrix, tf.linalg.matrix_transpose(b))
   ```
 
   @compatibility(numpy)
   In `numpy` transposes are memory-efficient constant time operations as they
   simply return a new view of the same data with adjusted `strides`.
 
-  TensorFlow does not support strides, `linalg.transposes` return a new tensor
-  with the items permuted.
+  TensorFlow does not support strides, `linalg.matrix_transpose` returns a new
+  tensor with the items permuted.
   @end_compatibility
 
   Args:
     a: A `Tensor` with `rank >= 2`.
     name: A name for the operation (optional).
     conjugate: Optional bool. Setting it to `True` is mathematically equivalent
-      to tf.conj(tf.linalg.transpose(input)).
+      to tf.conj(tf.linalg.matrix_transpose(input)).
 
   Returns:
     A transposed batch matrix `Tensor`.
@@ -1991,7 +2008,7 @@ def ones_like_v2(
   """Creates a tensor with all elements set to zero.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
-  same type and shape as `tensor` with all elements set to zero. Optionally,
+  same type and shape as `tensor` with all elements set to 1. Optionally,
   you can use `dtype` to specify a new type for the returned tensor.
 
   For example:
@@ -3449,7 +3466,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
     ValueError: if `indices` has an unknown shape.
   """
   if batch_dims is not None and not isinstance(batch_dims, int):
-    raise TypeError("batch_dims must be an int; got %r" % batch_dims)
+    raise TypeError("batch_dims must be an int; got %r" % (batch_dims,))
   indices = ops.convert_to_tensor(indices, name="indices")
   params = ops.convert_to_tensor(params, name="params")
 
@@ -3698,9 +3715,15 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
   if batch_dims == 0:
-    # TODO(lespeholt): Use ResourceVariable.gather_nd when params is a
-    # ResourceVariable (faster and more memory efficient.)
-    return gen_array_ops.gather_nd(params, indices, name=name)
+    if compat.forward_compatible(2019, 4, 29):
+      try:
+        # TODO(apassos) find a less bad way of detecting resource variables
+        # without introducing a circular dependency.
+        return params.gather_nd(indices, name=name)
+      except AttributeError:
+        return gen_array_ops.gather_nd(params, indices, name=name)
+    else:
+      return gen_array_ops.gather_nd(params, indices, name=name)
   else:
     return batch_gather_nd(
         params, indices, batch_dims=batch_dims, name=name)
@@ -3722,7 +3745,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     params = ops.convert_to_tensor(params, name="params")
 
     if not isinstance(batch_dims, int):
-      raise TypeError("batch_dims must be an int; got %r" % batch_dims)
+      raise TypeError("batch_dims must be an int; got %r" % (batch_dims,))
     if batch_dims < 0:
       raise ValueError("tf.gather_nd does not allow negative batch_dims.")
     params_ndims = params.shape.ndims

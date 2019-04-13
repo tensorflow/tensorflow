@@ -86,28 +86,6 @@ bool IsString(PyObject* o) {
          PyUnicode_Check(o);
 }
 
-// Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
-// and while we're at it give them consistent behavior by making sure the
-// returned value is a list.
-//
-// As with PyMapping_Keys, returns a new reference.
-//
-// On failure, returns nullptr.
-PyObject* MappingKeys(PyObject* o) {
-#if PY_MAJOR_VERSION >= 3
-  return PyMapping_Keys(o);
-#else
-  static char key_method_name[] = "keys";
-  Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
-  if (PyErr_Occurred() || raw_result.get() == nullptr) {
-    return nullptr;
-  }
-  return PySequence_Fast(
-      raw_result.get(),
-      "The '.keys()' method of a custom mapping returned a non-sequence.");
-#endif
-}
-
 // Equivalent to Python's 'o.__class__.__name__'
 // Note that '__class__' attribute is set only in new-style classes.
 // A lot of tensorflow code uses __class__ without checks, so it seems like
@@ -791,6 +769,28 @@ bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
+
+// Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
+// and while we're at it give them consistent behavior by making sure the
+// returned value is a list.
+//
+// As with PyMapping_Keys, returns a new reference.
+//
+// On failure, returns nullptr.
+PyObject* MappingKeys(PyObject* o) {
+#if PY_MAJOR_VERSION >= 3
+  return PyMapping_Keys(o);
+#else
+  static char key_method_name[] = "keys";
+  Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
+  if (PyErr_Occurred() || raw_result.get() == nullptr) {
+    return nullptr;
+  }
+  return PySequence_Fast(
+      raw_result.get(),
+      "The '.keys()' method of a custom mapping returned a non-sequence.");
+#endif
+}
 
 PyObject* Flatten(PyObject* nested, bool expand_composites) {
   PyObject* list = PyList_New(0);
