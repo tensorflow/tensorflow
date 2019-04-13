@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/nnapi_delegate.h"
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
