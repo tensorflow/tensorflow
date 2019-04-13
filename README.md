@@ -45,7 +45,7 @@ We maintain `tensorflow-rocm` whl packages on PyPI [here](https://pypi.org/proje
 sudo apt install rocm-libs miopen-hip cxlactivitylogger
 
 # Pip3 install the whl package from PyPI
-pip3 install --user tensorflow-rocm
+pip3 install --user tensorflow-rocm --upgrade
 ```
 For details on Tensorflow ROCm port, please take a look at the [ROCm-specific README file](README.ROCm.md).
 

@@ -1,3 +1,9 @@
+# Release 1.13.2
+
+## Bug Fixes and Other Changes
+* TF-RCCL path fix for issue#370
+* The 1.13.2 whl package is built the ROCm2.3 user-bit environment
+
 # Release 1.13.0
 
 ## Major Features and Improvements
