@@ -284,6 +284,7 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         # TODO(b/124344198): Add "multi_and_single_gpu",
+	"no_rocm",  # needs support for "NcclAllReduce" op
     ],
 )
 

@@ -778,7 +778,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-        "no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -841,7 +840,7 @@ xla_test(
         ],
     },
     shard_count = 20,
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
