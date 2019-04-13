@@ -41,8 +41,8 @@ _tf_export(v1=["lite.constants.STRING"]).export_constant(__name__, "STRING")
 _tf_export(v1=["lite.constants.QUANTIZED_UINT8"]).export_constant(
     __name__, "QUANTIZED_UINT8")
 _tf_export(v1=["lite.constants.INT8"]).export_constant(__name__, "INT8")
-_tf_export("lite.constants.TFLITE").export_constant(__name__, "TFLITE")
-_tf_export("lite.constants.GRAPHVIZ_DOT").export_constant(
+_tf_export(v1=["lite.constants.TFLITE"]).export_constant(__name__, "TFLITE")
+_tf_export(v1=["lite.constants.GRAPHVIZ_DOT"]).export_constant(
     __name__, "GRAPHVIZ_DOT")
 
 # Currently the default mode of operation is to shell to another python process

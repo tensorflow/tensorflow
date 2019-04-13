@@ -426,8 +426,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(ERROR) << "FP16 inputs are not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
@@ -481,8 +482,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(WARNING) << "half size is not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;

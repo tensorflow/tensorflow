@@ -63,9 +63,9 @@ def set_loop_options(
     @tf.function(autograph=True)
     def dynamic_rnn(..., parallel_iterations=32):
       num_steps = ...
-      tf.autograph.experimental.set_loop_options(
-          parallel_iterations=parallel_iterations)
       for t in tf.range(num_steps):
+        tf.autograph.experimental.set_loop_options(
+            parallel_iterations=parallel_iterations)
         ...
 
   Args:

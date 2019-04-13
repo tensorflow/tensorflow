@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
@@ -67,6 +67,19 @@ class SingleThreadedCpuDevice : public Device {
     }
     *tensor = parsed;
     return Status::OK();
+  }
+
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext*,
+                              StatusCallback done) override {
+    if (input_tensor->NumElements() != output_tensor->NumElements()) {
+      done(errors::Internal(
+          "SingleThreadedCPU->SingleThreadedCPU copy shape mismatch: input=",
+          input_tensor->shape(), ", output=", output_tensor->shape()));
+      return;
+    }
+    tensor::DeepCopy(*input_tensor, output_tensor);
+    done(Status::OK());
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {

@@ -543,7 +543,7 @@ class VariablesTestCase(test.TestCase):
       original_variable = variables.Variable(
           initial_value=constant_op.constant(10.0),
           synchronization=variables.VariableSynchronization.NONE,
-          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+          aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
       self.assertEqual(variables.VariableSynchronization.NONE,
                        original_variable.synchronization)
       self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
@@ -554,7 +554,7 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(
           variables.VariableSynchronization.NONE,
           laundered.synchronization)
-      self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+      self.assertEqual(variables.VariableAggregationV2.ONLY_FIRST_REPLICA,
                        laundered.aggregation)
 
   @test_util.run_deprecated_v1

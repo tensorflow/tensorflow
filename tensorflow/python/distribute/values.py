@@ -202,6 +202,8 @@ class ReplicaDeviceMap(DeviceMap):
     replica_id = replica_context.replica_id_in_sync_group
     if not isinstance(replica_id, int):
       replica_id = tensor_util.constant_value(replica_id)
+    if replica_id is None:
+      replica_id = 0
     return values[replica_id]
 
   def replica_for_device(self, device):
@@ -1560,8 +1562,9 @@ class AggregatingVariable(variables_lib.Variable):
     assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
+  @property
   def initializer(self):
-    return self._v.initializer()
+    return self._v.initializer
 
   def eval(self, session=None):
     return self._v.eval(session)

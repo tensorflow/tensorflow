@@ -102,8 +102,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                container_strategy,
                communication,
                cluster_resolver=TFConfigClusterResolver()):
-    distribute_lib.DistributionStrategyExtended.__init__(
-        self, container_strategy)
+    distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     assert isinstance(
         communication,
         cross_device_ops_lib.CollectiveCommunication)

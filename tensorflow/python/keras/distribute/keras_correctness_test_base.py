@@ -79,11 +79,14 @@ def all_strategies_excluding_tpu_and_input_config_combinations():
 def strategies_for_embedding_models():
   """Returns distribution strategies to test for embedding models.
 
-  Since embedding models take longer to train, we disregard OneDeviceStrategy
-  and DefaultStrategy in order to prevent testing timeouts.
+  Since embedding models take longer to train, we disregard DefaultStrategy
+  in order to prevent testing timeouts.
   """
 
-  return [s for s in all_strategies if s.required_tpu or s.required_gpus]
+  return [
+      s for s in all_strategies if s.required_tpu or s.required_gpus or
+      s is strategy_combinations.one_device_strategy
+  ]
 
 
 def test_combinations_for_embedding_model():

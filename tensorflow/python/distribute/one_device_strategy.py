@@ -55,7 +55,8 @@ class OneDeviceStrategyV1(distribute_lib.StrategyV1):
     super(OneDeviceStrategyV1, self).__init__(OneDeviceExtended(self, device))
 
 
-class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
+# TODO(josh11b): Switch to V2 after callers have been updated to only V2 APIs.
+class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of OneDeviceStrategy."""
 
   def __init__(self, container_strategy, device):

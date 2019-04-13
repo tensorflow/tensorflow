@@ -142,12 +142,14 @@ def validate_synchronization_aggregation_trainable(
   if aggregation is None:
     aggregation = VariableAggregation.NONE
   else:
-    try:
-      aggregation = VariableAggregation(aggregation)
-    except ValueError:
-      raise ValueError(
-          "Invalid variable aggregation mode: {} for variable: {}".format(
-              aggregation, name))
+    if not isinstance(aggregation,
+                      (VariableAggregation, VariableAggregationV2)):
+      try:
+        aggregation = VariableAggregationV2(aggregation)
+      except ValueError:
+        raise ValueError(
+            "Invalid variable aggregation mode: {} for variable: {}".format(
+                aggregation, name))
   if synchronization is None:
     synchronization = VariableSynchronization.AUTO
   else:

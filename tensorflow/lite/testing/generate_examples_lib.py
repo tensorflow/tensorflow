@@ -260,7 +260,7 @@ def write_test_cases(fp, model_name, examples):
       # TODO(b/130328180): Investigate LSTM and RNN tests.
       # When resolving these todo items, please remove the hack in the
       # following line.
-      if not re.match(r".*/(pack|unidirectional_sequence_(lstm|rnn))_.*",
+      if not re.match(r".*/(unidirectional_sequence_(lstm|rnn))_.*",
                       model_name):
         fp.write("  output_shape: \"" +
                  ",".join([str(dim) for dim in t.shape]) + "\"\n")
@@ -3957,8 +3957,8 @@ def make_expand_dims_tests(options):
 
   test_parameters = [{
       "input_type": [tf.float32, tf.int32],
-      "input_shape": [[5, 4, 3]],
-      "axis_value": [0, 1, 2, -1, -2],
+      "input_shape": [[5, 4]],
+      "axis_value": [0, 1, 2, -1, -2, -3],
       "constant_axis": [True, False],
   }]
 

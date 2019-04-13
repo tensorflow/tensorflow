@@ -236,7 +236,8 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     return _tpu_run(self, fn, args, kwargs)
 
 
-class TPUExtended(distribute_lib.DistributionStrategyExtended):
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
+class TPUExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of TPUStrategy."""
 
   def __init__(self,

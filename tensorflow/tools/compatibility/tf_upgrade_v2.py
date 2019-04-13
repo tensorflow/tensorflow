@@ -781,6 +781,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.debugging.assert_rank_at_least",
         "tf.debugging.assert_rank_in":
             "tf.compat.v1.debugging.assert_rank_in",
+        "tf.errors.exception_type_from_error_code":
+            "tf.compat.v1.errors.exception_type_from_error_code",
+        "tf.errors.error_code_from_exception_type":
+            "tf.compat.v1.errors.error_code_from_exception_type",
+        "tf.errors.raise_exception_on_not_ok_status":
+            "tf.compat.v1.errors.raise_exception_on_not_ok_status",
         "tf.assert_rank":
             "tf.compat.v1.assert_rank",
         "tf.nn.max_pool":
@@ -1148,6 +1154,13 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "possible, but the resulting code may not always work. Please check "
         "manually; you can report migration failures on b/124529441.")
 
+    keras_default_save_format_comment = (
+        ast_edits.WARNING,
+        "(This warning is only applicable if the code saves a tf.Keras model) "
+        "Keras model.save now saves to the Tensorflow SavedModel format by "
+        "default, instead of HDF5. To continue saving to HDF5, add the "
+        "argument save_format='h5' to the save() function.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     # You can use *. to add items which do not check the FQN, and apply to e.g.,
@@ -1155,6 +1168,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {
         "*.export_savedmodel":
             export_saved_model_renamed,
+        "*.save":
+            keras_default_save_format_comment,
         "tf.assert_equal":
             assert_return_type_comment,
         "tf.assert_none_equal":
@@ -1746,6 +1761,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _contrib_layers_xavier_initializer_transformer,
         "slim.variance_scaling_initializer":
             _contrib_layers_variance_scaling_initializer_transformer,
+        "tf.keras.models.save_model": functools.partial(
+            _add_argument_transformer,
+            arg_name="save_format",
+            arg_value_ast=ast.Str("h5")),
     }
 
     self.module_deprecations = {
@@ -2566,6 +2585,10 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
 
 def _rename_to_compat_v1(node, full_name, logs, reason):
   new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
+  return _rename_func(node, full_name, new_name, logs, reason)
+
+
+def _rename_func(node, full_name, new_name, logs, reason):
   logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                "Renamed %r to %r: %s" % (full_name, new_name, reason)))
   new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
@@ -2589,18 +2612,30 @@ def _string_split_transformer(parent, node, full_name, name, logs):
             node, full_name, logs, "tf.string_split's replacement no longer "
             "takes the skip_empty argument.")
 
-  # Check the sep parameter: if it might be an empty string, then use compat.v1.
-  sep_is_nonempty_string = False
+  # Check the sep parameter: if it's definitely an empty string, use
+  # tf.strings.bytes_split().  If we can't tell, then use compat.v1.
+  found_sep = False
   for i, kw in enumerate(node.keywords):
-    if ((kw.arg == "sep" or kw.arg == "delimiter") and
-        isinstance(kw.value, ast.Str) and kw.value.s != ""):
-      sep_is_nonempty_string = True
-  if not sep_is_nonempty_string:
+    if kw.arg == "sep":
+      found_sep = True
+      if isinstance(kw.value, ast.Str):
+        if kw.value.s == "":
+          node = _rename_func(
+              node, full_name, "tf.strings.bytes_split", logs,
+              "Splitting bytes is not handled by tf.strings.bytes_split().")
+          node.keywords.pop(i)
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs,
+            "The semantics for tf.string_split's sep parameter have changed "
+            "when sep is the empty string; but sep is not a string literal, "
+            "so we can't tell if it's an empty string.")
+  if not found_sep:
     return _rename_to_compat_v1(
         node, full_name, logs,
-        "The semantics for tf.string_split's sep parameter have changed when "
-        "sep is the empty string.")
-
+        "The semantics for tf.string_split's sep parameter have changed "
+        "when sep unspecified: it now splits on all whitespace, not just "
+        "the space character.")
   # Check the result_type parameter
   return _string_split_rtype_transformer(parent, node, full_name, name, logs)
 

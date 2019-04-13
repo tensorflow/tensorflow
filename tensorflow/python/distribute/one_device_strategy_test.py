@@ -76,8 +76,8 @@ class OneDeviceStrategyTest(
         iterator, distribution.extended.worker_devices, expected_values,
         test_reinitialize=False)
 
-  def testNumpyIterator(self, distribution):
-    self._test_numpy_iterator(distribution)
+  def testNumpyDataset(self, distribution):
+    self._test_numpy_dataset(distribution)
 
   def testRun(self, distribution):
     self._test_run(distribution)

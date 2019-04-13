@@ -112,6 +112,35 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "trt_engine_op_test",
+    size = "small",
+    srcs = ["kernels/trt_engine_op_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_op_kernels",
+        ":trt_op_libs",
+        ":trt_resources",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
 tf_gen_op_libs(
     op_lib_names = [
         "trt_engine_op",

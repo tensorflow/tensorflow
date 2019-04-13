@@ -209,6 +209,7 @@ py_library(
         "saving/__init__.py",
         "saving/hdf5_format.py",
         "saving/model_config.py",
+        "saving/save.py",
         "saving/saved_model.py",
         "saving/saving_utils.py",
     ],
@@ -1432,6 +1433,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "save_test",
+    size = "small",
+    srcs = ["saving/save_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(

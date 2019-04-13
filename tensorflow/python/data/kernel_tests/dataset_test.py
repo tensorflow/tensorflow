@@ -194,6 +194,10 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         nest.flatten(input_datasets),
         dataset_fn(input_datasets)._inputs())
 
+  def testFunctions(self):
+    dataset = dataset_ops.Dataset.range(5).map(lambda x: x * 2)
+    self.assertLen(dataset._functions(), 1)
+
   def testCollectInputs(self):
     ds1 = dataset_ops.Dataset.range(0)
     ds2 = ds1.concatenate(ds1)

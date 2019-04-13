@@ -109,6 +109,12 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 // The associated factory.
 class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    devices->push_back("/physical_device:CPU:0");
+
+    return Status::OK();
+  }
+
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override {
     int n = 1;

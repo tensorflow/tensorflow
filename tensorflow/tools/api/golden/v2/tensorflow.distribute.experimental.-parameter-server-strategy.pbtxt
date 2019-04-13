@@ -13,7 +13,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "colocate_vars_with"
@@ -26,10 +26,6 @@ tf_class {
   member_method {
     name: "experimental_local_results"
     argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "experimental_make_numpy_iterator"
-    argspec: "args=[\'self\', \'numpy_input\', \'batch_size\', \'num_epochs\', \'shuffle\', \'session\'], varargs=None, keywords=None, defaults=[\'1\', \'1024\', \'None\'], "
   }
   member_method {
     name: "experimental_run"

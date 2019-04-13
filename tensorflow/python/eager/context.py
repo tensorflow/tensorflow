@@ -214,6 +214,58 @@ class _ContextSwitchStack(threading.local):
     self.stack.pop()
 
 
+class LogicalDevice(
+    collections.namedtuple("LogicalDevice", ["name", "device_type"])):
+  """Abstraction for a device initialized by the runtime.
+
+  A LogicalDevice corresponds to a initialized instance on a PhysicalDevice or a
+  remote device available in the cluster. Tensors and operations can be placed
+  on a specific LogicalDevice by calling `tf.device()` with the `name` of the
+  LogicalDevice.
+
+  Fields:
+    name: The fully qualified name of the device. Can be used for Op or function
+      placement.
+    device_type: String declaring the type of device such as "CPU" or "GPU".
+  """
+  pass
+
+
+@tf_export("config.experimental.VirtualDeviceConfiguration")
+class VirtualDeviceConfiguration(
+    collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
+  """Configuration class for virtual devices for a PhysicalDevice.
+
+  Fields:
+    memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
+      device. Currently only supported for GPUs.
+  """
+
+  def __new__(cls, memory_limit=None):
+    return super(VirtualDeviceConfiguration, cls).__new__(cls, memory_limit)
+
+
+class PhysicalDevice(
+    collections.namedtuple("PhysicalDevice", ["name", "device_type"])):
+  """Abstraction for a locally visible physical device.
+
+  TensorFlow can utilize various devices such as the CPU or multiple GPUs
+  for computation. Before initializing a local device for use, the user can
+  customize certain properties of the device such as it's visibility or memory
+  configuration.
+
+  Once a PhysicalDevice is initialized one or many LogicalDevice objects are
+  created. Use tf.config.set_virtual_device_configuration() to create multiple
+  LogicalDevice objects for a PhysicalDevice. This is useful when separation
+  between models is needed.
+
+  Fields:
+    name: Unique identifier for device.
+    device_type: String declaring the type of device such as "CPU" or "GPU".
+  """
+  pass
+
+
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
@@ -284,6 +336,11 @@ class Context(object):
     self._server_def = server_def
     self._collective_ops_server_def = None
 
+    self._physical_devices = None
+    self._visible_device_list = []
+    self._memory_growth_map = None
+    self._virtual_device_map = {}
+
     # Values set after construction
     self._optimizer_jit = None
     self._intra_op_parallelism_threads = None
@@ -317,6 +374,7 @@ class Context(object):
   def _initialize_devices(self):
     """Helper to initialize devices."""
     # Store list of devices
+    self._logical_devices = []
     self._context_devices = []
     device_list = pywrap_tensorflow.TFE_ContextListDevices(
         self._context_handle)
@@ -325,6 +383,9 @@ class Context(object):
       for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
         dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
         self._context_devices.append(pydev.canonical_name(dev_name))
+        spec = pydev.DeviceSpec.from_string(dev_name)
+        self._logical_devices.append(
+            LogicalDevice(name=dev_name, device_type=spec.device_type))
         dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
         if dev_type == "GPU":
           self._num_gpus += 1
@@ -664,7 +725,63 @@ class Context(object):
     if nodes is not None:
       config.graph_options.rewrite_options.min_graph_nodes = nodes
 
+    # Compute device counts
+    config.device_count["CPU"] = 0
+    config.device_count["GPU"] = 0
+    for dev in self.list_physical_devices():
+      if dev not in self._visible_device_list:
+        continue
+
+      virtual_devices = self._virtual_device_map.get(dev)
+      if virtual_devices is None:
+        config.device_count[dev.device_type] += 1
+      else:
+        config.device_count[dev.device_type] += len(virtual_devices)
+
+    # Configure gpu_options
+    gpu_options = self._compute_gpu_options()
+    config.gpu_options.MergeFrom(gpu_options)
+
     return config
+
+  def _compute_gpu_options(self):
+    """Build the GPUOptions proto."""
+    visible_device_list = []
+    virtual_devices = []
+    gpu_index = -1
+    for dev in self.list_physical_devices("GPU"):
+      gpu_index += 1
+
+      if dev not in self._visible_device_list:
+        continue
+
+      visible_device_list.append(str(gpu_index))
+
+      if self._virtual_device_map:
+        vdevs = self._virtual_device_map.get(dev, [])
+        device_limits = []
+        for virt_dev in vdevs:
+          device_limits.append(virt_dev.memory_limit)
+
+        virtual_devices.append(
+            config_pb2.GPUOptions.Experimental.VirtualDevices(
+                memory_limit_mb=device_limits))
+
+    # Only compute growth if virtual devices have not been configured and we
+    # have GPUs
+    if not virtual_devices and self._memory_growth_map:
+      memory_growths = set(self._memory_growth_map.values())
+      if len(memory_growths) > 1:
+        raise ValueError("Memory growth cannot differ between GPU devices")
+      allow_growth = memory_growths.pop()
+    else:
+      allow_growth = None
+
+    return config_pb2.GPUOptions(
+        allow_growth=allow_growth,
+        visible_device_list=",".join(visible_device_list),
+        experimental=config_pb2.GPUOptions.Experimental(
+            virtual_devices=virtual_devices))
 
   @property
   def function_call_options(self):
@@ -768,6 +885,173 @@ class Context(object):
   def post_execution_callbacks(self):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
+
+  def list_physical_devices(self, device_type=None):
+    """List local devices visible to the system.
+
+    This API allows a client to query the devices before they have been
+    initialized by the eager runtime. Additionally a user can filter by device
+    type, to get only CPUs or GPUs.
+
+    Args:
+      device_type: Optional device type to limit results to
+
+    Returns:
+      List of PhysicalDevice objects.
+    """
+    # We lazy initialize self._physical_devices since we do not want to do this
+    # the constructor since the backend may not be initialized yet.
+    if self._physical_devices is None:
+      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
+      self._physical_devices = [
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in devs
+      ]
+      # Construct the visible device list from all physical devices but ignore
+      # XLA devices
+      self._visible_device_list = [
+          d for d in self._physical_devices
+          if not d.device_type.startswith("XLA")
+      ]
+      self._memory_growth_map = {
+          d: None for d in self._physical_devices if d.device_type == "GPU"
+      }
+
+      # Import device settings that may have been passed into the constructor
+      self._import_config()
+
+    if device_type is not None:
+      return [
+          d for d in self._physical_devices
+          if device_type is None or device_type == d.device_type
+      ]
+
+    return self._physical_devices
+
+  def _import_config(self):
+    """Import config if passed in during construction.
+
+    If Context was created with a ConfigProto such as when calling
+    tf.compat.v1.enable_eager_execution(), then we need to pull out the
+    various pieces we might be replacing and import then into our internal
+    class representation.
+    """
+    if self._config is None:
+      return
+
+    num_cpus = self._config.device_count.get("CPU", 1)
+    if num_cpus != 1:
+      cpus = [d for d in self._physical_devices if d.device_type == "CPU"]
+      if num_cpus == 0:
+        self.set_visible_devices([], "CPU")
+      elif num_cpus > 1:
+        self.set_virtual_device_configuration(
+            cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
+
+    gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
+    gpu_count = self._config.device_count.get("GPU", None)
+    if gpu_count == 0:
+      self.set_visible_devices([], "GPU")
+    elif gpu_count is not None:
+      # TODO(gjn): Handle importing existing virtual GPU configuration
+      self.set_visible_devices(gpus[:gpu_count], "GPU")
+
+  def list_logical_devices(self, device_type=None):
+    """Return logical devices."""
+    self.ensure_initialized()
+
+    devices = []
+    for dev in self._logical_devices:
+      if device_type is not None and device_type != dev.device_type:
+        continue
+
+      devices.append(dev)
+
+    return devices
+
+  def get_visible_devices(self, device_type=None):
+    """Get the list of visible devices."""
+    if device_type is None:
+      return self._visible_device_list
+    else:
+      return [
+          d for d in self._visible_device_list if d.device_type == device_type
+      ]
+
+  def set_visible_devices(self, devices, device_type=None):
+    """Set the list of visible devices."""
+    if self._context_handle is not None:
+      raise RuntimeError("Visible devices must be set at program startup")
+
+    if not isinstance(devices, list):
+      devices = [devices]
+
+    for d in devices:
+      if d not in self._physical_devices:
+        raise ValueError("Unrecognized device: %s" % repr(d))
+      if device_type is not None and d.device_type != device_type:
+        raise ValueError("Unrecognized device: %s" % repr(d))
+
+    if device_type is None:
+      self._visible_device_list = []
+    else:
+      self._visible_device_list = [
+          d for d in self._visible_device_list if d.device_type != device_type
+      ]
+
+    self._visible_device_list += devices
+
+  def get_memory_growth(self, dev):
+    """Get if memory growth is enabled for a PhysicalDevice."""
+    if dev not in self._physical_devices:
+      raise ValueError("Unrecognized device: %s" % repr(dev))
+
+    return self._memory_growth_map[dev]
+
+  def set_memory_growth(self, dev, enable):
+    """Set if memory growth should be enabled for a PhysicalDevice."""
+    if self._context_handle is not None:
+      raise RuntimeError("Memory growth must be set at program startup")
+
+    if dev not in self._physical_devices:
+      raise ValueError("Unrecognized device: %s" % repr(dev))
+
+    if dev in self._virtual_device_map:
+      raise ValueError(
+          "Cannot set memory growth on device when virtual devices configured")
+
+    self._memory_growth_map[dev] = enable
+
+  def get_virtual_device_configuration(self, dev):
+    """Get the virtual device configuration for a PhysicalDevice."""
+    if dev not in self._physical_devices:
+      raise ValueError("Unrecognized device: %s" % repr(dev))
+
+    return self._virtual_device_map.get(dev)
+
+  def set_virtual_device_configuration(self, dev, virtual_devices):
+    """Set the virtual device configuration for a PhysicalDevice."""
+    if self._context_handle is not None:
+      raise RuntimeError("Virtual devices must be set at program startup")
+
+    if dev not in self._physical_devices:
+      raise ValueError("Unrecognized device: %s" % repr(dev))
+
+    if dev.device_type == "CPU":
+      for vdev in virtual_devices:
+        if vdev.memory_limit is not None:
+          raise ValueError("Setting memory limit on CPU virtual devices is "
+                           "currently not supported")
+    elif dev.device_type == "GPU":
+      for vdev in virtual_devices:
+        if vdev.memory_limit is None:
+          raise ValueError(
+              "Setting memory limit is required for GPU virtual devices is")
+    else:
+      raise ValueError("Virtual devices are not supported for %s" %
+                       dev.device_type())
+
+    self._virtual_device_map[dev] = virtual_devices
 
   @property
   def optimizer_jit(self):

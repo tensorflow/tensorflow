@@ -99,7 +99,7 @@ class TfLiteDriver::Expectation {
       std::cerr << "Incorrect output shape while checking tensor "
                 << tensor.name << std::endl;
       std::cerr << "TFLite output shape: ";
-      for (int i = 0; i < num_elements_; ++i) {
+      for (int i = 0; i < tensor.dims->size; ++i) {
         std::cerr << tensor.dims->data[i] << ", ";
       }
       std::cerr << std::endl;

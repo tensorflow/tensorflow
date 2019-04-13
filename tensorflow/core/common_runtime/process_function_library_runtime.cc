@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
@@ -688,9 +689,16 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   for (const auto& pair : subgraphs) {
+    const auto* optimized_subgraph = pair.second.get();
     DumpGraph(
         strings::StrCat("After all optimization passes (", pair.first, ")"),
-        pair.second.get());
+        optimized_subgraph);
+    if (VLOG_IS_ON(1)) {
+      DumpGraphDefToFile(
+          strings::StrCat("pflr_after_all_optimization_passes_",
+                          reinterpret_cast<uintptr_t>(optimized_subgraph)),
+          optimized_subgraph->ToGraphDefDebug());
+    }
   }
 
   if (options.graph_collector != nullptr) {

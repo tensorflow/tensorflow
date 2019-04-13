@@ -1698,11 +1698,19 @@ def _log_prob(self, x):
        "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"],
       ["tf.string_split('test', ' ', skip_empty=False)",
        "tf.strings.split(input='test', sep=' ').to_sparse()"],
-      # Split behavior for sep='' changed:
+      # Split behavior for sep=None changed.  (In particular, it now splits on
+      # all whitespace, not just the space character)
       ["tf.string_split(x)",
        "tf.compat.v1.string_split(source=x)"],
+      # Split behavior for sep='' changed:
       ["tf.string_split(x, '')",
-       "tf.compat.v1.string_split(source=x, sep='')"],
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, sep='')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, delimiter='')",
+       "tf.strings.bytes_split(input=x).to_sparse()"],
+      ["tf.string_split(x, '', result_type='RaggedTensor')",
+       "tf.strings.bytes_split(input=x)"],
       # If sep is a variable, we can't tell if it's empty:
       ["tf.string_split(x, sep)",
        "tf.compat.v1.string_split(source=x, sep=sep)"],
@@ -1790,6 +1798,18 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("`tf.pywrap_tensorflow` will not be distributed", errors[0])
+
+  def testKerasSaveModelFormat(self):
+    text = "tf.keras.models.save_model(model, path)"
+    expected_text = "tf.keras.models.save_model(model, path, save_format='h5')"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertNotIn(
+        "saves to the Tensorflow SavedModel format by default", report)
+
+    _, report, _, _ = self._upgrade("model.save(path)")
+    self.assertIn(
+        "saves to the Tensorflow SavedModel format by default", report)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

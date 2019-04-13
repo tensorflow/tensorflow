@@ -56,10 +56,12 @@ cuda_py_test(
     name = "parameter_server_strategy_test",
     srcs = ["parameter_server_strategy_test.py"],
     additional_deps = [
+        ":parameter_server_strategy",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
-        ":parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_test_lib",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",

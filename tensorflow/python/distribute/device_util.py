@@ -108,3 +108,9 @@ def get_host_for_device(device):
   return tf_device.DeviceSpec(
       job=spec.job, replica=spec.replica, task=spec.task,
       device_type="CPU", device_index=0).to_string()
+
+
+def local_devices_from_num_gpus(num_gpus):
+  """Returns device strings for local GPUs or CPU."""
+  return (tuple("/device:GPU:%d" % i for i in range(num_gpus)) or
+          ("/device:CPU:0",))

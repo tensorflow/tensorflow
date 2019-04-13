@@ -206,8 +206,12 @@ def _get_argspec_for_partial(obj):
 
   # Fill in default values provided by partial function in all_defaults.
   for kw, default in six.iteritems(partial_keywords):
-    idx = args.index(kw)
-    all_defaults[idx] = default
+    if kw in args:
+      idx = args.index(kw)
+      all_defaults[idx] = default
+    elif not keywords:
+      raise ValueError('Function does not have **kwargs parameter, but '
+                       'contains an unknown partial keyword.')
 
   # Find first argument with default value set.
   first_default = next(

@@ -137,11 +137,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "334a9298407fe8327fd66d8fe863106c8d24089091c4a105fcd54896d493d548",
-        strip_prefix = "abseil-cpp-0b545b460141b882b244a1efcef7621d59278160",
+        sha256 = "d437920d1434c766d22e85773b899c77c672b8b4865d5dc2cd61a29fdff3cf03",
+        strip_prefix = "abseil-cpp-a02f62f456f2c4a7ecf2be3104fe0c6e16fbad9a",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/0b545b460141b882b244a1efcef7621d59278160.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/0b545b460141b882b244a1efcef7621d59278160.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/a02f62f456f2c4a7ecf2be3104fe0c6e16fbad9a.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/a02f62f456f2c4a7ecf2be3104fe0c6e16fbad9a.tar.gz",
         ],
     )
 
@@ -192,15 +192,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "06bc735a117ec7ea92ea580e7f2ffa4b1cd7539e0e04f847bf500588d7f0fe90",
-        strip_prefix = "google-cloud-cpp-0.7.0",
+        sha256 = "f5600fdf3efd28e3142a60c20574e349511104fc6f658faf7974f6ae2def245a",
+        strip_prefix = "google-cloud-cpp-0.8.1",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
+            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.8.1.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.8.1.tar.gz",
         ],
     )
 
