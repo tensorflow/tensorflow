@@ -916,6 +916,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:seastar.BUILD"),
     )
 
+    tf_http_archive(
+        name = "boost_archive",
+        urls = [
+            "https://github.com/liutongxuan/seastar/blob/features/tensorflow_rpc/archive/boost_1_63_0.tar.gz",
+        ],
+        sha256 = "fe34a4e119798e10b8cc9e565b3b0284e9fd3977ec8a1b19586ad1dec397088b",
+        strip_prefix = 'boost_1_63_0',
+        build_file = str(Label("//third_party/boost:boost.BUILD")),
+    )
+
     ##############################################################################
     # BIND DEFINITIONS
     #
