@@ -21,6 +21,29 @@ TfLiteRegistration* Register_FULLY_CONNECTED();
 TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_AVERAGE_POOL_2D();
+
+TfLiteRegistration* Micro_Register_AVERAGE_POOL_2D() {
+  return Register_AVERAGE_POOL_2D();
+}
+TfLiteRegistration* Register_RELU();
+TfLiteRegistration* Micro_Register_RELU() { return Register_RELU(); }
+
+TfLiteRegistration* Register_RELU6();
+TfLiteRegistration* Micro_Register_RELU6() { return Register_RELU6(); }
+
+TfLiteRegistration* Register_RELU_N1_TO_1();
+TfLiteRegistration* Micro_Register_RELU_N1_TO_1() {
+  return Register_RELU_N1_TO_1();
+}
+
+TfLiteRegistration* Register_ELU();
+TfLiteRegistration* Micro_Register_ELU() { return Register_ELU(); }
+
+TfLiteRegistration* Register_LEAKY_RELU();
+TfLiteRegistration* Micro_Register_LEAKY_RELU() {
+  return Register_LEAKY_RELU();
+}
+
 TfLiteRegistration* Register_MAX_POOL_2D();
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_PRELU();
@@ -42,6 +65,11 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
   AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN());
+  AddBuiltin(BuiltinOperator_ELU, Micro_Register_ELU());
+  AddBuiltin(BuiltinOperator_RELU, Micro_Register_RELU());
+  AddBuiltin(BuiltinOperator_RELU6, Micro_Register_RELU6());
+  AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Micro_Register_RELU_N1_TO_1());
+  AddBuiltin(BuiltinOperator_LEAKY_RELU, Micro_Register_LEAKY_RELU());
 }
 
 }  // namespace micro
