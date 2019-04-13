@@ -302,7 +302,8 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   std::vector<float> bias_data = {4.0, 1.0};
   auto bias_reinterpreted_data =
       reinterpret_cast<const unsigned char*>(bias_data.data());
-  buffer->data.assign(bias_reinterpreted_data, bias_reinterpreted_data + 4 * 4);
+  buffer->data.assign(bias_reinterpreted_data,
+                      bias_reinterpreted_data + bias_data.size() * 4);
   tensor->buffer = 0;
   tensor->shape = {2, 1, 1, 1};
   tensor->quantization = absl::make_unique<QuantizationParametersT>();
