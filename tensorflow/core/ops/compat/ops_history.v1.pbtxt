@@ -86319,6 +86319,10 @@ op {
     name: "value"
     type_attr: "T"
   }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
   attr {
     name: "T"
     type: "type"
