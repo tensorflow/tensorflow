@@ -3226,23 +3226,23 @@ inline void Div(const ArithmeticParams& params,
   const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
 #ifdef USE_NEON
   static constexpr int kNewtonSteps = 2;
-  static const float32x4_t TWO_F32 = vdupq_n_f32(2.f);
-  const float32x4_t activation_min = vdupq_n_f32(output_activation_min);
-  const float32x4_t activation_max = vdupq_n_f32(output_activation_max);
+  static const auto TWO_F32 = vdupq_n_f32(2.f);
+  const auto activation_min = vdupq_n_f32(output_activation_min);
+  const auto activation_max = vdupq_n_f32(output_activation_max);
   for (; i <= size - 16; i += 16) {
-    const float32x4_t a10 = vld1q_f32(input1_data + i);
-    const float32x4_t a11 = vld1q_f32(input1_data + i + 4);
-    const float32x4_t a12 = vld1q_f32(input1_data + i + 8);
-    const float32x4_t a13 = vld1q_f32(input1_data + i + 12);
-    const float32x4_t a20 = vld1q_f32(input2_data + i);
-    const float32x4_t a21 = vld1q_f32(input2_data + i + 4);
-    const float32x4_t a22 = vld1q_f32(input2_data + i + 8);
-    const float32x4_t a23 = vld1q_f32(input2_data + i + 12);
+    const auto a10 = vld1q_f32(input1_data + i);
+    const auto a11 = vld1q_f32(input1_data + i + 4);
+    const auto a12 = vld1q_f32(input1_data + i + 8);
+    const auto a13 = vld1q_f32(input1_data + i + 12);
+    const auto a20 = vld1q_f32(input2_data + i);
+    const auto a21 = vld1q_f32(input2_data + i + 4);
+    const auto a22 = vld1q_f32(input2_data + i + 8);
+    const auto a23 = vld1q_f32(input2_data + i + 12);
 
-    float32x4_t r0 = vrecpeq_f32(a20);
-    float32x4_t r1 = vrecpeq_f32(a21);
-    float32x4_t r2 = vrecpeq_f32(a22);
-    float32x4_t r3 = vrecpeq_f32(a23);
+    auto r0 = vrecpeq_f32(a20);
+    auto r1 = vrecpeq_f32(a21);
+    auto r2 = vrecpeq_f32(a22);
+    auto r3 = vrecpeq_f32(a23);
     for (int k = 0; k < kNewtonSteps; ++k) {
       r0 = vmulq_f32(r0, vsubq_f32(TWO_F32, vmulq_f32(r0, a20)));
       r1 = vmulq_f32(r1, vsubq_f32(TWO_F32, vmulq_f32(r1, a21)));
@@ -3250,10 +3250,10 @@ inline void Div(const ArithmeticParams& params,
       r3 = vmulq_f32(r3, vsubq_f32(TWO_F32, vmulq_f32(r3, a23)));
     }
 
-    float32x4_t x0 = vmulq_f32(a10, r0);
-    float32x4_t x1 = vmulq_f32(a11, r1);
-    float32x4_t x2 = vmulq_f32(a12, r2);
-    float32x4_t x3 = vmulq_f32(a13, r3);
+    auto x0 = vmulq_f32(a10, r0);
+    auto x1 = vmulq_f32(a11, r1);
+    auto x2 = vmulq_f32(a12, r2);
+    auto x3 = vmulq_f32(a13, r3);
     x0 = vmaxq_f32(activation_min, x0);
     x1 = vmaxq_f32(activation_min, x1);
     x2 = vmaxq_f32(activation_min, x2);
@@ -3269,15 +3269,15 @@ inline void Div(const ArithmeticParams& params,
     vst1q_f32(output_data + i + 12, x3);
   }
   for (; i <= size - 4; i += 4) {
-    const float32x4_t a1 = vld1q_f32(input1_data + i);
-    const float32x4_t a2 = vld1q_f32(input2_data + i);
+    const auto a1 = vld1q_f32(input1_data + i);
+    const auto a2 = vld1q_f32(input2_data + i);
 
-    float32x4_t r = vrecpeq_f32(a2);
+    auto r = vrecpeq_f32(a2);
     for (int k = 0; k < kNewtonSteps; ++k) {
       r = vmulq_f32(r, vsubq_f32(TWO_F32, vmulq_f32(r, a2)));
     }
 
-    float32x4_t x = vmulq_f32(a1, r);
+    auto x = vmulq_f32(a1, r);
     x = vmaxq_f32(activation_min, x);
     x = vminq_f32(activation_max, x);
 
