@@ -527,6 +527,8 @@ TEST_P(ParameterizedZipDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
+    TF_ASSERT_OK(
+        zip_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
     TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
 
     while (cur_iteration < breakpoint) {

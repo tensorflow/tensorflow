@@ -650,6 +650,8 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Roundtrip) {
     TF_ASSERT_OK(iterator->Save(serialization_context.get(), &writer));
     TF_ASSERT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
+    TF_ASSERT_OK(tensor_slice_dataset->MakeIterator(iterator_context.get(),
+                                                    "Iterator", &iterator));
     TF_ASSERT_OK(iterator->Restore(iterator_context.get(), &reader));
   }
 }
