@@ -150,6 +150,7 @@ py_library(
         ":nn",
         ":ops",
         ":platform",
+        ":proto_ops",
         ":pywrap_tensorflow",
         ":saver_test_utils",
         ":script_ops",
@@ -3387,6 +3388,7 @@ py_library(
         ":numerics",
         ":parsing_ops",
         ":partitioned_variables",
+        ":proto_ops",
         ":random_ops",
         ":script_ops",
         ":session_ops",
@@ -6345,6 +6347,30 @@ cuda_py_test(
         "no_oss",
         "noguitar",
         "notap",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "decode_proto_ops_gen",
+    deps = [
+        "//tensorflow/core:decode_proto_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "encode_proto_ops_gen",
+    deps = [
+        "//tensorflow/core:encode_proto_ops_op_lib",
+    ],
+)
+
+py_library(
+    name = "proto_ops",
+    srcs = ["ops/proto_ops.py"],
+    deps = [
+        ":decode_proto_ops_gen",
+        ":encode_proto_ops_gen",
+        "//tensorflow/python:framework_ops",
     ],
 )
 

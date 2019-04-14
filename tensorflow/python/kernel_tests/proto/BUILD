@@ -1,3 +1,5 @@
+# Tests of tf.io.*proto.
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -7,7 +9,10 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+
+# Google-internal targets go here (must be at the end).
 
 tf_py_test(
     name = "decode_proto_op_test",
@@ -16,8 +21,7 @@ tf_py_test(
     additional_deps = [
         ":decode_proto_op_test_base",
         ":py_test_deps",
-        "//tensorflow/contrib/proto:proto",
-        "//tensorflow/contrib/proto/python/ops:decode_proto_op_py",
+        "//tensorflow/python:proto_ops",
     ],
     data = if_static(
         [],
@@ -36,9 +40,7 @@ tf_py_test(
     additional_deps = [
         ":encode_proto_op_test_base",
         ":py_test_deps",
-        "//tensorflow/contrib/proto:proto",
-        "//tensorflow/contrib/proto/python/ops:decode_proto_op_py",
-        "//tensorflow/contrib/proto/python/ops:encode_proto_op_py",
+        "//tensorflow/python:proto_ops",
     ],
     data = if_static(
         [],
@@ -90,7 +92,7 @@ tf_proto_library(
     name = "test_example_proto",
     srcs = ["test_example.proto"],
     cc_api_version = 2,
-    protodeps = ["//tensorflow/core:protos_all"],
+    protodeps = tf_additional_all_protos(),
 )
 
 tf_cc_shared_object(
@@ -119,8 +121,7 @@ tf_py_test(
     srcs = ["descriptor_source_test.py"],
     additional_deps = [
         ":descriptor_source_test_base",
-        "//tensorflow/contrib/proto/python/ops:decode_proto_op_py",
-        "//tensorflow/contrib/proto/python/ops:encode_proto_op_py",
+        "//tensorflow/python:proto_ops",
         "//tensorflow/python:client_testlib",
     ],
     tags = [
