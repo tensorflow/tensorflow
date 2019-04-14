@@ -936,9 +936,8 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_ASSERT_OK(parallel_interleave_dataset->MakeIterator(
-        iterator_ctx.get(), "Iterator", &iterator));
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *parallel_interleave_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
