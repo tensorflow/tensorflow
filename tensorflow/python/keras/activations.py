@@ -68,7 +68,7 @@ def softmax(x, axis=-1):
 
 @keras_export('keras.activations.elu')
 def elu(x, alpha=1.0):
-  """
+  """Exponential Linear Unit.
   The exponential linear unit (ELU) with `alpha` > 0 is:
   `x` if `x > 0` and `alpha * (exp(x)-1)` if `x < 0`
   The ELU hyperparameter `alpha` (α) controls the value to which an
