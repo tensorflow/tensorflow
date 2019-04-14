@@ -83,7 +83,7 @@ def elu(x, alpha=1.0):
   Saturation means a small derivative which decreases the variation
   and the information that is propagated to the next layer.
 
-  [https://akiraaptx.files.wordpress.com/2017/01/screen-shot-2017-01-14-at-1-39-39-pm.png]
+  ![](https://akiraaptx.files.wordpress.com/2017/01/screen-shot-2017-01-14-at-1-39-39-pm.png)
   (Courtesy: Blog post on TensorFlow Activation Functions by
   https://akiraaptx.blog/2017/01/14/tensorflowactivationfunction/)
 
