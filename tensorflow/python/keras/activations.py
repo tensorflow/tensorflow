@@ -143,7 +143,7 @@ def softsign(x):
   values close to 1 and for small values the function 
   returns values close to -1. Like tanh the Softsign 
   activation function goes through the origin, but 
-  has a smaller slope than tanh. 
+  has a smaller slope. 
 
   Arguments:
       x: Input tensor.
