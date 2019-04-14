@@ -1026,7 +1026,7 @@ class EarlyStopping(Callback):
   callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
   # This callback will stop training when there is no improvement in
   # the validation loss for three consecutive epochs.
-  # then simply train the model with the callback
+  # We now simply train the model with the callback.
   model.fit(data, labels, epochs=100, callbacks=[callback], 
       validation_data=(val_data, val_labels))
   ```
