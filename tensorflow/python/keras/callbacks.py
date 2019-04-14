@@ -1022,7 +1022,7 @@ class EarlyStopping(Callback):
   Example:
   
   ```python
-  # first create the callback
+  # Firstly, let's create the callback
   callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
   # this callback will stop training when there is no improvement in
   # validation loss for three epochs
