@@ -341,7 +341,7 @@ class TestStrategyTest(test.TestCase):
   @_run_in_and_out_of_scope
   def testExperimentalMakeNumpyDataset(self, dist):
     numpy_input = np.ones([10], dtype=np.float32)
-    dataset = dist.extended.experimental_make_numpy_dataset(numpy_input)
+    dataset = dist.experimental_make_numpy_dataset(numpy_input)
     self.assertEqual(
         self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
 

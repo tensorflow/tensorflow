@@ -370,6 +370,24 @@ class Strategy(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
+  def experimental_make_numpy_dataset(self, numpy_input):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    return self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=None)
+
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
@@ -695,6 +713,26 @@ class StrategyV1(Strategy):
     """
     return super(StrategyV1, self).make_input_fn_iterator(
         input_fn, replication_mode)
+
+  def experimental_make_numpy_dataset(self, numpy_input, session=None):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    return self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=session)
 
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
