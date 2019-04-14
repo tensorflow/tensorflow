@@ -138,7 +138,7 @@ def softplus(x):
 
 @keras_export('keras.activations.softsign')
 def softsign(x):
-  """The Softsign activation function is similiar to the 
+  """The Softsign activation function is similar to the 
   tanh function. For large values the function returns 
   values close to 1 and for small values the function 
   returns values close to -1. Like tanh the Softsign 
