@@ -64,9 +64,9 @@ def process_file(in_filename, out_filename, upgrader):
 
 def skip_magic(code_line, magic_list):
     """
-    Checks if the cell has magic, that is not python based
+    Checks if the cell has magic, that is not python-based.
 
-    >>> skip_magic('!ls -laF')
+    >>> skip_magic('!ls -laF', ['%', '!', '?'])
     True
     """
 
@@ -79,7 +79,8 @@ def skip_magic(code_line, magic_list):
 
 def check_line_split(code_line):
     r"""
-    Checks if line was splitted with `\`
+    Checks if a line was splitted with `\`.
+
     >>> skip_magic("!gcloud ml-engine models create ${MODEL} \\\n")
     True
     """
