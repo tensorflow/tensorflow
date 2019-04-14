@@ -25,6 +25,7 @@ VALID_LIBS = [
     "gast_archive",
     "gif_archive",
     "grpc",
+    "hwloc",
     "icu",
     "jpeg",
     "jsoncpp_git",
