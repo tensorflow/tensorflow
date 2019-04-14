@@ -1567,6 +1567,13 @@ class AggregatingVariable(variables_lib.Variable):
   def initializer(self):
     return self._v.initializer
 
+  @property
+  def op(self):
+    return self._v.op
+
+  def read_value(self):
+    return self._v.read_value()
+
   def eval(self, session=None):
     return self._v.eval(session)
 
