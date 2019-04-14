@@ -179,7 +179,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
-  """The Hyperbolic Tangent activation function is a similiar to the 
+  """The Hyperbolic Tangent activation function is a similar to the 
   sigmoid activation function. It has also a smooth curve from its 
   minimum to its maximum value. The difference to the sigmoid function 
   is that the tanh function ranges from -1 to 1. 
