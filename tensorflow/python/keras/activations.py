@@ -181,7 +181,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 def tanh(x):
   """The Hyperbolic Tangent activation function is a similar to the 
   sigmoid activation function. It also is a smooth curve ranging within 
-  minimum to its maximum value. The difference to the sigmoid function 
+  its minimum and maximum value. The difference from the sigmoid function 
   is that the tanh function ranges from -1 to 1. 
 
   Arguments:
