@@ -134,8 +134,8 @@ def selu(x):
       (https://www.tensorflow.org/api_docs/python/tf/keras/layers/AlphaDropout)".
 
   References:
-  [Self-Normalizing Neural Networks (Klambauer et al, 2017)]
-  (https://arxiv.org/abs/1706.02515)
+      [Self-Normalizing Neural Networks (Klambauer et al, 2017)]
+      (https://arxiv.org/abs/1706.02515)
   """
   alpha = 1.6732632423543772848170429916717
   scale = 1.0507009873554804934193349852946
