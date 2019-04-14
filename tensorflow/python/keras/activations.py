@@ -123,7 +123,7 @@ def selu(x):
 def softplus(x):
   """The Softplus activation function is a smoothed version of
   the relu function. For negative values the function returns a 
-  value close to zero, for positve values the result of 
+  value close to zero, for positive values the result of 
   the function is similiar to the result a linear function 
   would give. 
 
