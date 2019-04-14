@@ -34,6 +34,7 @@ VALID_LIBS = [
     "nasm",
     "nsync",
     "org_sqlite",
+    "pasta",
     "pcre",
     "png_archive",
     "protobuf_archive",
