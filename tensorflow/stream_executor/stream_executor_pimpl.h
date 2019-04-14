@@ -161,17 +161,16 @@ class StreamExecutor {
   //    sub-buffer after parent deallocation is expected to be safe. This will
   //    render your code non-platform-portable, however.
   template <typename T>
-  DeviceMemory<T> AllocateSubBuffer(DeviceMemory<T> *parent,
-                                    uint64 element_offset,
-                                    uint64 element_count);
+  DeviceMemory<T> GetSubBuffer(DeviceMemory<T> *parent, uint64 element_offset,
+                               uint64 element_count);
 
-  // As AllocateSubBuffer(), but returns a ScopedDeviceMemory<T>.
+  // As GetSubBuffer(), but returns a ScopedDeviceMemory<T>.
   template <typename T>
   ScopedDeviceMemory<T> AllocateOwnedSubBuffer(DeviceMemory<T> *parent,
                                                uint64 element_offset,
                                                uint64 element_count) {
     return ScopedDeviceMemory<T>(
-        this, AllocateSubBuffer<T>(parent, element_offset, element_count));
+        this, GetSubBuffer<T>(parent, element_offset, element_count));
   }
 
   // Finds a symbol and returns device memory allocated to the symbol. The
@@ -843,9 +842,9 @@ DeviceMemory<T> StreamExecutor::AllocateZeroed() {
 }
 
 template <typename T>
-DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
-                                                  uint64 element_offset,
-                                                  uint64 element_count) {
+DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
+                                             uint64 element_offset,
+                                             uint64 element_count) {
   if (element_offset + element_count > parent->ElementCount()) {
     LOG(ERROR) << "requested sub-buffer allocation (offset + size) is greater "
                << "than parent allocation size: (" << element_offset << " + "
@@ -853,7 +852,7 @@ DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
     return DeviceMemory<T>{};
   }
 
-  void *opaque = implementation_->AllocateSubBuffer(
+  void *opaque = implementation_->GetSubBuffer(
       parent, sizeof(T) * element_offset, sizeof(T) * element_count);
   if (opaque == nullptr) {
     return DeviceMemory<T>{};

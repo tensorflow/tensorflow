@@ -41,8 +41,8 @@ HostExecutor::~HostExecutor() {}
 
 void *HostExecutor::Allocate(uint64 size) { return new char[size]; }
 
-void *HostExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                      uint64 offset_bytes, uint64 size_bytes) {
+void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
+                                 uint64 size_bytes) {
   return reinterpret_cast<char *>(parent->opaque()) + offset_bytes;
 }
 
