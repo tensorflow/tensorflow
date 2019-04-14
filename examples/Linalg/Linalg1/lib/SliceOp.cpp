@@ -80,7 +80,7 @@ bool linalg::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
 // A SliceOp prints as:
 //
 // ```{.mlir}
-//   linalg.slice %0[*, %i0]  : !linalg<"view<?xf32>">
+//   linalg.slice %0[*, %i0]  : !linalg.view<?xf32>
 // ```
 //
 // Where %0 is an ssa-value holding a `view<?x?xf32>`, %i0 is an ssa-value

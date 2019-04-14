@@ -2308,7 +2308,10 @@ dialect-type ::= '!' alias-name pretty-dialect-type-body?
 
 pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
 pretty-dialect-type-contents ::= pretty-dialect-type-body
-                               | '[0-9a-zA-Z.-]+'
+                              | '(' pretty-dialect-type-contents+ ')'
+                              | '[' pretty-dialect-type-contents+ ']'
+                              | '{' pretty-dialect-type-contents+ '}'
+                              | '[^[<({>\])}\0]+'
 
 ```
 

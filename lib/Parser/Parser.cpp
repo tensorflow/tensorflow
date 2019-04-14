@@ -487,39 +487,67 @@ Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
 ///
 ///   pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
 ///   pretty-dialect-type-contents ::= pretty-dialect-type-body
-///                                  | '[0-9a-zA-Z.,-]+'
+///                                  | '(' pretty-dialect-type-contents+ ')'
+///                                  | '[' pretty-dialect-type-contents+ ']'
+///                                  | '{' pretty-dialect-type-contents+ '}'
+///                                  | '[^[<({>\])}\0]+'
 ///
 ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
-  consumeToken(Token::less);
+  // Pretty type names are a relatively unstructured format that contains a
+  // series of properly nested punctuation, with anything else in the middle.
+  // Scan ahead to find it and consume it if successful, otherwise emit an
+  // error.
+  auto *curPtr = getTokenSpelling().data();
 
-  while (1) {
-    if (getToken().is(Token::greater)) {
-      auto *start = prettyName.begin();
-      // Update the size of the covered range to include all the tokens we have
-      // skipped over.
-      unsigned length = getTokenSpelling().end() - start;
-      prettyName = StringRef(start, length);
-      consumeToken(Token::greater);
-      return ParseSuccess;
-    }
+  SmallVector<char, 8> nestedPunctuation;
 
-    if (getToken().is(Token::less)) {
-      if (parsePrettyDialectTypeName(prettyName))
-        return ParseFailure;
+  // Scan over the nested punctuation, bailing out on error and consuming until
+  // we find the end.  We know that we're currently looking at the '<', so we
+  // can go until we find the matching '>' character.
+  assert(*curPtr == '<');
+  do {
+    char c = *curPtr++;
+    switch (c) {
+    case '\0':
+      // This also handles the EOF case.
+      return emitError("unexpected nul or EOF in pretty dialect name");
+    case '<':
+    case '[':
+    case '(':
+    case '{':
+      nestedPunctuation.push_back(c);
+      continue;
+
+    case '>':
+      if (nestedPunctuation.pop_back_val() != '<')
+        return emitError("unbalanced '>' character in pretty dialect name");
+      break;
+    case ']':
+      if (nestedPunctuation.pop_back_val() != '[')
+        return emitError("unbalanced ']' character in pretty dialect name");
+      break;
+    case ')':
+      if (nestedPunctuation.pop_back_val() != '(')
+        return emitError("unbalanced ')' character in pretty dialect name");
+      break;
+    case '}':
+      if (nestedPunctuation.pop_back_val() != '{')
+        return emitError("unbalanced '}' character in pretty dialect name");
+      break;
+
+    default:
       continue;
     }
+  } while (!nestedPunctuation.empty());
 
-    // Check to see if the token contains simple characters.
-    bool isSimple = true;
-    for (auto c : getTokenSpelling())
-      isSimple &=
-          (isalpha(c) || isdigit(c) || c == '.' || c == '-' || c == ',');
+  // Ok, we succeeded, remember where we stopped, reset the lexer to know it is
+  // consuming all this stuff, and return.
+  state.lex.resetPointer(curPtr);
 
-    if (!isSimple || getToken().is(Token::eof))
-      return emitError("expected simple name in pretty dialect type");
-
-    consumeToken();
-  }
+  unsigned length = curPtr - prettyName.begin();
+  prettyName = StringRef(prettyName.begin(), length);
+  consumeToken();
+  return ParseSuccess;
 }
 
 /// Parse an extended type.
@@ -582,7 +610,7 @@ Type Parser::parseExtendedType() {
     // of it into prettyName.
     if (getToken().is(Token::less) &&
         prettyName.bytes_end() == getTokenSpelling().bytes_begin()) {
-      if (parsePrettyDialectTypeName(prettyName) == ParseFailure)
+      if (parsePrettyDialectTypeName(prettyName))
         return nullptr;
     }
 

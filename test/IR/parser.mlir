@@ -860,5 +860,16 @@ func @pretty_dialect_type() {
 
   // CHECK: %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
   %2 = "foo.unknown_op"() : () -> !foo.complextype<abcd<f32>>
+
+  // CHECK: %3 = "foo.unknown_op"() : () -> !foo.complextype<abcd<[f]$$[32]>>
+  %3 = "foo.unknown_op"() : () -> !foo.complextype<abcd<[f]$$[32]>>
+
+  // CHECK: %4 = "foo.unknown_op"() : () -> !foo.dialect<!x@#!@#>
+  %4 = "foo.unknown_op"() : () -> !foo.dialect<!x@#!@#>
+
+  // Extraneous extra > character can't use the pretty syntax.
+  // CHECK: %5 = "foo.unknown_op"() : () -> !foo<"dialect<!x@#!@#>>">
+  %5 = "foo.unknown_op"() : () -> !foo<"dialect<!x@#!@#>>">
+
   return
 }

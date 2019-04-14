@@ -927,8 +927,8 @@ func @invalid_nested_dominance() {
 
 // -----
 
-// expected-error @+1 {{expected simple name in pretty dialect type}}
-func @invalid_unknown_type_dialect_name() -> !invalid.dialect<!x@#!@#>
+// expected-error @+1 {{unbalanced ']' character in pretty dialect name}}
+func @invalid_unknown_type_dialect_name() -> !invalid.dialect<!x@#]!@#>
 
 // -----
 

@@ -722,38 +722,52 @@ static bool isDialectTypeSimpleEnoughForPrettyForm(StringRef typeName) {
   if (typeName.front() != '<' || typeName.back() != '>')
     return false;
 
-  unsigned bracketDepth = 0;
-  while (!typeName.empty()) {
-    auto c = typeName.front();
-    switch (c) {
-    case '<':
-      ++bracketDepth;
-      break;
-    case '>':
-      // Reject types with mismatched brackets.
-      if (bracketDepth == 0)
-        return false;
-      --bracketDepth;
-      break;
-
-    case '.':
-    case '-':
-    case ' ':
-    case ',':
-      // These are all ok.
-      break;
-
-    default:
-      if (isalpha(c) || isdigit(c))
-        break;
-      // Unknown character abort.
+  SmallVector<char, 8> nestedPunctuation;
+  do {
+    // If we ran out of characters, then we had a punctuation mismatch.
+    if (typeName.empty())
       return false;
+
+    auto c = typeName.front();
+    typeName = typeName.drop_front();
+
+    switch (c) {
+    // We never allow nul characters.  This is an EOF indicator for the lexer
+    // which we could handle, but isn't important for any known dialect.
+    case '\0':
+      return false;
+    case '<':
+    case '[':
+    case '(':
+    case '{':
+      nestedPunctuation.push_back(c);
+      continue;
+    // Reject types with mismatched brackets.
+    case '>':
+      if (nestedPunctuation.pop_back_val() != '<')
+        return false;
+      break;
+    case ']':
+      if (nestedPunctuation.pop_back_val() != '[')
+        return false;
+      break;
+    case ')':
+      if (nestedPunctuation.pop_back_val() != ')')
+        return false;
+      break;
+    case '}':
+      if (nestedPunctuation.pop_back_val() != '}')
+        return false;
+      break;
+    default:
+      continue;
     }
 
-    typeName = typeName.drop_front();
-  }
+    // We're done when the punctuation is fully matched.
+  } while (!nestedPunctuation.empty());
 
-  return bracketDepth == 0;
+  // If there were extra characters, then we failed.
+  return typeName.empty();
 }
 
 void ModulePrinter::printType(Type type) {
