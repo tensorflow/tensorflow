@@ -804,11 +804,13 @@ class MultiStepContext(object):
         self._last_step_outputs[name] = output
       else:
         distribution = distribution_strategy_context.get_strategy()
-        self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, output,
+                                                            axis=None)
     else:
       assert reduce_op is not None
       def merge_fn(distribution, value):
-        self._last_step_outputs[name] = distribution.reduce(reduce_op, value)
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, value,
+                                                            axis=None)
         # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
         # the replicas are trying to set the same value).

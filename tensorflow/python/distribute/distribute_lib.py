@@ -438,7 +438,7 @@ class Strategy(object):
     with self.scope():
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  def reduce(self, reduce_op, value, axis=None):
+  def reduce(self, reduce_op, value, axis):
     """Reduce `value` across replicas.
 
     Given a per-replica value returned by `experimental_run_v2`, say a
@@ -468,8 +468,10 @@ class Strategy(object):
         be combined.
       value: A "per replica" value, e.g. returned by `experimental_run_v2` to
         be combined into a single tensor.
-      axis: Optional. Specifies the dimension to reduce along within each
-        replica's tensor. Should typically be set to the batch dimension.
+      axis: Specifies the dimension to reduce along within each
+        replica's tensor. Should typically be set to the batch dimension, or
+        `None` to only reduce across replicas (e.g. if the tensor has no batch
+        dimension).
 
     Returns:
       A `Tensor`.
@@ -728,6 +730,11 @@ class StrategyV1(Strategy):
     """
     return super(StrategyV1, self).experimental_run(
         fn, input_iterator)
+
+  def reduce(self, reduce_op, value, axis=None):
+    return super(StrategyV1, self).reduce(reduce_op, value, axis)
+
+  reduce.__doc__ = Strategy.reduce.__doc__
 
   def update_config_proto(self, config_proto):
     """Returns a copy of `config_proto` modified for use with this strategy.

@@ -103,7 +103,7 @@ class MirroredTwoDeviceDistributionTest(
   def testReduceToCpu(self, distribution):
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(_replica_id)
-      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result)
+      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
