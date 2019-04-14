@@ -153,9 +153,6 @@ class DistributedIterator(object):
     return self.__next__()
 
   def __next__(self):
-    if not context.executing_eagerly():
-      raise RuntimeError("__iter__ is only supported "
-                         "when eager execution is enabled.")
     try:
       return self.get_next()
     except errors.OutOfRangeError:
@@ -352,18 +349,12 @@ class DistributedDataset(object):
     self._kwargs = kwargs
 
   def __iter__(self):
-    # TODO(anjalisridhar): Remove this restriction once we can create
-    # iterators in graph mode.
-    if context.executing_eagerly():
-      worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
-                                                      self._input_workers)
-      iterator = DistributedIterator(self._input_workers, worker_iterators,
-                                     **self._kwargs)
-      iterator._element_structure = self._element_structure  # pylint: disable=protected-access
-      return iterator
-    else:
-      raise RuntimeError("__iter__ is only supported when eager "
-                         "execution is enabled.")
+    worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
+                                                    self._input_workers)
+    iterator = DistributedIterator(self._input_workers, worker_iterators,
+                                   **self._kwargs)
+    iterator._element_structure = self._element_structure  # pylint: disable=protected-access
+    return iterator
 
 
 class DistributedDatasetV1(DistributedDataset):

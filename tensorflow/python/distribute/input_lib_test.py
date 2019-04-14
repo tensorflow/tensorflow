@@ -105,11 +105,14 @@ class DistributedIteratorTestBase(test.TestCase):
       if context.executing_eagerly():
         iterator = iter(dataset)
       else:
-        # In graph mode currently we only have support for creating iterators
-        # for datasetV1 instances.
-        if not isinstance(dataset, dataset_ops.DatasetV1):
-          self.skipTest("unsupported test combination")
-        iterator = dataset.make_one_shot_iterator()
+        # The dataset can be a tf.data.DatasetV1Adapter instance since we wrap
+        # tf.data.DatasetV1 as a tf.data.DatasetV1Adapter instance when we
+        # autoshard the dataset.
+        if not isinstance(dataset, (dataset_ops.DatasetV1,
+                                    dataset_ops.DatasetV1Adapter)):
+          iterator = iter(dataset)
+        else:
+          iterator = dataset.make_one_shot_iterator()
 
     if iteration_type == "get_next":
       evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
@@ -162,21 +165,6 @@ class DistributedIteratorTestBase(test.TestCase):
 
 class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
                                           parameterized.TestCase):
-
-  def testGraphModeError(self):
-    with context.graph_mode():
-      worker_device_pairs = [("", ["/device:CPU:0"])]
-      devices = nest.flatten([ds for _, ds in worker_device_pairs])
-      device_map = values.ReplicaDeviceMap(devices)
-      input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
-      dataset = dataset_ops.Dataset.range(10).batch(2)
-
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "__iter__ is only "
-                                   "supported when eager execution is "
-                                   "enabled."):
-        dist_dataset = input_lib.DistributedDatasetV1(dataset, input_workers)
-        iter(dist_dataset)
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],

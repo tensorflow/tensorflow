@@ -92,6 +92,62 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       results.append(output)
     self._validate_outputs(results)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu +
+          [strategy_combinations.tpu_strategy_one_step],
+          mode=["eager"]
+      ))
+  def testIterationInsideFunction(self, distribution):
+
+    def step_fn(data):
+      return data
+
+    @def_function.function
+    def train(dataset):
+      results = []
+      iterator = iter(dataset)
+      # we iterate through the loop 5 times since we have 10 elements and a
+      # global batch of 2.
+      for _ in range(5):
+        elem = next(iterator)
+        output = distribution.experimental_local_results(
+            distribution.experimental_run_v2(step_fn, args=(elem,)))
+        results.append(output)
+      return results
+
+    dataset = self._get_dataset()
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    results = train(dist_dataset)
+    self._validate_outputs(results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu +
+          [strategy_combinations.tpu_strategy_one_step],
+          mode=["eager"]
+      ))
+  def testIterationOutsideFunction(self, distribution):
+
+    def train_step(data):
+      return data
+
+    @def_function.function
+    def f_train_step(input_data):
+      return distribution.experimental_local_results(
+          distribution.experimental_run_v2(train_step, args=(input_data,)))
+
+    dataset = self._get_dataset()
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    iterator = iter(dist_dataset)
+    results = []
+    # we iterate through the loop 5 times since we have 10 elements and a
+    # global batch of 2.
+    for _ in range(5):
+      output = f_train_step(next(iterator))
+      results.append(output)
+    self._validate_outputs(results)
+
   def _get_dataset(self):
     if tf2.enabled():
       return dataset_ops.DatasetV2.range(10).batch(2)
