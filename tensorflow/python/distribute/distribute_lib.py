@@ -377,6 +377,39 @@ class Strategy(object):
       args = (input_iterator.get_next(),) if input_iterator is not None else ()
     return self.experimental_run_v2(fn, args=args)
 
+  def experimental_distribute_dataset(self, dataset):
+    """Distributes a tf.data.Dataset instance provided via `dataset`.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. This function assumes that the input dataset is batched
+    by the global batch size.
+
+    The following is an example:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      A `DistributedDataset` which returns inputs for each step of the
+      computation.
+    """
+    return self._extended._experimental_distribute_dataset(dataset)  # pylint: disable=protected-access
+
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Runs ops in `fn` on each replica, with the given arguments.
 
@@ -1062,6 +1095,9 @@ class StrategyExtendedV2(object):
   def _make_input_fn_iterator(self, input_fn, replication_mode):
     raise NotImplementedError("must be implemented in descendants")
 
+  def _experimental_distribute_dataset(self, dataset):
+    raise NotImplementedError("must be implemented in descendants")
+
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
     return self._local_results(
@@ -1670,6 +1706,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   def variable_created_in_scope(self, v):
     return v._distribute_strategy is None  # pylint: disable=protected-access
+
+  def _experimental_distribute_dataset(self, dataset):
+    return dataset
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)

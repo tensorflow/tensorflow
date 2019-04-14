@@ -325,6 +325,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         numpy_input, numpy_dataset.SingleDevice(self._host_device),
         session)
 
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
+
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
