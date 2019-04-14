@@ -72,7 +72,7 @@ def elu(x, alpha=1.0):
   The exponential linear unit (ELU) with `alpha` > 0 is:
   `x` if `x > 0` and `alpha * (exp(x)-1)` if `x < 0`
   The ELU hyperparameter `alpha` (α) controls the value to which an
-  ELU saturates for negative net inputs.ELUs diminish the
+  ELU saturates for negative net inputs. ELUs diminish the
   vanishing gradient effect.
 
   ELUs have negative values which pushes the mean of the activations
@@ -110,8 +110,8 @@ def elu(x, alpha=1.0):
 
 
   Reference:
-  [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
-  (Clevert et al, 2015)](https://arxiv.org/abs/1511.07289)
+      [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
+      (Clevert et al, 2015)](https://arxiv.org/abs/1511.07289)
   """
   return K.elu(x, alpha)
 
