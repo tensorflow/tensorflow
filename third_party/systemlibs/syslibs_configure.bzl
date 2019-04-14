@@ -40,6 +40,7 @@ VALID_LIBS = [
     "snappy",
     "swig",
     "termcolor_archive",
+    "wrapt",
     "zlib_archive",
 ]
 
