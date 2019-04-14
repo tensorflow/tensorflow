@@ -1018,6 +1018,18 @@ class EarlyStopping(Callback):
           the epoch with the best value of the monitored quantity.
           If False, the model weights obtained at the last step of
           training are used.
+          
+  Example:
+  
+  ```python
+  # first create the callback
+  callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
+  # this callback will stop training when there is no improvement in
+  # validation loss for three epochs
+  # then simply train the model with the callback
+  model.fit(data, labels, epochs=100, callbacks=[callback], 
+      validation_data=(val_data, val_labels))
+  ```
   """
 
   def __init__(self,
