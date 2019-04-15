@@ -1387,6 +1387,8 @@ renames = {
         'tf.compat.v1.train.create_global_step',
     'tf.train.do_quantize_training_on_graphdef':
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
+    'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':
