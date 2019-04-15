@@ -927,11 +927,8 @@ distribute_py_test(
     main = "zero_batch_test.py",
     deps = [
         ":combinations",
-        ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":strategy_combinations",
-        ":tpu_strategy",
         "//tensorflow/python:layers",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
