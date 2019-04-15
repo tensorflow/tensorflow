@@ -9,7 +9,6 @@ cc_library(
                  "-DNO_EXCEPTION_HACK",
                  "-DNO_EXCEPTION_INTERCEPT",
                  "-DDEFAULT_ALLOCATOR",
-                 "-D_GLIBCXX_USE_CXX11_ABI=0",
                  "-DHAVE_HWLOC",
                  "-DHAVE_NUMA",],
         linkopts = ["-L/usr/local/lib/",
@@ -44,9 +43,9 @@ cc_library(
                               "net/dns.cc",
                               "core/dpdk_rte.cc",
                               "cached-build/release/gen/proto/**"]),
-      deps = ["@boost_archive//:headers",
-              "@boost_archive//:filesystem",
-              "@boost_archive//:thread",
-              "@boost_archive//:program_options",
-              "@boost_archive//:system",]
+      deps = ["@boost//:headers",
+              "@boost//:filesystem",
+              "@boost//:thread",
+              "@boost//:program_options",
+              "@boost//:system",]
 )

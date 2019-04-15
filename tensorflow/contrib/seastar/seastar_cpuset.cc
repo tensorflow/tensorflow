@@ -82,7 +82,7 @@ void CpusetAllocator::CreateDir() {
 void CpusetAllocator::CreateFiles() {
   // todo: port::NumAllCPUs(), all phsical core should be available in docker
   // or this would bug here, k8s could be a candidate to allocator cpu cores.
-  for (auto i = INIT_CPU_ID; i < port::NumAllCPUs(); ++i) {
+  for (auto i = INIT_CPU_ID; i < port::NumTotalCPUs(); ++i) {
     auto file_name = std::to_string(i);
 
     std::string file_path;

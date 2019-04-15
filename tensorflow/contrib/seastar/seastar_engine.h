@@ -31,7 +31,7 @@ private:
   void AsyncStartServer();
   void ConstructArgs(int* argc, char*** argv);
   void GetCpuset(char**);
-  void AsyncConnect(const std::string& ip);
+  seastar::channel* AsyncConnect(const std::string& ip);
 
 private:
   seastar::distributed<SeastarServer> server_;

@@ -46,6 +46,10 @@ public:
   void LoggingHandler(SeastarServerTag* tag);
   void TracingHandler(SeastarServerTag* tag);
   void RecvTensorHandlerRaw(SeastarServerTag* tag);
+  void RecvBufHandler(SeastarServerTag* tag);
+  void CompleteGroupHandler(SeastarServerTag* tag);
+  void CompleteInstanceHandler(SeastarServerTag* tag);
+  void GetStepSequenceHandler(SeastarServerTag* tag);
 
 private:
   void Schedule(std::function<void()> f);

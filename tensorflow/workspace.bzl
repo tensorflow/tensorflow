@@ -455,7 +455,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
             "http://ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
         ],
     )
-
     tf_http_archive(
         name = "swig",
         build_file = clean_dep("//third_party:swig.BUILD"),
@@ -909,21 +908,23 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "seastar",
         urls = [
-            "https://github.com/liutongxuan/seastar/blob/features/tensorflow_rpc/archive/seastar-tf.tar.gz",
+            "https://mirror.bazel.build/github.com/seastar/seastar/archive/seastar-tf.tar.gz",
+            "https://github.com/liutongxuan/seastar/archive/features/tensorflow_rpc.tar.gz",
         ],
-        sha256 = "b16e6d83cc2ef91e67eee71e5c65ef25a576085e461ebaae86771781c76f41db",
-        strip_prefix = "seastar",
+        sha256 = "05279c9cf61f7b0b77a30749cf1d8745e49b1754e6aad8fc7bd607258922e596",
+        strip_prefix = "seastar-features-tensorflow_rpc",
         build_file = clean_dep("//third_party:seastar.BUILD"),
     )
 
     tf_http_archive(
-        name = "boost_archive",
+        name = "boost",
         urls = [
-            "https://github.com/liutongxuan/seastar/blob/features/tensorflow_rpc/archive/boost_1_63_0.tar.gz",
+            "https://github.com/mirror.bazel.build/github.com/boost/archive/boost-1.63.0.tar.gz",
+            "https://github.com/liutongxuan/boost-1-63-0/archive/master.tar.gz",
         ],
-        sha256 = "fe34a4e119798e10b8cc9e565b3b0284e9fd3977ec8a1b19586ad1dec397088b",
-        strip_prefix = 'boost_1_63_0',
-        build_file = str(Label("//third_party/boost:boost.BUILD")),
+        sha256 = "1404aa387f0a0f86d4dd3cf635b6a8ddda0074833dcda794331c0d2976ec0ca2",
+        strip_prefix = 'boost-1-63-0-master',
+        build_file = clean_dep("//third_party/boost:boost.BUILD"),
     )
 
     ##############################################################################

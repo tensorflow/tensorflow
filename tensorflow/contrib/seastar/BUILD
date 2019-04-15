@@ -82,7 +82,7 @@ tf_cuda_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": ["@seastar_repo//:seastar",
+    deps = select({"//tensorflow:with_seastar_support": ["@seastar//:seastar",
                                                          ":seastar_tensor_coding"],
                    "//conditions:default": []})
     + [

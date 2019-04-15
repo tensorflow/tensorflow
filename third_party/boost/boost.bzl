@@ -1,5 +1,4 @@
-DEFAULT_COPTS = ["-Wno-unused-value",
-                 "-D_GLIBCXX_USE_CXX11_ABI=0"]
+DEFAULT_COPTS = ["-Wno-unused-value"]
 
 def boost_library(name, defines=None, deps=None, extra_srcs=None, extra_hdrs=None, linkopts=None):
     if defines == None:

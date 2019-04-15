@@ -23,7 +23,6 @@
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/distributed_runtime/worker_resource.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -166,10 +165,12 @@ Status SeastarServer::Init() {
     strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
         "/task:", server_def_.task_index());
 
+  std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
-        &master_env_.local_devices));
-  worker_env_.local_devices = master_env_.local_devices;
-  worker_env_.device_mgr = new DeviceMgr(worker_env_.local_devices);
+        &devices));
+  worker_env_.device_mgr = new DeviceMgr(std::move(devices));
+  master_env_.local_devices = worker_env_.device_mgr->ListDevices();
+  worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.rendezvous_mgr = new SeastarRendezvousMgr(&worker_env_);
 
   string unused;
@@ -251,19 +252,21 @@ Status SeastarServer::Init() {
       });
 
   // master intialize
-  master_env_.compute_pool = worker_env_.compute_pool;
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
+  StatsPublisherFactory stats_factory;
   master_env_.master_session_factory =
-    [config](
+    [config, stats_factory](
         SessionOptions options, const MasterEnv* env,
         std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
         std::unique_ptr<WorkerCacheInterface> worker_cache,
-        std::unique_ptr<DeviceSet> device_set) {
+        std::unique_ptr<DeviceSet> device_set,
+        std::vector<string> filtered_worker_list) {
       options.config.MergeFrom(config);
       return new MasterSession(options, env, std::move(remote_devs),
           std::move(worker_cache), std::move(device_set),
-          CreateNoOpStatsPublisher);
+          std::move(filtered_worker_list),
+          stats_factory);
     };
 
   master_env_.worker_cache_factory =

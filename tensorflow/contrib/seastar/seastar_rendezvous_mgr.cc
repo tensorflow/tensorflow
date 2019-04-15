@@ -25,8 +25,7 @@ class SeastarRemoteRendezvous : public BaseRemoteRendezvous {
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
                            const Rendezvous::Args& args,
-                           DoneCallback done,
-                           CallOptions* opts) override;
+                           DoneCallback done) override;
 
  private:
   ~SeastarRemoteRendezvous() override {}
@@ -187,7 +186,7 @@ static SeastarRecvTensorFreeList* get_call_freelist() {
 
 void SeastarRemoteRendezvous::RecvFromRemoteAsync(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& recv_args,
-    DoneCallback done, CallOptions* opts) {
+    DoneCallback done) {
   CHECK(is_initialized());
   Status s;
 
@@ -208,7 +207,7 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
 
   Device* dst_device;
   if (s.ok()) {
-    s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+    s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
     if (rwi != nullptr) {
@@ -226,7 +225,7 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
   RegisterCall(call);
   if (!call->status().ok()) {
     LOG(WARNING) << "Rendezvous has been aborted, ignore the rpc call."
-                 << ", rendezvous key: " << parsed.FullKey().ToString();
+                 << ", rendezvous key: " << parsed.FullKey();
     session()->worker_cache->ReleaseWorker(call->src_worker_, call->wi_);
     call->done()(call->status(), Args(), Args(), Tensor(), false);
     call->wi_ = nullptr;

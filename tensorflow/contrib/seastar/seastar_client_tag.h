@@ -79,7 +79,6 @@ class SeastarClientTag {
   SeastarBuf resp_tensor_buf_;
   ParseMessageCallback parse_message_;
   CallOptions* call_opts_;
-  bool fail_fast_;
   int timeout_in_ms_;
 };
 

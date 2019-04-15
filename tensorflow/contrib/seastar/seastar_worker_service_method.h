@@ -15,6 +15,10 @@ enum class SeastarWorkerServiceMethod {
   kFuseRecvTensor,
   kLogging,
   kTracing,
+  kRecvBuf,
+  kCompleteGroup,
+  kCompleteInstance,
+  kGetStepSequence,
 };
 } // tensorflow
 

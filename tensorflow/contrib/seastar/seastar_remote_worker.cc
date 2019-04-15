@@ -36,7 +36,7 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
   void GetStatusAsyncWithOptions(const GetStatusRequest* request,
                                  GetStatusResponse* response,
                                  StatusCallback done,
-                                 CallOptions* call_opts) override {
+                                 CallOptions* call_opts) {
     env_->compute_pool->Schedule([this, request, response, call_opts, done]() {
       IssueRequest(request, response, SeastarWorkerServiceMethod::kGetStatus, std::move(done), call_opts);
     });
@@ -154,6 +154,31 @@ class SeastarRemoteWorker : public WorkerInterface, public SeastarWorkerInterfac
     env_->compute_pool->Schedule([this, request, response, done]() {
       IssueRequest(request, response, SeastarWorkerServiceMethod::kTracing, done);
     });
+  }
+
+  void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override {
+    done(errors::Unimplemented("SeastarRemoteWorker::RecvBufAsync()"));
+  }
+
+  void CompleteGroupAsync(CallOptions* opts,
+                          const CompleteGroupRequest* request,
+                          CompleteGroupResponse* response,
+                          StatusCallback done) override {
+    done(errors::Unimplemented("SeastarRemoteWorker::CompleteGroupAsync()"));
+  }
+
+  void CompleteInstanceAsync(CallOptions* ops,
+                             const CompleteInstanceRequest* request,
+                             CompleteInstanceResponse* response,
+                             StatusCallback done) override {
+    done(errors::Unimplemented("SeastarRemoteWorker::CompleteInstanceAsync()"));
+  }
+
+  void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                            GetStepSequenceResponse* response,
+                            StatusCallback done) override {
+    done(errors::Unimplemented("SeastarRemoteWorker::GetStepSequenceAsync()"));
   }
 
  private:

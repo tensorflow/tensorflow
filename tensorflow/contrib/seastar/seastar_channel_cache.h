@@ -39,10 +39,13 @@ public:
   virtual ~SeastarChannelCache() {}
 
   virtual void ListWorkers(std::vector<std::string>* workers) const = 0;
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) = 0; 
   virtual seastar::channel* FindWorkerChannel(const std::string& target) = 0;
   virtual std::string TranslateTask(const std::string& task) = 0;
 };
 
-SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine, const SeastarChannelSpec& channel_spec);
+SeastarChannelCache* NewSeastarChannelCache(
+    SeastarEngine* engine, const SeastarChannelSpec& channel_spec);
 } // tensorflow
 #endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_

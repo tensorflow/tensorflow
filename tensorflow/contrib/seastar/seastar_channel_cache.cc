@@ -93,6 +93,13 @@ public:
     }
   }
 
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) override {
+    for (SeastarChannelCache* cache : caches_) {
+      cache->ListWorkersInJob(job_name, workers);
+    }
+  }
+
   string TranslateTask(const string& target) override {
     mutex_lock l(mu_);
     SeastarChannelCache* cache = gtl::FindPtrOrNull(target_caches_, target);
@@ -144,6 +151,13 @@ public:
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       workers->emplace_back(MakeAddress(job_id_, id_host_port.first));
+    }
+  }
+
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) override {
+    if (job_name == job_id_) {
+      ListWorkers(workers);
     }
   }
 

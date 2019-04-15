@@ -1,8 +1,8 @@
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif // GOOGLE_CUDA
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -15,10 +15,6 @@ namespace tensorflow {
 namespace {
 void ProcessCallOptions(SeastarClientTag* tag) {
   if (tag->call_opts_ != nullptr) {
-    if (!tag->call_opts_->UseWaitForReady()) {
-      tag->fail_fast_ = true;
-    }
-    
     if (tag->call_opts_->GetTimeout() > 0) {
       tag->timeout_in_ms_ = tag->call_opts_->GetTimeout();
     }
@@ -35,8 +31,8 @@ void InitSeastarClientTag(protobuf::Message* request,
   tag->req_body_buf_.data_ = new char[tag->req_body_buf_.len_]();
   request->SerializeToArray(tag->req_body_buf_.data_, tag->req_body_buf_.len_);
 
-  tag->req_header_buf_.len_ = HEADER_SIZE;
-  tag->req_header_buf_.data_ = new char[HEADER_SIZE];
+  tag->req_header_buf_.len_ = SeastarClientTag::HEADER_SIZE;
+  tag->req_header_buf_.data_ = new char[SeastarClientTag::HEADER_SIZE];
   
   memcpy(tag->req_header_buf_.data_, "DEADBEEF", 8);
   memcpy(tag->req_header_buf_.data_ + 8, &tag, 8);
@@ -81,8 +77,8 @@ void InitSeastarClientTag(protobuf::Message* request,
   request->SerializeToArray(tag->req_body_buf_.data_,
                             tag->req_body_buf_.len_);
 
-  tag->req_header_buf_.len_ = HEADER_SIZE;
-  tag->req_header_buf_.data_ = new char[HEADER_SIZE];
+  tag->req_header_buf_.len_ = SeastarClientTag::HEADER_SIZE;
+  tag->req_header_buf_.data_ = new char[SeastarClientTag::HEADER_SIZE];
   
   memcpy(tag->req_header_buf_.data_, "DEADBEEF", 8);
   memcpy(tag->req_header_buf_.data_ + 8, &tag, 8);
@@ -200,7 +196,6 @@ SeastarClientTag::SeastarClientTag(tensorflow::SeastarWorkerServiceMethod method
   : method_(method),
     env_(env),
     resp_err_msg_len_(0),
-    fail_fast_(false),
     timeout_in_ms_(0) {
 
   resp_message_buf_.len_ = SeastarMessage::kMessageTotalBytes;
