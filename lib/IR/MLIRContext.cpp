@@ -703,11 +703,14 @@ void Dialect::registerDialect(MLIRContext *context) {
 
   // Lock access to the context registry.
   llvm::sys::SmartScopedWriter<true> registryLock(impl.contextMutex);
-  assert(llvm::none_of(impl.dialects,
-                       [this](std::unique_ptr<Dialect> &dialect) {
-                         return dialect->getNamespace() == getNamespace();
-                       }) &&
-         "a dialect with the given namespace has already been registered");
+  // Abort if dialect with namespace has already been registered.
+  if (llvm::any_of(impl.dialects, [this](std::unique_ptr<Dialect> &dialect) {
+        return dialect->getNamespace() == getNamespace();
+      })) {
+    llvm::report_fatal_error("a dialect with namespace '" +
+                             Twine(getNamespace()) +
+                             "' has already been registered");
+  }
   impl.dialects.push_back(std::unique_ptr<Dialect>(this));
 }
 
