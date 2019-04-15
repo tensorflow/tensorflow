@@ -43,9 +43,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Only keyword args are handled, so make sure to also put any function in
     # function_reorders to ensure that all args are made into keywords first.
     self.function_keyword_renames = {
-        "tf.string_split": {
-            "delimiter": "sep",
-        },
+        # TODO(b/129398290)
+        # "tf.string_split": {
+        #     "delimiter": "sep",
+        # },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
         },
@@ -667,8 +668,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.random.stateless_categorical",
         "tf.substr":
             "tf.strings.substr",
+        # TODO(b/129398290)
         "tf.string_split":
-            "tf.strings.split",
+            "tf.compat.v1.string_split",
         "tf.string_to_hash_bucket":
             "tf.strings.to_hash_bucket",
         "tf.string_to_number":
@@ -952,7 +954,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.feature_column.categorical_column_with_vocabulary_file",
         "tf.shape",
         "tf.size",
-        "tf.string_split",
+        # TODO(b/129398290)
+        # "tf.string_split",
         "tf.random.poisson",
         "tf.sparse.add",
         "tf.sparse_add",
@@ -1619,7 +1622,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
         "tf.name_scope": _name_scope_transformer,
-        "tf.string_split": _string_split_transformer,
+        # TODO(b/129398290)
+        # "tf.string_split": _string_split_transformer,
         "tf.strings.split": _string_split_rtype_transformer,
         "tf.estimator.DNNEstimator":
             functools.partial(

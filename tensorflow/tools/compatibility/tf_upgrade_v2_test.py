@@ -1727,7 +1727,8 @@ def _log_prob(self, x):
       ["tf.string_split(x, ' ', result_type=x)",
        "tf.compat.v1.string_split(source=x, sep=' ', result_type=x)"],
   )  # pyformat: disable
-  def test_string_split(self, text, expected_text):
+  # TODO(b/129398290)
+  def DISABLED_test_string_split(self, text, expected_text):
     """Tests for transforming from tf.string_split."""
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
