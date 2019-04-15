@@ -53,17 +53,20 @@ public:
   // Returns the operation name.
   StringRef getOperationName() const;
 
-  // Returns dialect name of the op.
+  // Returns this op's dialect name.
   StringRef getDialectName() const;
 
-  // Returns the C++ class name of the op.
+  // Returns this op's C++ class name.
   StringRef getCppClassName() const;
 
-  // Returns the C++ class name of the op with namespace added.
-  std::string getQualCppClassName() const;
+  // Returns the qualified C++ class name for the given TableGen def `name`.
+  // The first `_` in `name` is treated as separating the dialect namespace
+  // and the op class name if the dialect namespace is not empty. Otherwise,
+  // if `name` starts with a `_`, the `_` is considered as part the class name.
+  static std::string getQualCppClassName(StringRef name);
 
-  // Returns the TableGen definition name split around '_'.
-  ArrayRef<StringRef> getSplitDefName() const;
+  // Returns this op's C++ class name prefixed with dialect namespace.
+  std::string getQualCppClassName() const;
 
   // Returns the number of results this op produces.
   int getNumResults() const;
@@ -145,8 +148,11 @@ private:
   // Populates the vectors containing operands, attributes, results and traits.
   void populateOpStructure();
 
-  // The name of the op split around '_'.
-  SmallVector<StringRef, 2> splittedDefName;
+  // The dialect name of the op.
+  StringRef dialectName;
+
+  // The unqualified C++ class name of the op.
+  StringRef cppClassName;
 
   // The operands of the op.
   SmallVector<NamedTypeConstraint, 4> operands;

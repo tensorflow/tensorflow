@@ -47,3 +47,13 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context);
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);
 // CHECK: };
+
+def NS__BOp : Op<"_b_op", []>;
+
+// CHECK-LABEL: NS::_BOp declarations
+// CHECK: class _BOp : public Op<_BOp
+
+def _COp : Op<"_c_op", []>;
+
+// CHECK-LABEL: _COp declarations
+// CHECK: class _COp : public Op<_COp

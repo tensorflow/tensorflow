@@ -23,7 +23,6 @@
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Predicate.h"
 #include "mlir/TableGen/Type.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
@@ -35,27 +34,36 @@ using llvm::DefInit;
 using llvm::Record;
 
 tblgen::Operator::Operator(const llvm::Record &def) : def(def) {
-  SplitString(def.getName(), splittedDefName, "_");
-  populateOpStructure();
-}
+  std::tie(dialectName, cppClassName) = def.getName().split('_');
+  if (dialectName.empty()) {
+    // Class name with a leading underscore and without dialect name
+    cppClassName = def.getName();
+  } else if (cppClassName.empty()) {
+    // Class name without dialect name
+    std::swap(dialectName, cppClassName);
+  }
 
-ArrayRef<StringRef> tblgen::Operator::getSplitDefName() const {
-  return splittedDefName;
+  populateOpStructure();
 }
 
 StringRef tblgen::Operator::getOperationName() const {
   return def.getValueAsString("opName");
 }
 
-StringRef tblgen::Operator::getDialectName() const {
-  return getSplitDefName().front();
+StringRef tblgen::Operator::getDialectName() const { return dialectName; }
+
+StringRef tblgen::Operator::getCppClassName() const { return cppClassName; }
+
+std::string tblgen::Operator::getQualCppClassName(StringRef name) {
+  StringRef ns, cls;
+  std::tie(ns, cls) = name.split('_');
+  if (ns.empty() || cls.empty())
+    return name;
+  return (ns + "::" + cls).str();
 }
 
-StringRef tblgen::Operator::getCppClassName() const {
-  return getSplitDefName().back();
-}
 std::string tblgen::Operator::getQualCppClassName() const {
-  return llvm::join(getSplitDefName(), "::");
+  return getQualCppClassName(def.getName());
 }
 
 int tblgen::Operator::getNumResults() const {

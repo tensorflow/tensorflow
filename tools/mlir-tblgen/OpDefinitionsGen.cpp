@@ -58,13 +58,6 @@ static inline bool hasStringAttribute(const Record &record,
   return isa<CodeInit>(valueInit) || isa<StringInit>(valueInit);
 }
 
-// Returns the given `op`'s qualified C++ class name.
-static std::string getOpQualClassName(const Record &op) {
-  SmallVector<StringRef, 2> splittedName;
-  llvm::SplitString(op.getName(), splittedName, "_");
-  return llvm::join(splittedName, "::");
-}
-
 static std::string getArgumentName(const Operator &op, int index) {
   const auto &operand = op.getOperand(index);
   if (!operand.name.empty())
@@ -938,10 +931,14 @@ static void emitOpClasses(const std::vector<Record *> &defs, raw_ostream &os,
   IfDefScope scope("GET_OP_CLASSES", os);
   for (auto *def : defs) {
     if (emitDecl) {
-      os << formatv(opCommentHeader, getOpQualClassName(*def), "declarations");
+      os << formatv(opCommentHeader,
+                    Operator::getQualCppClassName(def->getName()),
+                    "declarations");
       OpEmitter::emitDecl(*def, os);
     } else {
-      os << formatv(opCommentHeader, getOpQualClassName(*def), "definitions");
+      os << formatv(opCommentHeader,
+                    Operator::getQualCppClassName(def->getName()),
+                    "definitions");
       OpEmitter::emitDef(*def, os);
     }
   }
@@ -952,7 +949,10 @@ static void emitOpList(const std::vector<Record *> &defs, raw_ostream &os) {
   IfDefScope scope("GET_OP_LIST", os);
 
   interleave(
-      defs, [&os](Record *def) { os << getOpQualClassName(*def); },
+      defs,
+      [&os](Record *def) {
+        os << Operator::getQualCppClassName(def->getName());
+      },
       [&os]() { os << ",\n"; });
 }
 
