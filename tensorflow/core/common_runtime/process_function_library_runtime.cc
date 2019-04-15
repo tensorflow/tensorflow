@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -1085,11 +1086,17 @@ Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
-    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const {
-  out_lib_def->reset(new FunctionLibraryDefinition(*lib_def_));
-  out_pflr->reset(new ProcessFunctionLibraryRuntime(
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+    bool skip_flib_def) const {
+  if (skip_flib_def) {
+    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(
+        lib_def_->default_registry(), FunctionDefLibrary{});
+  } else {
+    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(*lib_def_);
+  }
+  *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator));
+      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator);
   return Status::OK();
 }
 

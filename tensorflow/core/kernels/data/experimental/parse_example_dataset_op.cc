@@ -267,7 +267,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                    StatusCallback callback) override {
         (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
-              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
+              ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
           for (const Tensor& t : input) {
             auto serialized_t = t.flat<string>();

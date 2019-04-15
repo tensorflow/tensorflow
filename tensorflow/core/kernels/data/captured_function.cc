@@ -185,7 +185,7 @@ Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {
   // The context's runtime will be used for all subsequent calls.
-  FunctionLibraryRuntime* lib = ctx->lib();
+  FunctionLibraryRuntime* lib = ctx->flr();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = lib_def_.get();
   inst_opts.create_kernels_eagerly = true;
