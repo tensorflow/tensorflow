@@ -104,7 +104,6 @@ fi
 run_configure_for_gpu_build
 
 bazel build --verbose_explanations --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
-cat mm.txt
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
