@@ -178,6 +178,7 @@ cc_library(
         "optimized/im2col_utils.h",
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
+        "optimized/integer_ops/depthwise_conv.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
