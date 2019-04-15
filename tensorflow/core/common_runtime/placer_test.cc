@@ -244,8 +244,8 @@ class PlacerTest : public ::testing::Test {
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
                bool log_device_placement) {
-    Placer placer(graph, devices, nullptr, allow_soft_placement,
-                  log_device_placement);
+    Placer placer(graph, &graph->flib_def(), devices, nullptr,
+                  allow_soft_placement, log_device_placement);
     return placer.Run();
   }
 
