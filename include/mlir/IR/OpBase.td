@@ -352,6 +352,24 @@ def F64Tensor  : TypedTensor<F64>;
 // there is not only a single elemental type.
 def Tuple : Type<IsTupleTypePred, "tuple">;
 
+
+// A Tuple that only holds elements of a certain type. This cannot inherit from
+// ContainerType because tuples do not always have a single element type that
+// could be retrieved with elementTypeCall.
+class TypedTuple<Type t> :
+    Type<AllOf<[
+        Tuple.predicate,
+        Concat<
+            [{
+              llvm::all_of(
+                $_self.cast<TupleType>().getTypes(),
+                [](Type t) {
+                  return
+            }],
+            SubstLeaves<"$_self", "t", t.predicate>,
+            "; })">
+    ]>, "tuple">;
+
 // Memref type.
 
 // Memrefs are blocks of data with fixed type and rank.
