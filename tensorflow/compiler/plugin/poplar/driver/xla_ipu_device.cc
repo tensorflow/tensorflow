@@ -48,6 +48,10 @@ class XlaIpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
+
+  virtual Status ListPhysicalDevices(std::vector<string>* devices) override {
+    devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_IPU, ":0"));
+  }
 };
 
 Status XlaIpuDeviceFactory::CreateDevices(
