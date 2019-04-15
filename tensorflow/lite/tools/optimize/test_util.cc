@@ -43,6 +43,8 @@ const char* kModelWithCustomOp = "custom_op.bin";
 
 const char* kModelWithArgMaxOp = "argmax.bin";
 
+const char* kModelWithFCOp = "fc.bin";
+
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];
   vsnprintf(buf, sizeof(buf), format, args);

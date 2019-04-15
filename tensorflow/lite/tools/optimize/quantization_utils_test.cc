@@ -291,6 +291,43 @@ TEST(QuantizationUtilsTest, AddQuantizationParams) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT8);
 }
 
+TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<tflite::SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto buffer = absl::make_unique<tflite::BufferT>();
+  const float weight_scale = 0.5;
+  const float input_scale = 0.5;
+  std::vector<float> bias_data = {4.0, 1.0};
+  auto bias_reinterpreted_data =
+      reinterpret_cast<const unsigned char*>(bias_data.data());
+  buffer->data.assign(bias_reinterpreted_data,
+                      bias_reinterpreted_data + bias_data.size() * 4);
+  tensor->buffer = 0;
+  tensor->shape = {2, 1, 1, 1};
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+
+  // Wire the model.
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+  model->buffers.push_back(std::move(buffer));
+
+  // Call and verify.
+  EXPECT_EQ(SymmetricPerLayerBiasQuantize(model.get(),
+                                          model->subgraphs[0]->tensors[0].get(),
+                                          input_scale, weight_scale),
+            kTfLiteOk);
+
+  EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->scale[0],
+              weight_scale * input_scale);
+  EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->zero_point[0], 0);
+
+  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
+              ElementsAreArray({16, 0, 0, 0, 4, 0, 0, 0}));
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
+}
+
 TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
