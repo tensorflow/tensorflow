@@ -133,6 +133,9 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
+           FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 

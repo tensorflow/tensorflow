@@ -1082,6 +1082,48 @@ void ProcessFunctionLibraryRuntime::Run(
   done(errors::Internal("Could not find device"));
 }
 
+void ProcessFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  std::vector<Tensor> args;
+  args.reserve(frame->num_args());
+  for (size_t i = 0; i < frame->num_args(); ++i) {
+    Tensor arg;
+    Status s = frame->GetArg(i, &arg);
+    args.push_back(std::move(arg));
+    if (!s.ok()) {
+      done(s);
+    }
+  }
+  std::vector<Tensor>* rets = new std::vector<Tensor>;
+  rets->reserve(frame->num_retvals());
+
+  Run(opts, handle, args, rets,
+      std::bind(
+          [frame, rets](FunctionLibraryRuntime::DoneCallback& done,
+                        // Begin unbound arguments.
+                        const Status& status) {
+            std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
+            if (rets->size() != frame->num_retvals()) {
+              done(errors::Internal(
+                  "Number of return values from function (", rets->size(),
+                  ") did not match expected number of return values (",
+                  frame->num_retvals(), ")."));
+              return;
+            }
+
+            for (size_t i = 0; i < frame->num_retvals(); ++i) {
+              Status s = frame->SetRetval(i, (*rets)[i]);
+              if (!s.ok()) {
+                done(s);
+              }
+            }
+            done(Status::OK());
+          },
+          std::move(done), std::placeholders::_1));
+}
+
 Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,

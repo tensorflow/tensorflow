@@ -343,10 +343,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
-  // NOTE(mrry): This overload is currently only implemented for local function
-  // execution.
-  // TODO(b/70346412): Implement support for remote function execution when
-  // passing a call frame.
   void Run(const Options& opts, Handle handle, CallFrameInterface* frame,
            DoneCallback done) override;
 
@@ -1087,10 +1083,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = [done, rendezvous](const Status& status) {
-      rendezvous->Unref();
-      done(status);
-    };
+    done = std::bind(
+        [rendezvous](DoneCallback done,
+                     // Begin unbound arguments.
+                     const Status& status) {
+          rendezvous->Unref();
+          done(status);
+        },
+        std::move(done), std::placeholders::_1);
   }
 
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
@@ -1113,7 +1113,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
   if (run_opts.remote_execution) {
     // NOTE(mrry): `RunRemote()` will set `exec_args->call_frame` for us.
-    RunRemote(run_opts, handle, args, rets, item, done);
+    RunRemote(run_opts, handle, args, rets, item, std::move(done));
     return;
   }
 
@@ -1152,11 +1152,6 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     done(errors::Cancelled(""));
     return;
   }
-  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
-  if (local_handle == kInvalidLocalHandle || opts.remote_execution) {
-    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
-    return;
-  }
 
   Options run_opts = opts;
   if (opts.create_rendezvous) {
@@ -1171,6 +1166,21 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
           done(status);
         },
         std::move(done), std::placeholders::_1);
+  }
+
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  if (local_handle == kInvalidLocalHandle) {
+    parent_->Run(run_opts, handle, frame, done);
+    return;
+  }
+
+  if (opts.remote_execution) {
+    // NOTE(mrry): This bit is only set for a local function when `parent_`
+    // calls back into this class, and the current implementation of
+    // `ProcessFunctionLibraryRuntime` currently always uses the vector-based
+    // `args`/`rets` interface.
+    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
+    return;
   }
 
   Item* item = nullptr;
