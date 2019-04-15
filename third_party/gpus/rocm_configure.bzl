@@ -173,6 +173,10 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append("/opt/rocm/include/hip/hcc_detail")
     inc_dirs.append("/opt/rocm/hip/include")
 
+    # Add HIP-Clang headers
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/8.0/include")
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/9.0.0/include")
+
     # Add rocrand and hiprand headers
     inc_dirs.append("/opt/rocm/rocrand/include")
     inc_dirs.append("/opt/rocm/hiprand/include")
