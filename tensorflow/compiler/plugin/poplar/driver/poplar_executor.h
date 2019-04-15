@@ -109,7 +109,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   void* Allocate(uint64 size) override;
-  void* AllocateSubBuffer(se::DeviceMemoryBase* mem, uint64 offset_bytes,
+  void* GetSubBuffer(se::DeviceMemoryBase* mem, uint64 offset_bytes,
                           uint64 size_bytes) override;
   void Deallocate(se::DeviceMemoryBase* mem) override;
 

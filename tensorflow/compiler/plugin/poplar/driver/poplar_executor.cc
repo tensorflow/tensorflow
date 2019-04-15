@@ -216,9 +216,9 @@ void* PoplarExecutor::Allocate(uint64 size) {
   return allocated;
 }
 
-void* PoplarExecutor::AllocateSubBuffer(se::DeviceMemoryBase* parent,
-                                        uint64 offset_bytes,
-                                        uint64 size_bytes) {
+void* PoplarExecutor::GetSubBuffer(se::DeviceMemoryBase* parent,
+                                   uint64 offset_bytes,
+                                   uint64 size_bytes) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(parent->opaque());
   return tc->data + offset_bytes;
 }
