@@ -115,7 +115,8 @@ def selu(x):
   ```python3
   n_classes = 10 #10-class problem
   model = models.Sequential()
-  model.add(Dense(64, activation='selu', input_shape=(28, 28, 1)))
+  model.add(Dense(64, kernel_initializer='lecun_normal', activation='selu',
+  input_shape=(28, 28, 1))))
   model.add(Dense(32, activation='selu'))
   model.add(Dense(16, activation='selu'))
   model.add(Dense(n_classes, activation='softmax'))
