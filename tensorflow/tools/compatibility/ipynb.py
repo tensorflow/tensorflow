@@ -63,32 +63,32 @@ def process_file(in_filename, out_filename, upgrader):
 
 
 def skip_magic(code_line, magic_list):
-    """
-    Checks if the cell has magic, that is not python-based.
+  """
+  Checks if the cell has magic, that is not python-based.
 
-    >>> skip_magic('!ls -laF', ['%', '!', '?'])
-    True
-    """
+   >>> skip_magic('!ls -laF', ['%', '!', '?'])
+  True
+  """
 
-    for magic in magic_list:
-        if code_line.startswith(magic):
-            return True
+  for magic in magic_list:
+    if code_line.startswith(magic):
+      return True
 
-    return False
+  return False
 
 
 def check_line_split(code_line):
-    r"""
-    Checks if a line was splitted with `\`.
+  r"""
+  Checks if a line was splitted with `\`.
 
-    >>> skip_magic("!gcloud ml-engine models create ${MODEL} \\\n")
-    True
-    """
+  >>> skip_magic("!gcloud ml-engine models create ${MODEL} \\\n")
+  True
+  """
 
-    if code_line.endswith('\\\n'):
-        return True
+  if code_line.endswith('\\\n'):
+    return True
 
-    return False
+  return False
 
 
 def _get_code(input_file):
@@ -114,6 +114,9 @@ def _get_code(input_file):
           code_line = "###!!!" + code_line
 
           # if this cell ends with `\` -> skip the next line
+          is_line_split = check_line_split(code_line)
+
+        if is_line_split:
           is_line_split = check_line_split(code_line)
 
         # Sometimes, people leave \n at the end of cell
