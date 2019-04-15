@@ -12,4 +12,5 @@ inline void sleep(unsigned int seconds) { Sleep(1000*seconds); }
 #undef DeleteFile
 #undef ERROR
 #undef LoadLibrary
+#undef OPAQUE
 #endif  // _WIN32
