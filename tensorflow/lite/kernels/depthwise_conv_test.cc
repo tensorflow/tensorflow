@@ -692,7 +692,14 @@ class PerChannelQuantizedDepthwiseConvolutionOpModel
   }
 };
 
-TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTest) {
+class PerChannelQuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kKernelMap;
+  }
+};
+
+TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimpleTest) {
   PerChannelQuantizedDepthwiseConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,
@@ -702,9 +709,9 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTest) {
        0,
        0,
        0,
-       /*per_channel=*/true,
-       /*per_channel_scales=*/{1, 2, 3, 4},
-       /*per_channel_zeros=*/{0, 0, 0, 0},
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2, 3, 4},
+       /*per_channel_quantization_offsets=*/{0, 0, 0, 0},
        /*channel_index=*/3},
       {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
   m.SetInput({
@@ -738,12 +745,113 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTest) {
               ElementsAreArray({80, 95, 53, 79, 0, -9, -49, -73}));
 }
 
+// Same as previous test, except the shift will be negative for the outputs.
+TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
+       SimpleTestNegativeOutputShift) {
+  PerChannelQuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+       {1, 2, 2, 4},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.1, 0.2, 0.3, 0.4},
+       /*per_channel_quantization_offsets=*/{0, 0, 0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      /*filter data*/
+      {
+          // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+          // depth multiplier = 2
+          1, 2, 3, 4,  // y = 0, x = 0
+          3, 4, 5, 6,  // y = 0, x = 1
+          7, 8, 5, 6,  // y = 1, x = 0
+          3, 4, 1, 2,  // y = 1, x = 1
+      });
+  m.SetBias({3, -2, 4, 6});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({40, 50, 14.5, 16.5, 0, -2, -32, -42})));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({79, 99, 28, 32, -1, -5, -65, -85}));
+}
+
+// Same as previous test, except the shift will be mixed for the outputs.
+TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
+       SimpleTestMixedOutputShift) {
+  PerChannelQuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+       {1, 2, 2, 4},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.1, 2, 3, 0.4},
+       /*per_channel_quantization_offsets=*/{0, 0, 0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      /*filter data*/
+      {
+          // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+          // depth multiplier = 2
+          1, 2, 3, 4,  // y = 0, x = 0
+          3, 4, 5, 6,  // y = 0, x = 1
+          7, 8, 5, 6,  // y = 1, x = 0
+          3, 4, 1, 2,  // y = 1, x = 1
+      });
+  m.SetBias({3, -2, 4, 6});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({40, 48, 27, 16.5, 0, -4, -24, -42})));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({79, 95, 53, 32, -1, -9, -49, -85}));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     DepthwiseConvolutionOpTest, DepthwiseConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizedDepthwiseConvolutionOpTest, QuantizedDepthwiseConvolutionOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    PerChannelQuantizedDepthwiseConvolutionOpTest,
+    PerChannelQuantizedDepthwiseConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 }  // namespace

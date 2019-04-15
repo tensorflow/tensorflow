@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/gemm_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -265,6 +267,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   }
 }
 
+template <KernelType kernel_type>
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteDepthwiseConvParams* params, OpData* data,
                              const TfLiteTensor* input,
@@ -282,14 +285,28 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = 0;
   op_params.output_offset = output->params.zero_point;
+  // TODO(b/130439627): Use calculated value for clamping.
+  op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
+  op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
-  reference_integer_ops::DepthwiseConvPerChannel(
-      op_params, data->per_channel_output_multiplier.data(),
-      data->per_channel_output_shift.data(), GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+  if (kernel_type == kReference) {
+    reference_integer_ops::DepthwiseConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int8>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<int32>(bias), GetTensorShape(output),
+        GetTensorData<int8>(output));
+  } else {
+    gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+    optimized_integer_ops::DepthwiseConvPerChannel(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int8>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<int32>(bias), GetTensorShape(output),
+        GetTensorData<int8>(output), gemm_context);
+  }
 }
 
 template <KernelType kernel_type>
@@ -316,8 +333,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  bias, output);
       break;
     case kTfLiteInt8: {
-      EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
-                              output);
+      EvalQuantizedPerChannel<kernel_type>(context, node, params, data, input,
+                                           filter, bias, output);
       break;
     }
     default:

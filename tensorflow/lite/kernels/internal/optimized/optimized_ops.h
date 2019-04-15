@@ -6130,33 +6130,112 @@ void TransposeIm2col(const ConvParams& params, uint8 zero_byte,
   }
 }
 
+// Returns in 'im_data' (assumes to be zero-initialized) image patch in storage
+// order (height, width, depth), constructed from patches in 'col_data', which
+// is required to be in storage order (out_height * out_width, filter_height,
+// filter_width, in_depth).  Implementation by Yangqing Jia (jiayq).
+// Copied from //tensorflow/core/kernels/conv_grad_input_ops.cc
+template <typename T>
+void Col2im(const T* col_data, const int depth, const int height,
+            const int width, const int filter_h, const int filter_w,
+            const int pad_t, const int pad_l, const int pad_b, const int pad_r,
+            const int stride_h, const int stride_w, T* im_data) {
+  int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
+  int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
+  int h_pad = -pad_t;
+  for (int h = 0; h < height_col; ++h) {
+    int w_pad = -pad_l;
+    for (int w = 0; w < width_col; ++w) {
+      T* im_patch_data = im_data + (h_pad * width + w_pad) * depth;
+      for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
+        for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
+          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
+            // TODO(andydavis) Vectorize this loop (if compiler does not).
+            for (int i = 0; i < depth; ++i) {
+              im_patch_data[i] += col_data[i];
+            }
+          }
+          im_patch_data += depth;
+          col_data += depth;
+        }
+        // Jump over remaining number of depth.
+        im_patch_data += depth * (width - filter_w);
+      }
+      w_pad += stride_w;
+    }
+    h_pad += stride_h;
+  }
+}
+
+// TransposeConvV2 expect the weights in HWOI order.
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data) {
+  gemmlowp::ScopedProfilingLabel label("TransposeConvV2");
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
+  const int batch_size = input_shape.Dims(0);
+  TFLITE_DCHECK(col2im_data);
+  TFLITE_DCHECK(hwoi_ordered_filter_data);
+
+  const int input_image_size = input_shape.Dims(1) * input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_image_size = output_height * output_width;
+  const int input_depth =
+      MatchingDim(input_shape, 3, hwoi_ordered_filter_shape, 3);
+  const int output_depth =
+      MatchingDim(output_shape, 3, hwoi_ordered_filter_shape, 2);
+  const int input_offset = input_image_size * input_depth;
+  const int output_offset = output_image_size * output_depth;
+
+  const int filter_height = hwoi_ordered_filter_shape.Dims(0);
+  const int filter_width = hwoi_ordered_filter_shape.Dims(1);
+  const int padding_top = params.padding_values.height;
+  const int padding_bottom =
+      params.padding_values.height + params.padding_values.height_offset;
+  const int padding_left = params.padding_values.width;
+  const int padding_right =
+      params.padding_values.width + params.padding_values.width_offset;
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
+
+  const int hwoi_ordered_filter_total_size =
+      filter_height * filter_width * output_depth;
+
+  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
+      Matrix;
+  typedef Eigen::Map<Matrix> MatrixRef;
+  typedef Eigen::Map<const Matrix> ConstMatrixRef;
+  ConstMatrixRef hwoi_ordered_filter_matrix_map(
+      hwoi_ordered_filter_data, hwoi_ordered_filter_total_size, input_depth);
+  float* output_data_p = output_data;
+  tensor_utils::ZeroVector(output_data, output_offset * batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    ConstMatrixRef input_matrix_map(input_data + input_offset * i,
+                                    input_image_size, input_depth);
+    MatrixRef output_matrix_map(col2im_data, input_image_size,
+                                hwoi_ordered_filter_total_size);
+    Gemm(input_matrix_map, hwoi_ordered_filter_matrix_map.transpose(),
+         &output_matrix_map);
+
+    Col2im(col2im_data, output_depth, output_height, output_width,
+           filter_height, filter_width, padding_top, padding_left,
+           padding_bottom, padding_right, stride_height, stride_width,
+           output_data_p);
+    output_data_p += output_offset;
+  }
+}
+
+// TODO(renjieliu): Investigate whether we need to keep this.
 inline void TransposeConv(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& filter_shape,
     const float* filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   gemmlowp::ScopedProfilingLabel label("TransposeConv");
-  // The complexity of the reference implementation is input.flat_size() *
-  // filter.flat_size() / in_channel.
-  //
-  // While the complexity of im2col->gemm
-  // implmentation is batch * output_height * output_width *
-  // (filter.flat_size() / out_channel)^2 * out_channel.
-  //
-  // so if input.flat_size() * out_channel^2 is much smaller than
-  // output.flat_size() * filter.size() * in_channel we should fall back to the
-  // reference implementation.
-  //
-  // TODO(b/122331966): optimize the intuitive implementation.
-  const int out_channel = output_shape.Dims(3);
-  const int in_channel = input_shape.Dims(3);
-  if ((input_shape.FlatSize() * out_channel * out_channel * 4) <
-      (filter_shape.FlatSize() * output_shape.FlatSize() * in_channel)) {
-    reference_ops::TransposeConv(params, input_shape, input_data, filter_shape,
-                                 filter_data, output_shape, output_data,
-                                 im2col_shape, im2col_data);
-    return;
-  }
   // Note we could use transposed weights with forward conv for unstrided
   // cases. But we are already getting good performance with this code as-is.
   TFLITE_DCHECK(im2col_data);
