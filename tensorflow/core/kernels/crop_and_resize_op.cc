@@ -241,7 +241,7 @@ struct CropAndResize<CPUDevice, T> {
                                         image_height, y1, y2, &min_iy, &max_iy,
                                         &ys);
 
-          // multiply by depth to avoid multiplication in resize_single_image.
+          // Multiply by depth to avoid multiplication in resize_single_image.
           for (int i = min_ix; i <= max_ix; ++i) {
             xs[i - min_ix].lower *= depth;
             xs[i - min_ix].upper *= depth;

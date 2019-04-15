@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CROP_RESIZE_BILINEAR_CORE_H_
 #define TENSORFLOW_CORE_KERNELS_CROP_RESIZE_BILINEAR_CORE_H_
 
-// only include intrinsics when the appropriate flags call for it,
+// Only include intrinsics when the appropriate flags call for it,
 // since these headers only exists on x86 platforms.
 #ifdef __SSE4_1__
 #include <smmintrin.h>
 #include <tmmintrin.h>
 #include <xmmintrin.h>
-#endif
+#endif  // __SSE4_1__
 #ifdef __AVX2__
 #include <immintrin.h>
-#endif
+#endif  // __AVX2__
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -39,22 +39,20 @@ namespace {
 struct CachedInterpolation {
   int lower;  // Lower source index used in the interpolation
   int upper;  // Upper source index used in the interpolation
-  // 1-D linear iterpolation scale (see:
+  // 1-D linear interpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   float lerp;
 };
 
 template <typename Scaler>
-bool compute_single_interpolation_weight(const Scaler scaler, const int in_size,
-                                         const float out2in_scale,
-                                         const float out2in_start,
-                                         const bool clip, const int i,
-                                         int* lower, int* upper, float* lerp) {
-  // const float in = i * out2in_scale + out2in_start;
+inline bool compute_single_interpolation_weight(
+    const Scaler scaler, const int in_size, const float out2in_scale,
+    const float out2in_start, const bool clip, const int i, int* lower,
+    int* upper, float* lerp) {
   const float in = scaler(i, out2in_scale) + out2in_start;
-  *lower = (int)floor(in);
-  *upper = (int)ceil(in);
-  *lerp = (float)(in - (float)*lower);
+  *lower = static_cast<int>(floor(in));
+  *upper = static_cast<int>(ceil(in));
+  *lerp = static_cast<float>(in - static_cast<float>(*lower));
   if (clip) {
     if (*lower < 0)
       *lower = 0;
@@ -65,15 +63,14 @@ bool compute_single_interpolation_weight(const Scaler scaler, const int in_size,
     else if (*upper >= in_size)
       *upper = in_size - 1;
     return true;
-  } else {
-    return (*lower >= 0 && *upper < in_size) ? true : false;
   }
+  return (*lower >= 0 && *upper < in_size);
 }
 /**
- * Compute interpolation values for output indexes in range
- * [out_start,out_start+out_size-1].
- * Returns true if all output indexes have lower and upper (input) indexes
- * within range [0,in_size-1].
+ * Computes interpolation values for output indices in range
+ * [out_start, out_start+out_size-1].
+ * Returns true if all output indices have lower and upper (input) indices
+ * within range [0, in_size-1].
  */
 template <typename Scaler>
 bool compute_interpolation_weights(const Scaler scaler, const int min_i,
@@ -93,6 +90,7 @@ bool compute_interpolation_weights(const Scaler scaler, const int min_i,
   }
   return rval;
 }
+
 /**
  * Compatibility method for resize_bilinear_op.cc
  */
@@ -103,23 +101,21 @@ void compute_interpolation_weights(const Scaler scaler, const int out_size,
   interpolation[out_size].lower = 0;
   interpolation[out_size].upper = 0;
   const bool clip = true;
-  if (!compute_interpolation_weights(scaler, 0, out_size - 1, in_size,
-                                     out2in_scale, 0.0f, clip, interpolation)) {
-    // Should never happen, check for it anyway
-    printf(
-        "Warning! Interpolation values have lower,upper indexes outside of "
-        "range [0,in_size-1]\n");
-  }
+  // Should never happen, check for it anyway
+  DCHECK(compute_interpolation_weights(scaler, 0, out_size - 1, in_size,
+                                       out2in_scale, 0.0f, clip, interpolation))
+      << "Warning! Interpolation values have lower,upper indices outside of "
+         "range [0,in_size-1]\n";
 }
 /**
  * Compute minimum and maximum (output) i where both lower and upper (input) is
  * in range [0,in_size-1]
  * If no values of i satisfy condition, min_i = in_size, max_i = -1 and method
  * returns false.
- * Returns true if min_i >= max_i.
+ * Returns true if min_i <= max_i.
  */
 template <typename Scaler>
-bool compute_minmax_indexes(const Scaler scaler, const int out_size,
+bool compute_minmax_indices(const Scaler scaler, const int out_size,
                             const int in_size, const float out2in_scale,
                             const float out2in_start, int* min_i, int* max_i) {
   *min_i = out_size;
@@ -134,7 +130,7 @@ bool compute_minmax_indexes(const Scaler scaler, const int out_size,
       if (i > *max_i) *max_i = i;
     }
   }
-  return (*min_i <= *max_i) ? true : false;
+  return (*min_i <= *max_i);
 }
 /**
  * Compute interpolation weights for crop_and_resize_op.cc
@@ -147,30 +143,28 @@ bool compute_interpolation_weights(
     const float x1,  // lower bounding box, crop region starts at in_size*x1
     const float x2,  // upper bounding box, crop region ends at in_size*x2
     int* min_i, int* max_i, std::vector<CachedInterpolation>* interpolation) {
-  float out2in_start = out_size > 1
-                           ? (float)(in_size - 1) * (float)x1
-                           : (float)(in_size - 1) * (float)(x1 + x2) / 2.0f;
-  float out2in_scale =
-      out_size > 1
-          ? (float)(x2 - x1) * (float)(in_size - 1) / (float)(out_size - 1)
-          : 0.0f;
-  if (compute_minmax_indexes(scaler, out_size, in_size, out2in_scale,
+  float out2in_start =
+      out_size > 1 ? static_cast<float>(in_size - 1) * static_cast<float>(x1)
+                   : static_cast<float>(in_size - 1) *
+                         static_cast<float>(x1 + x2) / 2.0f;
+  float out2in_scale = out_size > 1 ? static_cast<float>(x2 - x1) *
+                                          static_cast<float>(in_size - 1) /
+                                          static_cast<float>(out_size - 1)
+                                    : 0.0f;
+  if (compute_minmax_indices(scaler, out_size, in_size, out2in_scale,
                              out2in_start, min_i, max_i)) {
     interpolation->resize(*max_i - *min_i + 1);
     bool all_inputs_ok = compute_interpolation_weights(
         scaler, *min_i, *max_i, in_size, out2in_scale, out2in_start, false,
         interpolation->data());
-    if (!all_inputs_ok) {
-      // should never happen, purpose of compute_minmax_indexes is to ensure
-      // that all inputs are ok.
-      printf(
-          "Error! compute_interpolation_weights returned input indexes outside "
-          "valid range - SEGV will likely ensue.\n");
-    }
+    // Should never happen, purpose of compute_minmax_indices is to ensure
+    // that all inputs are ok.
+    DCHECK(all_inputs_ok) << "Error! compute_interpolation_weights returned "
+                             "input indices outside "
+                             "valid range - SEGV will likely ensue.\n";
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 /**
@@ -180,9 +174,9 @@ bool compute_interpolation_weights(
  * return value is clamped to u_max_val.
  */
 template <typename U>
-U cast_to(float v, float min_val, float max_val, U u_min_val, U u_max_val);
+U clamp_cast(float v, float min_val, float max_val, U u_min_val, U u_max_val);
 template <typename U>
-U cast_to(float v, float min_val, float max_val, U u_min_val, U u_max_val) {
+U clamp_cast(float v, float min_val, float max_val, U u_min_val, U u_max_val) {
   if (v < min_val)
     return u_min_val;
   else if (v > max_val)
@@ -194,14 +188,14 @@ U cast_to(float v, float min_val, float max_val, U u_min_val, U u_max_val) {
  * no-op cast from float to float.
  */
 template <>
-float cast_to<float>(float v, float min_val, float max_val, float u_min_val,
-                     float u_max_val) {
+float clamp_cast<float>(float v, float min_val, float max_val, float u_min_val,
+                        float u_max_val) {
   return v;
 }
 
-float compute_lerp(const float top_left, const float top_right,
-                   const float bottom_left, const float bottom_right,
-                   const float x_lerp, const float y_lerp) {
+inline float compute_lerp(const float top_left, const float top_right,
+                          const float bottom_left, const float bottom_right,
+                          const float x_lerp, const float y_lerp) {
   const float top = top_left + (top_right - top_left) * x_lerp;
   const float bottom = bottom_left + (bottom_right - bottom_left) * x_lerp;
   return top + (bottom - top) * y_lerp;
@@ -234,22 +228,22 @@ void crop_resize_single_image(const T* image, const int64 in_height,
                               const bool flip_y, U* output) {
   const int64 in_row_size = in_width * channels;
   const int64 out_row_size = out_width * channels;
-  U u_min_val = std::numeric_limits<U>::min();
+  U u_min_val = std::numeric_limits<U>::lowest();
   U u_max_val = std::numeric_limits<U>::max();
   float min_val = static_cast<float>(u_min_val);
   float max_val = static_cast<float>(u_max_val);
   U uEx =
-      cast_to<U>(extrapolated_value, min_val, max_val, u_min_val, u_max_val);
+      clamp_cast<U>(extrapolated_value, min_val, max_val, u_min_val, u_max_val);
   // low y extrapolation zone
   if (min_iy > 0) {
     U* p = flip_y ? output + out_row_size * (out_height - min_iy) : output;
-    int64 nn = out_row_size * (int64)min_iy;
+    int64 nn = out_row_size * static_cast<int64>(min_iy);
     for (int64 i = 0; i < nn; ++i) p[i] = uEx;
   }
   // high y extrapolation zone
   if (max_iy < out_height - 1) {
     U* p = flip_y ? output : output + out_row_size * (max_iy + 1);
-    int64 nn = out_row_size * (int64)(out_height - 1 - max_iy);
+    int64 nn = out_row_size * static_cast<int64>(out_height - 1 - max_iy);
     for (int64 i = 0; i < nn; ++i) p[i] = uEx;
   }
   // low x extrapolation zone
@@ -257,8 +251,9 @@ void crop_resize_single_image(const T* image, const int64 in_height,
     for (int iy = min_iy; iy <= max_iy; ++iy) {
       int xx0 = flip_x ? (out_width - min_ix) * channels : 0;
       int nxx = min_ix * channels;
-      U* p = output + xx0 +
-             out_row_size * (int64)(flip_y ? out_height - 1 - iy : iy);
+      U* p =
+          output + xx0 +
+          out_row_size * static_cast<int64>(flip_y ? out_height - 1 - iy : iy);
       for (int ix = 0; ix < nxx; ++ix) {
         p[ix] = uEx;
       }
@@ -269,16 +264,17 @@ void crop_resize_single_image(const T* image, const int64 in_height,
     for (int iy = min_iy; iy <= max_iy; ++iy) {
       int xx0 = flip_x ? 0 : (max_ix + 1) * channels;
       int nxx = (out_width - 1 - max_ix) * channels;
-      U* p = output + xx0 +
-             out_row_size * (int64)(flip_y ? out_height - 1 - iy : iy);
+      U* p =
+          output + xx0 +
+          out_row_size * static_cast<int64>(flip_y ? out_height - 1 - iy : iy);
       for (int ix = 0; ix < nxx; ++ix) {
         p[ix] = uEx;
       }
     }
   }
   U* output_y_ptr =
-      output +
-      out_row_size * (int64)(flip_y ? out_height - 1 - min_iy : min_iy);
+      output + out_row_size * static_cast<int64>(
+                                  flip_y ? out_height - 1 - min_iy : min_iy);
   // interpolation zone
   if (channels == 1) {
     for (int y = min_iy; y <= max_iy; ++y) {
@@ -304,7 +300,7 @@ void crop_resize_single_image(const T* image, const int64 in_height,
         float result0 = compute_lerp(top_left0, top_right0, bottom_left0,
                                      bottom_right0, xs_lerp, ys_lerp);
         output_y_ptr[x] =
-            cast_to<U>(result0, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result0, min_val, max_val, u_min_val, u_max_val);
       }
       output_y_ptr =
           flip_y ? output_y_ptr - out_row_size : output_y_ptr + out_row_size;
@@ -341,9 +337,9 @@ void crop_resize_single_image(const T* image, const int64 in_height,
         float result1 = compute_lerp(top_left1, top_right1, bottom_left1,
                                      bottom_right1, xs_lerp, ys_lerp);
         output_y_ptr[x * 2 + 0] =
-            cast_to<U>(result0, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result0, min_val, max_val, u_min_val, u_max_val);
         output_y_ptr[x * 2 + 1] =
-            cast_to<U>(result1, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result1, min_val, max_val, u_min_val, u_max_val);
       }
       output_y_ptr =
           flip_y ? output_y_ptr - out_row_size : output_y_ptr + out_row_size;
@@ -388,11 +384,11 @@ void crop_resize_single_image(const T* image, const int64 in_height,
         float result2 = compute_lerp(top_left2, top_right2, bottom_left2,
                                      bottom_right2, xs_lerp, ys_lerp);
         output_y_ptr[x * 3 + 0] =
-            cast_to<U>(result0, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result0, min_val, max_val, u_min_val, u_max_val);
         output_y_ptr[x * 3 + 1] =
-            cast_to<U>(result1, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result1, min_val, max_val, u_min_val, u_max_val);
         output_y_ptr[x * 3 + 2] =
-            cast_to<U>(result2, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result2, min_val, max_val, u_min_val, u_max_val);
       }
       output_y_ptr =
           flip_y ? output_y_ptr - out_row_size : output_y_ptr + out_row_size;
@@ -445,13 +441,13 @@ void crop_resize_single_image(const T* image, const int64 in_height,
         float result3 = compute_lerp(top_left3, top_right3, bottom_left3,
                                      bottom_right3, xs_lerp, ys_lerp);
         output_y_ptr[x * 4 + 0] =
-            cast_to<U>(result0, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result0, min_val, max_val, u_min_val, u_max_val);
         output_y_ptr[x * 4 + 1] =
-            cast_to<U>(result1, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result1, min_val, max_val, u_min_val, u_max_val);
         output_y_ptr[x * 4 + 2] =
-            cast_to<U>(result2, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result2, min_val, max_val, u_min_val, u_max_val);
         output_y_ptr[x * 4 + 3] =
-            cast_to<U>(result3, min_val, max_val, u_min_val, u_max_val);
+            clamp_cast<U>(result3, min_val, max_val, u_min_val, u_max_val);
       }
       output_y_ptr =
           flip_y ? output_y_ptr - out_row_size : output_y_ptr + out_row_size;
@@ -477,7 +473,7 @@ void crop_resize_single_image(const T* image, const int64 in_height,
           float result0 = compute_lerp(top_left0, top_right0, bottom_left0,
                                        bottom_right0, xs_lerp, ys_lerp);
           output_y_ptr[x * channels + ichan] =
-              cast_to<U>(result0, min_val, max_val, u_min_val, u_max_val);
+              clamp_cast<U>(result0, min_val, max_val, u_min_val, u_max_val);
         }
       }
       output_y_ptr =
@@ -499,7 +495,7 @@ void crop_resize_single_image_common(
     U* output) TF_ATTRIBUTE_NOINLINE;
 
 // For now, only compile vectorized code on LINUX systems.
-// to-do: Test vectorized code on other platforms (MacOS and Windows).
+// TODO: Test vectorized code on other platforms (MacOS and Windows).
 #if defined(__linux__) && defined(__SSE4_1__)
 
 //
@@ -536,7 +532,7 @@ class VectorLoader {
   // T must be one of uint8, int8, uint16, int16, int32, Eigen::half, bfloat16
   // or float.
   __m128 to_fp32(__m128i raw);
-#endif
+#endif  // __AVX2__
 
 #ifdef __AVX2__
   // pack 4 pixels with 1 channel, 2 channels and 3channels respectively in
@@ -557,7 +553,7 @@ class VectorLoader {
   void pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
   // output is stored in lower portion of v0, v1 and v2.
   void pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-#endif
+#endif  // __AVX2__
 
 #ifdef __AVX2__
   // extract right pixel for load1 and load4 cases.
@@ -570,7 +566,7 @@ class VectorLoader {
   __m128i extract_right_2ch(const __m128i left);
   __m128i extract_right_3ch(const __m128i left);
   __m128i extract_right_4ch(const __m128i left);
-#endif
+#endif  // __AVX2__
 
 #ifdef __AVX2__
   // load top left and bottom left interpolation inputs into output argument
@@ -926,7 +922,7 @@ class VectorLoader {
                  __m128* bl1, __m128* bl2, __m128* bl3, __m128* tr0,
                  __m128* tr1, __m128* tr2, __m128* tr3, __m128* br0,
                  __m128* br1, __m128* br2, __m128* br3);
-#endif
+#endif  // __AVX2__
 
   // there is no method that packs 4 pixels with 4 channel into four sse words.
   // nothing to do for this case, everything is already in the right position.
@@ -962,7 +958,7 @@ class VectorLoader {
   void pack4_1b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
   void pack4_2b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
   void pack4_4b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
   __m256i extract_right_1b_(const __m256i left);
   __m256i extract_right_2b_(const __m256i left);
@@ -977,10 +973,10 @@ class VectorLoader {
   __m128i extract_right_4b_(const __m128i left);
   __m128i extract_right_6b_(const __m128i left);
   __m128i extract_right_8b_(const __m128i left);
-#endif
-// Private conversion to fp32 which has different behavior determined by
-// whether or not __F16C__ is defined
-__m128 private_convert_fp16_to_fp32(__m128i raw);
+#endif  // __AVX2__
+  // Private conversion to fp32 which has different behavior determined by
+  // whether or not __F16C__ is defined
+  __m128 private_convert_fp16_to_fp32(__m128i raw);
 };
 
 #ifdef __AVX2__
@@ -1416,7 +1412,7 @@ void VectorLoader<float>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
                                    __m128i* v3) {
   pack4_4b_3ch_(v0, v1, v2, v3);
 }
-#endif
+#endif  // __AVX2__
 
 #ifdef __AVX2__
 template <>
@@ -1682,7 +1678,7 @@ template <>
 __m128i VectorLoader<float>::extract_right_4ch(const __m128i left) {
   assert(false);
 }
-#endif
+#endif  // __AVX2__
 
 #ifdef __AVX2__
 template <>
@@ -1775,7 +1771,7 @@ template <>
 __m128 VectorLoader<float>::to_fp32(__m128i raw) {
   return _mm_castsi128_ps(raw);
 }
-#endif
+#endif  // __AVX2__
 
 #ifdef __AVX2__
 template <class T>
@@ -1827,7 +1823,7 @@ template <class T>
 __m128i VectorLoader<T>::extract_right_8b_(const __m128i left) {
   return _mm_srli_si128(left, 8);
 }
-#endif
+#endif  // __AVX2__
 
 __m128 VectorLoader::private_convert_fp16_to_fp32(__m128i raw) {
 #ifdef __F16C__
@@ -1892,7 +1888,7 @@ __m128 VectorLoader::private_convert_fp16_to_fp32(__m128i raw) {
   __m128i fp32_val =
       _mm_or_si128(_mm_or_si128(fp32_sign, fp32_exponent), fp32_mantissa);
   return _mm_castsi128_ps(fp32_val);
-#endif
+#endif  // __F16C__
 }
 
 #ifdef __AVX2__
@@ -3183,7 +3179,7 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
   *br2 = to_fp32(ibr2);
   *br3 = to_fp32(ibr3);
 }
-#endif
+#endif  // __AVX2__
 
 //
 // This class stores 4 pixels with n channels packed into n SSE vector words.
@@ -3439,7 +3435,7 @@ __m128i VectorWriter<Eigen::half>::from_fp32(__m128 vec) {
                                          -128, -128, -128, -128, -128, -128);
   number = _mm_shuffle_epi8(number, shuf_from_hi32);
   return number;
-#endif
+#endif  // __F16C__
 }
 template <>
 __m128i VectorWriter<bfloat16>::from_fp32(__m128 vec) {
@@ -3797,8 +3793,8 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
 template <class T, class U>
 void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
   //
-  U uEx = cast_to<U>(extrapolated_value_, _f_min_val, _f_max_val, _u_min_val,
-                     _u_max_val);
+  U uEx = clamp_cast<U>(extrapolated_value_, _f_min_val, _f_max_val, _u_min_val,
+                        _u_max_val);
   // extrapolate top
   if (min_iy_ > 0) {
     U* p = flip_y_ ? output_image + out_row_size_ * (out_height_ - min_iy_)
@@ -4024,8 +4020,8 @@ void CropResizeCastImage<T, U>::ResizeRow_general_(const float ys_lerp,
       const float bottom_right0(ys_input_upper_ptr[xs_upper + ichan]);
       float result0 = compute_lerp(top_left0, top_right0, bottom_left0,
                                    bottom_right0, xs_lerp, ys_lerp);
-      output_y_ptr[x * channels_ + ichan] =
-          cast_to<U>(result0, _f_min_val, _f_max_val, _u_min_val, _u_max_val);
+      output_y_ptr[x * channels_ + ichan] = clamp_cast<U>(
+          result0, _f_min_val, _f_max_val, _u_min_val, _u_max_val);
     }
   }
 }
@@ -4061,7 +4057,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_1ch_(
     __m128 x_lerp = mmxs_lerp[0];
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[1];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4070,7 +4066,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_1ch_(
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4103,7 +4099,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_1ch_(
     __m128 x_lerp = mmxs_lerp[0];
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[1];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4112,7 +4108,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_1ch_(
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4146,7 +4142,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_1ch_(
     __m128 x_lerp = mmxs_lerp[0];
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[1];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4155,7 +4151,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_1ch_(
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4189,7 +4185,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_1ch_(
     __m128 x_lerp = mmxs_lerp[0];
     __m128 top0 = _mm_add_ps(tl0, _mm_mul_ps(x_lerp, _mm_sub_ps(tr0, tl0)));
     __m128 bot0 = _mm_add_ps(bl0, _mm_mul_ps(x_lerp, _mm_sub_ps(br0, bl0)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[1];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4198,7 +4194,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_1ch_(
     __m128 res[1];
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     this->write_1ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 #undef CHANNELS
@@ -4243,7 +4239,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_2ch_(
     x_lerp = mmxs_lerp[1];
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[2];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4254,7 +4250,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_2ch_(
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4296,7 +4292,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_2ch_(
     x_lerp = mmxs_lerp[1];
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[2];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4307,7 +4303,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_2ch_(
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4350,7 +4346,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_2ch_(
     x_lerp = mmxs_lerp[1];
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[2];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4361,7 +4357,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_2ch_(
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4404,7 +4400,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_2ch_(
     x_lerp = mmxs_lerp[1];
     __m128 top1 = _mm_add_ps(tl1, _mm_mul_ps(x_lerp, _mm_sub_ps(tr1, tl1)));
     __m128 bot1 = _mm_add_ps(bl1, _mm_mul_ps(x_lerp, _mm_sub_ps(br1, bl1)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[2];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4415,7 +4411,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_2ch_(
     res[0] = _mm_add_ps(top0, _mm_mul_ps(y_lerp, _mm_sub_ps(bot0, top0)));
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     this->write_2ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 #undef CHANNELS
@@ -4468,7 +4464,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_3ch_(
     x_lerp = mmxs_lerp[2];
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[3];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4481,7 +4477,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_3ch_(
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4531,7 +4527,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_3ch_(
     x_lerp = mmxs_lerp[2];
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[3];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4544,7 +4540,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_3ch_(
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4596,7 +4592,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_3ch_(
     x_lerp = mmxs_lerp[2];
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[3];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4609,7 +4605,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_3ch_(
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4661,7 +4657,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_3ch_(
     x_lerp = mmxs_lerp[2];
     __m128 top2 = _mm_add_ps(tl2, _mm_mul_ps(x_lerp, _mm_sub_ps(tr2, tl2)));
     __m128 bot2 = _mm_add_ps(bl2, _mm_mul_ps(x_lerp, _mm_sub_ps(br2, bl2)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[3];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4674,7 +4670,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_3ch_(
     res[1] = _mm_add_ps(top1, _mm_mul_ps(y_lerp, _mm_sub_ps(bot1, top1)));
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     this->write_3ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 #undef CHANNELS
@@ -4737,7 +4733,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_4ch_(
     x_lerp = mmxs_lerp[3];
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[4];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4752,7 +4748,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_4ch_(
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load1_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from2' group for an entire row of a
@@ -4812,7 +4808,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_4ch_(
     x_lerp = mmxs_lerp[3];
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[4];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4827,7 +4823,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_4ch_(
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load2_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from4' group for an entire row of a
@@ -4888,7 +4884,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_4ch_(
     x_lerp = mmxs_lerp[3];
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[4];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4903,7 +4899,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_4ch_(
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load4_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 // Resize all points that fall in the 'load4from8' group for an entire row of a
@@ -4964,7 +4960,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_4ch_(
     x_lerp = mmxs_lerp[3];
     __m128 top3 = _mm_add_ps(tl3, _mm_mul_ps(x_lerp, _mm_sub_ps(tr3, tl3)));
     __m128 bot3 = _mm_add_ps(bl3, _mm_mul_ps(x_lerp, _mm_sub_ps(br3, bl3)));
-#endif
+#endif  // __AVX2__
 #ifdef __AVX2__
     __m128 res[4];
     res[0] = _mm_fmadd_ps(y_lerp, _mm_sub_ps(bot0, top0), top0);
@@ -4979,7 +4975,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_4ch_(
     res[2] = _mm_add_ps(top2, _mm_mul_ps(y_lerp, _mm_sub_ps(bot2, top2)));
     res[3] = _mm_add_ps(top3, _mm_mul_ps(y_lerp, _mm_sub_ps(bot3, top3)));
     this->write_4ch(ysA_output_ptr + load8_x_[current] * CHANNELS, res);
-#endif
+#endif  // __AVX2__
   }
 }
 #undef CHANNELS
@@ -5210,7 +5206,7 @@ int CropResizeCastImage<T, U>::DetermineLoadGroup_(const int x) {
   }
 }
 
-// Compute range of x indexes for xs[0] through xs[3].
+// Compute range of x indices for xs[0] through xs[3].
 // Returns true if valid (xs[i].lower + channels == xs[i].upper for all pixels).
 template <class T, class U>
 bool CropResizeCastImage<T, U>::ComputeXIndexRange_(const int x, int* min_xidx,
@@ -5612,7 +5608,7 @@ void crop_resize_single_image_common(
                            extrapolated_value, flip_x, flip_y, output);
 }
 
-#endif
+#endif  // __SSE4_1__ and __linux__
 
 }  // namespace
 }  // namespace tensorflow
