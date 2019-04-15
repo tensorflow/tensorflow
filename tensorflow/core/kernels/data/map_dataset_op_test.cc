@@ -550,7 +550,7 @@ TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+    TF_EXPECT_OK(RestoreIterator(iterator_context.get(), &reader, "Iterator",
                                  *map_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
