@@ -326,6 +326,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         strip_prefix = "abseil-py-pypi-v0.7.1",
         system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
         system_link_files = {
+            "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
             "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
         },
@@ -898,6 +899,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:wrapt.BUILD"),
         sha256 = "8a6fb40e8f8b6a66b4ba81a4044c68e6a7b1782f21cfabc06fb765332b4c3e51",
         strip_prefix = "wrapt-1.11.1/src/wrapt",
+        system_build_file = clean_dep("//third_party/systemlibs:wrapt.BUILD"),
         urls = [
             "http://mirror.tensorflow.org/github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
             "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
