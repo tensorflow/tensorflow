@@ -48,7 +48,6 @@ rm -f "${TMP_BAZELRC}"
 touch "${TMP_BAZELRC}"
 
 function cleanup {
-  cat mm.txt
   # Remove all options in .tmp.bazelrc
   echo "" > "${TMP_BAZELRC}"
 }
@@ -104,7 +103,7 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build -s --explain=mm.txt --verbose_explanations --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --verbose_explanations --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
 cat mm.txt
 
 if [[ "$SKIP_TEST" == 1 ]]; then
