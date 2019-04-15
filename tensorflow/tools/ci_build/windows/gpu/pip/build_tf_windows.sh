@@ -105,6 +105,7 @@ run_configure_for_gpu_build
 
 bazel build \
   --incompatible_remove_native_http_archive=false \
+  --incompatible_disable_cc_toolchain_label_from_crosstool_proto=false \
   --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
@@ -131,6 +132,7 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
 bazel test \
   --incompatible_remove_native_http_archive=false \
+  --incompatible_disable_cc_toolchain_label_from_crosstool_proto=false \
   --announce_rc --config=opt -k --test_output=errors \
   --test_env=TF_GPU_COUNT \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
