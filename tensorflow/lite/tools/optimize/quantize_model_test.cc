@@ -790,6 +790,43 @@ TEST_F(QuantizeConstInputTest, VerifyConstOpInput) {
   EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
 }
 
+class QuantizeArgMaxTest : public QuantizeModelTest {
+ protected:
+  QuantizeArgMaxTest() {
+    input_model_ = ReadModel(internal::kModelWithArgMaxOp);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto& subgraph = model_.subgraphs[0];
+  auto op = subgraph->operators[0].get();
+  ASSERT_EQ(model_.operator_codes[op->opcode_index].get()->builtin_code,
+            BuiltinOperator_ARG_MAX);
+
+  ASSERT_EQ(op->inputs.size(), 2);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+  // Verify ArgMax input is quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+
+  // Verify ArgMax input axis should still be the same type.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[1])->type(),
+            subgraph->tensors[op->inputs[1]].get()->type);
+
+  // The output of ArgMax should still be the same type.
+  ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
+            subgraph->tensors[op->outputs[0]].get()->type);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite
