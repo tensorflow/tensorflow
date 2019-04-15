@@ -231,7 +231,7 @@ class CuptiCallbackHook {
         src_type, dst_type, params->ByteCount, cbdata.context, nullptr);
   }
   template <typename T>
-  static void StartMemcpyAsync(CUmemorytype dst_type, CUmemorytype src_type,
+  static void StartMemcpyAsync(CUmemorytype src_type, CUmemorytype dst_type,
                                const CUpti_CallbackData& cbdata,
                                CudaEventRecorder* recorder) {
     auto params = static_cast<const T*>(cbdata.functionParams);

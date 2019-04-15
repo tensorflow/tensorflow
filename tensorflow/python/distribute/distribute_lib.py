@@ -370,12 +370,63 @@ class Strategy(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
+  def experimental_make_numpy_dataset(self, numpy_input):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    return self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=None)
+
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
       args = (input_iterator.get_next(),) if input_iterator is not None else ()
     return self.experimental_run_v2(fn, args=args)
+
+  def experimental_distribute_dataset(self, dataset):
+    """Distributes a tf.data.Dataset instance provided via `dataset`.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. This function assumes that the input dataset is batched
+    by the global batch size.
+
+    The following is an example:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      A `DistributedDataset` which returns inputs for each step of the
+      computation.
+    """
+    return self._extended._experimental_distribute_dataset(dataset)  # pylint: disable=protected-access
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Runs ops in `fn` on each replica, with the given arguments.
@@ -405,7 +456,7 @@ class Strategy(object):
     with self.scope():
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  def reduce(self, reduce_op, value, axis=None):
+  def reduce(self, reduce_op, value, axis):
     """Reduce `value` across replicas.
 
     Given a per-replica value returned by `experimental_run_v2`, say a
@@ -435,8 +486,10 @@ class Strategy(object):
         be combined.
       value: A "per replica" value, e.g. returned by `experimental_run_v2` to
         be combined into a single tensor.
-      axis: Optional. Specifies the dimension to reduce along within each
-        replica's tensor. Should typically be set to the batch dimension.
+      axis: Specifies the dimension to reduce along within each
+        replica's tensor. Should typically be set to the batch dimension, or
+        `None` to only reduce across replicas (e.g. if the tensor has no batch
+        dimension).
 
     Returns:
       A `Tensor`.
@@ -661,6 +714,26 @@ class StrategyV1(Strategy):
     return super(StrategyV1, self).make_input_fn_iterator(
         input_fn, replication_mode)
 
+  def experimental_make_numpy_dataset(self, numpy_input, session=None):
+    """Makes a dataset for input provided via a numpy array.
+
+    This avoids adding `numpy_input` as a large constant in the graph,
+    and copies the data to the machine or machines that will be processing
+    the input.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas. Note that lists of Numpy arrays are stacked,
+        as that is normal `tf.data.Dataset` behavior.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      A `tf.data.Dataset` representing `numpy_input`.
+    """
+    return self.extended.experimental_make_numpy_dataset(
+        numpy_input, session=session)
+
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
@@ -695,6 +768,11 @@ class StrategyV1(Strategy):
     """
     return super(StrategyV1, self).experimental_run(
         fn, input_iterator)
+
+  def reduce(self, reduce_op, value, axis=None):
+    return super(StrategyV1, self).reduce(reduce_op, value, axis)
+
+  reduce.__doc__ = Strategy.reduce.__doc__
 
   def update_config_proto(self, config_proto):
     """Returns a copy of `config_proto` modified for use with this strategy.
@@ -1060,6 +1138,9 @@ class StrategyExtendedV2(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def _make_input_fn_iterator(self, input_fn, replication_mode):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def _experimental_distribute_dataset(self, dataset):
     raise NotImplementedError("must be implemented in descendants")
 
   def _reduce(self, reduce_op, value):
@@ -1670,6 +1751,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   def variable_created_in_scope(self, v):
     return v._distribute_strategy is None  # pylint: disable=protected-access
+
+  def _experimental_distribute_dataset(self, dataset):
+    return dataset
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)

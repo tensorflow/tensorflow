@@ -925,10 +925,10 @@ class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
   @combinations.generate(combinations.combine(mode=['graph', 'eager'],
                                               use_core_strategy=[True, False],
                                               required_gpus=2))
-  def testNumpyIterator(self, use_core_strategy):
+  def testNumpyDataset(self, use_core_strategy):
     strategy, _, _ = create_test_objects(
         num_gpus=2, use_core_strategy=use_core_strategy)
-    self._test_numpy_iterator(strategy)
+    self._test_numpy_dataset(strategy)
 
 
 if __name__ == '__main__':

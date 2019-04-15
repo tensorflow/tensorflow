@@ -105,6 +105,11 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     del destinations
     return tensor
 
+  def _experimental_distribute_dataset(self, dataset):
+    # Note that split_batch_by argument is not passed because it is always 1 in
+    # this strategy, and adding it adds unnecessary overhead to the dataset.
+    return input_lib.get_distributed_dataset(dataset, self._input_workers)
+
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):

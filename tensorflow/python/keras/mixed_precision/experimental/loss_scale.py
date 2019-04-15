@@ -289,7 +289,7 @@ class DynamicLossScale(LossScale):
       is_finite_float = distribution.extended.call_for_each_replica(
           get_is_finite, args=(grads,))
       reduced_is_finite_float = distribution.reduce(reduce_util.ReduceOp.SUM,
-                                                    is_finite_float)
+                                                    is_finite_float, axis=None)
       is_finite = math_ops.equal(reduced_is_finite_float,
                                  distribution.num_replicas_in_sync)
     else:

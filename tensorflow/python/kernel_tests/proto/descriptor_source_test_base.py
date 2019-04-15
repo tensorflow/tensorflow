@@ -25,8 +25,8 @@ import numpy as np
 
 from google.protobuf.descriptor_pb2 import FieldDescriptorProto
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
-from tensorflow.contrib.proto.python.kernel_tests import proto_op_test_base as test_base
 from tensorflow.python.framework import dtypes
+from tensorflow.python.kernel_tests.proto import proto_op_test_base as test_base
 from tensorflow.python.platform import test
 
 

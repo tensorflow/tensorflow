@@ -514,7 +514,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     if not reduced:
       self.assertLen(distribution.experimental_local_results(loss_output),
                      distribution.num_replicas_in_sync)
-      loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
+      loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output,
+                                        axis=None)
     else:
       unwrapped_output = distribution.experimental_local_results(loss_output)
       self.assertLen(unwrapped_output, 1)

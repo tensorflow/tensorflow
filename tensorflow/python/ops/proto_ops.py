@@ -1,4 +1,3 @@
-# =============================================================================
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,23 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Tests for decode_proto op."""
 
-# Python3 preparedness imports.
+# pylint: disable=wildcard-import,unused-import
+"""Protocol Buffer encoding and decoding from tensors."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.proto.python.kernel_tests import decode_proto_op_test_base as test_base
-from tensorflow.contrib.proto.python.ops import decode_proto_op
-from tensorflow.python.platform import test
+from tensorflow.python.framework import ops
+from tensorflow.python.ops.gen_decode_proto_ops import decode_proto_v2 as decode_proto
+from tensorflow.python.ops.gen_encode_proto_ops import encode_proto
+from tensorflow.python.util.tf_export import tf_export
 
+tf_export("io.decode_proto")(decode_proto)
+tf_export("io.encode_proto")(encode_proto)
 
-class DecodeProtoOpTest(test_base.DecodeProtoOpTestBase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    super(DecodeProtoOpTest, self).__init__(decode_proto_op, methodName)
-
-
-if __name__ == '__main__':
-  test.main()
+ops.NotDifferentiable("DecodeProtoV2")
+ops.NotDifferentiable("EncodeProto")
