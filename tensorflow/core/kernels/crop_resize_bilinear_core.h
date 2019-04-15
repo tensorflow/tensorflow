@@ -66,11 +66,11 @@ inline bool compute_single_interpolation_weight(
   }
   return (*lower >= 0 && *upper < in_size);
 }
+
 /**
  * Computes interpolation values for output indices in range
- * [out_start, out_start+out_size-1].
- * Returns true if all output indices have lower and upper (input) indices
- * within range [0, in_size-1].
+ * [out_start, out_start+out_size-1]. Returns true if all output indices have
+ * lower and upper (input) indices within range [0, in_size-1].
  */
 template <typename Scaler>
 bool compute_interpolation_weights(const Scaler scaler, const int min_i,
@@ -107,11 +107,11 @@ void compute_interpolation_weights(const Scaler scaler, const int out_size,
       << "Warning! Interpolation values have lower,upper indices outside of "
          "range [0,in_size-1]\n";
 }
+
 /**
  * Compute minimum and maximum (output) i where both lower and upper (input) is
- * in range [0,in_size-1]
- * If no values of i satisfy condition, min_i = in_size, max_i = -1 and method
- * returns false.
+ * in range [0,in_size-1]. If no values of i satisfy condition,
+ * min_i = in_size, max_i = -1 and method returns false. 
  * Returns true if min_i <= max_i.
  */
 template <typename Scaler>
@@ -132,10 +132,12 @@ bool compute_minmax_indices(const Scaler scaler, const int out_size,
   }
   return (*min_i <= *max_i);
 }
+
 /**
  * Compute interpolation weights for crop_and_resize_op.cc
- * Also computes extrapolation areas.
- * Returns true if at least one point requires interpolation, false otherwise.
+ * 
+ * Also computes extrapolation areas. Returns true if at least one point 
+ * requires interpolation, false otherwise.
  */
 template <typename Scaler>
 bool compute_interpolation_weights(
@@ -184,6 +186,7 @@ U clamp_cast(float v, float min_val, float max_val, U u_min_val, U u_max_val) {
   else
     return static_cast<U>(v);
 }
+
 /**
  * no-op cast from float to float.
  */
@@ -202,10 +205,11 @@ inline float compute_lerp(const float top_left, const float top_right,
 }
 
 /**
- * Computes the bilinear interpolation from the appropriate 4 float points
- * and the linear interpolation weights.
+ * Fallback method for computing the bilinear interpolation from the
+ * appropriate 4 float points and the linear interpolation weights.
  * Accepts input tensors of type T and produces output tensors of type U.
  * Optionally flips horizontal and/or vertical axis.
+ * This function only executes when other vectorized codes are not eligible.
  */
 template <typename T, typename U>
 void crop_resize_single_image(const T* image, const int64 in_height,
@@ -482,7 +486,7 @@ void crop_resize_single_image(const T* image, const int64 in_height,
   }
 }
 
-// template for method that calls either explicitly vectorized method
+// Template for method that calls either explicitly vectorized method
 // or the fallback method, depending on what is appropriate for the
 // machine you are running on
 template <typename T, typename U>
@@ -500,63 +504,60 @@ void crop_resize_single_image_common(
 
 //
 // The remaining code implements explicitly vectorized versions of a bilinear
-// image resizer.
-// Images with 1, 2, 3 or 4 channels are supported.
+// image resizer. Images with 1, 2, 3 or 4 channels are supported.
 // The image resizer reads samples of type T and writes samples of type U.
 // T and U can be any of the following: uint8, int8, uint16, int16, int32,
 // Eigen::half, bfloat16 and float.
 // There are separate codes for SSE4.1 and AVX2. Enabling AVX2 also enables
-// FP16C instruction set,
-// which contains instructions that convert between Eigen::half and float. The
-// SSE4.1 code path emulates
-// the FP16C instructions in software.
+// FP16C instruction set, which contains instructions that convert between
+// Eigen::half and float. The SSE4.1 code path emulates the FP16C
+// instructions in software.
 //
 
 //
 // This class loads 4 pixels with n channels, converts to fp32 and packs
-// the result into n SSE vector words.
-// Input data type T must be one of uint8, int8, uint16, int16, int32,
-// Eigen::half, bfloat16 or float.
+// the result into n SSE vector words. Input data type T must be one of
+// uint8, int8, uint16, int16, int32, Eigen::half, bfloat16 or float.
 //
 
 template <class T>
 class VectorLoader {
  public:
 #ifdef __AVX2__
-  // convert 8 packed words of type T to fp32.
+  // Convert 8 packed words of type T to fp32.
   // T must be one of uint8, int8, uint16, int16, int32, Eigen::half, bfloat16
   // or float.
   __m256 to_fp32(__m256i raw);
 #else
-  // convert 4 packed words of type T to fp32.
+  // Convert 4 packed words of type T to fp32.
   // T must be one of uint8, int8, uint16, int16, int32, Eigen::half, bfloat16
   // or float.
   __m128 to_fp32(__m128i raw);
 #endif  // __AVX2__
 
 #ifdef __AVX2__
-  // pack 4 pixels with 1 channel, 2 channels and 3channels respectively in
+  // Pack 4 pixels with 1 channel, 2 channels and 3channels respectively in
   // separate 128 bit lanes.
-  // input is stored in lower portion of 4 separate sse words, v0 through v3.
-  // output is stored in lower portion of v0.
+  // Input is stored in lower portion of 4 separate sse words, v0 through v3.
+  // Output is stored in lower portion of v0.
   void pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
   // output is stored in lower portion of v0 and v1.
   void pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
   // output is stored in lower portion of v0, v1 and v2.
   void pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
 #else
-  // pack 4 pixels with 1 channel, 2 channels and 3channels respectively.
-  // input is stored in lower portion of 4 separate sse words, v0 through v3.
-  // output is stored in lower portion of v0.
+  // Pack 4 pixels with 1 channel, 2 channels and 3channels respectively.
+  // Input is stored in lower portion of 4 separate sse words, v0 through v3.
+  // Output is stored in lower portion of v0.
   void pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  // output is stored in lower portion of v0 and v1.
+  // Output is stored in lower portion of v0 and v1.
   void pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  // output is stored in lower portion of v0, v1 and v2.
+  // Output is stored in lower portion of v0, v1 and v2.
   void pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
 #endif  // __AVX2__
 
 #ifdef __AVX2__
-  // extract right pixel for load1 and load4 cases.
+  // Extract right pixel for load1 and load4 cases.
   __m256i extract_right_1ch(const __m256i left);
   __m256i extract_right_2ch(const __m256i left);
   __m256i extract_right_3ch(const __m256i left);
@@ -569,155 +570,125 @@ class VectorLoader {
 #endif  // __AVX2__
 
 #ifdef __AVX2__
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 1 channel.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 1 channel.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
   void load1_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* right0);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 2 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 2 channels.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
   void load1_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* left1,
                  __m256* right0, __m256* right1);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 3 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 3 channels.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
   void load1_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* left1,
                  __m256* left2, __m256* right0, __m256* right1, __m256* right2);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 4 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 4 channels.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
   void load1_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* left1,
                  __m256* left2, __m256* left3, __m256* right0, __m256* right1,
                  __m256* right2, __m256* right3);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 1 channel.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 1 channel.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
   void load2_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* right0);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 2 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 2 channels.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
   void load2_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* left1,
                  __m256* right0, __m256* right1);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 3 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 3 channels.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
   void load2_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* left1,
                  __m256* left2, __m256* right0, __m256* right1, __m256* right2);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 4 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 4 channels.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
   void load2_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m256* left0, __m256* left1,
                  __m256* left2, __m256* left3, __m256* right0, __m256* right1,
                  __m256* right2, __m256* right3);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 1 channel.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 1 channel.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
   void load4_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* right0);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 2 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 2 channels.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
   void load4_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* left1, __m256* right0, __m256* right1);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 3 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 3 channels.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
   void load4_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* left1, __m256* left2, __m256* right0, __m256* right1,
                  __m256* right2);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 4 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 4 channels.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
   void load4_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* left1, __m256* left2, __m256* left3, __m256* right0,
                  __m256* right1, __m256* right2, __m256* right3);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 1 channel.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 1 channel.
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
   void load8_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* right0);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 2 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 2 channels.
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
   void load8_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* left1, __m256* right0, __m256* right1);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 3 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 3 channels.
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
@@ -725,11 +696,9 @@ class VectorLoader {
                  int offset1, int offset2, int offset3, __m256* left0,
                  __m256* left1, __m256* left2, __m256* right0, __m256* right1,
                  __m256* right2);
-  // load top left and bottom left interpolation inputs into output argument
-  // left.
-  // load top right and bottom right interpolation inputs into output argument
-  // right.
-  // pixels have 4 channels.
+  // Load top left and bottom left interpolation inputs into output argument
+  // left. Load top right and bottom right interpolation inputs into output
+  // argument right. Pixels have 4 channels.
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
@@ -738,32 +707,32 @@ class VectorLoader {
                  __m256* left1, __m256* left2, __m256* left3, __m256* right0,
                  __m256* right1, __m256* right2, __m256* right3);
 #else
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 1 channel.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 1 channel.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
   void load1_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m128* tl0, __m128* bl0,
                  __m128* tr0, __m128* br0);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 2 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 2 channels.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
   void load1_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
                  __m128* bl0, __m128* bl1, __m128* tr0, __m128* tr1,
                  __m128* br0, __m128* br1);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 3 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 3 channels.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
   void load1_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -771,11 +740,11 @@ class VectorLoader {
                  __m128* tl2, __m128* bl0, __m128* bl1, __m128* bl2,
                  __m128* tr0, __m128* tr1, __m128* tr2, __m128* br0,
                  __m128* br1, __m128* br2);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 4 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 4 channels.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
   void load1_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -784,32 +753,32 @@ class VectorLoader {
                  __m128* bl2, __m128* bl3, __m128* tr0, __m128* tr1,
                  __m128* tr2, __m128* tr3, __m128* br0, __m128* br1,
                  __m128* br2, __m128* br3);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 1 channel.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 1 channel.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
   void load2_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m128* tl0, __m128* bl0,
                  __m128* tr0, __m128* br0);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 2 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 2 channels.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
   void load2_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
                  __m128* bl0, __m128* bl1, __m128* tr0, __m128* tr1,
                  __m128* br0, __m128* br1);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 3 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 3 channels.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
   void load2_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -817,11 +786,11 @@ class VectorLoader {
                  __m128* tl2, __m128* bl0, __m128* bl1, __m128* bl2,
                  __m128* tr0, __m128* tr1, __m128* tr2, __m128* br0,
                  __m128* br1, __m128* br2);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 4 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 4 channels.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
   void load2_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -830,32 +799,32 @@ class VectorLoader {
                  __m128* bl2, __m128* bl3, __m128* tr0, __m128* tr1,
                  __m128* tr2, __m128* tr3, __m128* br0, __m128* br1,
                  __m128* br2, __m128* br3);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 1 channel.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 1 channel.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
   void load4_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m128* tl0,
                  __m128* bl0, __m128* tr0, __m128* br0);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 2 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 2 channels.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
   void load4_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m128* tl0,
                  __m128* tl1, __m128* bl0, __m128* bl1, __m128* tr0,
                  __m128* tr1, __m128* br0, __m128* br1);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 3 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 3 channels.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
   void load4_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -863,11 +832,11 @@ class VectorLoader {
                  __m128* tl1, __m128* tl2, __m128* bl0, __m128* bl1,
                  __m128* bl2, __m128* tr0, __m128* tr1, __m128* tr2,
                  __m128* br0, __m128* br1, __m128* br2);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 4 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 4 channels.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
   void load4_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -876,32 +845,32 @@ class VectorLoader {
                  __m128* bl1, __m128* bl2, __m128* bl3, __m128* tr0,
                  __m128* tr1, __m128* tr2, __m128* tr3, __m128* br0,
                  __m128* br1, __m128* br2, __m128* br3);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 1 channel.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 1 channel.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
   void load8_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m128* tl0,
                  __m128* bl0, __m128* tr0, __m128* br0);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 2 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 2 channels.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
   void load8_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
                  int offset1, int offset2, int offset3, __m128* tl0,
                  __m128* tl1, __m128* bl0, __m128* bl1, __m128* tr0,
                  __m128* tr1, __m128* br0, __m128* br1);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 3 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 3 channels.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
   void load8_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -909,11 +878,11 @@ class VectorLoader {
                  __m128* tl1, __m128* tl2, __m128* bl0, __m128* bl1,
                  __m128* bl2, __m128* tr0, __m128* tr1, __m128* tr2,
                  __m128* br0, __m128* br1, __m128* br2);
-  // load top left interpolation inputs into output argument tl.
-  // load bottom left interpolation inputs into output argument bl.
-  // load top right interpolation inputs into output argument tr.
-  // load bottom right interpolation inputs into output argument br.
-  // pixels have 4 channels.
+  // Load top left interpolation inputs into output argument tl.
+  // Load bottom left interpolation inputs into output argument bl.
+  // Load top right interpolation inputs into output argument tr.
+  // Load bottom right interpolation inputs into output argument br.
+  // Pixels have 4 channels.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
   void load8_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
@@ -924,16 +893,14 @@ class VectorLoader {
                  __m128* br1, __m128* br2, __m128* br3);
 #endif  // __AVX2__
 
-  // there is no method that packs 4 pixels with 4 channel into four sse words.
-  // nothing to do for this case, everything is already in the right position.
+  // There is no method that packs 4 pixels with 4 channel into four sse words.
+  // Nothing to do for this case, everything is already in the right position.
 
  private:
-// helper methods
+// Helper methods
 #ifdef __AVX2__
-  // pack 4 pixels with 1, 2, 3 or 4 channels into lower portion of SSE vector
-  // word.
-  // works within SSE lanes.
-  // sizeof(sample_data_type) can be 1, 2 or 4 bytes.
+  // Pack 4 pixels with 1, 2, 3 or 4 channels into lower portion of SSE vector
+  // word. Works within SSE lanes. sizeof(sample_data_type) can be 1, 2 or 4 bytes.
   void pack4_1b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
   void pack4_2b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
   void pack4_4b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
@@ -943,12 +910,11 @@ class VectorLoader {
   void pack4_1b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
   void pack4_2b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
   void pack4_4b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-// there is no pack4_xx_4ch functions because none is needed.
-// all the bytes are loaded in the right spots for this case.
+// There is no pack4_xx_4ch functions because none is needed.
+// All the bytes are loaded in the right spots for this case.
 #else
-  // pack 4 pixels with 1, 2, 3 or 4 channels into lower portion of SSE vector
-  // word.
-  // sizeof(sample_data_type) can be 1, 2 or 4 bytes.
+  // Pack 4 pixels with 1, 2, 3 or 4 channels into lower portion of SSE vector
+  // word. sizeof(sample_data_type) can be 1, 2 or 4 bytes.
   void pack4_1b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
   void pack4_2b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
   void pack4_4b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
@@ -1722,7 +1688,7 @@ __m256 VectorLoader<Eigen::half>::to_fp32(__m256i raw) {
 template <>
 __m256 VectorLoader<bfloat16>::to_fp32(__m256i raw) {
   // bfloat16 is essentially fp32 with mantissa truncated from 23 to 7 bits.
-  // can convert with << 16, which we fuse with initial shuffle into epi32
+  // Can convert with << 16, which we fuse with initial shuffle into epi32
   // positions.
   __m256i shuf_hi32 = _mm256_setr_epi8(
       -128, -128, 0, 1, -128, -128, 2, 3, -128, -128, 4, 5, -128, -128, 6, 7,
@@ -1761,7 +1727,7 @@ __m128 VectorLoader<Eigen::half>::to_fp32(__m128i raw) {
 template <>
 __m128 VectorLoader<bfloat16>::to_fp32(__m128i raw) {
   // bfloat16 is essentially fp32 with mantissa truncated from 23 to 7 bits.
-  // can convert with << 16, which we fuse with initial shuffle into epi32
+  // Can convert with << 16, which we fuse with initial shuffle into epi32
   // positions.
   __m128i shuf_hi32 = _mm_setr_epi8(-128, -128, 0, 1, -128, -128, 2, 3, -128,
                                     -128, 4, 5, -128, -128, 6, 7);
@@ -3191,33 +3157,32 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
 template <class U>
 class VectorWriter {
  public:
-  // convert 4 fp32 words to type U with.
-  // this function calls clip.
-  // resulting words are packed.
+  // Convert 4 fp32 words to type U with.
+  // This function calls clip. Resulting words are packed.
   // U must be one of uint8, int8, uint16, int16, int32, Eigen::half, bfloat16
   // or float.
   __m128i from_fp32(__m128 vec);
 
-  // converts from fp32 to U by calling method from_fp32(...)
-  // writes 4 pixels with 1 channel to destination.
+  // Converts from fp32 to U by calling method from_fp32(...)
+  // Writes 4 pixels with 1 channel to destination.
   void write_1ch(U* destination, __m128* vec);
 
-  // converts from fp32 to U by calling method from_fp32(...)
-  // writes 4 pixels with 1 channel to destination.
+  // Converts from fp32 to U by calling method from_fp32(...)
+  // Writes 4 pixels with 1 channel to destination.
   void write_2ch(U* destination, __m128* vec);
 
-  // converts from fp32 to U by calling method from_fp32(...)
-  // writes 4 pixels with 1 channel to destination.
+  // Converts from fp32 to U by calling method from_fp32(...)
+  // Writes 4 pixels with 1 channel to destination.
   void write_3ch(U* destination, __m128* vec);
 
-  // converts from fp32 to U by calling method from_fp32(...)
-  // writes 4 pixels with 1 channel to destination.
+  // Converts from fp32 to U by calling method from_fp32(...)
+  // Writes 4 pixels with 1 channel to destination.
   void write_4ch(U* destination, __m128* vec);
 
  private:
-  // clip 4 fp32 words to prevent overflow when converting to type U.
+  // Clip 4 fp32 words to prevent overflow when converting to type U.
   __m128 clip_(__m128 vec) {
-    // default is to do nothing, since the packing intrinsics include clipping.
+    // Default is to do nothing, since the packing intrinsics include clipping.
     return vec;
   }
   void write_1b_1ch(U* destination, __m128* vec) {
@@ -3321,13 +3286,13 @@ class VectorWriter {
 
 template <>
 __m128 VectorWriter<int32>::clip_(__m128 vec) {
-  // clip against low limit, -2147483648.
-  // we round up to nearest number that can be represented as float.
+  // Clip against low limit, -2147483648. We round up to nearest number that
+  // can be represented as float.
   __m128 lt_val = _mm_set1_ps(-2147483520.0f);
   __m128 lt_mask = _mm_cmplt_ps(vec, lt_val);
   vec = _mm_or_ps(_mm_andnot_ps(lt_mask, vec), _mm_and_ps(lt_mask, lt_val));
-  // clip against hight limit, 2147483647.
-  // we round down to nearest number that can be represented as float.
+  // Clip against hight limit, 2147483647. We round down to nearest number
+  // that can be represented as float.
   __m128 gt_val = _mm_set1_ps(2147483520.0f);
   __m128 gt_mask = _mm_cmpgt_ps(vec, gt_val);
   vec = _mm_or_ps(_mm_andnot_ps(gt_mask, vec), _mm_and_ps(gt_mask, gt_val));
@@ -3335,11 +3300,11 @@ __m128 VectorWriter<int32>::clip_(__m128 vec) {
 }
 template <>
 __m128 VectorWriter<Eigen::half>::clip_(__m128 vec) {
-  // clip against low limit, -65504.0f;
+  // Clip against low limit, -65504.0f;
   __m128 lt_val = _mm_set1_ps(-65504.0f);
   __m128 lt_mask = _mm_cmplt_ps(vec, lt_val);
   vec = _mm_or_ps(_mm_andnot_ps(lt_mask, vec), _mm_and_ps(lt_mask, lt_val));
-  // clip against hight limit, 65504.0f.
+  // Clip against hight limit, 65504.0f.
   __m128 gt_val = _mm_set1_ps(65504.0f);
   __m128 gt_mask = _mm_cmpgt_ps(vec, gt_val);
   vec = _mm_or_ps(_mm_andnot_ps(gt_mask, vec), _mm_and_ps(gt_mask, gt_val));
@@ -3439,8 +3404,8 @@ __m128i VectorWriter<Eigen::half>::from_fp32(__m128 vec) {
 }
 template <>
 __m128i VectorWriter<bfloat16>::from_fp32(__m128 vec) {
-  // casting from float to bfloat16 simply means >> 16
-  // we do this with a shuffle that also moves everything to lower portion of
+  // Casting from float to bfloat16 simply means >> 16
+  // We do this with a shuffle that also moves everything to lower portion of
   // sse vector word
   __m128i shuf_from_hi32 = _mm_setr_epi8(2, 3, 6, 7, 10, 11, 14, 15, -128, -128,
                                          -128, -128, -128, -128, -128, -128);
@@ -3448,7 +3413,7 @@ __m128i VectorWriter<bfloat16>::from_fp32(__m128 vec) {
 }
 template <>
 __m128i VectorWriter<float>::from_fp32(__m128 vec) {
-  // nothing to do in this case
+  // Nothing to do in this case
   return _mm_castps_si128(vec);
 }
 
@@ -3628,7 +3593,7 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
         y0_(flip_y ? out_height - 1 - max_iy : min_iy),
         y1_(flip_y ? out_height - 1 - min_iy : max_iy) {
     if (min_ix_ <= max_ix_ && min_iy_ <= max_iy_) {
-      // copy xs values, but filter out the following:
+      // Copy xs values, but filter out the following:
       // xs[].lower == xs[].upper AND xs[].lerp == 0
       // xs[].lower == xs[].upper AND xs[].lerp == 1
       xs_ = new CachedInterpolation[max_ix_ - min_ix_ + 1];
@@ -3655,8 +3620,7 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
       _f_max_val = static_cast<float>(_u_max_val);
       Configure_();
     } else {
-      // crop region outside of input image.
-      // extrapolation only.
+      // Crop region outside of input image. Extrapolation only.
       general_x_ = NULL;
       load1_x_ = NULL;
       load2_x_ = NULL;
@@ -3695,11 +3659,10 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   }
 
  private:
-  // constructor arguments
+  // Constructor arguments
   const bool verbose_;
-  // this value is meant for unit testing.
-  // set this to 15 for normal execution.
-  // its an OR of flags for the different load group.
+  // This value is meant for unit testing. Set this to 15 for normal execution.
+  // It's an OR of flags for the different load group.
   //  1 -> load4from1
   //  2 -> load4from2
   //  4 -> load4from4
@@ -3712,14 +3675,14 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   CachedInterpolation* xs_;
   const float extrapolated_value_;
   const bool flip_x_, flip_y_;
-  // computed arguments
+  // Computed arguments
   const int in_row_size_;
   const int in_row_size_bytes_;
   const int out_row_size_;
   const int x0_, x1_;
   const int y0_, y1_;
 
-  // helper methods
+  // Helper methods
   void ResizeRow_load1_1ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
                             const T* ysA_input_upper_ptr, U* ysA_output_ptr);
   void ResizeRow_load2_1ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
@@ -3755,7 +3718,7 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   void ResizeRow_general_(const float ys_lerp, const T* ysA_input_lower_ptr,
                           const T* ysA_input_upper_ptr, U* ysA_output_ptr);
 
-  // configuration parameters
+  // Configuration parameters
   int num_general_, num_load1_, num_load2_, num_load4_, num_load8_;
   int *load1_offsets_, *load2_offsets_, *load4_offsets_, *load8_offsets_;
   int *general_x_, *load1_x_, *load2_x_, *load4_x_, *load8_x_;
@@ -3764,7 +3727,7 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
       *load8_mmxs_lerp_;
   float _f_min_val, _f_max_val;
   U _u_min_val, _u_max_val;
-  // configuration methods
+  // Configuration methods
   void Configure_();
   int DetermineLoadGroup_(const int x);
   bool ComputeXIndexRange_(const int x, int* min_xidx, int* max_xidx);
@@ -3779,14 +3742,14 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
 
  public:
   //
-  // public client methods
+  // Public client methods
   //
 
-  // convenience function that determines if clipping is necessary
+  // Convenience function that determines if clipping is necessary
   // in order to prevent overflow when casting to the output type U.
   static bool clip_necessary();
 
-  // resize image
+  // Resize image
   void Resize(const T* input_image, U* output_image);
 };
 
@@ -3795,21 +3758,21 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
   //
   U uEx = clamp_cast<U>(extrapolated_value_, _f_min_val, _f_max_val, _u_min_val,
                         _u_max_val);
-  // extrapolate top
+  // Extrapolate top
   if (min_iy_ > 0) {
     U* p = flip_y_ ? output_image + out_row_size_ * (out_height_ - min_iy_)
                    : output_image;
     int nn = out_row_size_ * min_iy_;
     for (int i = 0; i < nn; ++i) p[i] = uEx;
   }
-  // extrapolate bottom
+  // Extrapolate bottom
   if (max_iy_ < out_height_ - 1) {
     U* p =
         flip_y_ ? output_image : output_image + out_row_size_ * (max_iy_ + 1);
     int nn = out_row_size_ * (out_height_ - 1 - max_iy_);
     for (int i = 0; i < nn; ++i) p[i] = uEx;
   }
-  // extrapolate left
+  // Extrapolate left
   if (min_ix_ > 0) {
     for (int iy = min_iy_; iy <= max_iy_; ++iy) {
       int xx0 = flip_x_ ? (out_width_ - min_ix_) * channels_ : 0;
@@ -3821,7 +3784,7 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
       }
     }
   }
-  // extrapolate right
+  // Extrapolate right
   if (max_ix_ < out_width_ - 1) {
     for (int iy = min_iy_; iy <= max_iy_; ++iy) {
       int xx0 = flip_x_ ? 0 : (max_ix_ + 1) * channels_;
@@ -3833,7 +3796,7 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
       }
     }
   }
-  // interpolation region
+  // Interpolation region
   if (min_ix_ <= max_ix_ && min_iy_ <= max_iy_) {
     int y = y0_;
     for (y = y0_; y + 1 <= y1_; y += 2) {
@@ -4069,6 +4032,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_1ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from2' group for an entire row of a
 // 1 channel image.
 template <class T, class U>
@@ -4111,6 +4075,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_1ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from4' group for an entire row of a
 // 1 channel image.
 template <class T, class U>
@@ -4154,6 +4119,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_1ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from8' group for an entire row of a
 // 1 channel image.
 template <class T, class U>
@@ -4253,6 +4219,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_2ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from2' group for an entire row of a
 // 2 channel image.
 template <class T, class U>
@@ -4306,6 +4273,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_2ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from4' group for an entire row of a
 // 2 channel image.
 template <class T, class U>
@@ -4360,6 +4328,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_2ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from8' group for an entire row of a
 // 2 channel image.
 template <class T, class U>
@@ -4480,6 +4449,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_3ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from2' group for an entire row of a
 // 3 channel image.
 template <class T, class U>
@@ -4543,6 +4513,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_3ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from4' group for an entire row of a
 // 3 channel image.
 template <class T, class U>
@@ -4608,6 +4579,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_3ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from8' group for an entire row of a
 // 3 channel image.
 template <class T, class U>
@@ -4751,6 +4723,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_4ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from2' group for an entire row of a
 // 4 channel image.
 template <class T, class U>
@@ -4826,6 +4799,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_4ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from4' group for an entire row of a
 // 4 channel image.
 template <class T, class U>
@@ -4902,6 +4876,7 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_4ch_(
 #endif  // __AVX2__
   }
 }
+
 // Resize all points that fall in the 'load4from8' group for an entire row of a
 // 4 channel image.
 template <class T, class U>
@@ -4994,7 +4969,7 @@ void CropResizeCastImage<T, U>::Configure_() {
     assert(load_group >= 0 && load_group <= 4);
     ++num_cases[load_group];
     // load_group == 0 -> general case, pixel by pixel
-    // every other value indidcates 1+3 = 4 pixels were processed this iteration
+    // Every other value indidcates 1+3 = 4 pixels were processed this iteration
     if (load_group > 0) x += 3;
   }
   num_general_ = num_cases[0];
@@ -5061,7 +5036,7 @@ void CropResizeCastImage<T, U>::Configure_() {
     int current = num_cases[load_group];
     assert(current >= 0);
     if (load_group == 0) {
-      // general case
+      // General case
       assert(current < num_general_);
       general_x_[current] = x;
     } else if (load_group == 1) {
@@ -5081,7 +5056,7 @@ void CropResizeCastImage<T, U>::Configure_() {
                                : (x + pix) - min_ix_;
         float lerp = xs_[ix].lerp;
         int widx0 = xs_[ix].lower -
-                    load1_offsets_[current];  // word index within SSE vector
+                    load1_offsets_[current];  // Word index within SSE vector
         for (int ch = 0; ch < channels_; ++ch) {
           int idx = pix * channels_ + ch;
           xs_lerp[idx] = lerp;
@@ -5162,7 +5137,7 @@ void CropResizeCastImage<T, U>::Configure_() {
     }
     ++num_cases[load_group];
     // load_group == 0 -> general case, pixel by pixel
-    // every other value indidcates 1+3 = 4 pixels were processed this iteration
+    // Every other value indidcates 1+3 = 4 pixels were processed this iteration
     if (load_group > 0) x += 3;
   }
 }
@@ -5171,15 +5146,14 @@ template <class T, class U>
 int CropResizeCastImage<T, U>::DetermineLoadGroup_(const int x) {
   int num_remaining = x1_ - x + 1;
   if (num_remaining >= 4) {
-    // at least 4 values left, so theoretically possible to do SSE
+    // At least 4 values left, so theoretically possible to do SSE
     int min_xidx, max_xidx;
     // Using this-> is necessary in order to avoid compile error:
     // "there are no arguments to ‘xxx’ that depend on a template parameter, so
     // a declaration of ‘xxx’ must be available"
     // This is an issue for all member functions that have only builtin type
-    // arguments and happens because
-    // argument dependent lookup is not done for these arguments (so I've been
-    // told).
+    // arguments and happens because argument dependent lookup is not done for
+    // these arguments (so I've been told).
     if (this->ComputeXIndexRange_(x, &min_xidx, &max_xidx)) {
       if ((allowed_load_groups_ & 1) && this->Load1_ok_(min_xidx, max_xidx)) {
         return 1;
@@ -5196,12 +5170,12 @@ int CropResizeCastImage<T, U>::DetermineLoadGroup_(const int x) {
         return 0;
       }
     } else {
-      // assumption xs[i].lower + channels == xs[i].upper NOT true for this
+      // Assumption xs[i].lower + channels == xs[i].upper NOT true for this
       // quintuple.
       return 0;
     }
   } else {
-    // too few remaining values
+    // Too few remaining values
     return 0;
   }
 }
@@ -5244,7 +5218,7 @@ bool CropResizeCastImage<T, U>::Load1_ok_(const int min_xidx,
   // num_pixels_to_load_left_and_right_input = num_pixels_to_load_left_input + 1
   int total_load_bytes = (max_xidx - min_xidx + 2) * channels_ * sizeof(T);
   if (total_load_bytes <= 16) {
-    // a single (mis-aligned) SSE word gives us all the inputs
+    // A single (mis-aligned) SSE word gives us all the inputs
     // ensure that SSE word can be loaded without causing SEGV
     int load_offset = min_xidx * channels_;
     int load_offset_bytes = load_offset * sizeof(T);
@@ -5307,7 +5281,7 @@ bool CropResizeCastImage<T, U>::Load8_ok_(const int min_xidx,
                                           const int max_xidx) {
   int total_load_bytes = channels_ * sizeof(T);
   if (total_load_bytes <= 16) {
-    // ensure that SSE word can be loaded without causing SEGV
+    // Ensure that SSE word can be loaded without causing SEGV
     int load_offset = (max_xidx + 1) * channels_;
     int load_offset_bytes = load_offset * sizeof(T);
     if (in_row_size_bytes_ - load_offset_bytes >= 16) {
@@ -5321,7 +5295,7 @@ bool CropResizeCastImage<T, U>::Load8_ok_(const int min_xidx,
 }
 
 //
-// full implementations of templated static member function clip_necessary()
+// Full implementations of templated static member function clip_necessary()
 //
 
 template <>
@@ -5527,10 +5501,9 @@ bool CropResizeCastImage<float, float>::clip_necessary() {
   return false;
 }
 
-// full specializations of crop_resize_single_image_common for data types that
-// have vectorized implementations.
-// at the moment, this is uint8, int8, uint16, int16, int32, Eigen::half,
-// bfloat16 and float.
+// Full specializations of crop_resize_single_image_common for data types that
+// have vectorized implementations. At the moment, this is uint8, int8, uint16,
+// int16, int32, Eigen::half, bfloat16 and float.
 
 #define CROP_RESIZE_SINGLE_IMAGE_VECT(T_type, U_type)                          \
   template <>                                                                  \
@@ -5566,10 +5539,9 @@ CROP_RESIZE_SINGLE_IMAGE_VECT(Eigen::half, float)
 CROP_RESIZE_SINGLE_IMAGE_VECT(bfloat16, float)
 CROP_RESIZE_SINGLE_IMAGE_VECT(float, float)
 
-// full specializations of crop_resize_single_image_common for data types that
-// don't have vectorized implementations.
-// image resizing for these data types default to the original code.
-// at the moment, this is int64 and double.
+// Full specializations of crop_resize_single_image_common for data types that
+// don't have vectorized implementations. Image resizing for these data types
+// default to the original code. At the moment, this is int64 and double.
 
 #define CROP_RESIZE_SINGLE_IMAGE_REGULAR(T_type, U_type)                      \
   template <>                                                                 \
@@ -5591,7 +5563,7 @@ CROP_RESIZE_SINGLE_IMAGE_REGULAR(double, float)
 
 #else
 
-// compile fall-back code if either
+// Compile fall-back code if either
 // a) target is not a linux machine
 // b) target architecture does not support at least SSE4.1
 
