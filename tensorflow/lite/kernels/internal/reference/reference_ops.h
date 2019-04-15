@@ -1759,67 +1759,158 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("SpaceToBatchND");
-  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
-                   unextended_output_shape.DimensionsCount());
 
-  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  auto extend_shape = [](const RuntimeShape& shape) {
-    if (shape.DimensionsCount() == 4) {
-      return shape;
-    }
-    RuntimeShape new_shape(4, 1);
-    new_shape.SetDim(0, shape.Dims(0));
-    new_shape.SetDim(1, shape.Dims(1));
-    new_shape.SetDim(3, shape.Dims(2));
-    return new_shape;
-  };
-  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
-  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
-
-  const int depth = input1_shape.Dims(3);
-  const int input_width = input1_shape.Dims(2);
-  const int input_height = input1_shape.Dims(1);
-  const int input_batch_size = input1_shape.Dims(0);
-
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch_size = output_shape.Dims(0);
-
-  const int block_shape_height = block_shape_data[0];
-  const int block_shape_width =
-      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
-  const int padding_top = paddings_data[0];
-  const int padding_left =
-      unextended_input1_shape.DimensionsCount() == 4 ? paddings_data[2] : 0;
+  const int block_num =
+      unextended_input2_shape.Dims(0);  // As it is always 1-Dim [M]
+  const int input_batch_size = unextended_input1_shape.Dims(0);
 
   // For uint8 quantized, the correct padding "zero value" is the output offset.
   const int32_t pad_value = params.output_offset;
-  for (int out_b = 0; out_b < output_batch_size; ++out_b) {
-    int input_batch = out_b % input_batch_size;
-    int shift_w = (out_b / input_batch_size) % block_shape_width;
-    int shift_h = (out_b / input_batch_size) / block_shape_width;
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        T* out = output_data + Offset(output_shape, out_b, out_h, out_w, 0);
-        if (out_h * block_shape_height + shift_h < padding_top ||
-            out_h * block_shape_height + shift_h >=
-                padding_top + input_height ||
-            out_w * block_shape_width + shift_w < padding_left ||
-            out_w * block_shape_width + shift_w >= padding_left + input_width) {
-          // This may not execute correctly when pad_value != 0 and T != uint8.
-          memset(out, pad_value, depth * sizeof(T));
-        } else {
-          const T* in =
-              input1_data +
-              Offset(input1_shape, input_batch,
-                     (out_h * block_shape_height + shift_h) - padding_top,
-                     (out_w * block_shape_width + shift_w) - padding_left, 0);
-          memcpy(out, in, depth * sizeof(T));
+
+  // To perform Permutation, we need to capture co-ordinates of Input &
+  // corresponding Output
+  struct IndicesCoeffPair {
+    int indices;
+    int coeff;
+  };
+
+  // Input data can be expanded to fit in paddings, so we have to capture actual
+  // coordinates based on Input shape - [Batch] + [spatial_shape]
+  const int input_num_indices = block_num + 1;
+  // As output data is allocated including Paddings, so we can capture
+  // coordinates, based on Transformed One - block_shape + [batch] +
+  // [padded_shape[1] / block_shape[0], ..., padded_shape[M] / block_shape[M-1]]
+  const int output_num_indices = 2 * block_num + 1;
+
+  IndicesCoeffPair input_indices[input_num_indices] = {{0}};
+  IndicesCoeffPair output_indices[output_num_indices] = {{0}};
+
+  // Depth is same as [remaining_shape] of input data which does not take part
+  // in Space-To-Batch Transformation
+  int depth = 1;
+  for (int idx = block_num + 1; idx < unextended_input1_shape.DimensionsCount();
+       ++idx) {
+    depth *= unextended_input1_shape.Dims(idx);
+  }
+
+  // To compute offset based on Indices & their correponding co-eff captured
+  std::function<int(IndicesCoeffPair*, int)> compute_offset =
+      [&compute_offset](IndicesCoeffPair* indices, int num_indices) {
+        int sum_pos = 0;
+        for (int idx = 0; idx < num_indices; idx++) {
+          sum_pos = (indices[idx].indices + sum_pos) * indices[idx].coeff;
         }
-      }
-    }
+        return sum_pos;
+      };
+
+  // To detect whether the index is a Padded one, Space_to_batch supports
+  // Padding at both ends
+  std::function<bool(int, int, int, int)> is_padded_block =
+      [&is_padded_block](int index, int input_dim, int pad_start, int pad_end) {
+        // Padding is done as below
+        // |||---pad_start---|||---input_dim---|||---pad_end---|||
+        TFLITE_DCHECK_LT(index, pad_start + input_dim + pad_end);
+        return index < pad_start || index >= input_dim + pad_start;
+      };
+
+  // Need to itereate only through Axis = [1, M], where M is
+  // NumElements(block_shape)
+  int final_axis = block_num;
+
+  // Note: As TFLite receives Input as Flat Buffer, so it can not be inflated to
+  // accommodate Paddings [M, 2] So calculate one-to-one mapping of Input
+  // data(without padding) to corresponding in Output data, and rest fill with
+  // padded_values(if Padding present). Perform only permutation of Input data
+  // to Output Data based on below logic, final reshaping is automatically taken
+  // care, as the output buffer is flat one. Permutation:
+  //              Input Shape: [batch] + [padded_shape[1] / block_shape[0],
+  //              block_shape[0], ..., padded_shape[M] / block_shape[M-1],
+  //              block_shape[M-1]] + remaining_shape Output Shape: block_shape
+  //              + [batch] + [padded_shape[1] / block_shape[0], ...,
+  //              padded_shape[M] / block_shape[M-1]] + remaining_shape
+
+  // Store as std::function to allow recursion.
+  std::function<void(int, bool)> compute_permute =
+      [&compute_permute, final_axis, depth, input_batch_size, pad_value,
+       input_num_indices, output_num_indices, unextended_input1_shape,
+       block_num, &input_indices, &output_indices, output_data, input1_data,
+       compute_offset, is_padded_block, paddings_data,
+       block_shape_data](int axis, bool is_padded) {
+        TFLITE_DCHECK_GE(axis, 1);
+        int pad_start = paddings_data[2 * (axis - 1)];
+        int pad_end = paddings_data[2 * (axis - 1) + 1];
+        int padded_shape_per_block =
+            (unextended_input1_shape.Dims(axis) + pad_start + pad_end) /
+            block_shape_data[axis - 1];
+        if (axis == (final_axis)) {
+          for (int in_x = 0; in_x < padded_shape_per_block; in_x++) {
+            output_indices[axis + block_num].indices =
+                in_x;  // Right Shift by block_num
+            output_indices[axis + block_num].coeff =
+                depth;  // Right Shift by block_num
+            for (int in_y = 0; in_y < block_shape_data[axis - 1]; in_y++) {
+              int curr_index = in_x * block_shape_data[axis - 1] + in_y;
+              bool is_padded_curr = is_padded_block(
+                  curr_index, unextended_input1_shape.Dims(axis), pad_start,
+                  pad_end);
+              curr_index = is_padded_curr ? curr_index : curr_index - pad_start;
+              input_indices[axis].indices = curr_index;
+              input_indices[axis].coeff = depth;
+              output_indices[axis - 1].indices = in_y;  // Left most block_shape
+              output_indices[axis - 1].coeff =
+                  input_batch_size;  // Left most block_shape
+
+              T* out = output_data +
+                       compute_offset(output_indices, output_num_indices);
+              if (!is_padded_curr) is_padded_curr = is_padded;
+              if (is_padded_curr) {
+                memset(out, pad_value, depth * sizeof(T));
+              } else {
+                const T* in = input1_data +
+                              compute_offset(input_indices, input_num_indices);
+                memcpy(out, in, depth * sizeof(T));
+              }
+            }
+          }
+        } else {
+          int padded_shape_per_block_next =
+              (unextended_input1_shape.Dims(axis + 1) +
+               paddings_data[2 * axis] + paddings_data[2 * axis + 1]) /
+              block_shape_data[axis];
+          for (int in_x = 0; in_x < padded_shape_per_block; in_x++) {
+            output_indices[axis + block_num].indices =
+                in_x;  // Right Shift by block_num
+            output_indices[axis + block_num].coeff =
+                padded_shape_per_block_next;  // Right Shift by block_num
+            for (int in_y = 0; in_y < block_shape_data[axis - 1]; in_y++) {
+              int curr_index = in_x * block_shape_data[axis - 1] + in_y;
+              bool is_padded_curr = is_padded_block(
+                  curr_index, unextended_input1_shape.Dims(axis), pad_start,
+                  pad_end);
+              curr_index = is_padded_curr ? curr_index : curr_index - pad_start;
+              input_indices[axis].indices = curr_index;
+              input_indices[axis].coeff =
+                  unextended_input1_shape.Dims(axis + 1);
+              output_indices[axis - 1].indices = in_y;  // Left most block_shape
+              output_indices[axis - 1].coeff =
+                  block_shape_data[axis];  // Left most block_shape
+
+              if (!is_padded_curr) is_padded_curr = is_padded;
+              compute_permute(axis + 1, is_padded_curr);
+            }
+          }
+        }
+      };
+
+  for (int batch_i = 0; batch_i < input_batch_size; ++batch_i) {
+    input_indices[0].indices = batch_i;
+    input_indices[0].coeff = unextended_input1_shape.Dims(1);
+    output_indices[block_num].indices = batch_i;  // Right Shift by block_num
+    output_indices[block_num].coeff =
+        (unextended_input1_shape.Dims(1) + paddings_data[0] +
+         paddings_data[1]) /
+        block_shape_data[0];  // Right Shift by block_num
+    compute_permute(1, false);
   }
 }
 
