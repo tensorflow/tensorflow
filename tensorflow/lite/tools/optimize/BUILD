@@ -141,22 +141,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "subgraph_quantizer",
-    srcs = ["subgraph_quantizer.cc"],
-    hdrs = ["subgraph_quantizer.h"],
-    deps = [
-        ":quantization_utils",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels/internal:round",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
