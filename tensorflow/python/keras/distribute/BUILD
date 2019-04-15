@@ -129,7 +129,7 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -149,7 +149,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -169,7 +169,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -189,7 +189,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -226,7 +226,7 @@ distribute_py_test(
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu",  # b/129793413
+        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
