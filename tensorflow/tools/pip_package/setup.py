@@ -238,7 +238,8 @@ else:
 headers = (
     list(find_files('*.h', 'tensorflow/core')) + list(
         find_files('*.h', 'tensorflow/stream_executor')) +
-    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+    list(find_files('*.h', 'google/protobuf_archive/src')) +
+    list(find_files('*.inc', 'google/protobuf_archive/src')) + list(
         find_files('*', 'third_party/eigen3')) + list(
             find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
