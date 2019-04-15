@@ -282,10 +282,7 @@ class DistributedValues(object):
 
   @property
   def is_tensor_like(self):
-    for v in self._values:
-      if not tensor_util.is_tensor(v):
-        return False
-    return True
+    return all(tensor_util.is_tensor(v) for v in self._values)
 
   def __str__(self):
     devices = self.devices
