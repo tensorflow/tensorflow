@@ -113,7 +113,8 @@ def _get_code(input_file):
           # Found a special character, need to "encode"
           code_line = "###!!!" + code_line
 
-        is_line_split = check_line_split(code_line)
+          # if this cell ends with `\` -> skip the next line
+          is_line_split = check_line_split(code_line)
 
         # Sometimes, people leave \n at the end of cell
         # in order to migrate only related things, and make the diff
