@@ -74,8 +74,8 @@ struct NcclManager::CommunicatorMember {
   ~CommunicatorMember() {
     if (nccl_comm != nullptr) ncclCommDestroy(nccl_comm);
   }
-  ncclComm_t nccl_comm;
 
+  ncclComm_t nccl_comm = nullptr;
   // Owned by NcclManager::device_to_comm_streams_.
   NcclStream* nccl_stream = nullptr;
 };
