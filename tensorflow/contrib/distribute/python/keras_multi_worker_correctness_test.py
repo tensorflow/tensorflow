@@ -149,9 +149,7 @@ def make_lstm_model(initial_weights=None):
 
 
 def make_embedding_model(initial_weights=None):
-  # TODO(b/130231718): Remove batch_size here.
-  inputs = keras.layers.Input(
-      batch_size=64 // get_num_workers(), shape=(1,), dtype='int32')
+  inputs = keras.layers.Input(shape=(1,), dtype='int32')
   embeddings = keras.layers.Embedding(100, 5)(inputs)
   outputs = keras.layers.Dense(1, activation='softmax')(embeddings)
   model = keras.Model(inputs, outputs)
@@ -180,7 +178,7 @@ class ModelCorrectnessTest(
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           make_model=[make_image_model, make_embedding_model],
-          required_gpus=[0])) # TODO(b/130299192): Enable for 1 gpu case.
+          required_gpus=[0, 1]))
   def test_correctness(self, strategy_cls, make_model):
 
     def _worker_fn(initial_weights=None, results_without_ds=None):
