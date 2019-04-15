@@ -4334,6 +4334,17 @@ tf_py_test(
     main = "util/lock_util_test.py",
 )
 
+tf_py_test(
+    name = "deprecation_wrapper_test",
+    size = "small",
+    srcs = ["util/deprecation_wrapper_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":util",
+        "@six_archive//:six",
+    ],
+)
+
 tf_proto_library(
     name = "protos_all",
     srcs = glob(
