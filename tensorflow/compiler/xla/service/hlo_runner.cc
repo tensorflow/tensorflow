@@ -84,9 +84,11 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
   return ParseHloString(hlo_string, config);
 }
 
-HloRunner::HloRunner(se::Platform* platform) {
+HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
+  backend_options.set_intra_op_parallelism_threads(
+      intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
