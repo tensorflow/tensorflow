@@ -63,6 +63,9 @@ extern const char* kFloatConcatMax5Max10Max10;
 // Test model with a custom op.
 extern const char* kModelWithCustomOp;
 
+// Test model with a argmax op.
+extern const char* kModelWithArgMaxOp;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

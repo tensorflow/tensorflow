@@ -293,7 +293,7 @@ class CollectiveAllReduceStrategyTestBase(
         return array_ops.identity(x)
 
       x = distribution.extended.call_for_each_replica(model_fn)
-      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
+      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
       x = distribution.experimental_local_results(x)[0]
 
       sess.run(variables.global_variables_initializer())

@@ -1,3 +1,4 @@
+# =============================================================================
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,11 +12,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
+"""Tests for decode_proto op."""
 
+# Python3 preparedness imports.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.python.ops.proto_ops import decode_proto
+from tensorflow.python.kernel_tests.proto import decode_proto_op_test_base as test_base
+from tensorflow.python.ops import proto_ops as proto_ops
+from tensorflow.python.platform import test
+
+
+class DecodeProtoOpTest(test_base.DecodeProtoOpTestBase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    super(DecodeProtoOpTest, self).__init__(proto_ops, methodName)
+
+
+if __name__ == '__main__':
+  test.main()

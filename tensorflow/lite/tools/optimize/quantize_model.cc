@@ -309,8 +309,12 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
       operator_property::OperatorProperty property;
-      TF_LITE_ENSURE_STATUS(
-          operator_property::GetOperatorProperty(op_code, &property));
+      if (operator_property::GetOperatorProperty(op_code, &property) ==
+          kTfLiteError) {
+        error_reporter->Report("Quantization not yet supported for op: %s",
+                               EnumNameBuiltinOperator(op_code));
+        return kTfLiteError;
+      }
       // Quantize weight and inputs.
       std::vector<int> input_indexes;
       if (property.arbitrary_inputs) {
@@ -323,7 +327,7 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
       for (const int input_idx : input_indexes) {
         if (input_idx >= op->inputs.size()) {
           error_reporter->Report(
-              "Requaired input index %d is larger than the input length of op "
+              "Required input index %d is larger than the input length of op "
               "%s at index %d in subgraph %d",
               input_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
               op_idx, subgraph_idx);

@@ -131,6 +131,19 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->restricted_value_on_output = {1 / 128.0, 0};
     return kTfLiteOk;
   }
+  if (op == BuiltinOperator_ARG_MAX) {
+    property->per_axis = false;
+    property->per_axis_index = 0;
+    property->arbitrary_inputs = false;
+    property->input_indexes = {0};
+    // ArgMax has no quantizable output, so there is nothing to do here.
+    property->output_indexes = {};
+    property->biases = {};
+    property->restrict_same_input_output_scale = false;
+    property->restriction_on_output = false;
+    property->restricted_value_on_output = {};
+    return kTfLiteOk;
+  }
   return kTfLiteError;
 }
 

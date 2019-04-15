@@ -73,6 +73,7 @@ from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
 from tensorflow.python.ops.partitioned_variables import *
+from tensorflow.python.ops.proto_ops import *
 from tensorflow.python.ops.ragged import ragged_dispatch as _ragged_dispatch
 from tensorflow.python.ops.ragged import ragged_operators as _ragged_operators
 from tensorflow.python.ops.random_ops import *

@@ -350,6 +350,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_context
 
+  def _experimental_distribute_dataset(self, dataset):
+    input_context = self._make_input_context()
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync,
+                                             input_context=input_context)
+
   def _make_dataset_iterator(self, dataset):
     """Distributes the dataset to each local GPU."""
     input_context = self._make_input_context()

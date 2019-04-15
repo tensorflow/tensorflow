@@ -282,6 +282,10 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
 
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
+
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)

@@ -28,11 +28,11 @@ import numpy as np
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.proto.python.kernel_tests import proto_op_test_base as test_base
-from tensorflow.contrib.proto.python.kernel_tests import test_example_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.kernel_tests.proto import proto_op_test_base as test_base
+from tensorflow.python.kernel_tests.proto import test_example_pb2
 from tensorflow.python.ops import array_ops
 
 

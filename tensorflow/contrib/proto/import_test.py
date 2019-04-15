@@ -1,4 +1,3 @@
-# =============================================================================
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,24 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Tests for encode_proto op."""
 
-# Python3 readiness boilerplate
+"""Backwards compatibility tests for imports of tf.contrib.proto."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.proto.python.kernel_tests import encode_proto_op_test_base as test_base
-from tensorflow.contrib.proto.python.ops import decode_proto_op
-from tensorflow.contrib.proto.python.ops import encode_proto_op
+from tensorflow.contrib import proto
 from tensorflow.python.platform import test
 
 
-class EncodeProtoOpTest(test_base.EncodeProtoOpTestBase):
+class ProtoImportTest(test.TestCase):
 
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    super(EncodeProtoOpTest, self).__init__(decode_proto_op, encode_proto_op,
-                                            methodName)
+  def testImport(self):
+    self.assertTrue(proto.decode_proto)  # Should be accessible
+    self.assertTrue(proto.encode_proto)  # Should be accessible
 
 
 if __name__ == '__main__':

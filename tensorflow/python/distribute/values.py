@@ -282,10 +282,7 @@ class DistributedValues(object):
 
   @property
   def is_tensor_like(self):
-    for v in self._values:
-      if not tensor_util.is_tensor(v):
-        return False
-    return True
+    return all(tensor_util.is_tensor(v) for v in self._values)
 
   def __str__(self):
     devices = self.devices
@@ -1310,7 +1307,8 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.primary
     return self._distribute_strategy.reduce(
-        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self)
+        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self,
+        axis=None)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
@@ -1565,6 +1563,13 @@ class AggregatingVariable(variables_lib.Variable):
   @property
   def initializer(self):
     return self._v.initializer
+
+  @property
+  def op(self):
+    return self._v.op
+
+  def read_value(self):
+    return self._v.read_value()
 
   def eval(self, session=None):
     return self._v.eval(session)
