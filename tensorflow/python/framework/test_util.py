@@ -70,6 +70,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -1757,6 +1759,10 @@ class TensorFlowTestCase(googletest.TestCase):
           return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
                                                  tensor.values.numpy(),
                                                  tensor.dense_shape.numpy())
+        elif ragged_tensor.is_ragged(tensor):
+          return ragged_tensor_value.RaggedTensorValue(
+              tensor.values.numpy(),
+              tensor.row_splits.numpy())
         elif isinstance(tensor, ops.IndexedSlices):
           return ops.IndexedSlicesValue(values=tensor.values.numpy(),
                                         indices=tensor.indices.numpy(),
@@ -2702,6 +2708,20 @@ def create_local_cluster(num_workers,
                          ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
+  "PS" stands for "parameter server": a task responsible for storing and
+  updating the model's parameters. Other tasks send updates to these parameters
+  as they work on optimizing the parameters. This particular division of labor
+  between tasks is not required, but is common for distributed training.
+
+  Read more at https://www.tensorflow.org/guide/extend/architecture
+
+  ![components](https://www.tensorflow.org/images/diag1.svg "components")
+
+
+  Figure illustrates the interaction of these components.
+  "/job:worker/task:0" and "/job:ps/task:0" are both tasks with worker services.
+
+
   Example:
   ```python
   workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
@@ -2723,11 +2743,11 @@ def create_local_cluster(num_workers,
   Args:
     num_workers: Number of worker servers to start.
     num_ps: Number of PS servers to start.
-    protocol: Communication protocol.  Allowed values are documented in the
+    protocol: Communication protocol. Allowed values are documented in the
       documentation of `tf.train.Server`.
-    worker_config: (optional) ConfigProto to initialize workers. Can be used to
-      instantiate multiple devices etc.
-    ps_config: (optional) ConfigProto to initialize PS servers.
+    worker_config: (optional) `tf.ConfigProto` to initialize workers. Can be
+      used to instantiate multiple devices etc.
+    ps_config: (optional) `tf.ConfigProto` to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list

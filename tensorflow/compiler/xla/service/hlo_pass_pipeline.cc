@@ -58,14 +58,21 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, last_pass_name));
   bool changed = false;
   for (HloPassInterface* pass : passes) {
-    VLOG(1) << "  HLO pass " << pass->name();
+    absl::string_view pass_name = pass->name();
+    VLOG(1) << "  HLO pass " << pass_name;
     MaybeDumpHlo(*hlo,
                  /*after_pass_name=*/last_pass_name,
-                 /*before_pass_name=*/pass->name());
+                 /*before_pass_name=*/pass_name);
+    if (!pass->IsPassPipeline()) {
+      compilation_stats_->StartPass(pass_name);
+    }
     TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
     changed |= pass_changed;
-    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass->name()));
-    last_pass_name = string(pass->name());
+    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
+    last_pass_name = string(pass_name);
+    if (!pass->IsPassPipeline()) {
+      compilation_stats_->EndPass(pass_name);
+    }
   }
   MaybeDumpHlo(*hlo,
                /*after_pass_name=*/last_pass_name,

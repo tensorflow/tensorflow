@@ -176,6 +176,13 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
   profiling_state_ = ProfilingState(use_rdtscp);
+
+  bool emit_tracing =
+      hlo_module_config_.hlo_profiling_enabled() &&
+      hlo_module_config_.debug_options().xla_backend_extra_options().count(
+          "xla_hlo_trace");
+  tracing_state_.set_enabled(emit_tracing);
+
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
   InsertOrDie(&emitted_functions_, computation, ir_function);
@@ -2883,9 +2890,70 @@ void IrEmitter::ProfilingState::RecordCompleteComputation(
   }
 }
 
+void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
+                                               HloInstruction* hlo,
+                                               llvm::Value* run_options) {
+  if (!enabled_) {
+    return;
+  }
+
+  llvm::Type* int8_ptr_type = b->getInt8Ty()->getPointerTo();
+  llvm::Type* void_ptr_type = b->getVoidTy()->getPointerTo();
+  llvm::FunctionType* fn_type =
+      llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, int8_ptr_type},
+                              /*isVarArg=*/false);
+
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
+  const char* fn_name = runtime::kTracingStartSymbolName;
+  llvm::FunctionCallee trace_func =
+      module->getOrInsertFunction(fn_name, fn_type);
+  if (auto* fn = llvm::dyn_cast<llvm::Function>(trace_func.getCallee())) {
+    fn->setCallingConv(llvm::CallingConv::C);
+    fn->setDoesNotThrow();
+    fn->setOnlyAccessesArgMemory();
+  }
+  auto* hlo_name = b->CreateGlobalStringPtr(hlo->name());
+  auto* activity_id =
+      b->CreateCall(trace_func, {b->CreateBitCast(run_options, void_ptr_type),
+                                 b->CreateBitCast(hlo_name, int8_ptr_type)});
+  activity_id->setName(IrName(hlo, "activity_id"));
+  activity_ids_[hlo] = activity_id;
+}
+
+void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
+                                             HloInstruction* hlo,
+                                             llvm::Value* run_options) {
+  if (!enabled_) {
+    return;
+  }
+
+  llvm::Type* void_ptr_type = b->getVoidTy()->getPointerTo();
+  llvm::FunctionType* fn_type =
+      llvm::FunctionType::get(b->getVoidTy(), {void_ptr_type, b->getInt64Ty()},
+                              /*isVarArg=*/false);
+
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
+  const char* fn_name = runtime::kTracingEndSymbolName;
+  llvm::FunctionCallee trace_func =
+      module->getOrInsertFunction(fn_name, fn_type);
+  if (auto* fn = llvm::dyn_cast<llvm::Function>(trace_func.getCallee())) {
+    fn->setCallingConv(llvm::CallingConv::C);
+    fn->setDoesNotThrow();
+    fn->setOnlyAccessesArgMemory();
+  }
+  auto* activity_id = activity_ids_.at(hlo);
+  b->CreateCall(trace_func,
+                {b->CreateBitCast(run_options, void_ptr_type), activity_id});
+}
+
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
   if (instruction_to_profile_idx_.count(hlo)) {
+    // Only trace the same HLOs that the profiler does.
+    tracing_state_.EmitTracingStart(&b_, hlo,
+                                    GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
   }
   return Status::OK();
@@ -2894,6 +2962,10 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
   if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&b_, hlo, prof_counter);
+  }
+  // Only trace the same HLOs that the profiler does.
+  if (instruction_to_profile_idx_.count(hlo)) {
+    tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return Status::OK();
 }

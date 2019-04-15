@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "AnonymousIteratorV2"
+  visibility: HIDDEN
+  out_arg {
+    name: "handle"
+    description: <<END
+A handle to the iterator that can be passed to a "MakeIterator" or
+"IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
+resource sharing by name, and does not keep a reference to the resource
+container.
+END
+  }
+  out_arg {
+    name: "deleter"
+    description: <<END
+A variant deleter that should be passed into the op that deletes the iterator.
+END
+  }
+  summary: "A container for an iterator resource."
+}

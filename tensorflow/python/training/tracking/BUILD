@@ -76,6 +76,7 @@ py_library(
         ":base",
         ":layer_utils",
         "//tensorflow/python/saved_model:revived_types",
+        "@wrapt",
     ],
 )
 

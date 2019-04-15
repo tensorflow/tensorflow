@@ -25,9 +25,12 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> Elementwise(int id, ValueId input_id,
-                                                  ValueId output_id,
-                                                  OperationType op_type);
+std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
+    int id, std::vector<ValueId> input_ids, ValueId output_id,
+    OperationType op_type);
+
+std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
+    int id, ValueId input_id, ValueId output_id, OperationType op_type);
 
 }  // namespace metal
 }  // namespace gpu

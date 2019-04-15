@@ -24,7 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 
 
-class Iterator(iterator_ops.EagerIterator):
+class Iterator(iterator_ops.IteratorV2):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   NOTE: Unlike the iterator created by the

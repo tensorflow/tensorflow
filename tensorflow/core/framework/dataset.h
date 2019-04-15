@@ -232,7 +232,8 @@ class GraphDefBuilderWrapper {
   // Also looks up the `op_def->name` in the global
   // `WhitelistedStatefulOpRegistry`.
   bool IsOpWhitelisted(const OpDef* op_def) const {
-    return (str_util::EndsWith(op_def->name(), "Dataset") &&
+    return ((str_util::EndsWith(op_def->name(), "Dataset") ||
+             str_util::EndsWith(op_def->name(), "DatasetV2")) &&
             op_def->output_arg_size() == 1 &&
             op_def->output_arg(0).type() == DT_VARIANT) ||
            WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());

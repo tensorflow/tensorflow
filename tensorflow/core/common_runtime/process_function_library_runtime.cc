@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
@@ -62,7 +63,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
-    DistributedFunctionLibraryRuntime* parent)
+    DistributedFunctionLibraryRuntime* parent,
+    const CustomKernelCreator* custom_kernel_creator)
     : env_(env),
       device_mgr_(device_mgr),
       lib_def_(lib_def),
@@ -72,33 +74,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
   if (device_mgr == nullptr) {
     flr_map_[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, this);
-    return;
-  }
-  for (Device* d : device_mgr->ListDevices()) {
-    flr_map_[d] = NewFunctionLibraryRuntime(
-        device_mgr, env, d, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, this);
-  }
-}
-
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
-    thread::ThreadPool* default_thread_pool,
-    DistributedFunctionLibraryRuntime* parent)
-    : env_(env),
-      device_mgr_(device_mgr),
-      lib_def_(lib_def),
-      default_thread_pool_(default_thread_pool),
-      next_handle_(0),
-      parent_(parent) {
-  if (device_mgr == nullptr) {
-    flr_map_[nullptr] = NewFunctionLibraryRuntime(
-        nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, std::move(custom_kernel_creator), this);
+        optimizer_options, custom_kernel_creator, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
@@ -713,9 +689,16 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   for (const auto& pair : subgraphs) {
+    const auto* optimized_subgraph = pair.second.get();
     DumpGraph(
         strings::StrCat("After all optimization passes (", pair.first, ")"),
-        pair.second.get());
+        optimized_subgraph);
+    if (VLOG_IS_ON(1)) {
+      DumpGraphDefToFile(
+          strings::StrCat("pflr_after_all_optimization_passes_",
+                          reinterpret_cast<uintptr_t>(optimized_subgraph)),
+          optimized_subgraph->ToGraphDefDebug());
+    }
   }
 
   if (options.graph_collector != nullptr) {
@@ -844,6 +827,9 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
+  VLOG(1) << "Running multi-device function " << data->function_name_;
+  VLOG(4) << "    with " << opts.DebugString();
+
   if (data->glue_.empty()) {
     // Trivial case where the function body is empty.
     done(Status::OK());
@@ -860,8 +846,6 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const string& target = pair.first;
     const ComponentFunctionData& comp_data = pair.second;
     FunctionLibraryRuntime::Handle handle = pair.second.handle_;
-    VLOG(1) << "Running function shard on device " << target << " with handle "
-            << handle;
 
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs_;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
@@ -871,10 +855,15 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     // When target device has private thread pool, use the target device runner
     thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
     opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
+
     std::vector<Tensor> comp_args =
         GetArgsForIndices(comp_data.arg_indices_, args);
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
+
+    VLOG(1) << "Running component function on device " << target
+            << " with handle " << handle;
+    VLOG(4) << "    with " << opts_copy.DebugString();
     flr->Run(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
@@ -1094,14 +1083,13 @@ void ProcessFunctionLibraryRuntime::Run(
 
 Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
+    const CustomKernelCreator* custom_kernel_creator,
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const {
   out_lib_def->reset(new FunctionLibraryDefinition(*lib_def_));
   out_pflr->reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, std::move(custom_kernel_creator), default_thread_pool_,
-      parent_));
+      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator));
   return Status::OK();
 }
 

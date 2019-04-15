@@ -18,11 +18,13 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include <stdlib.h>
+
 #include <memory>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "cuda/extras/CUPTI/include/cupti.h"
@@ -65,6 +67,15 @@ void LogIfError(const Status& status) {
     return;
   }
   LOG(ERROR) << status.error_message();
+}
+
+bool IsAscii(string& str) {
+  for (auto& ch : str) {
+    if (!absl::ascii_isascii(ch)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 struct KernelRecord {
@@ -220,7 +231,7 @@ class CuptiCallbackHook {
         src_type, dst_type, params->ByteCount, cbdata.context, nullptr);
   }
   template <typename T>
-  static void StartMemcpyAsync(CUmemorytype dst_type, CUmemorytype src_type,
+  static void StartMemcpyAsync(CUmemorytype src_type, CUmemorytype dst_type,
                                const CUpti_CallbackData& cbdata,
                                CudaEventRecorder* recorder) {
     auto params = static_cast<const T*>(cbdata.functionParams);
@@ -601,6 +612,10 @@ class CudaEventCollector {
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = record.kernel_name;
+    // Sometimes CUPTI returns invalid characters. See b/129892466.
+    if (!IsAscii(node_name)) {
+      node_name = "<invalid_name>";
+    }
     if (record.annotation) {
       node_name = absl::StrCat(*record.annotation, "::", node_name);
     }
@@ -626,6 +641,10 @@ class CudaEventCollector {
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = GetMemcpyName(record);
+    // Sometimes CUPTI returns invalid characters. See b/129892466.
+    if (!IsAscii(node_name)) {
+      node_name = "<invalid_name>";
+    }
     if (record.annotation) {
       node_name = absl::StrCat(*record.annotation, "::", node_name);
     }

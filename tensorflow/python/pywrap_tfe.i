@@ -82,13 +82,37 @@ limitations under the License.
 %rename("%s") TFE_Py_RegisterVSpace;
 %rename("%s") TFE_Py_EncodeArg;
 %rename("%s") TFE_EnableCollectiveOps;
+%rename("%s") TF_ListPhysicalDevices;
 %rename("%s") TF_PickUnusedPortOrDie;
+%rename("%s") TFE_MonitoringSetGauge;
+%rename("%s") TFE_MonitoringAddCounter;
+%rename("%s") TFE_MonitoringAddSampler;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+
+static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
+  std::vector<string> devices;
+  tensorflow::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  tensorflow::Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) {
+    Py_RETURN_NONE;
+  };
+  PyObject* result = PyList_New(devices.size());
+  int i = 0;
+  for (auto& dev : devices) {
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev.data(), dev.size());
+    PyList_SetItem(result, i, dev_obj);
+    ++i;
+  }
+  return result;
+}
 %}
+static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 
 %typemap(in) (const void* proto) {
   char* c_string;
@@ -99,6 +123,10 @@ limitations under the License.
     SWIG_fail;
   }
   $1 = static_cast<void*>(c_string);
+}
+
+%typemap(in) int64_t {
+  $1 = PyLong_AsLongLong($input);
 }
 
 %typemap(out) TF_DataType {
@@ -154,6 +182,12 @@ limitations under the License.
 // See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
 // Hence the 'const_cast'.
 %typemap(in) const char* name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* label {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
@@ -295,6 +329,7 @@ limitations under the License.
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;
+%typemap(in) int64_t;
 %typemap(out) int64_t;
 %typemap(out) TF_AttrType;
 %typemap(in, numinputs=0) TF_Status *out_status;

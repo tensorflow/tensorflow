@@ -1,0 +1,31 @@
+# TensorFlow Lite for iOS
+
+package(default_visibility = ["//visibility:private"])
+
+licenses(["notice"])  # Apache 2.0
+
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
+
+apple_bundle_version(
+    name = "TensorFlowLiteC_version",
+    build_version = "0.1.0",
+    short_version_string = "0.1",
+)
+
+#   Build the framework:
+#     bazel build tensorflow/lite/experimental/ios:TensorFlowLiteC_framework -c opt --ios_multi_cpus=x86_64,armv7,arm64 --apple_bitcode=embedded --copt=-fembed-bitcode
+#   Unzip the generated framework:
+#     unzip bazel-bin/tensorflow/lite/experimental/ios/TensorFlowLiteC_framework.zip -d /Users/path/to/tensorflow/Frameworks
+ios_static_framework(
+    name = "TensorFlowLiteC_framework",
+    hdrs = [
+        "//tensorflow/lite/experimental/c:c_api.h",
+        "//tensorflow/lite/experimental/c:c_api_types.h",
+    ],
+    bundle_name = "TensorFlowLiteC",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    version = ":TensorFlowLiteC_version",
+    deps = ["//tensorflow/lite/experimental/c:c_api"],
+)

@@ -46,20 +46,16 @@ transformation.
 
 Then you can train and export the model as usual.
 
-### 2) Export for TensorFlow Lite inference.
+### 2) Export for TensorFlow Lite inference as usual.
 
-When you want to convert to TensorFlow Lite model, here's one simple step you
-need to do for your frozen graph:
-
-```python
-with tf.Session() as sess:
-  ophinted_graph = tf.lite.experimental.convert_op_hints_to_stubs(session=sess)
-```
+When you want to convert to TensorFlow Lite model, you can simply get the
+session, then convert to TensorFlow Lite model.
 
 Then you can convert the model to TensorFlow Lite model as usual.
 
+
 ```python
-converter = tf.lite.TFLiteConverter(ophinted_graph, [INPUTS], [OUTPUTS])
+converter = tf.lite.TFLiteConverter.from_session(sess, [INPUTS], [OUTPUTS])
 converter.post_training_quantize = True  # If post training quantize is desired.
 tflite_model = converter.convert()  # You got a tflite model!
 ```
@@ -83,19 +79,6 @@ tflite_model = converter.convert()  # You got a tflite model!
 -    outputs, _ = tf.nn.dynamic_rnn(
 +    outputs, _ = tf.lite.experimental.nn.dynamic_rnn(
          lstm_cells, lstm_inputs, dtype='float32', time_major=True)
- 
-     # Transpose the outputs back to [batch, time, output]
-@@ -154,7 +154,9 @@ def export(model, model_dir, tflite_model_file,
-       sess, sess.graph_def, [output_class.op.name])
- 
-   # Convert ophinted lstm ops to tflite UnidirectionalSequenceLstm ops.
--  converted_graph = tf.graph_util.remove_training_nodes(frozen_graph)
-+  converted_graph = tf.lite.experimental.convert_op_hints_to_stubs(
-+      graph_def=frozen_graph)
-+  converted_graph = tf.graph_util.remove_training_nodes(converted_graph)
-   converter = tf.lite.TFLiteConverter(converted_graph, [x], [output_class])
-   converter.post_training_quantize = use_post_training_quantize
-   tflite = converter.convert()
 ```
 
 ## Why introduce another set of LSTM APIs?
@@ -285,17 +268,8 @@ def export(model, model_dir, tflite_model_file,
   saver = tf.train.Saver()
   sess = tf.Session()
   saver.restore(sess, model_dir)
-  # Freeze the graph.
-  frozen_graph = tf.graph_util.convert_variables_to_constants(
-      sess, sess.graph_def, [output_class.op.name])
-  
-  # Important:
-  #
-  # Convert ophinted lstm ops to tflite UnidirectionalSequenceLstm ops.
-  converted_graph =
-      tf.lite.experimental.convert_op_hints_to_stubs(graph_def=frozen_graph)
-  converted_graph = tf.graph_util.remove_training_nodes(converted_graph)
-  converter = tf.lite.TFLiteConverter(converted_graph, [x], [output_class])
+  # Convert to Tflite model.
+  converter = tf.lite.TFLiteConverter.from_session(sess, [x], [output_class])
   converter.post_training_quantize = use_post_training_quantize
   tflite = converter.convert()
   with open(tflite_model_file, 'w') as f:
@@ -383,13 +357,3 @@ See below.
 *   The behavior of `tf.lite.experimental.nn.bidirectional_dynamic_rnn` is a
     wrapper around `tf.nn.bidirectional_dynamic_rnn`, not
     `tf.contrib.rnn.stack_bidirectional_dynamic_rnn`.
-*   For bidirectional_rnn cases, make sure you include all the op_hinted nodes
-    before freeze the graph. See below:
-
-```python
-all_output_nodes = [OUTPUT_NODES]
-with tf.Session() as sess
-  all_output_nodes += tf.lite.find_all_hinted_output_nodes(sess)
-  frozen_graph = tf.graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, all_output_nodes)
-```

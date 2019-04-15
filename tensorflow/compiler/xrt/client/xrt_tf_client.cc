@@ -253,7 +253,7 @@ std::vector<XrtTensorHandle> XrtTfContext::EnqueueOp(
 
   eager::Operation* proto = enqueue_request_->add_queue()->mutable_operation();
   proto->set_id(op->id);
-  proto->set_name(name);
+  proto->set_name(static_cast<std::string>(name));
   for (const XrtTensorHandle* input : inputs) {
     input->Serialize(proto->add_inputs());
   }
@@ -325,7 +325,7 @@ XrtTensorHandle XrtTfContext::SendTensor(
 // worker has other clients that it is servicing, we don't have any collision.
 std::string XrtGetUniqueWireID() {
   static uint64 random_seed = random::New64();
-  static std::atomic<int64> wireid = 0;
+  static std::atomic<int64> wireid(0);
   return absl::StrCat(random_seed, "_", ++wireid);
 }
 
@@ -441,9 +441,9 @@ void XrtTensorHandle::Serialize(eager::RemoteTensorHandle* proto) const {
   proto->set_output_num(tensor_id_.second);
 }
 
-AttrValue MakeAttrValue(absl::string_view s) {
+AttrValue MakeAttrValue(std::string s) {
   AttrValue a;
-  a.set_s(s);
+  a.set_s(std::move(s));
   return a;
 }
 

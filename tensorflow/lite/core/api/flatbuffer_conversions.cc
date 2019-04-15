@@ -400,6 +400,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
           case LSTMKernelType_BASIC:
             params->kernel_type = kTfLiteLSTMBasicKernel;
             break;
+          default:
+            error_reporter->Report("Unhandled LSTM kernel type: %d",
+                                   lstm_params->kernel_type());
+            return kTfLiteError;
         }
       }
       *builtin_data = reinterpret_cast<void*>(params);

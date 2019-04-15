@@ -48,10 +48,10 @@ TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
 }
 
 // Stub method which returns kTfLiteError when the function is forbidden.
-// We're registrating this function to several different function to save
+// We're registering this function to several different function to save
 // compiled binary size. Please note the restrictions:
 // * The type of first parameter have to be `TfLiteContext*`.
-// * All paramteters must be trivailly destructible. (E.g. No C++ class)
+// * All parameters must be trivially destructible. (E.g. No C++ class)
 TfLiteStatus ForbiddenContextFunction(TfLiteContext* context, ...) {
   context->ReportError(context,
                        "The function is forbidden if not calling in delegate.");
@@ -293,7 +293,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   execution_plan_.clear();
 
   for (auto& node_subset : node_subsets) {
-    // Subsets calimed by the delegate should have a "macro" op created, the
+    // Subsets claimed by the delegate should have a "macro" op created, the
     // other node_subsets (kTfNonPartition) just have their nodes added back to
     // the execution plan.
     switch (node_subset.type) {
@@ -334,7 +334,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
 TfLiteExternalContext* Subgraph::GetExternalContext(
     TfLiteExternalContextType type) {
-  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+  if (static_cast<int>(type) >= 0 && type < kTfLiteMaxExternalContexts) {
     return external_contexts_[type];
   }
   return nullptr;
@@ -347,7 +347,7 @@ TfLiteExternalContext* Subgraph::GetExternalContext(
 
 void Subgraph::SetExternalContext(TfLiteExternalContextType type,
                                   TfLiteExternalContext* ctx) {
-  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+  if (static_cast<int>(type) >= 0 && type < kTfLiteMaxExternalContexts) {
     external_contexts_[type] = ctx;
   }
 }
@@ -500,7 +500,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
 
   // Reset the variable tensors to zero after (re)allocating the tensors.
   // Developers shouldn't rely on the side effect of this function to reset
-  // variable tesnsors. They should call `ResetVariableTensors` directly
+  // variable tensors. They should call `ResetVariableTensors` directly
   // instead.
   ResetVariableTensors();
 

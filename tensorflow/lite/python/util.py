@@ -36,6 +36,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
+    dtypes.int8: _types_pb2.INT8,
     dtypes.complex64: _types_pb2.COMPLEX64
 }
 

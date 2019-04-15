@@ -198,7 +198,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)
@@ -1358,6 +1359,158 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       y = np.random.randint(3, size=64)
 
       model.fit(x, y, epochs=1, steps_per_epoch=2)
+
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def test_distribution_strategy_with_symbolic_add_loss(self, distribution):
+
+    def _make_model_with_add_loss():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      model.add_loss(math_ops.reduce_mean(x1))
+      model.add_loss(math_ops.reduce_mean(outputs))
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+
+    model = _make_model_with_add_loss()
+    model.compile('sgd')
+    history = model.fit(x, steps_per_epoch=2, epochs=1)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_loss()
+      ds_model.compile('sgd')
+      ds_history = ds_model.fit(x, steps_per_epoch=2, epochs=1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  # TODO(omalleyt): Investigate flakiness and re-enable.
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def DISABLED_test_distribution_strategy_with_callable_add_loss(
+      self, distribution):
+
+    def _make_model():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      d = keras.layers.Dense(1, kernel_initializer='zeros')
+      outputs = d(x2)
+      model = keras.Model(inputs, outputs)
+      model.add_loss(lambda: 100. * math_ops.reduce_mean(d.kernel))
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model()
+    self.assertLen(model.losses, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(x, y, steps_per_epoch=2, epochs=1)
+
+    with distribution.scope():
+      ds_model = _make_model()
+      self.assertLen(ds_model.losses, 1)
+      ds_model.compile('sgd', 'mse')
+      ds_history = ds_model.fit(x, y, steps_per_epoch=2, epochs=1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def test_distribution_strategy_with_add_metric_in_call(self, distribution):
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_weight(name='bias', initializer='zeros', shape=())
+
+      def call(self, inputs):
+        self.add_metric(
+            math_ops.reduce_mean(inputs), name='bias', aggregation='mean')
+        return inputs + self.bias
+
+    def _make_model_with_add_metric():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = Bias()(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model_with_add_metric()
+    self.assertLen(model.metrics, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(
+        x,
+        y,
+        steps_per_epoch=2,
+        validation_data=(x, y),
+        validation_steps=2,
+        epochs=2)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_metric()
+      self.assertLen(ds_model.metrics, 1)
+      ds_model.compile('sgd', 'mse')
+      ds_history = ds_model.fit(
+          x,
+          y,
+          steps_per_epoch=2,
+          validation_data=(x, y),
+          validation_steps=2,
+          epochs=2)
+      self.assertLen(ds_model.metrics, 1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(all_strategy_minus_default_and_tpu_combinations())
+  def test_distribution_strategy_with_add_metric_outside_call(
+      self, distribution):
+
+    def _make_model_with_add_metric():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x1)
+      model = keras.Model(inputs, outputs)
+      model.add_metric(
+          math_ops.reduce_mean(x1), name='mid_mean', aggregation='mean')
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model_with_add_metric()
+    self.assertLen(model.metrics, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(
+        x,
+        y,
+        steps_per_epoch=2,
+        validation_data=(x, y),
+        validation_steps=2,
+        epochs=2)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_metric()
+      self.assertLen(ds_model.metrics, 1)
+      ds_model.compile('sgd', 'mse')
+      ds_history = ds_model.fit(
+          x,
+          y,
+          steps_per_epoch=2,
+          validation_data=(x, y),
+          validation_steps=2,
+          epochs=2)
+      self.assertLen(ds_model.metrics, 1)
+
+    self.assertAllClose(history.history, ds_history.history)
 
 
 if __name__ == '__main__':

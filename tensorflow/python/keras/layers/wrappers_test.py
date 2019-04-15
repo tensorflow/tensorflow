@@ -33,14 +33,13 @@ from tensorflow.python.training.tracking import util as trackable_util
 
 class _RNNCellWithConstants(keras.layers.Layer):
 
-  def __init__(self, units, **kwargs):
+  def __init__(self, units, constant_size, **kwargs):
     self.units = units
     self.state_size = units
+    self.constant_size = constant_size
     super(_RNNCellWithConstants, self).__init__(**kwargs)
 
   def build(self, input_shape):
-    [input_shape, constant_shape] = input_shape
-
     self.input_kernel = self.add_weight(
         shape=(input_shape[-1], self.units),
         initializer='uniform',
@@ -50,7 +49,7 @@ class _RNNCellWithConstants(keras.layers.Layer):
         initializer='uniform',
         name='recurrent_kernel')
     self.constant_kernel = self.add_weight(
-        shape=(constant_shape[-1], self.units),
+        shape=(self.constant_size, self.units),
         initializer='uniform',
         name='constant_kernel')
     self.built = True
@@ -65,7 +64,7 @@ class _RNNCellWithConstants(keras.layers.Layer):
     return output, [output]
 
   def get_config(self):
-    config = {'units': self.units}
+    config = {'units': self.units, 'constant_size': self.constant_size}
     base_config = super(_RNNCellWithConstants, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -589,7 +588,7 @@ class BidirectionalTest(test.TestCase):
       # Test basic case.
       x = keras.Input((5, 5))
       c = keras.Input((3,))
-      cell = _RNNCellWithConstants(32)
+      cell = _RNNCellWithConstants(32, 3)
       custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
@@ -632,7 +631,7 @@ class BidirectionalTest(test.TestCase):
       c = keras.Input((3,))
       s_for = keras.Input((32,))
       s_bac = keras.Input((32,))
-      cell = _RNNCellWithConstants(32)
+      cell = _RNNCellWithConstants(32, 3)
       custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional(keras.layers.RNN(cell))

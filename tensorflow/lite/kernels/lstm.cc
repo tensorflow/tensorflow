@@ -311,8 +311,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // 20-inputs lstm are deprecated and is only kept here for backward
   // compatibility.
   if (node->inputs->size == 24) {
-    const TfLiteTensor* forget_layer_norm_coefficients =
-        GetInput(context, node, kForgetLayerNormCoefficientsTensor);
+    const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
+        context, node, kForgetLayerNormCoefficientsTensor);
     if (forget_layer_norm_coefficients == nullptr) {
       op_data->is_layer_norm_lstm = false;
     } else {

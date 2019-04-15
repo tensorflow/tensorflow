@@ -36,8 +36,8 @@ namespace tensorflow {
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   if (dtype == DT_BFLOAT16) {
     xla::XlaBuilder* builder = input.builder();
-    auto output = xla::BitcastConvertType(input, xla::U32) &
-                  xla::ConstantR0<uint32>(builder, 0xFFFF0000);
+    xla::XlaOp output = xla::BitcastConvertType(input, xla::U32) &
+                        xla::ConstantR0<uint32>(builder, 0xFFFF0000);
     return xla::ConvertElementType(xla::BitcastConvertType(output, xla::F32),
                                    xla::BF16);
   } else {
@@ -45,22 +45,36 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   }
 }
 
-xla::XlaOp Uniform2NormalUsingSqrtErfinv(xla::XlaOp uniform) {
-  // Convert uniform distribution to normal distribution by computing
-  // sqrt(2) * erfinv(x)
-  return xla::ScalarLike(uniform, std::sqrt(2.0)) * xla::ErfInv(uniform);
-}
+xla::XlaOp StatelessRngUniform(xla::XlaOp seeds, const xla::Shape& shape,
+                               xla::XlaOp minval, xla::XlaOp maxval) {
+  xla::XlaBuilder* builder = seeds.builder();
 
-// A wrapper of xla::StatelessRngUniform. Returns an op that produces random
-// values with uniform distribution in the range [minval, maxval) for the given
-// shape and given two 32-bit seeds. Currently only shapes of type F32, S32 and
-// S64 are implemented.
-xla::XlaOp StatelessRandomUniformImpl(const xla::Shape& shape, DataType unused,
-                                      xla::XlaOp seed, xla::XlaOp minval,
-                                      xla::XlaOp maxval) {
-  xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
-  xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-  return xla::StatelessRngUniform({seed0, seed1}, shape, minval, maxval);
+  xla::XlaOp seed0 = xla::Reshape(xla::Slice(seeds, {0}, {1}, {1}), {});
+  xla::XlaOp seed1 = xla::Reshape(xla::Slice(seeds, {1}, {2}, {1}), {});
+  xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
+                   ShiftLeft(ConvertElementType(seed1, xla::U64),
+                             ConstantR0WithType(builder, xla::U64, 32));
+  xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
+  xla::PrimitiveType type = shape.element_type();
+  switch (type) {
+    case xla::F32:
+      return xla::UniformF32Distribution(key, initial_state,
+                                         xla::ThreeFryBitGenerator, minval,
+                                         maxval, shape)
+          .value;
+    case xla::S32:  // fall through
+    case xla::S64:
+      return UniformIntDistribution(key, initial_state,
+                                    xla::ThreeFryBitGenerator, minval, maxval,
+                                    shape)
+          .value;
+      break;
+    default:
+      return builder->ReportError(xla::Unimplemented(
+          "Types other than F32, S32 and S64 are not implemented by "
+          "StatelessRngUniform; got %s",
+          xla::primitive_util::LowercasePrimitiveTypeName(type)));
+  }
 }
 
 namespace {
@@ -86,8 +100,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-    xla::XlaOp uniform = StatelessRandomUniformImpl(
-        xla_shape, dtype_, seed, xla::ConstantR0<float>(builder, 0.0),
+    xla::XlaOp uniform = StatelessRngUniform(
+        seed, xla_shape, xla::ConstantR0<float>(builder, 0.0),
         xla::ConstantR0<float>(builder, 1.0));
     uniform = MaybeConvertF32ToBF16(uniform, dtype_);
     ctx->SetOutput(0, uniform);
@@ -136,8 +150,8 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-    xla::XlaOp uniform =
-        StatelessRandomUniformImpl(xla_shape, dtype_, seed, minval, maxval);
+    xla::XlaOp uniform = StatelessRngUniform(seed, xla_shape, minval, maxval);
+
     ctx->SetOutput(0, uniform);
   }
 
@@ -170,14 +184,20 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                 errors::InvalidArgument("seed must have shape [2], not ",
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(1);
-    xla::XlaBuilder* builder = ctx->builder();
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-    xla::XlaOp uniform = StatelessRandomUniformImpl(
-        xla_shape, dtype_, seed,
-        xla::ConstantR0<float>(builder, std::nextafter(-1.0f, 0.0f)),
-        xla::ConstantR0<float>(builder, 1.0));
-    xla::XlaOp normal = Uniform2NormalUsingSqrtErfinv(uniform);
+
+    xla::XlaBuilder* builder = seed.builder();
+    xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
+    xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
+    xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
+    xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
+                     ShiftLeft(ConvertElementType(seed1, xla::U64),
+                               ConstantR0WithType(builder, xla::U64, 32));
+    xla::XlaOp normal =
+        xla::NormalF32Distribution(key, initial_state,
+                                   xla::ThreeFryBitGenerator, xla_shape)
+            .value;
     normal = MaybeConvertF32ToBF16(normal, dtype_);
     ctx->SetOutput(0, normal);
   }
@@ -215,8 +235,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-    xla::XlaOp uniform = StatelessRandomUniformImpl(
-        xla_shape, dtype_, seed,
+    xla::XlaOp uniform = StatelessRngUniform(
+        seed, xla_shape,
         xla::MinPositiveNormalValue(builder, xla_shape.element_type()),
         xla::One(builder, xla_shape.element_type()));
     xla::XlaOp truncated_normal = TruncatedNormal(uniform);

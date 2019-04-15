@@ -442,12 +442,21 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     } else {
       signature_name = control_outputs[i]->name();
     }
+    if (signature_name.empty()) {
+      return errors::InvalidArgument("Control output name must be not empty");
+    }
     if (!control_output_names_set.insert(signature_name).second) {
       return errors::InvalidArgument("Repeated control output name: ",
                                      signature_name);
     }
+    const string control_output_node =
+        node_names.Lookup(control_outputs[i]->name());
+    if (control_output_node.empty()) {
+      return errors::InvalidArgument(
+          "Control output node name must be not empty");
+    }
     fdef->mutable_signature()->add_control_output(signature_name);
-    (*fdef->mutable_control_ret())[signature_name] = control_outputs[i]->name();
+    (*fdef->mutable_control_ret())[signature_name] = control_output_node;
   }
 
   return Status::OK();

@@ -148,6 +148,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     int64 invocation_results_size;
     TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("invocation_results.size"),
                                           &invocation_results_size));
+    if (!invocation_results_.empty()) invocation_results_.clear();
     for (size_t i = 0; i < invocation_results_size; i++) {
       invocation_results_.push_back(std::make_shared<InvocationResult>());
       auto& result = *invocation_results_.back();
