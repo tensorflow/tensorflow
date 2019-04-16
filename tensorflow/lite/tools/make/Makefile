@@ -173,7 +173,8 @@ BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
 	$(PROFILE_SUMMARIZER_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
-	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc), \
+	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
+	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
     $(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
