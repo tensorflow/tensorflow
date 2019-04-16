@@ -254,7 +254,8 @@ class GraphConverter(object):
           _gather_names(input_signature_def.outputs))
 
       # Preserve nodes in collection
-      for col_key in self._collection_filter(input_meta_graph_def.collection_def):
+      for col_key in self._collection_filter(
+          input_meta_graph_def.collection_def):
         for op in sess.graph.get_collection(col_key):
           if isinstance(op, ops.Operation):
             output_node_names.add(op.name.split(":")[0])
@@ -270,7 +271,7 @@ class GraphConverter(object):
       # Copy the collections that are not variables.
       for key in self._collection_filter(input_meta_graph_def.collection_def):
         self._grappler_meta_graph_def.collection_def[key].CopyFrom(
-          input_meta_graph_def.collection_def[key])
+            input_meta_graph_def.collection_def[key])
 
       self._add_nodes_blacklist()
 
@@ -443,7 +444,9 @@ class GraphConverter(object):
         raise ValueError(
             "Not able to save to a SavedModel since input is a GraphDef")
 
-      def _restore_collections(dest_graph, src_meta_graph_def, collections,
+      def _restore_collections(dest_graph,
+                               src_meta_graph_def,
+                               collections,
                                scope_to_prepend_to_names=None):
         # Restores all the other collections.
         # Do not need to restore Variables(ops.GraphKeys._VARIABLE_COLLECTIONS)
@@ -451,8 +454,8 @@ class GraphConverter(object):
           col_def = src_meta_graph_def.collection_def[key]
           kind = col_def.WhichOneof("kind")
           if kind is None:
-            tf_logging.error("Cannot identify data type for collection %s. Skipping.",
-                             key)
+            tf_logging.error(
+                "Cannot identify data type for collection %s. Skipping.", key)
             continue
           from_proto = ops.get_from_proto_function(key)
           if from_proto and kind == "bytes_list":
@@ -463,11 +466,10 @@ class GraphConverter(object):
               proto.ParseFromString(value)
               try:
                 new_value = from_proto(
-                  proto, import_scope=scope_to_prepend_to_names)
+                    proto, import_scope=scope_to_prepend_to_names)
               except:
                 continue
-              dest_graph.add_to_collection(
-                key, new_value)
+              dest_graph.add_to_collection(key, new_value)
           else:
             field = getattr(col_def, kind)
             if kind == "node_list":
@@ -488,13 +490,17 @@ class GraphConverter(object):
             else:
               for value in field.value:
                 dest_graph.add_to_collection(
-                  key, ops.prepend_name_scope(value, scope_to_prepend_to_names))
+                    key, ops.prepend_name_scope(value,
+                                                scope_to_prepend_to_names))
+
       # Write the transformed graphdef as SavedModel.
       saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
       with ops.Graph().as_default():
         importer.import_graph_def(self._converted_graph_def, name="")
-        _restore_collections(ops.get_default_graph(), self._grappler_meta_graph_def,
-                             self._collection_filter(self._grappler_meta_graph_def.collection_def), "")
+        _restore_collections(
+            ops.get_default_graph(), self._grappler_meta_graph_def,
+            self._collection_filter(
+                self._grappler_meta_graph_def.collection_def), "")
         # We don't use any specific converter here.
         with session.Session(config=self._session_config) as sess:
           saved_model_builder.add_meta_graph_and_variables(
@@ -722,9 +728,10 @@ class TrtGraphConverter(GraphConverter):
     # Check input arguments.
     supported_precision_modes = TrtPrecisionMode.supported_precision_modes()
     if precision_mode not in supported_precision_modes:
-      raise ValueError(("precision mode '{}' is not supported."
-                        "It should be one of {}").format(
-                            precision_mode, supported_precision_modes))
+      raise ValueError(
+          ("precision mode '{}' is not supported."
+           "It should be one of {}").format(precision_mode,
+                                            supported_precision_modes))
 
     if cached_engine_batches:
       if not isinstance(cached_engine_batches, list):
