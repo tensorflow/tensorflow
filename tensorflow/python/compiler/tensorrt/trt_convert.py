@@ -225,16 +225,17 @@ class GraphConverter(object):
 
     self._run_conversion()
 
-  def _collection_filter(self, collection_keys):
+  def _collections_to_keep(self, collection_keys):
     # TODO(laigd): currently we use the collection key to filter out
     # collections that depend on variable ops, but this may miss some
     # other user-defined collections. A better way would be to use
     # CollectionDef::NodeList for the filtering.
-    collections_to_remove = ops.GraphKeys._VARIABLE_COLLECTIONS + \
-                            [ops.GraphKeys.TRAIN_OP, ops.GraphKeys.WHILE_CONTEXT,
-                             ops.GraphKeys.COND_CONTEXT]
-
-    return filter(lambda key: key not in collections_to_remove, collection_keys)
+    collections_to_remove = (
+        ops.GraphKeys._VARIABLE_COLLECTIONS + [
+            ops.GraphKeys.TRAIN_OP, ops.GraphKeys.WHILE_CONTEXT,
+            ops.GraphKeys.COND_CONTEXT
+        ])
+    return [key for key in collection_keys if key not in collections_to_remove]
 
   def _convert_saved_model(self):
     """Convert the input SavedModel."""
@@ -254,9 +255,9 @@ class GraphConverter(object):
           _gather_names(input_signature_def.outputs))
 
       # Preserve nodes in collection
-      for col_key in self._collection_filter(
+      for collection_key in self._collections_to_keep(
           input_meta_graph_def.collection_def):
-        for op in sess.graph.get_collection(col_key):
+        for op in sess.graph.get_collection(collection_key):
           if isinstance(op, ops.Operation):
             output_node_names.add(op.name.split(":")[0])
 
@@ -269,9 +270,10 @@ class GraphConverter(object):
       self._grappler_meta_graph_def.graph_def.CopyFrom(frozen_graph_def)
 
       # Copy the collections that are not variables.
-      for key in self._collection_filter(input_meta_graph_def.collection_def):
-        self._grappler_meta_graph_def.collection_def[key].CopyFrom(
-            input_meta_graph_def.collection_def[key])
+      for collection_key in self._collections_to_keep(
+          input_meta_graph_def.collection_def):
+        self._grappler_meta_graph_def.collection_def[collection_key].CopyFrom(
+            input_meta_graph_def.collection_def[collection_key])
 
       self._add_nodes_blacklist()
 
@@ -444,12 +446,9 @@ class GraphConverter(object):
         raise ValueError(
             "Not able to save to a SavedModel since input is a GraphDef")
 
-      def _restore_collections(dest_graph,
-                               src_meta_graph_def,
-                               collections,
-                               scope_to_prepend_to_names=None):
-        # Restores all the other collections.
-        # Do not need to restore Variables(ops.GraphKeys._VARIABLE_COLLECTIONS)
+      def _restore_collections(dest_graph, src_meta_graph_def, collections):
+        scope = None
+        # Restores collections that we need to keep.
         for key in collections:
           col_def = src_meta_graph_def.collection_def[key]
           kind = col_def.WhichOneof("kind")
@@ -465,8 +464,7 @@ class GraphConverter(object):
               proto = proto_type()
               proto.ParseFromString(value)
               try:
-                new_value = from_proto(
-                    proto, import_scope=scope_to_prepend_to_names)
+                new_value = from_proto(proto, import_scope=scope)
               except:
                 continue
               dest_graph.add_to_collection(key, new_value)
@@ -474,7 +472,7 @@ class GraphConverter(object):
             field = getattr(col_def, kind)
             if kind == "node_list":
               for value in field.value:
-                name = ops.prepend_name_scope(value, scope_to_prepend_to_names)
+                name = ops.prepend_name_scope(value, scope)
                 # since the graph has been optimized, the node may no longer exists
                 try:
                   col_op = dest_graph.as_graph_element(name)
@@ -490,8 +488,7 @@ class GraphConverter(object):
             else:
               for value in field.value:
                 dest_graph.add_to_collection(
-                    key, ops.prepend_name_scope(value,
-                                                scope_to_prepend_to_names))
+                    key, ops.prepend_name_scope(value, scope))
 
       # Write the transformed graphdef as SavedModel.
       saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
@@ -499,7 +496,7 @@ class GraphConverter(object):
         importer.import_graph_def(self._converted_graph_def, name="")
         _restore_collections(
             ops.get_default_graph(), self._grappler_meta_graph_def,
-            self._collection_filter(
+            self._collections_to_keep(
                 self._grappler_meta_graph_def.collection_def), "")
         # We don't use any specific converter here.
         with session.Session(config=self._session_config) as sess:
