@@ -962,8 +962,7 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
   };
 
   // Both inputs are weights.
-  symmetric_test(
-      {1}, {1}, kIsNotTensor, kIsNotTensor, {1}, {1});
+  symmetric_test({1}, {1}, kIsNotTensor, kIsNotTensor, {1}, {1});
 
   // One tensor and one weights.
   symmetric_test({1, 1, 1}, {2}, kIsTensor, kIsNotTensor, {1, 1, 1}, {1, 1, 2});
@@ -971,8 +970,7 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
   symmetric_test({1, 3, 2}, {1}, kIsTensor, kIsNotTensor, {1, 3, 2}, {1, 1, 1});
   symmetric_test({1, 1, 1}, {2, 3}, kIsTensor, kIsNotTensor, {1, 1, 1},
                  {1, 2, 3});
-  symmetric_test({1, 1, 1}, {2, 3}, kIsTensor, kIsTensor, {1, 1, 1},
-                 {1, 2, 3});
+  symmetric_test({1, 1, 1}, {2, 3}, kIsTensor, kIsTensor, {1, 1, 1}, {1, 2, 3});
   symmetric_test({1, 1, 1}, {2, 3, 4}, kIsTensor, kIsNotTensor, {1, 1, 1},
                  {2, 3, 4});
   symmetric_test({1, 1, 1}, {1, 2, 3, 4}, kIsTensor, kIsNotTensor, {1, 1, 1},
@@ -980,17 +978,21 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
   symmetric_test({1, 3, 4}, {1, 2, 1, 4}, kIsTensor, kIsNotTensor, {1, 3, 4},
                  {2, 1, 4});
   symmetric_test({1, 1, 1}, {2, 1, 1, 1}, kIsTensor, kIsNotTensor, {}, {},
-                 error::INVALID_ARGUMENT, "Cannot broadcast weights with non-trivial batch dimension");
+                 error::INVALID_ARGUMENT,
+                 "Cannot broadcast weights with non-trivial batch dimension");
   symmetric_test({1, 1, 1}, {2, 1, 1, 1}, kIsTensor, kIsNotTensor, {}, {},
-                 error::INVALID_ARGUMENT, "Cannot broadcast weights with non-trivial batch dimension",
+                 error::INVALID_ARGUMENT,
+                 "Cannot broadcast weights with non-trivial batch dimension",
                  /*operand_1_batch_size=*/2);
-  symmetric_test({1, 1, 1}, {1, 1, 1, 1, 1}, kIsTensor, kIsNotTensor, {1, 1, 1, 1}, {1, 1, 1, 1});
+  symmetric_test({1, 1, 1}, {1, 1, 1, 1, 1}, kIsTensor, kIsNotTensor,
+                 {1, 1, 1, 1}, {1, 1, 1, 1});
 
   // Both inputs are tensors.
   symmetric_test({1, 1, 1}, {1, 1}, kIsTensor, kIsTensor, {1, 1, 1}, {1, 1, 1});
   symmetric_test({1, 3, 4}, {2, 1, 4}, kIsTensor, kIsTensor, {1, 3, 4},
                  {2, 1, 4});
-  symmetric_test({1, 1, 1}, {1, 1, 1, 1}, kIsTensor, kIsTensor, {1, 1, 1, 1}, {1, 1, 1, 1});
+  symmetric_test({1, 1, 1}, {1, 1, 1, 1}, kIsTensor, kIsTensor, {1, 1, 1, 1},
+                 {1, 1, 1, 1});
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {
@@ -1657,8 +1659,7 @@ TEST_F(OpConverterTest, ConvertMatMul) {
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
       Reset();
-      NodeDef node_def =
-          get_matmul_nodedef(DT_FLOAT, transpose_a, transpose_b);
+      NodeDef node_def = get_matmul_nodedef(DT_FLOAT, transpose_a, transpose_b);
       AddTestTensor("input", {2}, /*batch_size=*/1);
       AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       RunValidationAndConversion(node_def);
@@ -1818,7 +1819,8 @@ void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
 }
 
 template <DataType dtype>
-void checkBinaryResults(OpConverterTest* test, const NodeDef& node_def, const DataVec& input_data, DataVec& output_data) {
+void checkBinaryResults(OpConverterTest* test, const NodeDef& node_def,
+                        const DataVec& input_data, DataVec& output_data) {
   using CType = typename EnumToDataType<dtype>::Type;
 
   // Check output dims.
@@ -1875,8 +1877,7 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
 
   const DataVec input_data{
       {"input1", test::AsTensor<CType>({CType(3), CType(6)})},
-      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}
-    };
+      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   checkBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
@@ -1889,12 +1890,12 @@ void TestBinaryTensorOpWeight(OpConverterTest* test) {
       GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
   test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/1,
                       TfDataTypeToTrt(dtype));
-  test->AddTestWeights("input2", /*dims=*/{2, 1}, /*values=*/std::vector<CType>{CType(2), CType(3)});
+  test->AddTestWeights("input2", /*dims=*/{2, 1},
+                       /*values=*/std::vector<CType>{CType(2), CType(3)});
   test->RunValidationAndConversion(node_def);
 
   const DataVec input_data{
-      {"input1", test::AsTensor<CType>({CType(3), CType(6)})}
-    };
+      {"input1", test::AsTensor<CType>({CType(3), CType(6)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   checkBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
@@ -1905,14 +1906,14 @@ void TestBinaryWeightOpTensor(OpConverterTest* test) {
   test->Reset();
   const NodeDef node_def =
       GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
-  test->AddTestWeights("input1", /*dims=*/{1, 2}, /*values=*/std::vector<CType>{CType(3), CType(6)});
+  test->AddTestWeights("input1", /*dims=*/{1, 2},
+                       /*values=*/std::vector<CType>{CType(3), CType(6)});
   test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/1,
                       TfDataTypeToTrt(dtype));
   test->RunValidationAndConversion(node_def);
 
   const DataVec input_data{
-      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}
-    };
+      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   checkBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
@@ -1926,9 +1927,9 @@ TEST_F(OpConverterTest, ConvertBinary) {
     NodeDef node_def =
         MakeNodeDef("my_add", "Add", {num_inputs, "input"}, {{"T", dtype}});
     AddTestTensor("input", {1}, /*batch_size=*/1, nvinfer1::DataType::kFLOAT);
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               StrCat("Binary ops require two inputs, at my_add")
-                                   .c_str());
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        StrCat("Binary ops require two inputs, at my_add").c_str());
   }
   {
     // Both inputs are weights.

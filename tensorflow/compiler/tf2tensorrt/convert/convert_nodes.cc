@@ -396,29 +396,38 @@ Status Converter::GetTrtBroadcastShape(
   (*operand_l_new_dims) = operand_l.GetTrtDims();
   (*operand_r_new_dims) = operand_r.GetTrtDims();
 
+  // clang-format off
   // Weights may include a batch dimension, so we need to remove it.
-  // We determine if that is the case by checking if the rank of the weights is larger
-  // than the rank of the tensor. Needed for cases such as:
+  // We determine if that is the case by checking if the rank of the weights is
+  // larger than the rank of the tensor. Needed for cases such as:
   // t: [1, 1] w/ implicit batch size of 1
   // w: [1, 1, 1]
   // where the output in TRT is expected to be 2D, not 3D.
-  if (operand_l.is_weights() && operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)  {
+  // clang-format on
+  if (operand_l.is_weights() &&
+      operand_l_new_dims->nbDims > operand_r_new_dims->nbDims) {
     if (operand_l_new_dims->d[0] != -1 && operand_l_new_dims->d[0] != 1) {
-      return errors::InvalidArgument("Cannot broadcast weights with non-trivial batch dimension");
+      return errors::InvalidArgument(
+          "Cannot broadcast weights with non-trivial batch dimension");
     }
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_l_new_dims));
   }
 
-  if (operand_r.is_weights() && operand_r_new_dims->nbDims > operand_l_new_dims->nbDims)  {
+  if (operand_r.is_weights() &&
+      operand_r_new_dims->nbDims > operand_l_new_dims->nbDims) {
     if (operand_r_new_dims->d[0] != -1 && operand_r_new_dims->d[0] != 1) {
-      return errors::InvalidArgument("Cannot broadcast weights with non-trivial batch dimension");
+      return errors::InvalidArgument(
+          "Cannot broadcast weights with non-trivial batch dimension");
     }
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_r_new_dims));
   }
 
-  // If the rank of the tensors is already the same, we can't do anything further.
+  // If the rank of the tensors is already the same, we can't do anything
+  // further.
   if (operand_l_new_dims->nbDims == operand_r_new_dims->nbDims) {
-    VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims) << " and [R] " << DebugString(*operand_r_new_dims);
+    VLOG(2) << "Broadcasted operands to [L] "
+            << DebugString(*operand_l_new_dims) << " and [R] "
+            << DebugString(*operand_r_new_dims);
     return Status::OK();
   }
 
@@ -431,18 +440,21 @@ Status Converter::GetTrtBroadcastShape(
           ? operand_l_new_dims
           : operand_r_new_dims;
 
-  // Broadcasts low_rank over high_rank in-place by inserting ones at the front of low_rank so the ranks match.
+  // Broadcasts low_rank over high_rank in-place by inserting ones at the front
+  // of low_rank so the ranks match.
   constexpr auto broadcast_dims = [](const nvinfer1::Dims& high_rank,
-                                    const nvinfer1::Dims& low_rank) {
+                                     const nvinfer1::Dims& low_rank) {
     nvinfer1::Dims ret{high_rank.nbDims};
     std::fill(ret.d, ret.d + ret.nbDims, 1);
     int num_leading_ones = high_rank.nbDims - low_rank.nbDims;
-    std::copy(low_rank.d, low_rank.d + low_rank.nbDims, ret.d + num_leading_ones);
+    std::copy(low_rank.d, low_rank.d + low_rank.nbDims,
+              ret.d + num_leading_ones);
     return ret;
   };
 
   (*lower_rank) = broadcast_dims(*higher_rank, *lower_rank);
-  VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims) << " and [R] " << DebugString(*operand_r_new_dims);
+  VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims)
+          << " and [R] " << DebugString(*operand_r_new_dims);
 
   // Compare broadcast feasibility
   for (int i = 0; i < operand_r_new_dims->nbDims; ++i) {
@@ -3026,7 +3038,6 @@ Status ConvertBinary(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-
 Status ConvertRsqrt(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3756,8 +3767,7 @@ Status ConvertGather(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertFCHelper(OpConverterParams* params,
-                       nvinfer1::ITensor* tensor_a,
+Status ConvertFCHelper(OpConverterParams* params, nvinfer1::ITensor* tensor_a,
                        TRT_ShapedWeights weights_raw, bool transpose_b,
                        string node_name) {
   // Reshape input to 3D - this will be a no-op unless using int8 precision.
@@ -3766,7 +3776,8 @@ Status ConvertFCHelper(OpConverterParams* params,
     input_dim.d[input_dim.nbDims++] = 1;
   }
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-    TRT_TensorOrWeights(tensor_a), input_dim, /*validation_only=*/false, &tensor_a));
+      TRT_TensorOrWeights(tensor_a), input_dim, /*validation_only=*/false,
+      &tensor_a));
 
   // FC layer will transpose weights, so we need to pre-transpose.
   TRT_ShapedWeights weights(weights_raw.TrtDType());
@@ -3778,7 +3789,9 @@ Status ConvertFCHelper(OpConverterParams* params,
   }
   TRT_ShapedWeights biases(weights.TrtDType());
   const int noutput = weights.shape_.d[0];
-  nvinfer1::IFullyConnectedLayer* layer = params->converter->network()->addFullyConnected(*tensor_a, noutput, weights.GetTrtWeights(), biases.GetTrtWeights());
+  nvinfer1::IFullyConnectedLayer* layer =
+      params->converter->network()->addFullyConnected(
+          *tensor_a, noutput, weights.GetTrtWeights(), biases.GetTrtWeights());
 
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -3788,34 +3801,42 @@ Status ConvertFCHelper(OpConverterParams* params,
   auto output_dim = output_tensor->getDimensions();
   output_dim.nbDims = 1;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-    TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
-    &output_tensor));
+      TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
+      &output_tensor));
 
   return Status::OK();
 }
 
 Status ConvertMatMulHelper(OpConverterParams* params,
                            TRT_TensorOrWeights input_a,
-                           TRT_TensorOrWeights input_b, bool transpose_a, bool transpose_b,
-                           string node_name) {
+                           TRT_TensorOrWeights input_b, bool transpose_a,
+                           bool transpose_b, string node_name) {
   // If an FC layer can be used and would be faster, use that instead.
-  const bool should_use_fc = !transpose_a && input_a.is_tensor() && input_b.is_weights() && input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
-  // If int8 is specified, FC must be used, as MM does not support int8 at this time.
-  if (should_use_fc || params->converter->precision_mode() == TrtPrecisionMode::INT8) {
-    return ConvertFCHelper(params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
+  const bool should_use_fc =
+      !transpose_a && input_a.is_tensor() && input_b.is_weights() &&
+      input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
+  // If int8 is specified, FC must be used, as MM does not support int8 at this
+  // time.
+  if (should_use_fc ||
+      params->converter->precision_mode() == TrtPrecisionMode::INT8) {
+    return ConvertFCHelper(params, input_a.tensor(), input_b.weights(),
+                           transpose_b, node_name);
   }
 
-  constexpr auto get_matrix_op = [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
-      return (in->getDimensions().nbDims < 2)
-          ? nvinfer1::MatrixOperation::kVECTOR
-          : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
-                        : nvinfer1::MatrixOperation::kNONE;
+  constexpr auto get_matrix_op =
+      [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
+    return (in->getDimensions().nbDims < 2)
+               ? nvinfer1::MatrixOperation::kVECTOR
+               : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
+                             : nvinfer1::MatrixOperation::kNONE;
   };
 
-  // If the MatMul operand is a constant, applies transposes at conversion-time as necessary.
-  // If the operand is a tensor, does nothing.
-  // If required transposes were applied, sets transpose to false.
-  const auto prepare_matmul_operand = [&params](TRT_TensorOrWeights operand, bool* transpose) -> nvinfer1::ITensor* {
+  // If the MatMul operand is a constant, applies transposes at conversion-time
+  // as necessary. If the operand is a tensor, does nothing. If required
+  // transposes were applied, sets transpose to false.
+  const auto prepare_matmul_operand =
+      [&params](TRT_TensorOrWeights operand,
+                bool* transpose) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
       return operand.tensor();
     } else {
@@ -3835,7 +3856,10 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   nvinfer1::ITensor* tensor_a = prepare_matmul_operand(input_a, &transpose_a);
   nvinfer1::ITensor* tensor_b = prepare_matmul_operand(input_b, &transpose_b);
 
-  nvinfer1::IMatrixMultiplyLayer* layer = params->converter->network()->addMatrixMultiply(*tensor_a, get_matrix_op(tensor_a, transpose_a), *tensor_b, get_matrix_op(tensor_b, transpose_b));
+  nvinfer1::IMatrixMultiplyLayer* layer =
+      params->converter->network()->addMatrixMultiply(
+          *tensor_a, get_matrix_op(tensor_a, transpose_a), *tensor_b,
+          get_matrix_op(tensor_b, transpose_b));
 
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -3856,8 +3880,8 @@ Status ConvertMatMul(OpConverterParams* params) {
   bool transpose_b = attrs.get<bool>("transpose_b");
 
   if (params->validation_only) return Status::OK();
-  return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1),
-                             transpose_a, transpose_b, node_def.name());
+  return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
+                             transpose_b, node_def.name());
 }
 
 Status ConvertBatchMatMul(OpConverterParams* params) {
@@ -3882,28 +3906,29 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   const bool transpose_a = attrs.get<bool>("adj_x");
   const bool transpose_b = attrs.get<bool>("adj_y");
   // Removes the batch dimension from weights.
-  const auto remove_weights_batch_dim = [&params](const TRT_TensorOrWeights& input,
-                                              TRT_TensorOrWeights& tensor) {
-    auto dims = input.GetTrtDims();
-    if (input.is_weights()) {
-      // The other operand must be a tensor, this is ensured by earlier checks.
-      // Checks that the batch dimension is not changed by broadcasting.
-      if (dims.d[0] != 1) {
-        return errors::InvalidArgument(
-            "Input weight attempts to broadcast across batch dimension for "
-            "BatchMatMul, at ",
-            params->node_def.name());
-      }
-      // Remove the batch dimension from the weights.
-      TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
-    }
-    // Create tensor and reshape if necessary.
-    nvinfer1::ITensor* t;
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        input, dims, params->validation_only, &t));
-    tensor = std::move(TRT_TensorOrWeights{t});
-    return Status::OK();
-  };
+  const auto remove_weights_batch_dim =
+      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights& tensor) {
+        auto dims = input.GetTrtDims();
+        if (input.is_weights()) {
+          // The other operand must be a tensor, this is ensured by earlier
+          // checks. Checks that the batch dimension is not changed by
+          // broadcasting.
+          if (dims.d[0] != 1) {
+            return errors::InvalidArgument(
+                "Input weight attempts to broadcast across batch dimension for "
+                "BatchMatMul, at ",
+                params->node_def.name());
+          }
+          // Remove the batch dimension from the weights.
+          TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
+        }
+        // Create tensor and reshape if necessary.
+        nvinfer1::ITensor* t;
+        TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+            input, dims, params->validation_only, &t));
+        tensor = std::move(TRT_TensorOrWeights{t});
+        return Status::OK();
+      };
 
   TRT_TensorOrWeights tensor_l{nullptr};
   TRT_TensorOrWeights tensor_r{nullptr};
@@ -3911,8 +3936,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), tensor_r));
   if (params->validation_only) return Status::OK();
 
-  return ConvertMatMulHelper(params, tensor_l, tensor_r,
-                             transpose_a, transpose_b, node_def.name());
+  return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
+                             transpose_b, node_def.name());
 }
 
 Status ConvertSoftmax(OpConverterParams* params) {
