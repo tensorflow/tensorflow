@@ -2128,8 +2128,9 @@ inline void DepthwiseConv(
     thread_count = thread_count_row;
   }
 
-  const int max_threads = gemm_context ? gemm_context->max_num_threads() : 1;
-  thread_count = std::max(1, std::min(thread_count, max_threads));
+  // TODO(b/130555917): Allow multi-threading after fixing ARM accuracy issues.
+  constexpr int kMaxThreads = 1;
+  thread_count = std::max(1, std::min(thread_count, kMaxThreads));
 
   if (thread_count == 1) {
     DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
