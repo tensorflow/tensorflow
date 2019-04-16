@@ -84,7 +84,7 @@ class LossScale(trackable.Trackable):
       grads: A list of unscaled gradients, each which is the gradient of the
         loss with respect to a weight. The gradients should have already been
         divided by the loss scale being before passed to this function. 'None'
-        gradients are accepted, and should be ignored.
+        gradients are accepted, and are ignored.
 
     Returns:
       update_op: In eager mode, None. In graph mode, an op to update the loss
