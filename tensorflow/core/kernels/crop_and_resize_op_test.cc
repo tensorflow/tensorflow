@@ -327,9 +327,9 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To4x4NoExtrapolation) {
 
   // clang-format off
   test::FillValues<float>(&expected,
-    { 1.618574f, 2.269236f, 2.919897f, 3.570559f
-      3.428388f, 4.079050f, 4.729711f, 5.380373f
-      5.238202f, 5.888864f, 6.539525f, 7.190187f
+    { 1.618574f, 2.269236f, 2.919897f, 3.570559f,
+      3.428388f, 4.079050f, 4.729711f, 5.380373f,
+      5.238202f, 5.888864f, 6.539525f, 7.190187f,
       7.048016f, 7.698677f, 8.349339f, 9.000000f });
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
