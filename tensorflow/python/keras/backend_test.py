@@ -893,31 +893,45 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllCloseAccordingToType(local_conv, local_conv_dim)
 
   def test_conv2d(self):
-    val = np.random.random((10, 4, 10, 10))
-    x = keras.backend.variable(val)
     kernel_val = np.random.random((3, 3, 4, 5))
     k = keras.backend.variable(kernel_val)
+
+    # Test channels_first
+    val = np.random.random((10, 4, 10, 10))
+    x = keras.backend.variable(val)
     y = keras.backend.conv2d(x, k,
                              padding='valid', data_format='channels_first')
     self.assertEqual(y.shape.as_list(), [10, 5, 8, 8])
 
+    # Test channels_last
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv2d(x, k, strides=(1, 1),
                              padding='valid', data_format='channels_last')
     self.assertEqual(y.shape.as_list(), [10, 8, 8, 5])
 
+    # Test same padding
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
-    y = keras.backend.conv2d(x, k, strides=(1, 1),
+    y = keras.backend.conv2d(x, k,
                              padding='same', data_format='channels_last')
     self.assertEqual(y.shape.as_list(), [10, 10, 10, 5])
 
+    # Test dilation_rate
+    val = np.random.random((10, 10, 10, 4))
+    x = keras.backend.variable(val)
+    y = keras.backend.conv2d(x, k, dilation_rate=(2, 2),
+                             padding='same', data_format='channels_last')
+    self.assertEqual(y.shape.as_list(), [10, 10, 10, 5])
+
+    # Test strides
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv2d(x, k, strides=(2, 2),
                              padding='same', data_format='channels_last')
     self.assertEqual(y.shape.as_list(), [10, 5, 5, 5])
+
+    # Test invalid arguments
     with self.assertRaises(ValueError):
       y = keras.backend.conv2d(x, k, (2, 2),
                                padding='other', data_format='channels_last')
@@ -926,6 +940,60 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                data_format='other')
     with self.assertRaises(ValueError):
       y = keras.backend.conv2d(x, k, (2, 2, 2))
+
+  def test_conv2d_transpose(self):
+    input_size = (7, 8)
+    kernel_size = (3, 3)
+    input_depth = 6
+    filters = 6
+    batch_size = 2
+
+    kernel_val = np.random.random(kernel_size + (input_depth, filters))
+    k = keras.backend.variable(kernel_val)
+
+    # Test channels_first
+    input_val = np.random.random((batch_size, input_depth) + input_size)
+    x = keras.backend.variable(input_val)
+    y = keras.backend.conv2d_transpose(x, k, (batch_size, filters) + input_size,
+                                       padding='same',
+                                       data_format='channels_first')
+    self.assertEqual(
+        tuple(y.shape.as_list()), (batch_size, filters) + input_size)
+
+    # Test channels_last
+    input_val = np.random.random((batch_size,) + input_size + (input_depth,))
+    x = keras.backend.variable(input_val)
+    y = keras.backend.conv2d_transpose(
+        x, k, (batch_size,) + input_size + (filters,),
+        padding='same',
+        data_format='channels_last')
+    self.assertEqual(
+        tuple(y.shape.as_list()), (batch_size,) + input_size + (filters,))
+
+    # Test dilation_rate
+    y = keras.backend.conv2d_transpose(
+        x, k, (batch_size,) + input_size + (filters,),
+        padding='same',
+        data_format='channels_last',
+        dilation_rate=(2, 2))
+    self.assertEqual(
+        tuple(y.shape.as_list()), (batch_size,) + input_size + (filters,))
+
+    # Test batch size of None in output_shape
+    y = keras.backend.conv2d_transpose(x, k, (None,) + input_size + (filters,),
+                                       padding='same',
+                                       data_format='channels_last')
+    self.assertEqual(
+        tuple(y.shape.as_list()), (batch_size,) + input_size + (filters,))
+
+    # Test invalid values
+    with self.assertRaises(ValueError):
+      y = keras.backend.conv2d_transpose(x, k, (2, 2, 8, 9),
+                                         padding='other',
+                                         data_format='channels_last')
+    with self.assertRaises(ValueError):
+      y = keras.backend.conv2d_transpose(x, k, (2, 2, 8, 9),
+                                         data_format='other')
 
   def test_separable_conv2d(self):
     val = np.random.random((10, 4, 10, 10))
