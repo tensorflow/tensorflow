@@ -361,6 +361,7 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
 
     while (false == infeed_thread_cancelled_) {
       for (auto& infeed_dataset_iterator : infeed_dataset_iterators) {
+        bool end_of_sequence = false;
         {
           std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
 
@@ -368,22 +369,16 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
           // dequeued every iteration. If all tensors have been used, then get
           // the next set of tensors.
           if (infeed_dataset_iterator->all_tensors_used()) {
-            bool end_of_sequence;
             std::vector<tensorflow::Tensor> outputs;
             TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
                 infeed_dataset_iterator->iterator_ctx.get(), &outputs,
                 &end_of_sequence));
             infeed_dataset_iterator->tensors = outputs;
-            if (end_of_sequence) {
-              LOG(INFO) << "The dataset iterator has reached the end of the "
-                           "dataset.";
-              infeed_thread_cancelled_ = true;
-            }
             absl::c_fill(infeed_dataset_iterator->used, false);
           }
         }
 
-        if (!infeed_thread_cancelled_) {
+        if (!end_of_sequence) {
           auto tensor_count = infeed_dataset_iterator->shapes.size();
           for (auto j = 0; j < tensor_count; ++j) {
             auto tensor = infeed_dataset_iterator->tensors[j];
@@ -400,6 +395,10 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
               return;
             }
           }
+        } else {
+          infeed_thread_cancelled_ = true;
+          LOG(INFO)
+              << "The dataset iterator has reached the end of the dataset.";
         }
 
         std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
