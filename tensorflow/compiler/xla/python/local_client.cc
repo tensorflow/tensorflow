@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -361,8 +363,8 @@ StatusOr<std::vector<LocalShapedBuffer>> PyLocalExecutable::ExecutePerReplica(
 
   VLOG(1) << "Executing with " << num_replicas() << " replicas.";
 
-  std::vector<StatusOr<ScopedShapedBuffer>> results(num_replicas());
-  auto execute = [this, &argument_handles, &results](int replica) {
+  auto execute =
+      [this, &argument_handles](int replica) -> StatusOr<ScopedShapedBuffer> {
     const int device_ordinal = device_assignment_(replica, 0);
     VLOG(3) << "Replica " << replica
             << " mapped to device ordinal for execution: " << device_ordinal;
@@ -382,25 +384,63 @@ StatusOr<std::vector<LocalShapedBuffer>> PyLocalExecutable::ExecutePerReplica(
     StatusOr<ScopedShapedBuffer> result_buffer_status =
         executable_->Run(argument_buffers, options);
 
-    results[replica] = std::move(result_buffer_status);
+    VLOG(1) << "Replica " << replica
+            << " completed; ok=" << result_buffer_status.ok();
+    if (!result_buffer_status.ok()) {
+      LOG(ERROR) << "Execution of replica " << replica
+                 << " failed: " << result_buffer_status.status();
+    }
+    return result_buffer_status;
   };
 
   VLOG(1) << "Executing replicated computation; num_replicas="
           << num_replicas();
+  std::vector<StatusOr<ScopedShapedBuffer>> results(num_replicas());
   if (num_replicas() == 1) {
     // Fast-path if there is only one replica — run the computation on the
     // current thread.
-    execute(0);
+    results[0] = execute(0);
   } else {
-    absl::BlockingCounter counter(num_replicas() - 1);
-    for (int replica = 0; replica < num_replicas() - 1; ++replica) {
-      client_->execute_pool()->Schedule([&execute, &counter, replica] {
-        execute(replica);
-        counter.DecrementCount();
-      });
+    absl::Mutex mu;
+    int running GUARDED_BY(mu) = num_replicas();
+    int failed GUARDED_BY(mu) = 0;
+
+    for (int replica = 0; replica < num_replicas(); ++replica) {
+      client_->execute_pool()->Schedule(
+          [&execute, &mu, &running, &failed, &results, replica] {
+            results[replica] = execute(replica);
+
+            absl::MutexLock lock(&mu);
+            --running;
+            if (!results[replica].ok()) {
+              ++failed;
+            }
+          });
     }
-    execute(num_replicas() - 1);
-    counter.Wait();
+
+    auto done_running_or_failed = [&]() {
+      mu.AssertHeld();
+      return running == 0 || failed > 0;
+    };
+    absl::MutexLock lock(&mu);
+    mu.Await(absl::Condition(&done_running_or_failed));
+    if (failed > 0) {
+      auto done_running = [&]() {
+        mu.AssertHeld();
+        return running == 0;
+      };
+      // If execution does not terminate within a reasonable amount of time, we
+      // may be stuck at a cross-replica barrier on-device. Terminate the
+      // process since that's the only way we can escape this situation at the
+      // moment (b/130629719).
+      if (!mu.AwaitWithTimeout(absl::Condition(&done_running),
+                               absl::Seconds(10))) {
+        LOG(FATAL)
+            << "Replicated computation launch failed, but not all replicas "
+               "terminated. Aborting process to work around deadlock. See the "
+               "error log for details of the failure.";
+      }
+    }
   }
   VLOG(1) << "Replicated execution complete.";
 
