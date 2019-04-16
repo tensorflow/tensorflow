@@ -512,7 +512,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
 
     m.dense.trainable = False
     self.assertEqual(
-        [m.var, m.dense.kernel, m.dense.bias, m.not_trainable_var],
+        [m.dense.kernel, m.dense.bias, m.var, m.not_trainable_var],
         m.variables)
     self.assertEqual([m.var], m.trainable_variables)
     self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],
