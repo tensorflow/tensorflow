@@ -6356,6 +6356,7 @@ tf_py_test(
     ],
     tags = [
         "grappler",
+        "no_rocm",
     ],
 )
 
