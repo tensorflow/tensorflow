@@ -198,6 +198,7 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:component_api_helper",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:tpu_noestimator",
         "//third_party/py/numpy",
     ],
 )

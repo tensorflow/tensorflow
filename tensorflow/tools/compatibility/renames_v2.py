@@ -345,6 +345,16 @@ renames = {
         'tf.compat.v1.estimator.inputs.numpy_input_fn',
     'tf.estimator.inputs.pandas_input_fn':
         'tf.compat.v1.estimator.inputs.pandas_input_fn',
+    'tf.estimator.tpu.InputPipelineConfig':
+        'tf.compat.v1.estimator.tpu.InputPipelineConfig',
+    'tf.estimator.tpu.RunConfig':
+        'tf.compat.v1.estimator.tpu.RunConfig',
+    'tf.estimator.tpu.TPUConfig':
+        'tf.compat.v1.estimator.tpu.TPUConfig',
+    'tf.estimator.tpu.TPUEstimator':
+        'tf.compat.v1.estimator.tpu.TPUEstimator',
+    'tf.estimator.tpu.TPUEstimatorSpec':
+        'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
