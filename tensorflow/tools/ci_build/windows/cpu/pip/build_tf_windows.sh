@@ -100,7 +100,10 @@ fi
 
 run_configure_for_cpu_build
 
-bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build \
+  --incompatible_remove_native_http_archive=false \
+  --incompatible_disable_cc_toolchain_label_from_crosstool_proto=false \
+  --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -124,7 +127,10 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-bazel test --announce_rc --config=opt -k --test_output=errors \
+bazel test \
+  --incompatible_remove_native_http_archive=false \
+  --incompatible_disable_cc_toolchain_label_from_crosstool_proto=false \
+  --announce_rc --config=opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
