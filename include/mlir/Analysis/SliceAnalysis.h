@@ -113,7 +113,7 @@ void getForwardSlice(
 ///              9
 ///
 /// Assuming all local orders match the numbering order:
-///    {1, 2, 5, 7, 3, 4, 6, 8}
+///    {1, 2, 5, 3, 4, 6}
 ///
 void getBackwardSlice(
     Operation *op, llvm::SetVector<Operation *> *backwardSlice,
