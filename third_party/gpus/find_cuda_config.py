@@ -182,7 +182,7 @@ def _library_paths(base_paths):
 
 def _not_found_error(paths, filepattern):
   return ConfigError(
-      "Could not find any %s in:%s" %
+      "Could not find any %s in:%s\n" %
       (filepattern, "".join(["\n        %s" % path for path in sorted(paths)])))
 
 
