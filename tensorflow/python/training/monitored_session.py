@@ -330,8 +330,10 @@ def _create_monitored_session_with_worker_context(
   # collective ops hang. Therefore on those workers that don't need to actually
   # write checkpoints or summaries, we let them write to a temp directory.
   # pylint: disable=protected-access
-  if type(worker_context._strategy).__name__ in ('CollectiveAllReduceStrategy',
-                                                 'MultiWorkerMirroredStrategy'):
+  if type(
+      worker_context._strategy).__name__ in ('CollectiveAllReduceStrategy',
+                                             'CollectiveAllReduceStrategyV1',
+                                             'MultiWorkerMirroredStrategy'):
     if worker_context.task_type:
       tmpdir = 'tmp_%s_%d' % (worker_context.task_type, worker_context.task_id)
     else:
