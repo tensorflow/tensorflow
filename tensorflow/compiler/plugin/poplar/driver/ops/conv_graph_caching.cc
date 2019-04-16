@@ -28,6 +28,7 @@ limitations under the License.
 #include <poplar/Tensor.hpp>
 #include <poplin/ConvUtil.hpp>
 #include <poplin/Convolution.hpp>
+#include <popops/Cast.hpp>
 #include <popops/ElementWise.hpp>
 #include <popops/Reduce.hpp>
 #include <popops/ScaledAdd.hpp>
@@ -122,9 +123,11 @@ ConvolutionScaledInplaceCacheKey GetConvolutionScaledInplaceCacheKey(
 
 BiasApplyCacheKey GetBiasApplyCacheKey(
     const poplar::Tensor& input, const poplar::Tensor& deltas,
-    const std::vector<std::size_t>& reduction_dims, const uint64 device_id) {
+    const poplar::Tensor& scale, const std::vector<std::size_t>& reduction_dims,
+    const uint64 device_id) {
   return std::make_tuple(graph_caching_util::GetPoplarTensorSignature(input),
                          graph_caching_util::GetPoplarTensorSignature(deltas),
+                         graph_caching_util::GetPoplarTensorSignature(scale),
                          reduction_dims, device_id);
 }
 }  // namespace
@@ -320,7 +323,7 @@ Status DoCachedBiasApplyVariableLearningRate(
     TensorMap& tensor_map) {
   std::vector<poplar::Tensor> args = {in, deltas, scale};
 
-  auto key = GetBiasApplyCacheKey(in, deltas, reduction_dims, device_id);
+  auto key = GetBiasApplyCacheKey(in, deltas, scale, reduction_dims, device_id);
   auto it = res.bias_apply_graph_cache.find(key);
   if (it != res.bias_apply_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {
@@ -334,12 +337,17 @@ Status DoCachedBiasApplyVariableLearningRate(
       graph,
       {inout(in, "input"), input(deltas, "deltas"), input(scale, "scale")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
+        auto scale_float = args[2];
+        if (scale_float.elementType() != poplar::FLOAT) {
+          scale_float = popops::cast(graph, scale_float, poplar::FLOAT, seq,
+                                     GetDebugName(inst) + "/ScaleToFloat");
+        }
         // Reduce with scale and update in place
-        popops::mapInPlace(graph, popops::expr::UnaryOpType::NEGATE, args[2],
-                           seq, GetDebugName(inst) + "/negate");
+        popops::mapInPlace(graph, popops::expr::UnaryOpType::NEGATE,
+                           scale_float, seq, GetDebugName(inst) + "/negate");
         popops::reduceWithOutput(graph, args[1], args[0], reduction_dims,
-                                 {popops::Operation::ADD, true, args[2]}, seq,
-                                 GetDebugName(inst));
+                                 {popops::Operation::ADD, true, scale_float},
+                                 seq, GetDebugName(inst));
       });
   res.bias_apply_graph_cache.emplace(key, f);
   f(args, prog);
