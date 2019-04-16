@@ -529,7 +529,7 @@ TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
 
 }  // namespace
 
-// Assumes that the tensors in the model have been topologically sorted.
+// Assumes that the operators in the model have been topologically sorted.
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,
                            const TensorType& output_type,
