@@ -17,10 +17,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/util/gpu_launch_config.h"
->>>>>>> google_upstream/master
 
 __global__ void AddOneKernel(const int* in, const int N, int* out) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N;

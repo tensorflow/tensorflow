@@ -896,20 +896,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
 
-<<<<<<< HEAD
 // Remove this once TF-ROCm supports _FusedConv2D
 #if !defined(TENSORFLOW_USE_ROCM)
-    // Remap Conv2D+BiasAdd into the _FusedConv2D.
-    if (FindConv2DWithBias(ctx, &node, &conv2d_with_bias)) {
-      AddFusedConv2DNode(ctx, conv2d_with_bias, optimized_graph,
-                         &invalidated_nodes);
-      continue;
-    }
-    // Remap Conv2D+BiasAdd+Relu into the _FusedConv2D.
-    if (FindConv2DWithBiasAndRelu(ctx, &node, &conv2d_with_bias_and_relu)) {
-      AddFusedConv2DNode(ctx, conv2d_with_bias_and_relu, optimized_graph,
-                         &invalidated_nodes);
-=======
     // Remap {Conv2D,MatMul}+BiasAdd into the _Fused{Conv2D,MatMul}
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBias(ctx, &node, &contract_with_bias)) {
@@ -924,7 +912,6 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
             ctx, &node, &contract_with_bias_and_activation)) {
       AddFusedContractionNode(ctx, contract_with_bias_and_activation,
                               optimized_graph, &invalidated_nodes);
->>>>>>> google_upstream/master
       continue;
     }
 #endif

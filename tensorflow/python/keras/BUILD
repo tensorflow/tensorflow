@@ -188,7 +188,6 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
-        "//tensorflow/python:distribute",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -1221,16 +1220,11 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    shard_count = 16,
+    shard_count = 20,
     tags = [
             "notsan",
             "no_rocm",
            ],
-=======
-    shard_count = 20,
-    tags = ["notsan"],
->>>>>>> google_upstream/master
 )
 
 tf_py_test(
