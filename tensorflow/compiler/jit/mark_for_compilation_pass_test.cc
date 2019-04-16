@@ -774,7 +774,7 @@ TEST(XlaCompilationTest, ChainOfOps) {
   ASSERT_EQ(cluster_sets.size(), 1);
 
   std::vector<string> expected_clustered_nodes_a = {
-      "AssignmentW1", "ConstN1", "ReadR0", "ValueToAssignW1"};
+      "AssignmentW1", "ConstN0", "ReadR0", "ValueToAssignW1"};
   ASSERT_EQ(cluster_sets[cluster_names[0]], expected_clustered_nodes_a);
 }
 
