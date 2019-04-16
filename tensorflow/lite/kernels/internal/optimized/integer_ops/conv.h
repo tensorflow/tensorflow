@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_CONV_H_
 
+// This must be #included first because it is what defines GEMMLOWP_NEON
+#include "public/gemmlowp.h"
+
 #ifdef GEMMLOWP_NEON
 
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
 #include "public/map.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
