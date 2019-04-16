@@ -80,7 +80,7 @@ def _tensorrt_configure_impl(repository_ctx):
             repository_ctx,
             name = "tensorrt_include",
             srcs = [include_dir + header for header in headers],
-            outs = ["tensorrt/incude/" + header for header in headers],
+            outs = ["tensorrt/include/" + header for header in headers],
         ),
     ]
 
