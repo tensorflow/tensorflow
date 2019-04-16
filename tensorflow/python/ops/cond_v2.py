@@ -80,6 +80,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
 
+    verify_captures(true_graph, false_graph)
     return _build_cond(pred, true_graph, false_graph,
                        true_graph.external_captures,
                        false_graph.external_captures,
@@ -596,6 +597,21 @@ def _get_output_shapes(true_graph_outputs, false_graph_outputs):
       for t_out, f_out in zip(true_graph_outputs, false_graph_outputs)
   ]
   return output_shapes
+
+
+def verify_captures(true_graph, false_graph):
+  """Verify that a true_fn tensor is not accessed in false_fn and vice-versa."""
+  for t in false_graph.external_captures:
+    if not isinstance(t, ops.EagerTensor) and t.graph is true_graph:
+      raise ValueError("Tensor {} in true_fn is accessed from false_fn.".format(
+          t.name))
+  # Note: This is technically not possible right now because `false_graph`
+  # is built "after" `true_graph` but we add this check for completeness and to
+  # guard against potential future changes.
+  for t in true_graph.external_captures:
+    if not isinstance(t, ops.EagerTensor) and t.graph is false_graph:
+      raise ValueError("Tensor {} in false_fn is accessed from true_fn.".format(
+          t.name))
 
 
 class _CondGradFuncGraph(util.CondBranchFuncGraph):

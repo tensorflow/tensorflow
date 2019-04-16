@@ -65,6 +65,7 @@ def op_attr_type(op_type, attr_name):
   try:
     return _op_attr_type_cache[(op_type, attr_name)]
   except KeyError:
+    context.ensure_initialized()
     h = context.context()._handle  # pylint: disable=protected-access
     attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
   _op_attr_type_cache[(op_type, attr_name)] = attr_type
@@ -767,6 +768,7 @@ class GradientTape(object):
     self._recording = False
     self._created_eagerly = context.executing_eagerly()
     if self._created_eagerly:
+      context.ensure_initialized()
       context.context().start_step()
 
   def __enter__(self):

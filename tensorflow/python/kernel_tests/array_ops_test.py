@@ -83,12 +83,14 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     # converted to sensors when applying `transpose` below
     matrix = constant_op.constant([[1, 2, 3], [4, 5, 6]])  # Shape (2, 3)
     expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
-    @def_function.function(input_signature=
-                           [tensor_spec.TensorSpec
-                            (shape=None, dtype=dtypes.int32)])
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+    ])
     def transpose(matrix):
       self.assertIs(matrix.shape.ndims, None)
       return array_ops.matrix_transpose(matrix)
+
     self.assertAllEqual(expected_transposed, transpose(matrix))
 
   def testBatchMatrixDynamicallyDefined(self):
@@ -100,12 +102,14 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     # converted to sensors when applying `transpose` below
     batch_matrix = constant_op.constant([matrix_0, matrix_1])  # Shape (2, 2, 3)
     expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
-    @def_function.function(input_signature=
-                           [tensor_spec.TensorSpec
-                            (shape=None, dtype=dtypes.int32)])
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+    ])
     def transpose(matrix):
       self.assertIs(matrix.shape.ndims, None)
       return array_ops.matrix_transpose(matrix)
+
     self.assertAllEqual(expected_transposed, transpose(batch_matrix))
 
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
@@ -309,9 +313,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     for use_gpu in [False, True]:
       for axis_dtype in [dtypes.int32, dtypes.int64]:
         with self.cached_session(use_gpu=use_gpu):
-          x_tf = array_ops.reverse_v2(x_np,
-                                      constant_op.constant(
-                                          [0], dtype=axis_dtype)).eval()
+          x_tf = array_ops.reverse_v2(
+              x_np, constant_op.constant([0], dtype=axis_dtype)).eval()
           self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def _reverse2DimAuto(self, np_dtype):
@@ -321,14 +324,18 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
       for use_gpu in [False, True]:
         for axis_dtype in [dtypes.int32, dtypes.int64]:
           with self.cached_session(use_gpu=use_gpu):
-            x_tf_1 = reverse_f(x_np, constant_op.constant(
-                [0], dtype=axis_dtype)).eval()
-            x_tf_2 = reverse_f(x_np, constant_op.constant(
-                [-2], dtype=axis_dtype)).eval()
-            x_tf_3 = reverse_f(x_np, constant_op.constant(
-                [1], dtype=axis_dtype)).eval()
-            x_tf_4 = reverse_f(x_np, constant_op.constant(
-                [-1], dtype=axis_dtype)).eval()
+            x_tf_1 = reverse_f(x_np,
+                               constant_op.constant([0],
+                                                    dtype=axis_dtype)).eval()
+            x_tf_2 = reverse_f(x_np,
+                               constant_op.constant([-2],
+                                                    dtype=axis_dtype)).eval()
+            x_tf_3 = reverse_f(x_np,
+                               constant_op.constant([1],
+                                                    dtype=axis_dtype)).eval()
+            x_tf_4 = reverse_f(x_np,
+                               constant_op.constant([-1],
+                                                    dtype=axis_dtype)).eval()
             x_tf_5 = reverse_f(x_np,
                                constant_op.constant([1, 0],
                                                     dtype=axis_dtype)).eval()
@@ -343,14 +350,11 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testInvalidAxis(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-    with self.assertRaisesRegexp(ValueError,
-                                 "is out of valid range"):
+    with self.assertRaisesRegexp(ValueError, "is out of valid range"):
       array_ops.reverse_v2(x_np, [-30])
-    with self.assertRaisesRegexp(ValueError,
-                                 "is out of valid range"):
+    with self.assertRaisesRegexp(ValueError, "is out of valid range"):
       array_ops.reverse_v2(x_np, [2])
-    with self.assertRaisesRegexp(ValueError,
-                                 "axis 0 specified more than once"):
+    with self.assertRaisesRegexp(ValueError, "axis 0 specified more than once"):
       array_ops.reverse_v2(x_np, [0, -2])
 
   # This is the version of reverse that uses axis indices rather than
@@ -602,8 +606,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_garbage_created
   def testTensorSliceEagerMemory(self):
     with context.eager_mode():
-      inputs = constant_op.constant(
-          [[[1], [2], [3], [4]]], dtype=dtypes.float32)
+      inputs = constant_op.constant([[[1], [2], [3], [4]]],
+                                    dtype=dtypes.float32)
       # Tests that slicing an EagerTensor doesn't leak memory
       inputs[0]  # pylint: disable=pointless-statement
 
@@ -667,8 +671,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       ones = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int16)
       self.assertAllEqual(
           ones[array_ops.newaxis, :, 0].eval(
-              feed_dict={ones: [[1, 1], [1, 1]]}),
-          [[1, 1]])
+              feed_dict={ones: [[1, 1], [1, 1]]}), [[1, 1]])
 
   @test_util.run_deprecated_v1
   def testTensorIndexing(self):
@@ -681,7 +684,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[..., bar:bar2]
       _ = checker[..., bar]
       _ = checker[..., 3]
-      _ = checker[..., 2 ** 64 // 2**63]  # Test longs in Python 2
+      _ = checker[..., 2**64 // 2**63]  # Test longs in Python 2
 
   def testTensorIndexingTypeError(self):
     with self.session(use_gpu=True):
@@ -1066,15 +1069,6 @@ class StridedSliceAssignChecker(object):
 
 class SliceAssignTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
-  def testInvalidSlice(self):
-    with self.cached_session() as sess:
-      foo = constant_op.constant([1, 2, 3])
-      with self.assertRaisesRegexp(ValueError, "Sliced assignment"
-                                   " is only supported for variables"):
-        bar = foo[:2].assign(constant_op.constant([1, 2]))
-        sess.run(bar)
-
   def doTestSliceAssign(self, use_resource):
     for dtype in STRIDED_SLICE_TYPES:
       checker = StridedSliceAssignChecker(
@@ -1205,8 +1199,8 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.cached_session():
       # test dtype and default maxlen:
-      res = array_ops.sequence_mask(constant_op.constant([0, 1, 4]),
-                                    dtype=dtypes.float32)
+      res = array_ops.sequence_mask(
+          constant_op.constant([0, 1, 4]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
           res.eval(),
@@ -1215,23 +1209,20 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testOneDimensionalWithoutMaxlen(self):
     with self.cached_session():
-      res = array_ops.sequence_mask(
-          constant_op.constant([0, 1, 4]))
+      res = array_ops.sequence_mask(constant_op.constant([0, 1, 4]))
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(),
-          [[False, False, False, False],
-           [True, False, False, False],
-           [True, True, True, True]])
+          res.eval(), [[False, False, False, False],
+                       [True, False, False, False], [True, True, True, True]])
 
   @test_util.run_deprecated_v1
   def testTwoDimensional(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
       self.assertAllEqual(res.get_shape(), [1, 3, 5])
-      self.assertAllEqual(res.eval(), [[[True, False, False, False, False], [
-          True, True, True, False, False
-      ], [True, True, False, False, False]]])
+      self.assertAllEqual(res.eval(), [[[True, False, False, False, False],
+                                        [True, True, True, False, False],
+                                        [True, True, False, False, False]]])
 
       # test dtype and default maxlen:
       res = array_ops.sequence_mask(
@@ -1284,12 +1275,9 @@ class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
 class IdentityTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_gpu_only
   def testEagerIdentity(self):
     with context.eager_mode():
-      ctx = context.context()
-      if not ctx.num_gpus():
-        self.skipTest("No GPUs found")
-
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())
@@ -1695,9 +1683,7 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
             indices, shape=[-1] + list(indices_shape[batch_dims:]))
 
       map_fn_gather_nd_result = map_fn.map_fn(
-          fn=self._map_fn_body,
-          elems=(params, indices),
-          dtype=dtypes.float64)
+          fn=self._map_fn_body, elems=(params, indices), dtype=dtypes.float64)
 
       if batch_dims > 1:
         out_shape = map_fn_gather_nd_result.shape.as_list()
@@ -1744,16 +1730,10 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
           batch_dims=constant_op.constant((0, 1)))
 
     with self.assertRaises(ValueError):
-      array_ops.batch_gather_nd(
-          params=params,
-          indices=indices,
-          batch_dims=-1)
+      array_ops.batch_gather_nd(params=params, indices=indices, batch_dims=-1)
 
     with self.assertRaises(ValueError):
-      array_ops.batch_gather_nd(
-          params=params,
-          indices=indices,
-          batch_dims=4)
+      array_ops.batch_gather_nd(params=params, indices=indices, batch_dims=4)
 
   @test_util.run_deprecated_v1
   def testNoneBatchDimensions(self):
@@ -1790,8 +1770,11 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
       with self.cached_session() as sess:
         params_val = np.ones(dtype=np.float32, shape=params_shape)
         indices_val = np.ones(dtype=np.int32, shape=indices_shape)
-        res = sess.run(out,
-                       feed_dict={params: params_val, indices: indices_val})
+        res = sess.run(
+            out, feed_dict={
+                params: params_val,
+                indices: indices_val
+            })
       row_ndims = len(params_shape) - batch_dims - indices_shape[-1]
       expected_out_shape = indices_shape[:-1]
       if row_ndims > 0:
@@ -1808,6 +1791,7 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
     shape = gather_nd_t.get_shape()
     self.assertEqual(None, shape.ndims)
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
+
 
 if __name__ == "__main__":
   test_lib.main()

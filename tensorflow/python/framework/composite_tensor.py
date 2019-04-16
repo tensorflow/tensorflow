@@ -112,6 +112,28 @@ class CompositeTensor(object):
 pywrap_tensorflow.RegisterType("CompositeTensor", CompositeTensor)
 
 
+def replace_composites_with_components(structure):
+  """Recursively replaces CompositeTensors with their components.
+
+  Args:
+    structure: A `nest`-compatible structure, possibly containing composite
+      tensors.
+
+  Returns:
+    A copy of `structure`, where each composite tensor has been replaced by
+    its components.  The result will contain no composite tensors.
+    Note that `nest.flatten(replace_composites_with_components(structure))`
+    returns the same value as `nest.flatten(structure)`.
+  """
+  if isinstance(structure, CompositeTensor):
+    return replace_composites_with_components(structure._to_components())  # pylint: disable=protected-access
+  elif not nest.is_sequence(structure):
+    return structure
+  else:
+    return nest.map_structure(replace_composites_with_components, structure,
+                              expand_composites=False)
+
+
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just
 # convert_to_tensor_or_composite?  Alternatively, should composite tensors
 # register a dispatch override for tf.convert_to_tensor?

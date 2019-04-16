@@ -42,11 +42,16 @@ REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
 #if GOOGLE_CUDA
 REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
           complex64, complex128);
+<<<<<<< HEAD
 #elif TENSORFLOW_USE_ROCM
 REGISTER3(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double);
 #endif
 
 REGISTER2(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, float, double);
+=======
+REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
+          double, complex64, complex128);
+>>>>>>> google_upstream/master
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

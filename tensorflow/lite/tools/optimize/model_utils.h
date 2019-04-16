@@ -46,6 +46,13 @@ void MakeTensorWithQuantParam(const string& name,
 // Checks if the tensor has scale and zero point populated.
 bool QuantizationParametersExist(const TensorT* tensor);
 
+bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
+               int tensor_index);
+
+bool IsQuantized(const SubGraphT* subgraph, int tensor_index);
+
+bool HasMinMax(const TensorT* tensor);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

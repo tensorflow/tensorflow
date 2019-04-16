@@ -8,9 +8,15 @@ This page provides examples on how to use the
 ## Python API
 
 The Python API for converting TensorFlow models to TensorFlow Lite in TensorFlow
-2.0 is
-[`tf.lite.TFLiteConverter.from_concrete_function()`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter).
-Documentation on concrete functions is available [here](concrete_function.md).
+2.0 is `tf.lite.TFLiteConverter`. `TFLiteConverter` provides the following
+classmethods to convert a model based on the original model format:
+
+*   `TFLiteConverter.from_saved_model()`: Converts
+    [SavedModel directories](https://www.tensorflow.org/alpha/guide/saved_model).
+*   `TFLiteConverter.from_keras_model()`: Converts
+    [`tf.keras` models](https://www.tensorflow.org/alpha/guide/keras/overview).
+*   `TFLiteConverter.from_concrete_functions()`: Converts
+    [concrete functions](concrete_function.md).
 
 This document contains [example usages](#examples) of the API, a detailed list
 of [changes in the API between 1.X and 2.0](#differences), and
@@ -18,33 +24,11 @@ of [changes in the API between 1.X and 2.0](#differences), and
 
 ## Examples <a name="examples"></a>
 
-### Exporting a concrete function <a name="concrete_function"></a>
+### Converting a SavedModel <a name="saved_model"></a>
 
-The following example shows how to convert a TensorFlow concrete function into a
-TensorFlow Lite `FlatBuffer`.
-
-```python
-import tensorflow as tf
-
-# Construct a basic model.
-root = tf.train.Checkpoint()
-root.v1 = tf.Variable(3.)
-root.v2 = tf.Variable(2.)
-root.f = tf.function(lambda x: root.v1 * root.v2 * x)
-
-# Create the concrete function.
-input_data = tf.constant(1., shape=[1, 1])
-concrete_func = root.f.get_concrete_function(input_data)
-
-# Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
-tflite_model = converter.convert()
-```
-
-### Exporting a SavedModel <a name="saved_model"></a>
-
-The following example shows how to convert a SavedModel into a TensorFlow Lite
-`FlatBuffer`.
+The following example shows how to convert a
+[SavedModel](https://www.tensorflow.org/alpha/guide/saved_model) into a
+TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
 import tensorflow as tf
@@ -61,20 +45,16 @@ input_data = tf.constant(1., shape=[1, 1])
 to_save = root.f.get_concrete_function(input_data)
 tf.saved_model.save(root, export_dir, to_save)
 
-# Load model and get the concrete function.
-model = tf.saved_model.load(export_dir)
-concrete_func = model.signatures[
-  tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
 # Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
+converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
 tflite_model = converter.convert()
 ```
 
-### Exporting a Keras model <a name="keras"></a>
+### Converting a Keras model <a name="keras"></a>
 
-The following example shows how to convert a `tf.keras` model into a TensorFlow
-Lite `FlatBuffer`.
+The following example shows how to convert a
+[`tf.keras` model](https://www.tensorflow.org/alpha/guide/keras/overview) into a
+TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
 import tensorflow as tf
@@ -88,20 +68,43 @@ model = tf.keras.models.Sequential(
 model.compile(optimizer='sgd', loss='mean_squared_error')
 model.fit(x, y, epochs=50)
 
-# Get the concrete function from the Keras model.
-run_model = tf.function(lambda x : model(x))
-concrete_func = run_model.get_concrete_function(
-    tf.TensorSpec([None, 1], tf.float32))
+# Convert the model.
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+tflite_model = converter.convert()
+```
+
+### Converting a concrete function <a name="concrete_function"></a>
+
+The following example shows how to convert a TensorFlow
+[concrete function](concrete_function.md) into a TensorFlow Lite
+[`FlatBuffer`](https://google.github.io/flatbuffers/).
+
+```python
+import tensorflow as tf
+
+# Construct a basic model.
+root = tf.train.Checkpoint()
+root.v1 = tf.Variable(3.)
+root.v2 = tf.Variable(2.)
+root.f = tf.function(lambda x: root.v1 * root.v2 * x)
+
+# Create the concrete function.
+input_data = tf.constant(1., shape=[1, 1])
+concrete_func = root.f.get_concrete_function(input_data)
 
 # Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
+#
+# `from_concrete_function` takes in a list of concrete functions, however,
+# currently only supports converting one function at a time. Converting multiple
+# functions is under development.
+converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 tflite_model = converter.convert()
 ```
 
 ### End-to-end MobileNet conversion <a name="mobilenet"></a>
 
 The following example shows how to convert and run inference on a pre-trained
-`tf.Keras` MobileNet model to TensorFlow Lite. It compares the results of the
+`tf.keras` MobileNet model to TensorFlow Lite. It compares the results of the
 TensorFlow and TensorFlow Lite model on random data. In order to load the model
 from file, use `model_path` instead of `model_content`.
 
@@ -113,13 +116,8 @@ import tensorflow as tf
 model = tf.keras.applications.MobileNetV2(
     weights="imagenet", input_shape=(224, 224, 3))
 
-# Create a concrete function to export.
-to_save = tf.function(lambda x: model(x))
-concrete_func = to_save.get_concrete_function(
-    tf.TensorSpec([1, 224, 224, 3], tf.float32))
-
 # Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
 
 # Load TFLite model and allocate tensors.
@@ -139,7 +137,7 @@ interpreter.invoke()
 tflite_results = interpreter.get_tensor(output_details[0]['index'])
 
 # Test the TensorFlow model on random input data.
-tf_results = concrete_func(tf.constant(input_data))
+tf_results = model(tf.constant(input_data))
 
 # Compare the result.
 for tf_result, tflite_result in zip(tf_results, tflite_results):

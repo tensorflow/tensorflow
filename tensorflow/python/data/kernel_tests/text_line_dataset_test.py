@@ -22,6 +22,7 @@ import os
 import zlib
 
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
@@ -113,6 +114,16 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
         dataset_fn(test_filenames, 10, 5),
         expected_output=[[self._lineText(0, i) for i in range(5)],
                          [self._lineText(1, i) for i in range(5)]] * 10)
+
+  def testTextLineDatasetParallelRead(self):
+    test_filenames = self._createFiles(10, 10)
+    files = dataset_ops.Dataset.from_tensor_slices(test_filenames).repeat(10)
+    expected_output = []
+    for j in range(10):
+      expected_output.extend([self._lineText(j, i) for i in range(10)])
+    dataset = readers.TextLineDataset(files, num_parallel_reads=4)
+    self.assertDatasetProduces(
+        dataset, expected_output=expected_output * 10, assert_items_equal=True)
 
   def testTextLineDatasetNoCompression(self):
     self._testTextLineDataset()

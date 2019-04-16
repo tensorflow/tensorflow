@@ -219,7 +219,7 @@ class BNTest(test.TestCase):
                                  use_gpu_test_a, True)
     loss_nonfused_val = self._infer(checkpoint_path_b, image_val, shape,
                                     use_gpu_test_b, False)
-    self.assertAllClose(loss_fused_val, loss_nonfused_val, atol=1e-6)
+    self.assertAllClose(loss_fused_val, loss_nonfused_val, atol=1e-6, rtol=3e-4)
 
   def _testCheckpointCrossDevice(self, ckpt_a_fused, ckpt_a_use_gpu,
                                  ckpt_b_fused, ckpt_b_use_gpu):

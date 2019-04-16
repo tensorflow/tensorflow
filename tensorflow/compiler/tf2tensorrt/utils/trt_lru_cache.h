@@ -141,36 +141,11 @@ struct EngineContext {
 
 class TRTEngineCacheResource : public ResourceBase {
  public:
-  TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity)
-      : cache_(capacity) {
-    auto device = ctx->device();
-    auto alloc = device->GetAllocator(AllocatorAttributes());
-    if (!alloc) {
-      LOG(ERROR) << "Can't find device allocator for gpu device "
-                 << device->name();
-      allocator_ = nullptr;
-    } else {
-      allocator_.reset(new TRTDeviceAllocator(alloc));
-    }
-  }
+  TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity);
 
-  string DebugString() const override {
-    std::stringstream oss;
-    using std::dec;
-    using std::endl;
-    using std::hex;
-    oss << "TRTEngineCacheResource: ";
-    oss << "TRTBaseAllocator = " << hex << allocator_.get() << dec << ", ";
-    oss << "LRUCache = " << hex << &cache_ << dec << endl;
-    oss << "Containing " << cache_.size() << " entries: " << endl;
-    for (const auto& item : cache_) {
-      oss << TensorShapeUtils::ShapeListString(item.first) << ": " << hex
-          << "ICudaEngine: " << item.second.get()->cuda_engine.get() << ", "
-          << "IExecutionContext: " << item.second.get()->execution_context.get()
-          << dec << endl;
-    }
-    return oss.str();
-  }
+  ~TRTEngineCacheResource() override;
+
+  string DebugString() const override;
 
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;

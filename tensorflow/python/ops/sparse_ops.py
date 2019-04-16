@@ -1422,7 +1422,7 @@ def sparse_tensor_to_dense(sp_input,
        [c x x x x]]
 
   Indices must be without repeats.  This is only
-  tested if validate_indices is True.
+  tested if `validate_indices` is `True`.
 
   Args:
     sp_input: The input `SparseTensor`.

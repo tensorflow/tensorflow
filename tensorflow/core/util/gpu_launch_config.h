@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
 #define TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
 
+<<<<<<< HEAD:tensorflow/core/util/gpu_launch_config.h
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
@@ -411,5 +412,9 @@ Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+// Forward to new header.
+#include "tensorflow/core/util/gpu_launch_config.h"
+>>>>>>> google_upstream/master:tensorflow/core/util/cuda_launch_config.h
 
 #endif  // TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_

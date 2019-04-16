@@ -56,8 +56,14 @@ namespace toco {
   }
   int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
   std::vector<int> reshape_dims(input_array.shape().dims());
+  int original_dims_num = reshape_dims.size();
+  if (axis > original_dims_num || axis < -(original_dims_num + 1)) {
+    return tensorflow::errors::InvalidArgument(absl::StrCat(
+        "Invalid axis attribute ", axis, " for original dimension ",
+        original_dims_num, " in ExpandDims op."));
+  }
   if (axis < 0) {
-    axis = reshape_dims.size();
+    axis = reshape_dims.size() + 1 + axis;
   }
   reshape_dims.insert(reshape_dims.begin() + axis, 1);
 

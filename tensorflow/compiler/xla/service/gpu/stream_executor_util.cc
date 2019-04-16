@@ -162,5 +162,23 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 
   return std::make_tuple(input_layout, filter_layout, output_layout);
 }
+
+tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64>,
+                   tensorflow::mutex>();
+
+  tensorflow::mutex_lock global_lock(mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+  return tensorflow::mutex_lock{it->second};
+}
+
 }  // namespace gpu
 }  // namespace xla

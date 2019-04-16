@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_
 #define TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_
 
+<<<<<<< HEAD:tensorflow/core/util/gpu_kernel_helper.h
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/util/gpu_device_functions.h"
@@ -177,3 +178,9 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_
+=======
+// Forward to new header.
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+
+#endif  // TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
+>>>>>>> google_upstream/master:tensorflow/core/util/cuda_kernel_helper.h

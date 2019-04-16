@@ -52,7 +52,8 @@ Status GraphRewriteDataset::Optimize(OpKernelContext* ctx) {
 
   // Instantiate the optimized input pipeline by running the optimized graph
   // using the optimized function library.
-  TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&lib_def_, &pflr_, &flr_));
+  TF_RETURN_IF_ERROR(
+      ctx->function_library()->Clone(&lib_def_, &pflr_, &flr_, true));
 
   // Create a FunctionHandleCache.
   function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
@@ -189,7 +190,7 @@ class GraphRewriteDataset::Iterator
 
   Status Initialize(IteratorContext* ctx) override {
     IteratorContext::Params params(ctx);
-    params.lib = dataset()->flr_;
+    params.flr = dataset()->flr_;
     params.function_handle_cache = dataset()->function_handle_cache_.get();
     return dataset()->optimized_input_->MakeIterator(
         IteratorContext(std::move(params)), prefix(), &input_impl_);
@@ -198,7 +199,7 @@ class GraphRewriteDataset::Iterator
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     IteratorContext::Params params(ctx);
-    params.lib = dataset()->flr_;
+    params.flr = dataset()->flr_;
     params.function_handle_cache = dataset()->function_handle_cache_.get();
     return input_impl_->GetNext(IteratorContext(std::move(params)), out_tensors,
                                 end_of_sequence);

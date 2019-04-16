@@ -406,7 +406,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     variables = model.trainable_variables
     gradients = tape.gradient(loss, variables)
     train_op = optimizer.apply_gradients(zip(gradients, variables))
-    root_trackable.save_counter  # pylint: disable=pointless-statement
+    self.assertFalse(root_trackable.save_counter.trainable)
     self.evaluate(trackable_utils.gather_initializers(
         root_trackable))
     self.evaluate(train_op)

@@ -18,14 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -77,6 +74,7 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 
 #undef REGISTER_GATHER_ND_CPU
 
+<<<<<<< HEAD
 namespace functor {
 template <typename Device, typename T, typename Index>
 Status DoGatherNd(OpKernelContext* c, const Tensor& params,
@@ -203,6 +201,9 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
 }  // namespace functor
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+>>>>>>> google_upstream/master
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, NDIM)          \

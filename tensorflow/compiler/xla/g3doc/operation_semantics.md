@@ -1258,6 +1258,59 @@ Arguments | Type    | Semantics
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
+## Fft
+
+The XLA FFT operation implements the forward and inverse Fourier Transforms for
+real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
+supported, except on TPU, where only a single axis is supported (please file a
+github issue if you require higher order).
+
+See also
+[`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+| Arguments    | Type                | Semantics                |
+| ------------ | ------------------- | ------------------------ |
+| `operand`    | `XlaOp`             | The array we are Fourier |
+:              :                     : transforming.            :
+| `fft_type`   | `FftType`           | See the table below.     |
+| `fft_length` | `ArraySlice<int64>` | The time-domain lengths  |
+:              :                     : of the axes being        :
+:              :                     : transformed. This is     :
+:              :                     : needed in particular for :
+:              :                     : IRFFT to right-size the  :
+:              :                     : innermost axis, since    :
+:              :                     : `RFFT(fft_length=[16])`  :
+:              :                     : has the same output      :
+:              :                     : shape as                 :
+:              :                     : `RFFT(fft_length=[17])`. :
+
+| `FftType` | Semantics                                                       |
+| --------- | --------------------------------------------------------------- |
+| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.             |
+| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.             |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is     |
+:           : reduced to `fft_length[-1] // 2 + 1`, omitting the reversed     :
+:           : conjugate part of the transformed signal beyond the Nyquist     :
+:           : frequency.                                                      :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real). |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]`,    :
+:           : inferring the part of the transformed signal beyond the Nyquist :
+:           : frequency from the reverse conjugate of the `1` to              :
+:           : `fft_length[-1] // 2 + 1` entries.                              :
+
+#### Multidimensional FFT
+
+When more than 1 `fft_length` is provided, this is equivalent to applying a
+cascade of FFT operations to each of the innermost axes. Note that for the
+real->complex and complex->real cases, the innermost axis transform is
+(effectively) performed first (RFFT; last for IRFFT), which is why the innermost
+axis is the one which changes size. Other axis transforms will then be
+complex->complex.
+
+#### Implementation details
+
+CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
+
 ## Gather
 
 The XLA gather operation stitches together several slices (each slice at a

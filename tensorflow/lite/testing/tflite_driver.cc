@@ -84,6 +84,34 @@ class TfLiteDriver::Expectation {
 
   bool Check(bool verbose, const TfLiteTensor& tensor);
 
+  bool CheckShape(bool verbose, const TfLiteTensor& tensor) {
+    bool valid = true;
+    if (tensor.dims->size == num_elements_) {
+      for (int i = 0; i < num_elements_; ++i) {
+        if (data_.i32[i] != tensor.dims->data[i]) {
+          valid = false;
+        }
+      }
+    } else {
+      valid = false;
+    }
+    if (!valid && verbose) {
+      std::cerr << "Incorrect output shape while checking tensor "
+                << tensor.name << std::endl;
+      std::cerr << "TFLite output shape: ";
+      for (int i = 0; i < tensor.dims->size; ++i) {
+        std::cerr << tensor.dims->data[i] << ", ";
+      }
+      std::cerr << std::endl;
+      std::cerr << "Expected output shape: ";
+      for (int i = 0; i < num_elements_; ++i) {
+        std::cerr << data_.i32[i] << ", ";
+      }
+      std::cerr << std::endl;
+    }
+    return valid;
+  }
+
  private:
   template <typename T>
   bool TypedCheck(bool verbose, const TfLiteTensor& tensor) {
@@ -365,6 +393,16 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   }
 }
 
+void TfLiteDriver::SetShapeExpectation(int id, const string& csv_values) {
+  if (!IsValid()) return;
+  if (expected_output_shape_.count(id) != 0) {
+    Invalidate(
+        absl::StrCat("Overridden shape expectation for tensor '", id, "'"));
+  }
+  expected_output_shape_[id].reset(new Expectation);
+  expected_output_shape_[id]->SetData<int32_t>(csv_values);
+}
+
 void TfLiteDriver::Invoke() {
   if (!IsValid()) return;
   if (interpreter_->Invoke() != kTfLiteOk) {
@@ -385,6 +423,20 @@ bool TfLiteDriver::CheckResults() {
       std::cerr << "There were errors in invocation '" << GetInvocationId()
                 << "', output tensor '" << id << "':" << std::endl;
       p.second->Check(/*verbose=*/true, *tensor);
+      success = false;
+      SetOverallSuccess(false);
+    }
+  }
+  for (const auto& p : expected_output_shape_) {
+    int id = p.first;
+    auto* tensor = interpreter_->tensor(id);
+    if (!p.second->CheckShape(/*verbose=*/false, *tensor)) {
+      // Do not invalidate anything here. Instead, simply output the
+      // differences and return false. Invalidating would prevent all
+      // subsequent invocations from running..
+      std::cerr << "There were errors in invocation '" << GetInvocationId()
+                << "', output tensor '" << id << "':" << std::endl;
+      p.second->CheckShape(/*verbose=*/true, *tensor);
       success = false;
       SetOverallSuccess(false);
     }

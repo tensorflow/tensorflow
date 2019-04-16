@@ -28,6 +28,12 @@ enum class PaddingType : uint8 { kNone, kSame, kValid };
 struct PaddingValues {
   int16 width;
   int16 height;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16 width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16 height_offset;
 };
 
 // This enumeration allows for non-default formats for the weights array

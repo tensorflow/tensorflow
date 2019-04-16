@@ -16,14 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 #define TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 
-/**
- * Wrappers and helpers for CUDA device code.
- *
- * Wraps the warp-cooperative intrinsics introduced in CUDA 9 to provide
- * backwards compatibility, see go/volta-porting for details.
- * Provides atomic operations on types that aren't natively supported.
- */
+// Forward to new header.
+#include "tensorflow/core/util/gpu_device_functions.h"
 
+<<<<<<< HEAD:tensorflow/core/util/gpu_device_functions.h
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
@@ -845,3 +841,6 @@ __device__ inline std::complex<double> operator/(
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
+=======
+#endif  // TENSORFLOW_CORE_UTIL_CUDA_KERNEL_HELPER_H_
+>>>>>>> google_upstream/master:tensorflow/core/util/cuda_device_functions.h

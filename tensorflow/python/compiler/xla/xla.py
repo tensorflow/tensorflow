@@ -27,6 +27,7 @@ from tensorflow.compiler.jit.ops import xla_ops_grad  # pylint: disable=unused-i
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute import summary_op_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -98,9 +99,12 @@ def compile(computation, inputs=None):  # pylint: disable=redefined-builtin
     RuntimeError: if called when eager execution is enabled.
   """
   if context.executing_eagerly():
-    raise RuntimeError('xla.experimental.compile is not supported when eager '
-                       'execution is enabled. Try use it inside tf.function.')
-  # pylint: disable=protected-access
+    @def_function.function
+    def xla_compile_wrapper():
+      return _compile_internal(computation, inputs)
+
+    return xla_compile_wrapper()
+
   return _compile_internal(computation, inputs)
 
 

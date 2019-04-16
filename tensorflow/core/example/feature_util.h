@@ -91,9 +91,9 @@ limitations under the License.
 //   GetFeatures(proto) -> Features
 //     A convenience function to get Features proto.
 //     Supported types for the proto: Example, Features.
-//   GetFeature(key, proto) -> Feature*
-//     Returns a Feature proto for the specified key, creates a new if
-//     necessary. Supported types for the proto: Example, Features.
+//   GetFeature(key, proto) -> Feature
+//     Returns a Feature proto for the specified key.
+//     Supported types for the proto: Example, Features.
 //   GetFeatureValues<FeatureType>(feature) -> RepeatedField<FeatureType>
 //     Returns values of the feature for the FeatureType.
 
@@ -232,8 +232,16 @@ typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
   return GetFeatureValues<FeatureType>(&feature);
 }
 
-// Returns a Feature proto for the specified key, creates a new if necessary.
-// Supported types for the proto: Example, Features.
+// Returns a read-only Feature proto for the specified key, throws
+// std::out_of_range if the key is not found. Supported types for the proto:
+// Example, Features.
+template <typename ProtoType>
+const Feature& GetFeature(const string& key, const ProtoType& proto) {
+  return GetFeatures(proto).feature().at(key);
+}
+
+// Returns a mutable Feature proto for the specified key, creates a new if
+// necessary. Supported types for the proto: Example, Features.
 template <typename ProtoType>
 Feature* GetFeature(const string& key, ProtoType* proto) {
   return &(*GetFeatures(proto)->mutable_feature())[key];

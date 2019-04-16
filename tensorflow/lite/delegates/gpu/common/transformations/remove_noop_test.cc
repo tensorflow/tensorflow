@@ -141,6 +141,38 @@ TEST(RemoveDegenerateUpsampling, Smoke) {
   EXPECT_EQ(output, graph.values()[1]);
 }
 
+TEST(RemoveIdentityReshape, Smoke) {
+  GraphFloat32 graph;
+  auto input = graph.NewValue();
+  auto first_node = graph.NewNode();
+  ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
+
+  auto node_to_remove = graph.NewNode();
+  Value<TensorRefFloat32>* output;
+  ASSERT_TRUE(AddOutput(&graph, node_to_remove, &output).ok());
+  output->tensor.shape = BHWC(1, 1, 1, 11);
+  node_to_remove->operation.type = ToString(OperationType::RESHAPE);
+  ReshapeAttributes attr;
+  attr.new_shape = BHWC(1, 1, 1, 11);
+  node_to_remove->operation.attributes = attr;
+
+  Value<TensorRefFloat32>* link;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, node_to_remove, &link).ok());
+  link->tensor.shape = output->tensor.shape;
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+
+  auto transformation = NewRemoveIdentityReshape();
+  ModelTransformer transformer(&graph, nullptr);
+  transformer.Apply("noop", transformation.get());
+
+  ASSERT_EQ(1, graph.nodes().size());
+  ASSERT_EQ(2, graph.values().size());
+  EXPECT_EQ(first_node, graph.nodes()[0]);
+  EXPECT_EQ(input, graph.values()[0]);
+  EXPECT_EQ(output, graph.values()[1]);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite

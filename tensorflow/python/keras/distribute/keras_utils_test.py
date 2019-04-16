@@ -92,7 +92,8 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
         validation_steps=validation_steps,
         callbacks=[counter])
 
-    if isinstance(distribution, tpu_strategy.TPUStrategy):
+    if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                 tpu_strategy.TPUStrategyV1)):
       # TPU Strategy can have multi step training, from extended.steps_per_run
       # if steps_per_run = 1, then num_batch_call_per_epoch = steps_per_epoch
       steps_per_run = distribution.extended.steps_per_run
@@ -481,7 +482,8 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       keras_test_lib.all_strategy_combinations_minus_default())
   def test_save_load_trackable(self, distribution):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
-    if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+    if (isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                  tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       self.skipTest('MultiStep TPU Strategy deadlocks with optimizer restore.')
     with self.cached_session():
@@ -533,6 +535,46 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
           loss = 'mse'
           metrics = ['mae', keras.metrics.CategoricalAccuracy()]
           model.compile(optimizer, loss, metrics=metrics)
+
+
+class TestDistributionStrategyWithStaticShapes(test.TestCase,
+                                               parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
+  def test_input_batch_size_not_divisible_by_num_replicas(self, distribution):
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          ValueError, 'The `batch_size` argument value 5 cannot be divisible '
+          'by number of replicas 2'):
+        keras.layers.Input(shape=(3,), batch_size=5, name='input')
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
+  def test_static_input_batch_size(self, distribution):
+    inputs = np.zeros((10, 3), dtype=np.float32)
+    targets = np.zeros((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10, drop_remainder=True)
+
+    with distribution.scope():
+      x = keras.layers.Input(shape=(3,), batch_size=10, name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    model.fit(dataset, epochs=1, steps_per_epoch=5)
+    model.evaluate(dataset, steps=5)
+    model.predict(dataset)
 
 
 if __name__ == '__main__':

@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "convert_image_dtype"

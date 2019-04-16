@@ -155,6 +155,23 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+# TODO(b/130359919)
+tf_py_test(
+    name = "random_binomial_test",
+    size = "medium",
+    srcs = ["random_binomial_test.py"],
+    additional_deps = [
+        ":util",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:stateful_random_ops",
+    ],
+)
+
 cuda_py_test(
     name = "random_poisson_test",
     size = "medium",
@@ -169,5 +186,4 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )

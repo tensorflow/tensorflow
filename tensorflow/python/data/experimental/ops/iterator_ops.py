@@ -13,11 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Iterator ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training import basic_session_run_hooks
@@ -262,7 +262,3 @@ class _CustomSaver(saver_lib.Saver):
         sess, save_path, global_step, latest_filename or self._latest_filename,
         meta_graph_suffix, write_meta_graph, write_state, strip_default_attrs)
 
-
-tf_export("data.experimental.Optional")(optional_ops.Optional)
-tf_export("data.experimental.get_next_as_optional")(
-    iterator_ops.get_next_as_optional)

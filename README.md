@@ -25,7 +25,7 @@ networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
 TensorFlow provides stable Python and C APIs as well as non-guaranteed backwards
-compatible API's for C++, Go, Java, JavaScript and Swift.
+compatible API's for C++, Go, Java, JavaScript, and Swift.
 
 Keep up to date with release announcements and security updates by
 subscribing to

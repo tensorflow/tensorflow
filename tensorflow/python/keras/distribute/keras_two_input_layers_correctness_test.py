@@ -40,18 +40,17 @@ class TestTwoInputLayersCorrectness(
   def get_model(self, initial_weights=None, distribution=None):
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
 
-      real_batch_size = (1 if distribution else
-                         self._distribution_to_test.num_replicas_in_sync)
+      batch_size = self._distribution_to_test.num_replicas_in_sync
 
       user_input = keras.layers.Input(
           shape=(self._batch_size,),
-          batch_size=real_batch_size,
+          batch_size=batch_size,
           name="users",
           dtype=dtypes.int32)
 
       item_input = keras.layers.Input(
           shape=(self._batch_size,),
-          batch_size=real_batch_size,
+          batch_size=batch_size,
           name="items",
           dtype=dtypes.int32)
 
@@ -92,7 +91,8 @@ class TestTwoInputLayersCorrectness(
 
   def get_input_for_correctness_test(self, **kwargs):
     update_freq = None
-    if (isinstance(self._distribution_to_test, tpu_strategy.TPUStrategy) and
+    if (isinstance(self._distribution_to_test,
+                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)) and
         self._distribution_to_test.extended.steps_per_run > 1):
       # For TPUStrategy with steps_per_run > 1, the callback is not invoked
       # every step. So, to compare the CPU/TPU, we let the CPU to behave the

@@ -176,11 +176,15 @@ class InitializersTest(test.TestCase):
         self._runner(
             init_ops.Orthogonal(seed=123), tensor_shape, target_mean=0.)
 
+  @test_util.run_gpu_only
   def testVariablePlacementWithOrthogonalInitializer(self):
+<<<<<<< HEAD
     if not context.context().num_gpus():
       self.skipTest('No devices other than CPUs found')
     if test.is_built_with_rocm():
       self.skipTest('ROCm does not yet support QR for orthogonal init')
+=======
+>>>>>>> google_upstream/master
     with ops.Graph().as_default() as g:
       with ops.device('gpu:0'):
         variable_scope.get_variable(
@@ -201,9 +205,8 @@ class InitializersTest(test.TestCase):
             options=run_options,
             run_metadata=run_metadata)
 
+  @test_util.run_gpu_only
   def test_eager_orthogonal_gpu(self):
-    if not context.context().num_gpus():
-      self.skipTest('No devices other than CPUs found')
     with context.eager_mode():
       v = variable_scope.get_variable(
           name='v', shape=[8, 2], initializer=init_ops.Orthogonal)

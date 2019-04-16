@@ -741,6 +741,7 @@ class Conv3DTest(test.TestCase):
       self.assertArrayNear(expected_value.flatten(), actual_value.flatten(),
                            err)
 
+  @test_util.run_deprecated_v1
   def testConv3D2x2Depth3ValidBackpropFilterStride1x1Dilation2x1(self):
     if test.is_gpu_available(cuda_only=True):
       for (data_format, use_gpu) in GetTestConfigs():
@@ -756,6 +757,7 @@ class Conv3DTest(test.TestCase):
             err=1e-5,
             mode="filter")
 
+  @test_util.run_deprecated_v1
   def testConv3D2x2Depth3ValidBackpropInputStride1x1Dilation2x1(self):
     if test.is_gpu_available(cuda_only=True):
       for (data_format, use_gpu) in GetTestConfigs():

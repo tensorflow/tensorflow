@@ -124,7 +124,6 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   // Add shapes and other attributes
   NodeDef* add_after = graph->GetNode(add_before.input(0));
 
-  LOG(WARNING) << add_after->DebugString();
   if (str_util::EndsWith(add_after->op(), "Dataset") ||
       str_util::EndsWith(add_after->op(), "DatasetV2")) {
     // We still may or may not have the right attributes because Datasets like

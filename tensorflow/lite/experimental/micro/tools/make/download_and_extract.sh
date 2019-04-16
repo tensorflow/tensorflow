@@ -82,13 +82,11 @@ download_and_extract() {
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   curl -Ls "${url}" > ${tempfile}
-  # Two spaces are needed as separator below.
-  echo "${expected_md5}  ${tempfile}" > ${tempdir}/md5.txt
-  MD5_STATUS=0
-  md5sum --check ${tempdir}/md5.txt 1>/dev/null 2>/dev/null || MD5_STATUS=$? && true
-  if [ ${MD5_STATUS} -ne 0 ]; then
-    echo "Checksum error for '${url}'. Expected ${expected_md5} but found"
-    echo `md5sum ${tempfile}`
+
+  # Check that the file was downloaded correctly using a checksum.
+  DOWNLOADED_MD5=$(openssl dgst -md5 ${tempfile} | sed 's/.* //g')
+  if [ ${expected_md5} != ${DOWNLOADED_MD5} ]; then
+    echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
   
@@ -122,10 +120,6 @@ download_and_extract() {
     echo "Unknown action '${action}'"
     exit 1
   fi
-
-  # TODO(petewarden): Temporary output to help debug Kokoro issues.
-  echo `ls -lah ${dir}/*`
-  echo `ls -lah ${dir}/*/*`
 }
 
 download_and_extract "$1" "$2" "$3" "$4"

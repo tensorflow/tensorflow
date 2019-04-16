@@ -32,7 +32,6 @@ from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
-from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -43,8 +42,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-@keras_export('keras.models.save_model')
-def save_model(model, filepath, overwrite=True, include_optimizer=True):
+def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -141,9 +139,8 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
       f.close()
 
 
-@keras_export('keras.models.load_model')
-def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
-  """Loads a model saved via `save_model`.
+def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
+  """Loads a model saved via `save_model_to_hdf5`.
 
   Arguments:
       filepath: One of the following:

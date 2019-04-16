@@ -281,6 +281,18 @@ py_library(
 )
 
 py_library(
+    name = "central_storage_strategy",
+    srcs = ["central_storage_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":parameter_server_strategy",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
@@ -535,11 +547,11 @@ py_library(
     srcs = ["strategy_combinations.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":central_storage_strategy",
         ":combinations",
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
-        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
@@ -757,6 +769,24 @@ cuda_py_test(
 )
 
 distribute_py_test(
+    name = "custom_training_loop_test",
+    srcs = ["custom_training_loop_test.py"],
+    main = "custom_training_loop_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
     main = "minimize_loss_test.py",
@@ -861,6 +891,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",
@@ -875,5 +906,37 @@ cuda_py_test(
         # PR400 is submitted
         "no_rocm",
         "no_cuda",
+    ],
+)
+
+distribute_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    main = "metrics_v1_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "zero_batch_test",
+    srcs = ["zero_batch_test.py"],
+    main = "zero_batch_test.py",
+    deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":strategy_combinations",
+        "//tensorflow/python:layers",
     ],
 )
