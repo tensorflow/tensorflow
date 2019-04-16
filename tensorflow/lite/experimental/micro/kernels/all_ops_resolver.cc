@@ -26,6 +26,12 @@ TfLiteRegistration* Micro_Register_FULLY_CONNECTED() {
   return Register_FULLY_CONNECTED();
 }
 
+TfLiteRegistration* Register_PAD();
+TfLiteRegistration* Micro_Register_PAD() { return Register_PAD(); }
+
+TfLiteRegistration* Register_PADV2();
+TfLiteRegistration* Micro_Register_PADV2() { return Register_PADV2(); }
+
 TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Micro_Register_SOFTMAX() { return Register_SOFTMAX(); }
 
@@ -49,6 +55,8 @@ AllOpsResolver::AllOpsResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MAX_POOL_2D, Micro_Register_MAX_POOL_2D());
+  AddBuiltin(BuiltinOperator_PAD, Micro_Register_PAD());
+  AddBuiltin(BuiltinOperator_PADV2, Micro_Register_PADV2());
   AddBuiltin(BuiltinOperator_SOFTMAX, Micro_Register_SOFTMAX());
   AddBuiltin(BuiltinOperator_CONV_2D, Micro_Register_CONV_2D());
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Micro_Register_AVERAGE_POOL_2D());

@@ -17,6 +17,7 @@ cc_library(
         "depthwise_conv.cc",
         "fully_connected.cc",
         "pooling.cc",
+        "pad.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -55,6 +56,7 @@ cc_library(
         "fully_connected.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
+        "pad.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -129,6 +131,19 @@ tflite_micro_cc_test(
     name = "fully_connected_test",
     srcs = [
         "fully_connected_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "pad_test",
+    srcs = [
+        "pad_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

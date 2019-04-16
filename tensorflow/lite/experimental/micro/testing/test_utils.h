@@ -104,6 +104,25 @@ inline TfLiteIntArray* IntArrayFromInitializer(
   return IntArrayFromInts(int_initializer.begin());
 }
 
+inline TfLiteTensor CreateIntTensor(const int32_t* data, TfLiteIntArray* dims,
+                                    const char* name) {
+  TfLiteTensor result;
+  result.type = kTfLiteInt32;
+  result.data.i32 = const_cast<int32_t*>(data);
+  result.dims = dims;
+  result.params = {};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int32_t);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
+}
+
+inline TfLiteTensor CreateIntTensor(std::initializer_list<int32_t> data,
+                                    TfLiteIntArray* dims, const char* name) {
+  return CreateIntTensor(data.begin(), dims, name);
+}
+
 inline TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
                                       const char* name) {
   TfLiteTensor result;
