@@ -240,7 +240,7 @@ TEST_F(GraphPropertiesTest, DynamicProperties) {
         EXPECT_EQ(2, out_props.size());
 #else
         EXPECT_EQ(1, out_props.size());
-#endif
+#endif  // INTEL_MKL
         string prop_str;
         ::tensorflow::protobuf::TextFormat::PrintToString(prop, &prop_str);
         string out_prop_str;

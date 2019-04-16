@@ -50,7 +50,7 @@ class MklAddNOp : public OpKernel {
     const int num_inputs = ctx->num_inputs() / 2;
     const TensorShape src0_shape = GetTensorShape(ctx, 0);
 
-    for (size_t i = 1; i < num_inputs; i++) {
+    for (size_t i = 1; i < num_inputs; ++i) {
       if (!src0_shape.IsSameSize(GetTensorShape(ctx, i))) {
         ctx->SetStatus(errors::InvalidArgument(
             "Inputs to operation ", this->name(), " of type ",
@@ -71,8 +71,8 @@ class MklAddNOp : public OpKernel {
     int mkl_index = -1;
     const int num_inputs = ctx->num_inputs() / 2;
 
-    for (size_t i = 0; i < num_inputs; i++) {
-      MklDnnShape src_mkl_shape;
+    MklDnnShape src_mkl_shape;
+    for (size_t i = 0; i < num_inputs; ++i) {
       GetMklShape(ctx, i, &src_mkl_shape);
       if (src_mkl_shape.IsMklTensor()) {
         mkl_index = i;
@@ -91,7 +91,7 @@ class MklAddNOp : public OpKernel {
     Tensor* dst_tensor = nullptr;
 
     T sum = 0;
-    for (int src_idx = 0; src_idx < num_inputs; src_idx++) {
+    for (int src_idx = 0; src_idx < num_inputs; ++src_idx) {
       const Tensor& src_tensor = MklGetInput(ctx, src_idx);
       T* src_i = const_cast<T*>(src_tensor.flat<T>().data());
       sum += src_i[0];
@@ -158,19 +158,23 @@ class MklAddNOp : public OpKernel {
       std::vector<primitive::at> inputs;
 
       MklDnnData<T> dst(&cpu_engine);
-
-      MklDnnData<T> src = MklDnnData<T>(&cpu_engine);
+      MklDnnData<T> src(&cpu_engine);
       bool has_mkl_input = false;
       int mkl_input_index = FindMKLInputIndex(ctx);
+      memory::format mkl_data_format;
+      TensorFormat tf_data_format;
       if (mkl_input_index >= 0) {
         has_mkl_input = true;
         GetMklShape(ctx, mkl_input_index, &mkl_shape);
+        // MKL input has the data format information.
+        mkl_data_format = mkl_shape.GetTfDataFormat();
+        tf_data_format = MklDnnDataFormatToTFDataFormat(mkl_data_format);
       }
 
       // Create memory descriptor for MKL-DNN.
       // If all input in Tensorflow format, create block memory descriptor,
       // else convet TF format to MKL memory descriptor
-      for (int src_idx = 0; src_idx < num_inputs; src_idx++) {
+      for (int src_idx = 0; src_idx < num_inputs; ++src_idx) {
         MklDnnShape src_mkl_shape;
         GetMklShape(ctx, src_idx, &src_mkl_shape);
         memory::desc md({}, memory::data_undef, memory::format_undef);
@@ -181,10 +185,6 @@ class MklAddNOp : public OpKernel {
           md = src_mkl_shape.GetMklLayout();
         } else {
           if (has_mkl_input) {
-            // MKL input has the data format information.
-            memory::format mkl_data_format = mkl_shape.GetTfDataFormat();
-            auto tf_data_format =
-                MklDnnDataFormatToTFDataFormat(mkl_data_format);
             memory::dims src_dims;
             if (src_tensor.dims() == 4) {
               src_dims =
@@ -220,7 +220,7 @@ class MklAddNOp : public OpKernel {
                                      mkl_shape.GetTfDataFormat());
         output_tf_shape.AddDim((output_pd.get_size() / sizeof(T)));
       } else {
-        // all inputs are in Eigen input, get the shape from first one.
+        // All inputs have TF shapes, get the shape from first one.
         output_tf_shape = MklGetInput(ctx, kSrc0Idx).shape();
       }
       AllocateOutputSetMklShape(ctx, kOutputIdx, &dst_tensor, output_tf_shape,
