@@ -434,7 +434,8 @@ def sparse_add_v2(a, b, threshold=0):
 
   Then,
 
-  * `threshold == 0` (the default): all 5 index/value pairs will be returned.
+  * `threshold == 0` (the default): all 5 index/value pairs will be
+      returned.
   * `threshold == 0.11`: only .1 and 0 will vanish, and the remaining three
       index/value pairs will be returned.
   * `threshold == 0.21`: .1, 0, and -.2 will vanish.
