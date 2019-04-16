@@ -432,7 +432,7 @@ Status Converter::GetTrtBroadcastShape(
           : operand_r_new_dims;
 
   // Broadcasts low_rank over high_rank in-place by inserting ones at the front of low_rank so the ranks match.
-  constexpr auto broadcastDims = [](const nvinfer1::Dims& high_rank,
+  constexpr auto broadcast_dims = [](const nvinfer1::Dims& high_rank,
                                     const nvinfer1::Dims& low_rank) {
     nvinfer1::Dims ret{high_rank.nbDims};
     std::fill(ret.d, ret.d + ret.nbDims, 1);
@@ -441,7 +441,7 @@ Status Converter::GetTrtBroadcastShape(
     return ret;
   };
 
-  (*lower_rank) = broadcastDims(*higher_rank, *lower_rank);
+  (*lower_rank) = broadcast_dims(*higher_rank, *lower_rank);
   VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims) << " and [R] " << DebugString(*operand_r_new_dims);
 
   // Compare broadcast feasibility
@@ -1833,71 +1833,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   return Status::OK();
 }
 
-Status BinaryTensorOpTensor(OpConverterParams* params,
-                            const TRT_TensorOrWeights& operand_l,
-                            const TRT_TensorOrWeights& operand_r) {
-  const auto& node_def = params->node_def;
-  static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
-      {"Add", nvinfer1::ElementWiseOperation::kSUM},
-      {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-      {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-      {"Div", nvinfer1::ElementWiseOperation::kDIV},
-      {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-      {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-      {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-      {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-  };
-  auto op_pair = ops.find(node_def.op());
-  if (op_pair == ops.end()) {
-    return errors::Unimplemented("Binary op ", node_def.op(),
-                                 " not supported at: ", node_def.name());
-  }
-
-  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  Status status = params->converter->GetTrtBroadcastShape(
-      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r);
-  if (!status.ok()) {
-    return errors::InvalidArgument(
-        "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
-        status.error_message());
-  }
-  if (params->validation_only) return Status::OK();
-
-  nvinfer1::ITensor* tensor_l = nullptr;
-  nvinfer1::ITensor* tensor_r = nullptr;
-  // This will also convert constants to tensors, and set quantization ranges.
-  status = params->converter->PrepareTensorForShape(
-      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l);
-  if (status.ok()) {
-    status = params->converter->PrepareTensorForShape(
-        operand_r, broadcasted_dims_r, params->validation_only, &tensor_r);
-  }
-  if (!status.ok()) {
-    return errors::Internal("Failed to convert binary op ", node_def.name(),
-                            ": ", status.error_message());
-  }
-
-  // Check type consistency.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
-  TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
-      << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
-  TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
-      << DebugString(tensor_r->getType()) << " vs " << DebugString(dtype);
-
-  // Add ElementWise layer.
-  nvinfer1::IElementWiseLayer* layer =
-      params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r), op_pair->second);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-
-  // Pass the output
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
-}
-
 Status ConvertPlugin(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3027,7 +2962,68 @@ Status ConvertBinary(OpConverterParams* params) {
         node_def.name());
   }
 
-  return BinaryTensorOpTensor(params, inputs.at(0), inputs.at(1));
+  const TRT_TensorOrWeights& operand_l = inputs.at(0);
+  const TRT_TensorOrWeights& operand_r = inputs.at(1);
+
+  static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
+      {"Add", nvinfer1::ElementWiseOperation::kSUM},
+      {"Mul", nvinfer1::ElementWiseOperation::kPROD},
+      {"Sub", nvinfer1::ElementWiseOperation::kSUB},
+      {"Div", nvinfer1::ElementWiseOperation::kDIV},
+      {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
+      {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
+      {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
+      {"Pow", nvinfer1::ElementWiseOperation::kPOW},
+  };
+  auto op_pair = ops.find(node_def.op());
+  if (op_pair == ops.end()) {
+    return errors::Unimplemented("Binary op ", node_def.op(),
+                                 " not supported at: ", node_def.name());
+  }
+
+  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
+  Status status = params->converter->GetTrtBroadcastShape(
+      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r);
+  if (!status.ok()) {
+    return errors::InvalidArgument(
+        "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
+        status.error_message());
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::ITensor* tensor_l = nullptr;
+  nvinfer1::ITensor* tensor_r = nullptr;
+  // This will also convert constants to tensors, and set quantization ranges.
+  status = params->converter->PrepareTensorForShape(
+      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l);
+  if (status.ok()) {
+    status = params->converter->PrepareTensorForShape(
+        operand_r, broadcasted_dims_r, params->validation_only, &tensor_r);
+  }
+  if (!status.ok()) {
+    return errors::Internal("Failed to convert binary op ", node_def.name(),
+                            ": ", status.error_message());
+  }
+
+  // Check type consistency.
+  TFAttrs attrs(node_def);
+  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
+  TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
+      << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
+  TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
+      << DebugString(tensor_r->getType()) << " vs " << DebugString(dtype);
+
+  // Add ElementWise layer.
+  nvinfer1::IElementWiseLayer* layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor_l),
+          *const_cast<nvinfer1::ITensor*>(tensor_r), op_pair->second);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  // Pass the output
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
 }
 
 
@@ -3809,7 +3805,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
     return ConvertFCHelper(params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
-  constexpr auto getMatrixOp = [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
+  constexpr auto get_matrix_op = [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
       return (in->getDimensions().nbDims < 2)
           ? nvinfer1::MatrixOperation::kVECTOR
           : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
@@ -3819,7 +3815,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   // If the MatMul operand is a constant, applies transposes at conversion-time as necessary.
   // If the operand is a tensor, does nothing.
   // If required transposes were applied, sets transpose to false.
-  const auto prepareMatMulOperand = [&params](TRT_TensorOrWeights operand, bool* transpose) -> nvinfer1::ITensor* {
+  const auto prepare_matmul_operand = [&params](TRT_TensorOrWeights operand, bool* transpose) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
       return operand.tensor();
     } else {
@@ -3836,10 +3832,10 @@ Status ConvertMatMulHelper(OpConverterParams* params,
     }
   };
 
-  nvinfer1::ITensor* tensor_a = prepareMatMulOperand(input_a, &transpose_a);
-  nvinfer1::ITensor* tensor_b = prepareMatMulOperand(input_b, &transpose_b);
+  nvinfer1::ITensor* tensor_a = prepare_matmul_operand(input_a, &transpose_a);
+  nvinfer1::ITensor* tensor_b = prepare_matmul_operand(input_b, &transpose_b);
 
-  nvinfer1::IMatrixMultiplyLayer* layer = params->converter->network()->addMatrixMultiply(*tensor_a, getMatrixOp(tensor_a, transpose_a), *tensor_b, getMatrixOp(tensor_b, transpose_b));
+  nvinfer1::IMatrixMultiplyLayer* layer = params->converter->network()->addMatrixMultiply(*tensor_a, get_matrix_op(tensor_a, transpose_a), *tensor_b, get_matrix_op(tensor_b, transpose_b));
 
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -3886,7 +3882,7 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   const bool transpose_a = attrs.get<bool>("adj_x");
   const bool transpose_b = attrs.get<bool>("adj_y");
   // Removes the batch dimension from weights.
-  const auto removeWeightsBatchDim = [&params](const TRT_TensorOrWeights& input,
+  const auto remove_weights_batch_dim = [&params](const TRT_TensorOrWeights& input,
                                               TRT_TensorOrWeights& tensor) {
     auto dims = input.GetTrtDims();
     if (input.is_weights()) {
@@ -3911,8 +3907,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
 
   TRT_TensorOrWeights tensor_l{nullptr};
   TRT_TensorOrWeights tensor_r{nullptr};
-  TF_RETURN_IF_ERROR(removeWeightsBatchDim(inputs.at(0), tensor_l));
-  TF_RETURN_IF_ERROR(removeWeightsBatchDim(inputs.at(1), tensor_r));
+  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), tensor_l));
+  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), tensor_r));
   if (params->validation_only) return Status::OK();
 
   return ConvertMatMulHelper(params, tensor_l, tensor_r,
