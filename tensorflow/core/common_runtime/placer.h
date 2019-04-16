@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLACER_H_
 
 #include <string>
-#include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
@@ -55,9 +54,6 @@ namespace tensorflow {
 // builder.
 class Placer {
  public:
-  // A map from graph node names to numerical IDs (in a Graph object).
-  typedef std::unordered_map<string, int> NodeNameToIdMap;
-
   // Creates an instance of the Placer algorithm for the given
   // Graph "graph" (nodes in which may or may not be assigned) on the
   // given DeviceSet "devices".
