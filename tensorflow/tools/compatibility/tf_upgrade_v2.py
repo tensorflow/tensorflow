@@ -518,8 +518,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.TFRecordWriter",
         "tf.contrib.data.assert_element_shape":
             "tf.data.experimental.assert_element_shape",
-        "tf.contrib.data.batch_and_drop_remainder":
-            "tf.compat.v1.contrib.data.batch_and_drop_remainder",
         "tf.contrib.data.bucket_by_sequence_length":
             "tf.data.experimental.bucket_by_sequence_length",
         "tf.contrib.data.choose_from_datasets":
@@ -550,18 +548,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.make_saveable_from_iterator",
         "tf.contrib.data.map_and_batch":
             "tf.data.experimental.map_and_batch",
-        "tf.contrib.data.padded_batch_and_drop_remainder":
-            "tf.compat.v1.contrib.data.padded_batch_and_drop_remainder",
         "tf.contrib.data.parallel_interleave":
             "tf.data.experimental.parallel_interleave",
         "tf.contrib.data.parse_example_dataset":
             "tf.data.experimental.parse_example_dataset",
         "tf.contrib.data.prefetch_to_device":
             "tf.data.experimental.prefetch_to_device",
-        "tf.contrib.data.read_batch_features":
-            "tf.compat.v1.contrib.data.read_batch_features",
-        "tf.contrib.data.reduce_dataset":
-            "tf.compat.v1.contrib.data.reduce_dataset",
         "tf.contrib.data.rejection_resample":
             "tf.data.experimental.rejection_resample",
         "tf.contrib.data.sample_from_datasets":
@@ -572,10 +564,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.set_stats_aggregator",
         "tf.contrib.data.shuffle_and_repeat":
             "tf.data.experimental.shuffle_and_repeat",
-        "tf.contrib.data.sliding_window_batch":
-            "tf.compat.v1.contrib.data.sliding_window_batch",
-        "tf.contrib.data.sloppy_interleave":
-            "tf.compat.v1.contrib.data.sloppy_interleave",
         "tf.contrib.data.unbatch":
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
