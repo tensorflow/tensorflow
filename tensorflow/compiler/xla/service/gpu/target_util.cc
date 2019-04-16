@@ -80,10 +80,10 @@ struct TargetInfo {
              bool intrinsic)
       : target_intrinsic_info(x),
         target_function_info(y),
-        HasIntrinsic(intrinsic) {}
+        has_intrinsic(intrinsic) {}
   TargetInfo(struct TargetIntrinsicInfo x, struct TargetFunctionInfo y)
       : target_intrinsic_info(x), target_function_info(y) {}
-  absl::optional<bool> HasIntrinsic;
+  absl::optional<bool> has_intrinsic;
 };
 
 // Populates the function information for different platforms (NVPTX, AMDGPU)
@@ -217,7 +217,7 @@ llvm::Value* EmitCallToTargetFunction(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   struct TargetInfo gpu_info = GetTargetInfo(function_id, target_triple);
 
-  if (gpu_info.HasIntrinsic) {
+  if (gpu_info.has_intrinsic) {
     llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
         module, gpu_info.target_intrinsic_info.intrinsic,
         llvm_ir::AsArrayRef(overloaded_types));

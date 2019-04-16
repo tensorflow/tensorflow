@@ -61,7 +61,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
@@ -690,11 +689,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
 
   HloComputation* entry_computation = module->entry_computation();
 
-  llvm_ir::NVPTXMachineFeatures llvm_target_features = 
-           llvm_ir::NVPTXMachineFeatures::Singleton(); 
-
-  IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               &ir_emitter_context, &llvm_target_features);
+  IrEmitterUnnested ir_emitter(module->config(), entry_computation,&ir_emitter_context);
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
