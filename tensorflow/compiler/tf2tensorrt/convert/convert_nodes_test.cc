@@ -1961,6 +1961,15 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpWeight<ops::Minimum, DT_FLOAT>(this);
   TestBinaryTensorOpWeight<ops::Maximum, DT_FLOAT>(this);
   TestBinaryTensorOpWeight<ops::Pow, DT_FLOAT>(this);
+  // Test with operand L = Weights
+  TestBinaryWeightOpTensor<ops::Add, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::Sub, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::Mul, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::Div, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::RealDiv, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::Minimum, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::Maximum, DT_FLOAT>(this);
+  TestBinaryWeightOpTensor<ops::Pow, DT_FLOAT>(this);
 
   // FP16 tests
   TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
@@ -1980,6 +1989,15 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpWeight<ops::Minimum, DT_HALF>(this);
   TestBinaryTensorOpWeight<ops::Maximum, DT_HALF>(this);
   TestBinaryTensorOpWeight<ops::Pow, DT_HALF>(this);
+  // Test with operand L = Weights
+  TestBinaryWeightOpTensor<ops::Add, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::Sub, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::Mul, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::Div, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::RealDiv, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::Minimum, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::Maximum, DT_HALF>(this);
+  TestBinaryWeightOpTensor<ops::Pow, DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
