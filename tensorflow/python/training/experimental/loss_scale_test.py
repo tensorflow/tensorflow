@@ -253,6 +253,12 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
       self._test_helper(inputs, expected_outputs, init_loss_scale)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_update_with_None_gradients(self, strategy_fn):
+    with strategy_fn().scope():
+      loss_scaler = loss_scale_module.DynamicLossScale()
+      loss_scaler.update([None])
+
+  @test_util.run_in_graph_and_eager_modes
   def test_get(self):
     scalar = loss_scale_module.get('dynamic')
     scalar2 = loss_scale_module.DynamicLossScale()
