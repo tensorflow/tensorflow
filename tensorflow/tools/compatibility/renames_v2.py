@@ -917,6 +917,8 @@ renames = {
         'tf.compat.v1.ragged.RaggedTensorValue',
     'tf.ragged.constant_value':
         'tf.compat.v1.ragged.constant_value',
+    'tf.ragged.placeholder':
+        'tf.compat.v1.ragged.placeholder',
     'tf.random.get_seed':
         'tf.compat.v1.random.get_seed',
     'tf.random.set_random_seed':

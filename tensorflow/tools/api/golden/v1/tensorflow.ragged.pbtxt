@@ -17,6 +17,10 @@ tf_module {
     argspec: "args=[\'op\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "placeholder"
+    argspec: "args=[\'dtype\', \'ragged_rank\', \'value_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "range"
     argspec: "args=[\'starts\', \'limits\', \'deltas\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\'], "
   }
