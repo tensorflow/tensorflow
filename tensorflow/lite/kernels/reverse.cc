@@ -77,9 +77,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis_tensor = GetInput(context, node, kAxisTensor);
-  int dimension_size = NumDimensions(input);
+  const int dimension_size = NumDimensions(input);
   int axes_size = NumElements(axis_tensor);
-  std::vector<bool> axes(dimension_size, false);
+  bool axes[dimension_size] = {false};
   const int32_t* axis_data = GetTensorData<int32_t>(axis_tensor);
   int axis = 0;
   for (int index = 0; index < axes_size; ++index) {

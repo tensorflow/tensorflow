@@ -4473,11 +4473,11 @@ void Fill(const RuntimeShape& value_shape, const T* value_data,
 }
 
 template <typename Scalar>
-void Reverse(std::vector<bool>& axes, const RuntimeShape& input_shape,
+void Reverse(bool* axes, const RuntimeShape& input_shape,
              const Scalar* input_data, const RuntimeShape& output_shape,
              Scalar* output_data, Scalar* input_copy_data) {
   gemmlowp::ScopedProfilingLabel label("Reverse");
-  int axes_size = static_cast<int>(axes.size());
+  int axes_size = input_shape.DimensionsCount();
   int axis = 0;
 
   // Here on kernel will work on copy of input data
