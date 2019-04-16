@@ -540,7 +540,7 @@ def _tensor_pool_adjusted_model(model, tensor_pool_fn):
         generator_inputs=pooled_generator_inputs,
         generated_data=pooled_generated_data,
         discriminator_gen_outputs=pooled_discriminator_gen_outputs,
-        discriminator_gen_classification_logits=pooled_discriminator_gen_classification_logits
+        discriminator_gen_classification_logits=pooled_discriminator_gen_classification_logits  # pylint: disable=line-too-long
     )
   elif isinstance(model, namedtuples.InfoGANModel):
     pooled_generator_inputs, pooled_generated_data, pooled_structured_input = (
