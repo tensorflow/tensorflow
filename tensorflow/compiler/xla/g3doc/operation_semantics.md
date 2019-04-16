@@ -303,6 +303,37 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `broadcast_sizes` is `{2, 3}`, then the result will be an array with shape
 `f32[2, 3]` and all the values in the result will be `2.0f`.
 
+## BroadcastInDim
+
+See also
+[`XlaBuilder::BroadcastInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Expands the size and rank of an array by duplicating the data in the array.
+
+<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+
+| Arguments              | Type                | Semantics                     |
+| ---------------------- | ------------------- | ----------------------------- |
+| `operand`              | `XlaOp`             | The array to duplicate        |
+| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions   |
+:                        :                     : of the target shape           :
+| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target |
+:                        :                     : shape each dimension of the   :
+:                        :                     : operand shape corresponds to  :
+
+Similar to Broadcast, but allows adding dimensions anywhere and expanding
+existing dimensions with size 1.
+
+The `operand` is broadcast to the shape described by `out_dim_size`.
+`broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
+target shape, i.e. the i'th dimension of the operand is mapped to the
+broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
+`operand` must have size 1 or be the same size as the dimension in in the output
+shape they are mapped to. The remaining dimensions are filled with dimensions of
+size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
+dimensions to reach the output shape. The semantics are described in detail on
+the [broadcasting page](broadcasting.md).
+
 ## Call
 
 See also
