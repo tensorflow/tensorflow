@@ -34,7 +34,15 @@ git fetch upstream
 git checkout -b develop-upstream-sync-YYMMDD
 git merge upstream/master --no-edit
 ```
+- Make first commit to record the merge state before resolving conflicts
+  - Record all files with merge conflict locally
+  - Mark all conflict files as resolved by staging them
+  - Commit all files as-is. Note that at this stage the build should be broken
+    because of the "<<<<<<======>>>>>>" symbols in source files
 - Resolve any merge conflicts encountered here
+- Make the second commit to record the merge state after resolving conflicts
+  - When all merge conflict resolved, do a ```grep -rn "<<<<<<"``` to make sure
+    no diff symbols exist in the source
 
 ### Notice on common merge conflicts
 
@@ -50,7 +58,7 @@ git merge upstream/master --no-edit
 - XLA
   - Logic in XLA (tensorflow/compiler) changes relatively frequently. Expect
     API signature changes either within XLA itself or from LLVM.
-  
+
 - StreamExecutor / GPU common runtime
   - Apart from terminology (CUDA v GPU) changes, pay attention to interface
     changes especially in StreamExecutor. Study CUDA version to figure out what
@@ -65,10 +73,10 @@ git merge upstream/master --no-edit
 - upstream failures
   - When a ROCm reason cannot be determined for a newly failing test, attempt
     to roll back any source files related to the failing test to known working
-    commits, e.g., the previous weekly merge.  Look for any differences.  By 
-    the end of the week, look at the most recent commits in case the bug was 
-    found and fixed upstream.  Cherry-pick and verify the fix.  In the meantime, 
-    whitelist the failure and indicate it is an upstream failure so that it can 
+    commits, e.g., the previous weekly merge.  Look for any differences.  By
+    the end of the week, look at the most recent commits in case the bug was
+    found and fixed upstream.  Cherry-pick and verify the fix.  In the meantime,
+    whitelist the failure and indicate it is an upstream failure so that it can
     be restored as soon as possible.
 
 ### Build merged TensorFlow
@@ -101,7 +109,7 @@ git merge upstream/master --no-edit
     test from cuda* CI runs.
   - Adding `tags = ["no_rocm","no_cuda",]` to that target, will result in
     removing this test from both the rocm* and cuda* CI runs.
-  
+
   grep for "tags" in the tensorflow/.../BUILD files for a concrete example of
   how to add tags to a target
 
@@ -130,7 +138,7 @@ git tag merge-YYMMDD
 git push --tags
 ```
 
-### Sync the upstream branch 
+### Sync the upstream branch
 ```
 git checkout upstream
 git merge upstream/master
