@@ -37,36 +37,50 @@ namespace optimize {
 namespace {
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           const TensorT* weight_tensor, TensorT* bias_tensor,
-                          int channel_dim_index,
+                          bool is_per_channel, int channel_dim_index,
                           ErrorReporter* error_reporter) {
   if (bias_tensor->shape.size() != 1) {
     error_reporter->Report("Expected bias tensor shape to be 1.");
     return kTfLiteError;
   }
 
-  if (bias_tensor->shape[0] != weight_tensor->shape[channel_dim_index]) {
-    error_reporter->Report(
-        "Channel mismatch between bias and weight tensors %d vs %d",
-        bias_tensor->shape[0], weight_tensor->shape[channel_dim_index]);
-    return kTfLiteError;
-  }
   int32_t channel_dim_size = bias_tensor->shape[0];
-  if (!input_tensor->quantization ||
-      input_tensor->quantization->scale.size() != 1) {
-    error_reporter->Report("Input tensor missing quantization information");
-    return kTfLiteError;
-  }
   TF_LITE_ENSURE(error_reporter, weight_tensor->quantization);
-  const std::vector<float>& weight_scales = weight_tensor->quantization->scale;
+  std::vector<float> weight_scales = weight_tensor->quantization->scale;
 
-  if (weight_scales.size() != channel_dim_size) {
-    error_reporter->Report("Mismatch weight scale dimension: %d",
-                           weight_scales.size());
-    return kTfLiteError;
+  if (is_per_channel) {
+    if (bias_tensor->shape[0] != weight_tensor->shape[channel_dim_index]) {
+      error_reporter->Report(
+          "Channel mismatch between bias and weight tensors %d vs %d",
+          bias_tensor->shape[0], weight_tensor->shape[channel_dim_index]);
+      return kTfLiteError;
+    }
+    if (!input_tensor->quantization ||
+        input_tensor->quantization->scale.size() != 1) {
+      error_reporter->Report("Input tensor missing quantization information");
+      return kTfLiteError;
+    }
+
+    if (weight_scales.size() != channel_dim_size) {
+      error_reporter->Report("Mismatch weight scale dimension: %d",
+                             weight_scales.size());
+      return kTfLiteError;
+    }
+    return utils::SymmetricPerChannelBiasQuantize(
+        model, bias_tensor, input_tensor->quantization->scale[0],
+        weight_scales.data(), channel_dim_size, channel_dim_index);
+  } else {
+    if (weight_scales.size() != 1) {
+      error_reporter->Report(
+          "Expected per-layer weight scale dimension size 1, got %d",
+          weight_scales.size());
+      return kTfLiteError;
+    }
+    return utils::SymmetricPerLayerBiasQuantize(
+        model, bias_tensor, input_tensor->quantization->scale[0],
+        weight_scales[0]);
   }
-  return utils::SymmetricPerChannelBiasQuantize(
-      model, bias_tensor, input_tensor->quantization->scale[0],
-      weight_scales.data(), channel_dim_size, channel_dim_index);
+  return kTfLiteError;
 }
 
 // True if the tensor type has to be modified.
@@ -309,8 +323,12 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
       operator_property::OperatorProperty property;
-      TF_LITE_ENSURE_STATUS(
-          operator_property::GetOperatorProperty(op_code, &property));
+      if (operator_property::GetOperatorProperty(op_code, &property) ==
+          kTfLiteError) {
+        error_reporter->Report("Quantization not yet supported for op: %s",
+                               EnumNameBuiltinOperator(op_code));
+        return kTfLiteError;
+      }
       // Quantize weight and inputs.
       std::vector<int> input_indexes;
       if (property.arbitrary_inputs) {
@@ -323,7 +341,7 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
       for (const int input_idx : input_indexes) {
         if (input_idx >= op->inputs.size()) {
           error_reporter->Report(
-              "Requaired input index %d is larger than the input length of op "
+              "Required input index %d is larger than the input length of op "
               "%s at index %d in subgraph %d",
               input_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
               op_idx, subgraph_idx);
@@ -474,7 +492,7 @@ TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
       for (const int bias_idx : property.biases) {
         if (bias_idx >= op->inputs.size()) {
           error_reporter->Report(
-              "Requaired input index %d is larger than the input length of "
+              "Required input index %d is larger than the input length of "
               "op  %s at index %d in subgraph %d",
               bias_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
               op_idx, subgraph_idx);
@@ -498,8 +516,9 @@ TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
                 subgraph->tensors[op->inputs[property.input_indexes[0]]].get();
             TensorT* weight_tensor =
                 subgraph->tensors[op->inputs[property.input_indexes[1]]].get();
-            QuantizeBias(model, input_tensor, weight_tensor, bias_tensor,
-                         property.per_axis_index, error_reporter);
+            TF_LITE_ENSURE_STATUS(QuantizeBias(
+                model, input_tensor, weight_tensor, bias_tensor,
+                property.per_axis, property.per_axis_index, error_reporter));
           }
         }
       }

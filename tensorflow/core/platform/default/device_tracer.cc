@@ -177,15 +177,18 @@ class CuptiCallbackHook {
   Status Enable(CudaEventRecorder* recorder) {
     TF_RETURN_IF_ERROR(
         ToStatus(cuptiSubscribe(&subscriber_, &CuptiCallback, recorder)));
-    for (auto cbid : {CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
-                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2}) {
+    for (auto cbid :
+         {CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
+          CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice,
+          CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
+          CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2}) {
       TF_RETURN_IF_ERROR(ToStatus(cuptiEnableCallback(
           /*enable=*/1, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API, cbid)));
     }
@@ -231,7 +234,7 @@ class CuptiCallbackHook {
         src_type, dst_type, params->ByteCount, cbdata.context, nullptr);
   }
   template <typename T>
-  static void StartMemcpyAsync(CUmemorytype dst_type, CUmemorytype src_type,
+  static void StartMemcpyAsync(CUmemorytype src_type, CUmemorytype dst_type,
                                const CUpti_CallbackData& cbdata,
                                CudaEventRecorder* recorder) {
     auto params = static_cast<const T*>(cbdata.functionParams);
@@ -243,7 +246,11 @@ class CuptiCallbackHook {
                                      const CUpti_CallbackData& cbdata,
                                      CudaEventRecorder* recorder) {
     switch (cbid) {
-      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel: {
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
+        TF_FALLTHROUGH_INTENDED;
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
+        TF_FALLTHROUGH_INTENDED;
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel: {
         DCHECK_NE(cbdata.symbolName, nullptr);
         auto params =
             static_cast<const cuLaunchKernel_params*>(cbdata.functionParams);

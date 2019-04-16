@@ -23,8 +23,8 @@ from __future__ import print_function
 import ctypes as ct
 import os
 
-from tensorflow.contrib.proto.python.kernel_tests import test_example_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.kernel_tests.proto import test_example_pb2
 from tensorflow.python.platform import test
 
 

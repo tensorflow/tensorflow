@@ -321,7 +321,7 @@ class TestStrategyTest(test.TestCase):
   @_run_in_and_out_of_scope
   def testReduce(self, dist):
     x = constant_op.constant(1.)
-    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x)
+    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
     self.assertEqual(self.evaluate(x), self.evaluate(x_r))
 
   def testReductions_acceptStringOps(self):
@@ -329,7 +329,7 @@ class TestStrategyTest(test.TestCase):
     for op in ("mean", "MEAN", "sum", "SUM"):
       x = constant_op.constant(1.)
       y = constant_op.constant(1.)
-      x_r = dist.reduce(op, x)
+      x_r = dist.reduce(op, x, axis=None)
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
       x_r = dist.extended.reduce_to(op, x, "/CPU:0")
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
@@ -341,7 +341,7 @@ class TestStrategyTest(test.TestCase):
   @_run_in_and_out_of_scope
   def testExperimentalMakeNumpyDataset(self, dist):
     numpy_input = np.ones([10], dtype=np.float32)
-    dataset = dist.extended.experimental_make_numpy_dataset(numpy_input)
+    dataset = dist.experimental_make_numpy_dataset(numpy_input)
     self.assertEqual(
         self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
 

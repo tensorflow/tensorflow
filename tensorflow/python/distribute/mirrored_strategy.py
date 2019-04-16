@@ -597,6 +597,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
 
+  def _experimental_distribute_dataset(self, dataset):
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync)
+
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)

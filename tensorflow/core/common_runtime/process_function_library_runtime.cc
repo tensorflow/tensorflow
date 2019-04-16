@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -636,8 +637,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  Placer placer(graph.get(), &device_set, default_device,
-                options.config_proto.allow_soft_placement(),
+  Placer placer(graph.get(), optimization_options.flib_def, &device_set,
+                default_device, options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
 
@@ -1081,15 +1082,63 @@ void ProcessFunctionLibraryRuntime::Run(
   done(errors::Internal("Could not find device"));
 }
 
+void ProcessFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  std::vector<Tensor> args;
+  args.reserve(frame->num_args());
+  for (size_t i = 0; i < frame->num_args(); ++i) {
+    Tensor arg;
+    Status s = frame->GetArg(i, &arg);
+    args.push_back(std::move(arg));
+    if (!s.ok()) {
+      done(s);
+    }
+  }
+  std::vector<Tensor>* rets = new std::vector<Tensor>;
+  rets->reserve(frame->num_retvals());
+
+  Run(opts, handle, args, rets,
+      std::bind(
+          [frame, rets](FunctionLibraryRuntime::DoneCallback& done,
+                        // Begin unbound arguments.
+                        const Status& status) {
+            std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
+            if (rets->size() != frame->num_retvals()) {
+              done(errors::Internal(
+                  "Number of return values from function (", rets->size(),
+                  ") did not match expected number of return values (",
+                  frame->num_retvals(), ")."));
+              return;
+            }
+
+            for (size_t i = 0; i < frame->num_retvals(); ++i) {
+              Status s = frame->SetRetval(i, (*rets)[i]);
+              if (!s.ok()) {
+                done(s);
+              }
+            }
+            done(Status::OK());
+          },
+          std::move(done), std::placeholders::_1));
+}
+
 Status ProcessFunctionLibraryRuntime::Clone(
     Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
-    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const {
-  out_lib_def->reset(new FunctionLibraryDefinition(*lib_def_));
-  out_pflr->reset(new ProcessFunctionLibraryRuntime(
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+    bool skip_flib_def) const {
+  if (skip_flib_def) {
+    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(
+        lib_def_->default_registry(), FunctionDefLibrary{});
+  } else {
+    *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(*lib_def_);
+  }
+  *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator));
+      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator);
   return Status::OK();
 }
 

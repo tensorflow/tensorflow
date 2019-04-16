@@ -200,8 +200,17 @@ XlaOp ConvertRandomBitsToUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
          BitcastConvertType(dist - dist_div_2, type);
 }
 
-XlaOp UniformToNormalUsingSqrtErfInv(XlaOp uniform) {
-  return ScalarLike(uniform, std::sqrt(2.0)) * ErfInv(uniform);
+// Implements the Box-Muller transform, which converts random floats in the
+// range of [0, 1] from uniform distribution to normal distribution with mean 0
+// and variance 1. For more detail on the Box-Muller transform, see
+// http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform#Basic_form
+std::pair<XlaOp, XlaOp> BoxMullerTransform(XlaOp x0, XlaOp x1) {
+  // Do not send a really small number to log().
+  XlaOp u1 = Max(x0, ScalarLike(x0, 1.0e-7f));
+
+  XlaOp v1 = ScalarLike(x1, 2.0f * M_PI) * x1;
+  XlaOp u2 = Sqrt(ScalarLike(u1, -2.0f) * Log(u1));
+  return {Sin(v1) * u2, Cos(v1) * u2};
 }
 
 }  // namespace
@@ -221,7 +230,7 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
       return {key.builder()->ReportError(Unimplemented(
                   "Types other than F32, U32, S32, U64 and S64 "
                   "are not implemented by ThreeFryBitGenerator; got %s",
-                  xla::primitive_util::LowercasePrimitiveTypeName(type))),
+                  primitive_util::LowercasePrimitiveTypeName(type))),
               initial_state};
   }
 }
@@ -260,11 +269,26 @@ RngOutput NormalF32Distribution(XlaOp key, XlaOp initial_state,
                                 const Shape& shape) {
   DCHECK_EQ(shape.element_type(), F32);
   XlaBuilder* builder = key.builder();
+  const int64 num_elems = ShapeUtil::ElementsIn(shape);
+  const int64 num_pairs = CeilOfRatio<int64>(num_elems, 2);
   RngOutput bits_state = UniformF32Distribution(
-      key, initial_state, bit_generator,
-      ConstantR0<float>(builder, std::nextafter(-1.0f, 0.0f)),
-      ConstantR0<float>(builder, 1.0), shape);
-  XlaOp normal = UniformToNormalUsingSqrtErfInv(bits_state.value);
+      key, initial_state, bit_generator, ConstantR0<float>(builder, 0.0),
+      ConstantR0<float>(builder, 1.0),
+      ShapeUtil::MakeShape(F32, {num_pairs * 2}));
+
+  // Separate the bits into two groups to perform the Box-Muller transform.
+  XlaOp bits_0 = Slice(bits_state.value, {0}, {num_pairs}, {1});
+  XlaOp bits_1 = Slice(bits_state.value, {num_pairs}, {2 * num_pairs}, {1});
+  std::tie(bits_0, bits_1) = BoxMullerTransform(bits_0, bits_1);
+
+  // Put the numbers in the two groups back to form the requested shape.
+  XlaOp normal = ConcatInDim(builder, {bits_0, bits_1}, /*dimension=*/0);
+  if (num_elems != num_pairs * 2) {
+    normal = Slice(normal, /*start_indices=*/{0}, /*limit_indices=*/{num_elems},
+                   /*strides=*/{1});
+  }
+  normal = Reshape(normal, shape.dimensions());
+
   return {normal, bits_state.state};
 }
 

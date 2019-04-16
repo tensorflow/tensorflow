@@ -16,25 +16,18 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 
 #include <memory>
-#include <set>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/port.h"
 
@@ -78,10 +71,11 @@ Status AssignAndLog(int assigned_device, Node* node,
 
 }  // namespace
 
-Placer::Placer(Graph* graph, const DeviceSet* devices,
-               const Device* default_device, bool allow_soft_placement,
-               bool log_device_placement)
+Placer::Placer(Graph* graph, const FunctionLibraryDefinition* flib_def,
+               const DeviceSet* devices, const Device* default_device,
+               bool allow_soft_placement, bool log_device_placement)
     : graph_(graph),
+      flib_def_(flib_def),
       devices_(devices),
       default_device_(default_device),
       allow_soft_placement_(allow_soft_placement),
@@ -89,10 +83,10 @@ Placer::Placer(Graph* graph, const DeviceSet* devices,
 
 Placer::Placer(Graph* graph, const DeviceSet* devices,
                const Device* default_device)
-    : Placer(graph, devices, default_device, true, false) {}
+    : Placer(graph, &graph->flib_def(), devices, default_device, true, false) {}
 
 Placer::Placer(Graph* graph, const DeviceSet* devices)
-    : Placer(graph, devices, nullptr, true, false) {}
+    : Placer(graph, &graph->flib_def(), devices, nullptr, true, false) {}
 
 Placer::~Placer() {}
 
@@ -112,7 +106,7 @@ Status Placer::Run() {
     }
   }
 
-  ColocationGraph colocation_graph(graph_, devices_, default_device_,
+  ColocationGraph colocation_graph(graph_, flib_def_, devices_, default_device_,
                                    allow_soft_placement_,
                                    log_device_placement_);
 

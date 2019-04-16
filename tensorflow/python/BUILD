@@ -150,6 +150,7 @@ py_library(
         ":nn",
         ":ops",
         ":platform",
+        ":proto_ops",
         ":pywrap_tensorflow",
         ":saver_test_utils",
         ":script_ops",
@@ -2858,6 +2859,53 @@ py_library(
 )
 
 py_library(
+    name = "loss_scale",
+    srcs = ["training/experimental/loss_scale.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "loss_scale_optimizer",
+    srcs = ["training/experimental/loss_scale_optimizer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loss_scale",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "loss_scale_optimizer_test",
+    size = "small",
+    srcs = ["training/experimental/loss_scale_optimizer_test.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "loss_scale_test",
+    size = "small",
+    srcs = ["training/experimental/loss_scale_test.py"],
+    deps = [
+        ":loss_scale",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
     name = "math_grad",
     srcs = ["ops/math_grad.py"],
     srcs_version = "PY2AND3",
@@ -3387,6 +3435,7 @@ py_library(
         ":numerics",
         ":parsing_ops",
         ":partitioned_variables",
+        ":proto_ops",
         ":random_ops",
         ":script_ops",
         ":session_ops",
@@ -3960,6 +4009,8 @@ py_library(
         ":io_ops",
         ":layers_util",
         ":lookup_ops",
+        ":loss_scale",
+        ":loss_scale_optimizer",
         ":math_ops",
         ":platform",
         ":pywrap_tensorflow",
@@ -4281,6 +4332,17 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
     main = "util/lock_util_test.py",
+)
+
+tf_py_test(
+    name = "deprecation_wrapper_test",
+    size = "small",
+    srcs = ["util/deprecation_wrapper_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":util",
+        "@six_archive//:six",
+    ],
 )
 
 tf_proto_library(
@@ -6345,6 +6407,30 @@ cuda_py_test(
         "no_oss",
         "noguitar",
         "notap",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "decode_proto_ops_gen",
+    deps = [
+        "//tensorflow/core:decode_proto_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "encode_proto_ops_gen",
+    deps = [
+        "//tensorflow/core:encode_proto_ops_op_lib",
+    ],
+)
+
+py_library(
+    name = "proto_ops",
+    srcs = ["ops/proto_ops.py"],
+    deps = [
+        ":decode_proto_ops_gen",
+        ":encode_proto_ops_gen",
+        "//tensorflow/python:framework_ops",
     ],
 )
 

@@ -275,7 +275,10 @@ Status CreateFunctionLibraryDefinition(
     std::shared_ptr<FunctionLibraryDefinition>* result) {
   DCHECK(lib_def != nullptr);
   const FunctionDef* fdef = lib_def->Find(func_name);
-  DCHECK(fdef != nullptr);
+  if (TF_PREDICT_FALSE(fdef == nullptr)) {
+    return tensorflow::errors::FailedPrecondition(tensorflow::strings::StrCat(
+        "Could not find required function definition ", func_name));
+  }
   *result = std::make_shared<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
   TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));

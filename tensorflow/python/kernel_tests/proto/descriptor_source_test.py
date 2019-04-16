@@ -19,17 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.proto.python.kernel_tests import descriptor_source_test_base as test_base
-from tensorflow.contrib.proto.python.ops import decode_proto_op
-from tensorflow.contrib.proto.python.ops import encode_proto_op
+from tensorflow.python.kernel_tests.proto import descriptor_source_test_base as test_base
+from tensorflow.python.ops import proto_ops
 from tensorflow.python.platform import test
 
 
 class DescriptorSourceTest(test_base.DescriptorSourceTestBase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    super(DescriptorSourceTest, self).__init__(decode_proto_op, encode_proto_op,
-                                               methodName)
+    super(DescriptorSourceTest, self).__init__(decode_module=proto_ops,
+                                               encode_module=proto_ops,
+                                               methodName=methodName)
 
 
 if __name__ == '__main__':

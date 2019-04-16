@@ -1474,7 +1474,7 @@ def sparse_mask(a, mask_indices, name=None):
   """
   with ops.name_scope(name, "sparse_mask", [a, mask_indices]) as name:
     indices = a.indices
-    out_indices, to_gather = setdiff1d(indices, mask_indices)
+    out_indices, to_gather = gen_array_ops.list_diff(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 

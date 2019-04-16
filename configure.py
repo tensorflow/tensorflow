@@ -862,154 +862,41 @@ def reformat_version_sequence(version_str, sequence_count):
   return '.'.join(v[:sequence_count])
 
 
+def set_tf_cuda_paths(environ_cp):
+  """Set TF_CUDA_PATHS."""
+  ask_cuda_paths = (
+      'Please specify the comma-separated list of base paths to look for CUDA '
+      'libraries and headers. [Leave empty to use the default]: '
+  )
+  tf_cuda_paths = get_from_env_or_user_or_default(environ_cp, 'TF_CUDA_PATHS',
+                                                  ask_cuda_paths,
+                                                  '')
+  if tf_cuda_paths:
+    environ_cp['TF_CUDA_PATHS'] = tf_cuda_paths
+
+
 def set_tf_cuda_version(environ_cp):
-  """Set CUDA_TOOLKIT_PATH and TF_CUDA_VERSION."""
+  """Set TF_CUDA_VERSION."""
   ask_cuda_version = (
       'Please specify the CUDA SDK version you want to use. '
       '[Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
-
-  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-    # Configure the Cuda SDK version to use.
-    tf_cuda_version = get_from_env_or_user_or_default(environ_cp,
-                                                      'TF_CUDA_VERSION',
-                                                      ask_cuda_version,
-                                                      _DEFAULT_CUDA_VERSION)
-    tf_cuda_version = reformat_version_sequence(str(tf_cuda_version), 2)
-
-    # Find out where the CUDA toolkit is installed
-    default_cuda_path = _DEFAULT_CUDA_PATH
-    if is_windows() or is_cygwin():
-      default_cuda_path = cygpath(
-          environ_cp.get('CUDA_PATH', _DEFAULT_CUDA_PATH_WIN))
-    elif is_linux():
-      # If the default doesn't exist, try an alternative default.
-      if (not os.path.exists(default_cuda_path)
-         ) and os.path.exists(_DEFAULT_CUDA_PATH_LINUX):
-        default_cuda_path = _DEFAULT_CUDA_PATH_LINUX
-    ask_cuda_path = ('Please specify the location where CUDA %s toolkit is'
-                     ' installed. Refer to README.md for more details. '
-                     '[Default is %s]: ') % (tf_cuda_version, default_cuda_path)
-    cuda_toolkit_path = get_from_env_or_user_or_default(environ_cp,
-                                                        'CUDA_TOOLKIT_PATH',
-                                                        ask_cuda_path,
-                                                        default_cuda_path)
-    if is_windows() or is_cygwin():
-      cuda_toolkit_path = cygpath(cuda_toolkit_path)
-
-    if is_windows():
-      cuda_rt_lib_paths = ['lib/x64/cudart.lib']
-    elif is_linux():
-      cuda_rt_lib_paths = [
-          '%s/libcudart.so.%s' % (x, tf_cuda_version) for x in [
-              'lib64',
-              'lib/powerpc64le-linux-gnu',
-              'lib/x86_64-linux-gnu',
-          ]
-      ]
-    elif is_macos():
-      cuda_rt_lib_paths = ['lib/libcudart.%s.dylib' % tf_cuda_version]
-
-    cuda_toolkit_paths_full = [
-        os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths
-    ]
-    if any(os.path.exists(x) for x in cuda_toolkit_paths_full):
-      break
-
-    # Reset and retry
-    print('Invalid path to CUDA %s toolkit. %s cannot be found' %
-          (tf_cuda_version, cuda_toolkit_paths_full))
-    environ_cp['TF_CUDA_VERSION'] = ''
-    environ_cp['CUDA_TOOLKIT_PATH'] = ''
-
-  else:
-    raise UserInputError('Invalid TF_CUDA_SETTING setting was provided %d '
-                         'times in a row. Assuming to be a scripting mistake.' %
-                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
-
-  # Set CUDA_TOOLKIT_PATH and TF_CUDA_VERSION
-  environ_cp['CUDA_TOOLKIT_PATH'] = cuda_toolkit_path
-  write_action_env_to_bazelrc('CUDA_TOOLKIT_PATH', cuda_toolkit_path)
+  tf_cuda_version = get_from_env_or_user_or_default(environ_cp,
+                                                    'TF_CUDA_VERSION',
+                                                    ask_cuda_version,
+                                                    _DEFAULT_CUDA_VERSION)
   environ_cp['TF_CUDA_VERSION'] = tf_cuda_version
-  write_action_env_to_bazelrc('TF_CUDA_VERSION', tf_cuda_version)
 
 
 def set_tf_cudnn_version(environ_cp):
-  """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
+  """Set TF_CUDNN_VERSION."""
   ask_cudnn_version = (
       'Please specify the cuDNN version you want to use. '
       '[Leave empty to default to cuDNN %s]: ') % _DEFAULT_CUDNN_VERSION
-
-  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-    tf_cudnn_version = get_from_env_or_user_or_default(environ_cp,
-                                                       'TF_CUDNN_VERSION',
-                                                       ask_cudnn_version,
-                                                       _DEFAULT_CUDNN_VERSION)
-    tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version), 1)
-
-    default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
-    ask_cudnn_path = (r'Please specify the location where cuDNN %s library is '
-                      'installed. Refer to README.md for more details. [Default'
-                      ' is %s]: ') % (tf_cudnn_version, default_cudnn_path)
-    cudnn_install_path = get_from_env_or_user_or_default(
-        environ_cp, 'CUDNN_INSTALL_PATH', ask_cudnn_path, default_cudnn_path)
-
-    # Result returned from "read" will be used unexpanded. That make "~"
-    # unusable. Going through one more level of expansion to handle that.
-    cudnn_install_path = os.path.realpath(
-        os.path.expanduser(cudnn_install_path))
-    if is_windows() or is_cygwin():
-      cudnn_install_path = cygpath(cudnn_install_path)
-
-    if is_windows():
-      cuda_dnn_lib_path = 'lib/x64/cudnn.lib'
-      cuda_dnn_lib_alt_path = 'lib/x64/cudnn.lib'
-    elif is_linux():
-      cuda_dnn_lib_path = 'lib64/libcudnn.so.%s' % tf_cudnn_version
-      cuda_dnn_lib_alt_path = 'libcudnn.so.%s' % tf_cudnn_version
-    elif is_macos():
-      cuda_dnn_lib_path = 'lib/libcudnn.%s.dylib' % tf_cudnn_version
-      cuda_dnn_lib_alt_path = 'libcudnn.%s.dylib' % tf_cudnn_version
-
-    cuda_dnn_lib_path_full = os.path.join(cudnn_install_path, cuda_dnn_lib_path)
-    cuda_dnn_lib_alt_path_full = os.path.join(cudnn_install_path,
-                                              cuda_dnn_lib_alt_path)
-    if os.path.exists(cuda_dnn_lib_path_full) or os.path.exists(
-        cuda_dnn_lib_alt_path_full):
-      break
-
-    # Try another alternative for Linux
-    if is_linux():
-      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
-      cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
-      cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
-                                           cudnn_path_from_ldconfig)
-      if cudnn_path_from_ldconfig:
-        cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
-        if os.path.exists('%s.%s' %
-                          (cudnn_path_from_ldconfig, tf_cudnn_version)):
-          cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
-          break
-
-    # Reset and Retry
-    print(
-        'Invalid path to cuDNN %s toolkit. None of the following files can be '
-        'found:' % tf_cudnn_version)
-    print(cuda_dnn_lib_path_full)
-    print(cuda_dnn_lib_alt_path_full)
-    if is_linux():
-      print('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version))
-
-    environ_cp['TF_CUDNN_VERSION'] = ''
-  else:
-    raise UserInputError('Invalid TF_CUDNN setting was provided %d '
-                         'times in a row. Assuming to be a scripting mistake.' %
-                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
-
-  # Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION
-  environ_cp['CUDNN_INSTALL_PATH'] = cudnn_install_path
-  write_action_env_to_bazelrc('CUDNN_INSTALL_PATH', cudnn_install_path)
+  tf_cudnn_version = get_from_env_or_user_or_default(environ_cp,
+                                                     'TF_CUDNN_VERSION',
+                                                     ask_cudnn_version,
+                                                     _DEFAULT_CUDNN_VERSION)
   environ_cp['TF_CUDNN_VERSION'] = tf_cudnn_version
-  write_action_env_to_bazelrc('TF_CUDNN_VERSION', tf_cudnn_version)
 
 
 def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
@@ -1041,253 +928,38 @@ def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
   return cudnn_ok and cuda_ok
 
 
-def set_tf_tensorrt_install_path(environ_cp):
-  """Set TENSORRT_INSTALL_PATH and TF_TENSORRT_VERSION.
-
-  Adapted from code contributed by Sami Kama (https://github.com/samikama).
-
-  Args:
-    environ_cp: copy of the os.environ.
-
-  Raises:
-    ValueError: if this method was called under non-Linux platform.
-    UserInputError: if user has provided invalid input multiple times.
-  """
+def set_tf_tensorrt_version(environ_cp):
+  """Set TF_TENSORRT_VERSION."""
   if not is_linux():
     raise ValueError('Currently TensorRT is only supported on Linux platform.')
 
-  # Ask user whether to add TensorRT support.
+  # Backwards compatibility: early-out when TF_NEED_TENSORRT=0.
   if str(int(get_var(environ_cp, 'TF_NEED_TENSORRT', 'TensorRT',
                      False))) != '1':
     return
 
-  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-    ask_tensorrt_path = (r'Please specify the location where TensorRT is '
-                         'installed. [Default is %s]:') % (
-                             _DEFAULT_TENSORRT_PATH_LINUX)
-    trt_install_path = get_from_env_or_user_or_default(
-        environ_cp, 'TENSORRT_INSTALL_PATH', ask_tensorrt_path,
-        _DEFAULT_TENSORRT_PATH_LINUX)
-
-    # Result returned from "read" will be used unexpanded. That make "~"
-    # unusable. Going through one more level of expansion to handle that.
-    trt_install_path = os.path.realpath(os.path.expanduser(trt_install_path))
-
-    def find_libs(search_path):
-      """Search for libnvinfer.so in "search_path"."""
-      fl = set()
-      if os.path.exists(search_path) and os.path.isdir(search_path):
-        fl.update([
-            os.path.realpath(os.path.join(search_path, x))
-            for x in os.listdir(search_path)
-            if 'libnvinfer.so' in x
-        ])
-      return fl
-
-    possible_files = find_libs(trt_install_path)
-    possible_files.update(find_libs(os.path.join(trt_install_path, 'lib')))
-    possible_files.update(find_libs(os.path.join(trt_install_path, 'lib64')))
-    cuda_ver = convert_version_to_int(environ_cp['TF_CUDA_VERSION'])
-    cudnn_ver = convert_version_to_int(environ_cp['TF_CUDNN_VERSION'])
-    nvinfer_pattern = re.compile('.*libnvinfer.so.?(.*)$')
-    highest_ver = [0, None, None]
-
-    for lib_file in possible_files:
-      if is_cuda_compatible(lib_file, cuda_ver, cudnn_ver):
-        matches = nvinfer_pattern.search(lib_file)
-        if not matches.groups():
-          continue
-        ver_str = matches.group(1)
-        ver = convert_version_to_int(ver_str) if len(ver_str) else 0
-        if ver > highest_ver[0]:
-          highest_ver = [ver, ver_str, lib_file]
-    if highest_ver[1] is not None:
-      trt_install_path = os.path.dirname(highest_ver[2])
-      tf_tensorrt_version = highest_ver[1]
-      break
-
-    # Try another alternative from ldconfig.
-    ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
-    ldconfig_output = run_shell([ldconfig_bin, '-p'])
-    search_result = re.search('.*libnvinfer.so\\.?([0-9.]*).* => (.*)',
-                              ldconfig_output)
-    if search_result:
-      libnvinfer_path_from_ldconfig = search_result.group(2)
-      if os.path.exists(libnvinfer_path_from_ldconfig):
-        if is_cuda_compatible(libnvinfer_path_from_ldconfig, cuda_ver,
-                              cudnn_ver):
-          trt_install_path = os.path.dirname(libnvinfer_path_from_ldconfig)
-          tf_tensorrt_version = search_result.group(1)
-          break
-
-    # Reset and Retry
-    if possible_files:
-      print('TensorRT libraries found in one the following directories',
-            'are not compatible with selected cuda and cudnn installations')
-      print(trt_install_path)
-      print(os.path.join(trt_install_path, 'lib'))
-      print(os.path.join(trt_install_path, 'lib64'))
-      if search_result:
-        print(libnvinfer_path_from_ldconfig)
-    else:
-      print(
-          'Invalid path to TensorRT. None of the following files can be found:')
-      print(trt_install_path)
-      print(os.path.join(trt_install_path, 'lib'))
-      print(os.path.join(trt_install_path, 'lib64'))
-      if search_result:
-        print(libnvinfer_path_from_ldconfig)
-
-  else:
-    raise UserInputError('Invalid TF_TENSORRT setting was provided %d '
-                         'times in a row. Assuming to be a scripting mistake.' %
-                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
-
-  # Set TENSORRT_INSTALL_PATH and TF_TENSORRT_VERSION
-  environ_cp['TENSORRT_INSTALL_PATH'] = trt_install_path
-  write_action_env_to_bazelrc('TENSORRT_INSTALL_PATH', trt_install_path)
+  ask_tensorrt_version = (
+      'Please specify the TensorRT version you want to use. '
+      '[Leave empty to not use a specific version]: ')
+  tf_tensorrt_version = get_from_env_or_user_or_default(environ_cp,
+                                                        'TF_TENSORRT_VERSION',
+                                                        ask_tensorrt_version,
+                                                        '')
   environ_cp['TF_TENSORRT_VERSION'] = tf_tensorrt_version
-  write_action_env_to_bazelrc('TF_TENSORRT_VERSION', tf_tensorrt_version)
 
 
-def set_tf_nccl_install_path(environ_cp):
-  """Set NCCL_INSTALL_PATH, NCCL_HDR_PATH and TF_NCCL_VERSION.
-
-  Args:
-    environ_cp: copy of the os.environ.
-
-  Raises:
-    ValueError: if this method was called under non-Linux platform.
-    UserInputError: if user has provided invalid input multiple times.
-  """
+def set_tf_nccl_version(environ_cp):
+  """Set TF_NCCL_VERSION."""
   if not is_linux():
-    raise ValueError('Currently NCCL is only supported on Linux platforms.')
+    raise ValueError('Currently NCCL is only supported on Linux platform.')
 
   ask_nccl_version = (
       'Please specify the locally installed NCCL version you want to use. '
-      '[Default is to use https://github.com/nvidia/nccl]: ')
-
-  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-    tf_nccl_version = get_from_env_or_user_or_default(environ_cp,
-                                                      'TF_NCCL_VERSION',
-                                                      ask_nccl_version, '')
-
-    if not tf_nccl_version:
-      break  # No need to get install path, building the open source code.
-
-    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
-
-    # Look with ldconfig first if we can find the library in paths
-    # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
-    # include directory. This is where the NCCL .deb packages install them.
-
-    # First check to see if NCCL is in the ldconfig.
-    # If its found, use that location.
-    if is_linux():
-      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
-      nccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
-      nccl2_path_from_ldconfig = re.search('.*libnccl.so .* => (.*)',
-                                           nccl2_path_from_ldconfig)
-    if nccl2_path_from_ldconfig:
-      nccl2_path_from_ldconfig = nccl2_path_from_ldconfig.group(1)
-      if os.path.exists('%s.%s' % (nccl2_path_from_ldconfig, tf_nccl_version)):
-        nccl_install_path = os.path.dirname(nccl2_path_from_ldconfig)
-        print('NCCL libraries found in ' + nccl2_path_from_ldconfig)
-
-        # Check if this is the main system lib location
-        if re.search('.*linux-gnu', nccl_install_path):
-          trunc_nccl_install_path = '/usr'
-          print('This looks like a system path.')
-        else:
-          trunc_nccl_install_path = nccl_install_path + '/..'
-
-        # Look for header
-        nccl_hdr_path = trunc_nccl_install_path + '/include'
-        print('Assuming NCCL header path is ' + nccl_hdr_path)
-        if os.path.exists(nccl_hdr_path + '/nccl.h'):
-          # Set NCCL_INSTALL_PATH
-          environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
-          write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
-
-          # Set NCCL_HDR_PATH
-          environ_cp['NCCL_HDR_PATH'] = nccl_hdr_path
-          write_action_env_to_bazelrc('NCCL_HDR_PATH', nccl_hdr_path)
-          break
-        else:
-          print(
-              'The header for NCCL2 cannot be found. Please install the libnccl-dev package.'
-          )
-      else:
-        print('NCCL2 is listed by ldconfig but the library is not found. '
-              'Your ldconfig is out of date. Please run sudo ldconfig.')
-    else:
-      # NCCL is not found in ldconfig. Ask the user for the location.
-      default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
-      ask_nccl_path = (
-          r'Please specify the location where NCCL %s library is '
-          'installed. Refer to README.md for more details. [Default '
-          'is %s]:') % (tf_nccl_version, default_nccl_path)
-      nccl_install_path = get_from_env_or_user_or_default(
-          environ_cp, 'NCCL_INSTALL_PATH', ask_nccl_path, default_nccl_path)
-
-      # Result returned from "read" will be used unexpanded. That make "~"
-      # unusable. Going through one more level of expansion to handle that.
-      nccl_install_path = os.path.realpath(
-          os.path.expanduser(nccl_install_path))
-      if is_windows() or is_cygwin():
-        nccl_install_path = cygpath(nccl_install_path)
-
-      nccl_lib_path = ''
-      if is_windows():
-        nccl_lib_path = 'lib/x64/nccl.lib'
-      elif is_linux():
-        nccl_lib_filename = 'libnccl.so.%s' % tf_nccl_version
-        nccl_lpath = '%s/lib/%s' % (nccl_install_path, nccl_lib_filename)
-        if not os.path.exists(nccl_lpath):
-          for relative_path in NCCL_LIB_PATHS:
-            path = '%s/%s%s' % (nccl_install_path, relative_path,
-                                nccl_lib_filename)
-            if os.path.exists(path):
-              print('NCCL found at ' + path)
-              nccl_lib_path = path
-              break
-        else:
-          nccl_lib_path = nccl_lpath
-      elif is_macos():
-        nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
-
-      nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
-      nccl_hdr_path = os.path.join(
-          os.path.dirname(nccl_lib_path), '../include/nccl.h')
-      print('Assuming NCCL header path is ' + nccl_hdr_path)
-      if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
-        # Set NCCL_INSTALL_PATH
-        environ_cp['NCCL_INSTALL_PATH'] = os.path.dirname(nccl_lib_path)
-        write_action_env_to_bazelrc('NCCL_INSTALL_PATH',
-                                    os.path.dirname(nccl_lib_path))
-
-        # Set NCCL_HDR_PATH
-        environ_cp['NCCL_HDR_PATH'] = os.path.dirname(nccl_hdr_path)
-        write_action_env_to_bazelrc('NCCL_HDR_PATH',
-                                    os.path.dirname(nccl_hdr_path))
-        break
-
-      # Reset and Retry
-      print(
-          'Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
-          'O/S agnostic package of NCCL 2' %
-          (tf_nccl_version, nccl_lib_path, nccl_hdr_path))
-
-      environ_cp['TF_NCCL_VERSION'] = ''
-  else:
-    raise UserInputError('Invalid TF_NCCL setting was provided %d '
-                         'times in a row. Assuming to be a scripting mistake.' %
-                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
-
-  # Set TF_NCCL_VERSION
+      '[Leave empty to use https://github.com/nvidia/nccl]: ')
+  tf_nccl_version = get_from_env_or_user_or_default(environ_cp,
+                                                    'TF_NCCL_VERSION',
+                                                    ask_nccl_version, '')
   environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
-  write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
-
 
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
@@ -1720,11 +1392,69 @@ def main():
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
-    set_tf_cuda_version(environ_cp)
-    set_tf_cudnn_version(environ_cp)
-    if is_linux():
-      set_tf_tensorrt_install_path(environ_cp)
-      set_tf_nccl_install_path(environ_cp)
+    for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
+      set_tf_cuda_version(environ_cp)
+      set_tf_cudnn_version(environ_cp)
+      cuda_libraries = ['cuda', 'cudnn']
+      if is_linux():
+        set_tf_tensorrt_version(environ_cp)
+        if 'TF_TENSORRT_VERSION' in environ_cp:  # if env variable exists
+          cuda_libraries.append('tensorrt')
+        set_tf_nccl_version(environ_cp)
+        if environ_cp['TF_NCCL_VERSION']:  # if env variable not empty
+          cuda_libraries.append('nccl')
+
+      def maybe_encode_env(env):
+        """Encodes unicode in env to str on Windows python 2.x."""
+        if not is_windows() or sys.version_info[0] != 2:
+          return env
+        for k, v in env.items():
+          if isinstance(k, unicode):
+            k = k.encode('ascii')
+          if isinstance(v, unicode):
+            v = v.encode('ascii')
+          env[k] = v
+        return env
+
+      # Verify CUDA configuration by calling find_cuda_config.py.
+      proc = subprocess.Popen(
+          [
+              environ_cp['PYTHON_BIN_PATH'],
+              'third_party/gpus/find_cuda_config.py'
+          ] + cuda_libraries,
+          stdout=subprocess.PIPE,
+          env=maybe_encode_env(environ_cp))
+
+      cuda_env_variable_names = [
+          'TF_CUDA_VERSION', 'TF_CUBLAS_VERSION', 'TF_CUDNN_VERSION',
+          'TF_TENSORRT_VERSION', 'TF_NCCL_VERSION', 'TF_CUDA_PATHS'
+      ]
+
+      if proc.wait():
+        print('\nCould not find all requested CUDA libraries or headers.\n')
+        for name in cuda_env_variable_names:
+          if name in environ_cp:
+            del environ_cp[name]
+        set_tf_cuda_paths(environ_cp)
+        continue
+
+      for line in proc.stdout:
+        match = re.match('cuda_toolkit_path: (.*)', line.decode('ascii'))
+        if match:
+          cuda_toolkit_path = match.group(1)
+
+      for name in cuda_env_variable_names:
+        if name in environ_cp:
+          write_action_env_to_bazelrc(name, environ_cp[name])
+
+      break
+    else:
+      raise UserInputError(
+          'Invalid CUDA setting were provided %d '
+          'times in a row. Assuming to be a scripting mistake.' %
+          _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
+    environ_cp['CUDA_TOOLKIT_PATH'] = cuda_toolkit_path
 
     set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(

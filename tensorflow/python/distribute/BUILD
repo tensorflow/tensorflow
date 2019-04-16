@@ -765,6 +765,24 @@ cuda_py_test(
 )
 
 distribute_py_test(
+    name = "custom_training_loop_test",
+    srcs = ["custom_training_loop_test.py"],
+    main = "custom_training_loop_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "minimize_loss_test",
     srcs = ["minimize_loss_test.py"],
     main = "minimize_loss_test.py",
@@ -880,6 +898,7 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+        "no_windows_gpu",  # TODO(b/130551176)
     ],
 )
 
@@ -909,11 +928,8 @@ distribute_py_test(
     main = "zero_batch_test.py",
     deps = [
         ":combinations",
-        ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":strategy_combinations",
-        ":tpu_strategy",
         "//tensorflow/python:layers",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

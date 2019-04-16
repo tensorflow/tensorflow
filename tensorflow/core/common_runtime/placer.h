@@ -20,12 +20,12 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -68,7 +68,8 @@ class Placer {
   //
   // The "graph", "devices", and "default_device" pointer arguments are borrowed
   // by this Placer, and must outlive it.
-  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device,
+  Placer(Graph* graph, const FunctionLibraryDefinition* flib_def,
+         const DeviceSet* devices, const Device* default_device,
          bool allow_soft_placement, bool log_device_placement);
 
   Placer(Graph* graph, const DeviceSet* devices, const Device* default_device);
@@ -90,9 +91,10 @@ class Placer {
   bool CanAssignToDevice(const string& candidate_device_name,
                          const std::vector<Device*>& devices) const;
 
-  Graph* const graph_;              // Not owned.
-  const DeviceSet* const devices_;  // Not owned.
-  const Device* default_device_;    // Not owned.
+  Graph* const graph_;                               // Not owned.
+  const FunctionLibraryDefinition* const flib_def_;  // Not owned.
+  const DeviceSet* const devices_;                   // Not owned.
+  const Device* default_device_;                     // Not owned.
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 

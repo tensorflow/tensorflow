@@ -1078,6 +1078,32 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   return common_factors;
 }
 
+/* static */ absl::optional<std::vector<int64>>
+ShapeUtil::ReshapeLeavesDimensionsUnmodified(
+    const Shape& from_shape, const Shape& to_shape,
+    absl::Span<const int64> input_dim_indices) {
+  CHECK(std::is_sorted(input_dim_indices.begin(), input_dim_indices.end()));
+
+  std::vector<int64> output_dim_indices;
+  std::vector<std::pair<int64, int64>> unmodified_dims =
+      ShapeUtil::DimensionsUnmodifiedByReshape(from_shape, to_shape);
+  size_t i = 0;  // index to unmodified_dims
+  for (int64 input_dim_index : input_dim_indices) {
+    // Search unmodified_dims for input_dim_index. We can search from the last
+    // matching position because input_dim_indices is guaranteed to be sorted.
+    while (i < unmodified_dims.size() &&
+           unmodified_dims[i].first < input_dim_index) {
+      ++i;
+    }
+    if (i >= unmodified_dims.size() ||
+        unmodified_dims[i].first != input_dim_index) {
+      return absl::nullopt;
+    }
+    output_dim_indices.push_back(unmodified_dims[i].second);
+  }
+  return output_dim_indices;
+}
+
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
     absl::Span<const int64> dimension_mapping) {

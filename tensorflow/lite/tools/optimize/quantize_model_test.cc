@@ -790,6 +790,85 @@ TEST_F(QuantizeConstInputTest, VerifyConstOpInput) {
   EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
 }
 
+class QuantizeArgMaxTest : public QuantizeModelTest {
+ protected:
+  QuantizeArgMaxTest() {
+    input_model_ = ReadModel(internal::kModelWithArgMaxOp);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto& subgraph = model_.subgraphs[0];
+  auto op = subgraph->operators[0].get();
+  ASSERT_EQ(model_.operator_codes[op->opcode_index].get()->builtin_code,
+            BuiltinOperator_ARG_MAX);
+
+  ASSERT_EQ(op->inputs.size(), 2);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+  // Verify ArgMax input is quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+
+  // Verify ArgMax input axis should still be the same type.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[1])->type(),
+            subgraph->tensors[op->inputs[1]].get()->type);
+
+  // The output of ArgMax should still be the same type.
+  ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
+            subgraph->tensors[op->outputs[0]].get()->type);
+}
+
+class QuantizeFCTest : public QuantizeModelTest {
+ protected:
+  QuantizeFCTest() {
+    input_model_ = ReadModel(internal::kModelWithFCOp);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeFCTest, VerifyFC) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto& subgraph = model_.subgraphs[0];
+  auto op = subgraph->operators[0].get();
+  ASSERT_EQ(model_.operator_codes[op->opcode_index].get()->builtin_code,
+            BuiltinOperator_FULLY_CONNECTED);
+
+  ASSERT_EQ(op->inputs.size(), 3);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  auto float_graph = readonly_model_->subgraphs()->Get(0);
+  // Verify FC input and weight is quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[1])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[1]].get()->type, TensorType_INT8);
+
+  // Verify FC bias should be int32 quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->inputs[2])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[2]].get()->type, TensorType_INT32);
+
+  // The output of FC should be quantized.
+  ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
+            TensorType_FLOAT32);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

@@ -75,6 +75,15 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
                        DatasetBase** const dataset);
 
+  // Restores the state of the input iterator. It resets the iterator before
+  // restoring it to make sure the input iterator does not hold any
+  // resources or tasks. Otherwise, restoring an existing iterator may cause
+  // the timeout issue or duplicated elements.
+  Status RestoreIterator(IteratorContext* ctx, IteratorStateReader* reader,
+                         const string& output_prefix,
+                         const DatasetBase& dataset,
+                         std::unique_ptr<IteratorBase>* iterator);
+
   // Creates a new RangeDataset op kernel. `T` specifies the output dtype of the
   // op kernel.
   template <typename T>

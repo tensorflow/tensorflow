@@ -141,22 +141,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "subgraph_quantizer",
-    srcs = ["subgraph_quantizer.cc"],
-    hdrs = ["subgraph_quantizer.h"],
-    deps = [
-        ":quantization_utils",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels/internal:round",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
@@ -192,7 +176,9 @@ tf_cc_test(
     ],
     data = [
         "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
+        "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
+        "//tensorflow/lite/tools/optimize:testdata/fc.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",

@@ -235,7 +235,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
     ],
     shard_count = 5,
-    tags = ["no_windows_gpu"],
+    tags = ["no_gpu"],
     xla_enable_strict_auto_jit = True,
 )
 
