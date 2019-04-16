@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -830,12 +831,34 @@ void PoplarExecutor::AddCompileEndEventRecord(const std::string& module_name,
                                               const std::string& report,
                                               const std::string& tensor_map,
                                               int64 duration) {
+  std::string rep = std::move(report);
+  std::string map = std::move(tensor_map);
+
+  if (ReportDirectory().size() > 0) {
+    std::unique_ptr<tensorflow::WritableFile> file;
+
+    std::string filename = tensorflow::io::JoinPath(
+        ReportDirectory(), module_name + ".compile_report.json");
+
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(rep));
+    TF_CHECK_OK(file->Close());
+    rep = filename;
+
+    filename = tensorflow::io::JoinPath(ReportDirectory(),
+                                        module_name + ".tensor_map.json");
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(map));
+    TF_CHECK_OK(file->Close());
+    map = filename;
+  }
+
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::COMPILE_END);
   evt.mutable_compile_end()->set_module_name(std::move(module_name));
-  evt.mutable_compile_end()->set_compilation_report(std::move(report));
+  evt.mutable_compile_end()->set_compilation_report(std::move(rep));
   evt.mutable_compile_end()->set_duration(duration);
-  evt.mutable_compile_end()->set_tensor_map(tensor_map);
+  evt.mutable_compile_end()->set_tensor_map(std::move(map));
 
   reports_.push_back(evt);
 }
@@ -866,10 +889,22 @@ void PoplarExecutor::AddLoadEngineEventRecord(const std::string& module_name) {
 
 void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
                                            const std::string& report) {
+  std::string rep = std::move(report);
+  if (ReportDirectory().size() > 0) {
+    std::unique_ptr<tensorflow::WritableFile> file;
+
+    std::string filename = tensorflow::io::JoinPath(
+        ReportDirectory(), module_name + ".execute_report.json");
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(rep));
+    TF_CHECK_OK(file->Close());
+    rep = filename;
+  }
+
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::EXECUTE);
   evt.mutable_execute()->set_module_name(std::move(module_name));
-  evt.mutable_execute()->set_execution_report(std::move(report));
+  evt.mutable_execute()->set_execution_report(std::move(rep));
 
   reports_.push_back(evt);
 }
@@ -1546,6 +1581,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
             current_engine_->resetExecutionProfile();
           }
+        }
+
+        if (report_stream.tellp() > MaxReportSize()) {
+          LOG(WARNING) << "Dropping Poplar execution report, size was "
+                       << report_stream.tellp();
+          report_stream.str(std::string());
         }
 
         AddExecuteEventRecord(executable.module().name(), report_stream.str());

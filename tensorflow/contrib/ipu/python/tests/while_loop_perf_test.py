@@ -49,7 +49,7 @@ class WhileLoopPerfTest(test_util.TensorFlowTestCase):
     with ipu.ops.ipu_scope("/device:IPU:0"):
       r = ipu_compiler.compile(my_net, inputs=[v])
 
-    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.create_ipu_config(profiling=True, profile_execution=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     ipu.utils.configure_ipu_system(cfg)
     with sl.Session() as sess:
@@ -69,6 +69,6 @@ class WhileLoopPerfTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=1 ' +
-                                os.environ.get('TF_XLA_FLAGS', ''))
+  os.environ['TF_XLA_FLAGS'] = (
+      '--tf_xla_min_cluster_size=1 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

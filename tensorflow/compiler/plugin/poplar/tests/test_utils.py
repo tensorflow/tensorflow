@@ -43,6 +43,7 @@ def configure_ipu_system(compilation_trace=True,
   opts.profiling.enable_poplar_reports_text = text_report
   opts.profiling.enable_poplar_reports_cbor = cbor_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
+  opts.profiling.max_report_size = 0x10000000  # 256MB
   opts.ipu_model_config.enable_ipu_model = True
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 

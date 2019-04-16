@@ -645,7 +645,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   if (poplarExecutor->IpuTraceEventsEnabled()) {
-    std::stringstream stream;
+    std::stringstream report_stream;
 
     if (poplarExecutor->CompilerReportingEnabled() && engine != nullptr) {
       try {
@@ -653,11 +653,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         if (poplarExecutor->CompilerReportingTextFormat()) {
           auto opts = poplarExecutor->GetReportFlags();
           SetFlagIfNotPresent(opts, "showVarStorage", "true");
-          poplar::printGraphSummary(stream, rep, opts);
+          poplar::printGraphSummary(report_stream, rep, opts);
         } else if (poplarExecutor->CompilerReportingCborFormat()) {
-          poplar::serializeToCBOR(stream, rep);
+          poplar::serializeToCBOR(report_stream, rep);
         } else {
-          poplar::serializeToJSON(stream, rep);
+          poplar::serializeToJSON(report_stream, rep);
         }
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);
@@ -666,8 +666,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
 
-    poplarExecutor->AddCompileEndEventRecord(module->name(), stream.str(),
-                                             map_json, duration);
+    if (report_stream.tellp() > poplarExecutor->MaxReportSize()) {
+      LOG(WARNING) << "Dropping Poplar compilation report, size was "
+                   << report_stream.tellp();
+      report_stream.str(std::string());
+    }
+
+    poplarExecutor->AddCompileEndEventRecord(
+        module->name(), report_stream.str(), map_json, duration);
   }
 
   std::unique_ptr<Executable> executable;
