@@ -2106,7 +2106,7 @@ inline void DepthwiseConv(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context = nullptr) {
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -2149,7 +2149,7 @@ inline void DepthwiseConv(
           thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks);
   }
 }
 

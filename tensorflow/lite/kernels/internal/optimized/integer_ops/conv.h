@@ -74,7 +74,7 @@ inline void ConvPerChannel(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     const RuntimeShape& im2col_shape, int8* im2col_data,
-    gemmlowp::GemmContext* gemm_context) {
+    gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -149,7 +149,7 @@ inline void ConvPerChannel(
 
   gemmlowp::GemmWithOutputPipeline<
       int8, int8, gemmlowp::SignedL8R8WithLhsNonzeroBitDepthParams>(
-      gemm_context, filter_matrix, input_matrix, &output_matrix,
+      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
       /*filter_offset*/ 0, input_offset, output_pipeline);
 }
 

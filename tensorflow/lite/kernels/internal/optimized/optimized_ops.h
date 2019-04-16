@@ -1099,14 +1099,14 @@ inline void FullyConnectedAsGEMV(
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context) {
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context) {
   const int output_dim_count = output_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
   static constexpr int kKernelRows = 4;
   const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      gemm_context->max_num_threads(), output_rows, batches, input_size);
+      gemmlowp_context->max_num_threads(), output_rows, batches, input_size);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -1134,7 +1134,7 @@ inline void FullyConnectedAsGEMV(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_rows);
-  gemm_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->Execute(tasks);
 }
 #endif  // USE_NEON
 
@@ -1171,7 +1171,7 @@ inline void FullyConnected(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext* gemm_context) {
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
@@ -1199,7 +1199,7 @@ inline void FullyConnected(
           input_shape, input_data, input_offset, filter_shape, filter_data,
           filter_offset, bias_shape, bias_data, output_offset,
           output_multiplier, output_shift, output_activation_min,
-          output_activation_max, output_shape, output_data, gemm_context);
+          output_activation_max, output_shape, output_data, gemmlowp_context);
     }
   }
 #endif  // USE_NEON
@@ -1221,8 +1221,8 @@ inline void FullyConnected(
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemm_context, filter_matrix, input_matrix, &output_matrix, filter_offset,
-      input_offset, output_pipeline);
+      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
+      filter_offset, input_offset, output_pipeline);
 }
 
 inline void FullyConnected(
@@ -1230,7 +1230,7 @@ inline void FullyConnected(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data_int32, const RuntimeShape& output_shape,
-    int16* output_data, gemmlowp::GemmContext* gemm_context) {
+    int16* output_data, gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
@@ -1241,7 +1241,7 @@ inline void FullyConnected(
   const int32 output_activation_max = params.quantized_activation_max;
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
-  (void)gemm_context;  // only used in properly optimized code.
+  (void)gemmlowp_context;  // only used in properly optimized code.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
@@ -1308,8 +1308,8 @@ inline void FullyConnected(
                       saturating_cast_int16_stage);
   gemmlowp::GemmWithOutputPipeline<uint8, int16,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemm_context, weights_matrix, input_matrix, &output_matrix, filter_offset,
-      input_offset, output_pipeline);
+      gemmlowp_context, weights_matrix, input_matrix, &output_matrix,
+      filter_offset, input_offset, output_pipeline);
 }
 
 // Internal function doing the actual arithmetic work for
@@ -1637,13 +1637,13 @@ inline void ShuffledFullyConnected(
     const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     int16* output_data, uint8* shuffled_input_workspace_data,
-    gemmlowp::GemmContext* gemm_context) {
+    gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
-  (void)gemm_context;  // only used in optimized code.
+  (void)gemmlowp_context;  // only used in optimized code.
   TFLITE_DCHECK_EQ(output_activation_min, -32768);
   TFLITE_DCHECK_EQ(output_activation_max, 32767);
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
@@ -1726,7 +1726,7 @@ inline void ShuffledFullyConnected(
 
   static constexpr int kKernelRows = 4;
   const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
-      gemm_context->max_num_threads(), output_depth, batches, accum_depth);
+      gemmlowp_context->max_num_threads(), output_depth, batches, accum_depth);
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
@@ -1753,7 +1753,7 @@ inline void ShuffledFullyConnected(
     row_start = row_end;
   }
   TFLITE_DCHECK_EQ(row_start, output_depth);
-  gemm_context->workers_pool()->Execute(tasks);
+  gemmlowp_context->workers_pool()->Execute(tasks);
 }
 
 inline void MeanImpl(const tflite::MeanParams& op_params,
@@ -1921,7 +1921,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const uint8_t* input_data, int32 input_zero_point,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  uint8_t* output_data, int32 output_zero_point,
-                 float output_scale, gemmlowp::GemmContext* gemm_context) {
+                 float output_scale, gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
 
   // Current implementation only supports dimension equals 4 and simultaneous
@@ -1946,7 +1946,7 @@ inline void Mean(const tflite::MeanParams& op_params,
   int thread_count = output_depth / kMinDepthPerThread;
   thread_count = thread_count > 0 ? thread_count : 1;
   const int capped_thread_count =
-      std::min(thread_count, gemm_context->max_num_threads());
+      std::min(thread_count, gemmlowp_context->max_num_threads());
 
   if (thread_count == 1) {
     MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
@@ -1967,7 +1967,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                                     output_scale, depth_start, depth_end);
       depth_start = depth_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks);
   }
 }
 
@@ -2159,7 +2159,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const uint8* filter_data, const RuntimeShape& bias_shape,
                  const int32* bias_data, const RuntimeShape& output_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
-                 uint8* im2col_data, gemmlowp::GemmContext* gemm_context) {
+                 uint8* im2col_data, gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -2241,7 +2241,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
         *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
         filter_data, filter_offset, bias_shape, bias_data, output_offset,
         output_multiplier, output_shift, output_activation_min,
-        output_activation_max, output_shape, output_data, gemm_context);
+        output_activation_max, output_shape, output_data, gemmlowp_context);
   }
 #endif
 
@@ -2256,8 +2256,8 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-      gemm_context, filter_matrix, input_matrix, &output_matrix, filter_offset,
-      input_offset, output_pipeline);
+      gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
+      filter_offset, input_offset, output_pipeline);
 }
 
 template <typename T>
@@ -3483,7 +3483,7 @@ inline void LstmCell(
     const RuntimeShape& unextended_concat_temp_shape,
     uint8* concat_temp_data_uint8,
     const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemm_context) {
+    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
   gemmlowp::ScopedProfilingLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
   int32 weights_zero_point = params.weights_zero_point;
@@ -3589,7 +3589,7 @@ inline void LstmCell(
                                            saturating_cast_int16_stage);
     gemmlowp::GemmWithOutputPipeline<
         uint8, int16, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
-        gemm_context, weights_matrix, input_matrix, &output_matrix,
+        gemmlowp_context, weights_matrix, input_matrix, &output_matrix,
         -weights_zero_point, -128, output_pipeline);
   }
 
