@@ -251,19 +251,8 @@ def write_test_cases(fp, model_name, examples):
       fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
-
-      # In these tests, TFLite produces output shapes which are different from
-      # TensorFlow. It's complicated to construct a regular expression to
-      # blacklist exactly broken cases. Therefore a quick hack is put here to
-      # disable output shape check for all of these tests.
-      # TODO(b/130328328): Investigate Pack tests.
-      # TODO(b/130328180): Investigate LSTM and RNN tests.
-      # When resolving these todo items, please remove the hack in the
-      # following line.
-      if not re.match(r".*/(unidirectional_sequence_(lstm|rnn))_.*",
-                      model_name):
-        fp.write("  output_shape: \"" +
-                 ",".join([str(dim) for dim in t.shape]) + "\"\n")
+      fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
+               "\"\n")
     fp.write("}\n")
 
 

@@ -593,7 +593,10 @@ class _LiteAggregateOperand(_LiteOperand):
       The name of a pack that aggregates this node.
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       return _tensor_name_base(flattened[0].name)
     else:
       new_node = _node_def_pb2.NodeDef()
@@ -624,7 +627,10 @@ class _LiteAggregateOperand(_LiteOperand):
       op).
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       temp_op = _LiteSingleOperand(flattened[0])
       return temp_op.aggregate_and_return_name_for_output(
           fused_op_name, output_index, out_graphdef)
