@@ -625,7 +625,7 @@ def make_pool_tests(pool_op_in):
   """Make a set of tests to do average pooling.
 
   Args:
-    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool`.
+    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool2d`.
 
   Returns:
     A function representing the true generator (after curried pool_op_in).
@@ -3859,7 +3859,7 @@ def make_conv2d_transpose_tests(options):
 
 
 # Since compute output_shape is fairly complicated for
-# tf.nn.conv2d_backprop_input input_sizes argument, so we here first perform a
+# tf.nn.conv2d_transpose input_sizes argument, so we here first perform a
 # "conv2d" operation to get the output, then we use the output to feed in
 # tf.nn.conv2d_backprop_input.
 # This test will depend on the "conv2d" operation's correctness.
@@ -4567,7 +4567,7 @@ def make_reverse_sequence_tests(options):
 
 @register_make_test_function()
 def make_matrix_diag_tests(options):
-  """Make a set of tests for tf.matrix_diag op."""
+  """Make a set of tests for tf.linalg.diag op."""
 
   test_parameters = [
       {
@@ -4595,7 +4595,7 @@ def make_matrix_diag_tests(options):
 
 @register_make_test_function()
 def make_matrix_set_diag_tests(options):
-  """Make a set of tests for tf.matrix_set_diag op."""
+  """Make a set of tests for tf.linalg.set_diag op."""
 
   test_parameters = [
       {

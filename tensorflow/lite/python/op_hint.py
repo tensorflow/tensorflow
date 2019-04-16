@@ -30,13 +30,13 @@ Example:
     output, = custom.add_outputs(output)
     return output
 
-  image = tf.placeholder(tf.float32, (1, 16, 16, 1))
+  image = tf.compat.v1.placeholder(tf.float32, (1, 16, 16, 1))
   output = tf.identity(tflite_cool_activation(image))
 
-  session = tf.Session()
+  session = tf.compat.v1.Session()
 
   graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
-  tflite_graph = tf.lite.toco_convert(graphdef_to_convert, [image], [output])
+  tflite_graph = tf.compat.v1.lite.toco_convert(graphdef_to_convert, [image], [output])
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 
