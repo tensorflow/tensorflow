@@ -56,9 +56,9 @@ class Conv3DTest(test.TestCase):
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-        return [dtypes.float64, dtypes.float32, dtypes.float16]
+        return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
     else:
-      return [dtypes.float64, dtypes.float32, dtypes.float16]
+      return [dtypes.float32, dtypes.float16] + ([dtypes.float64] if not test.is_built_with_rocm else [])
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
                             padding, data_format, dtype, use_gpu):
