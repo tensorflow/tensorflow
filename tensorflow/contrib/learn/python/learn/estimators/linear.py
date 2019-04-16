@@ -334,7 +334,7 @@ class LinearClassifier(estimator.Estimator):
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearClassifier(
       feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
-      optimizer=tf.train.FtrlOptimizer(
+      optimizer=tf.compat.v1.train.FtrlOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
       ))

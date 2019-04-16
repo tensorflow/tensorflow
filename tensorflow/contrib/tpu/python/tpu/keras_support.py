@@ -30,7 +30,7 @@ strategy = keras_support.TPUDistributionStrategy(resolver)
 model = keras_support.tpu_model(model, strategy=strategy)
 
 # Only TF optimizers are currently supported.
-model.compile(optimizer=tf.train.AdamOptimizer(), ...)
+model.compile(optimizer=tf.compat.v1.train.AdamOptimizer(), ...)
 
 # `images` and `labels` should be Numpy arrays.  Support for tensor input
 # (e.g. datasets) is planned.
@@ -2201,7 +2201,7 @@ def tpu_model(model, strategy=None):
   strategy = keras_support.TPUDistributionStrategy(tpu_cluster_resolver)
   model = keras_support.tpu_model(model, strategy)
   model.compile(
-      optimizer=tf.train.GradientDescentOptimizer(learning_rate=1.0),
+      optimizer=tf.compat.v1.train.GradientDescentOptimizer(learning_rate=1.0),
       ...)
   ```
 

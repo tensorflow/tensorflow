@@ -36,13 +36,13 @@ out the metrics values to stdout:
 
   # Choose the metrics to compute:
   names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map({
-      "accuracy": tf.metrics.accuracy(labels, predictions),
-      "mse": tf.metrics.mean_squared_error(labels, predictions),
+      "accuracy": tf.compat.v1.metrics.accuracy(labels, predictions),
+      "mse": tf.compat.v1.metrics.mean_squared_error(labels, predictions),
   })
 
   # Define the summaries to write:
   for metric_name, metric_value in metrics_to_values.iteritems():
-    tf.summary.scalar(metric_name, metric_value)
+    tf.compat.v1.summary.scalar(metric_name, metric_value)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -80,13 +80,13 @@ more summaries and call the evaluate_repeatedly method:
 
   # Choose the metrics to compute:
   names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map({
-      "accuracy": tf.metrics.accuracy(labels, predictions),
-      "mse": tf.metrics.mean_squared_error(labels, predictions),
+      "accuracy": tf.compat.v1.metrics.accuracy(labels, predictions),
+      "mse": tf.compat.v1.metrics.mean_squared_error(labels, predictions),
   })
 
   # Define the summaries to write:
   for metric_name, metric_value in metrics_to_values.iteritems():
-    tf.summary.scalar(metric_name, metric_value)
+    tf.compat.v1.summary.scalar(metric_name, metric_value)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -116,8 +116,8 @@ with only summaries. The user need only leave out the 'eval_ops' argument:
   predictions = MyModel(images)
 
   # Define the summaries to write:
-  tf.summary.scalar(...)
-  tf.summary.histogram(...)
+  tf.compat.v1.summary.scalar(...)
+  tf.compat.v1.summary.histogram(...)
 
   checkpoint_dir = '/tmp/my_model_dir/'
   log_dir = '/tmp/my_model_eval/'
@@ -277,7 +277,8 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
     Args:
       log_dir: The directory where the summary events are saved to.  Used only
         when `summary_writer` is not specified.
-      summary_writer: A `tf.summary.FileWriter` to write summary events with.
+      summary_writer: A `tf.compat.v1.summary.FileWriter` to write summary
+        events with.
       summary_op: The summary op to run. If left as `None`, then all summaries
         in the tf.GraphKeys.SUMMARIES collection are used.
       feed_dict: An optional feed dictionary to use when evaluating the
@@ -380,21 +381,21 @@ def evaluate_repeatedly(checkpoint_dir,
   Args:
     checkpoint_dir: The directory where checkpoints are stored.
     master: The address of the TensorFlow master.
-    scaffold: An tf.train.Scaffold instance for initializing variables and
-      restoring variables. Note that `scaffold.init_fn` is used by the function
-      to restore the checkpoint. If you supply a custom init_fn, then it must
-      also take care of restoring the model from its checkpoint.
-    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
-      to `Tensors`, which is run until the session is requested to stop,
-      commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
+    scaffold: An tf.compat.v1.train.Scaffold instance for initializing variables
+      and restoring variables. Note that `scaffold.init_fn` is used by the
+      function to restore the checkpoint. If you supply a custom init_fn, then
+      it must also take care of restoring the model from its checkpoint.
+    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names to
+      `Tensors`, which is run until the session is requested to stop, commonly
+      done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
     final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
       to `Tensors`.
     final_ops_feed_dict: A feed dictionary to use when evaluating `final_ops`.
     eval_interval_secs: The minimum number of seconds between evaluations.
-    hooks: List of `tf.train.SessionRunHook` callbacks which are run inside the
-      evaluation loop.
-    config: An instance of `tf.ConfigProto` that will be used to
+    hooks: List of `tf.estimator.SessionRunHook` callbacks which are run inside
+      the evaluation loop.
+    config: An instance of `tf.compat.v1.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
     max_number_of_evaluations: The maximum times to run the evaluation. If left
       as `None`, then evaluation runs indefinitely.
@@ -445,14 +446,14 @@ def evaluate_repeatedly(checkpoint_dir,
 
     with monitored_session.MonitoredSession(
         session_creator=session_creator, hooks=hooks) as session:
-      logging.info('Starting evaluation at ' + time.strftime(
-          '%Y-%m-%d-%H:%M:%S', time.gmtime()))
+      logging.info('Starting evaluation at ' +
+                   time.strftime('%Y-%m-%d-%H:%M:%S', time.gmtime()))
       if eval_ops is not None:
         while not session.should_stop():
           session.run(eval_ops, feed_dict)
 
-      logging.info('Finished evaluation at ' + time.strftime(
-          '%Y-%m-%d-%H:%M:%S', time.gmtime()))
+      logging.info('Finished evaluation at ' +
+                   time.strftime('%Y-%m-%d-%H:%M:%S', time.gmtime()))
     num_evaluations += 1
 
     if (max_number_of_evaluations is not None and
