@@ -1088,7 +1088,6 @@ struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
   int32 output_activation_max_;
   const RuntimeShape& output_shape_;
   uint8* output_data_;
-  gemmlowp::GemmContext* gemm_context_;
   int row_start_;
   int row_end_;
 };
@@ -1915,7 +1914,6 @@ struct MeanWorkerTask : public gemmlowp::Task {
   float output_scale_;
   int start_height_;
   int end_height_;
-  gemmlowp::GemmContext* gemm_context_;
 };
 
 inline void Mean(const tflite::MeanParams& op_params,

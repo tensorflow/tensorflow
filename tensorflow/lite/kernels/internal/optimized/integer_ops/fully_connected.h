@@ -308,7 +308,6 @@ struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
   int32 output_activation_max_;
   const RuntimeShape& output_shape_;
   int8_t* output_data_;
-  gemmlowp::GemmContext* gemm_context_;
   int row_start_;
   int row_end_;
 };
