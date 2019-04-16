@@ -164,15 +164,6 @@ class StreamExecutor {
   DeviceMemory<T> GetSubBuffer(DeviceMemory<T> *parent, uint64 element_offset,
                                uint64 element_count);
 
-  // As GetSubBuffer(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedSubBuffer(DeviceMemory<T> *parent,
-                                               uint64 element_offset,
-                                               uint64 element_count) {
-    return ScopedDeviceMemory<T>(
-        this, GetSubBuffer<T>(parent, element_offset, element_count));
-  }
-
   // Finds a symbol and returns device memory allocated to the symbol. The
   // symbol is searched in any kernels that were previously loaded through
   // GetKernel() before the GetSymbol() call. The user has to make sure that the

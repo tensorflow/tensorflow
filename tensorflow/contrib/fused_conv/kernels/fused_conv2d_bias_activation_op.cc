@@ -17,6 +17,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
@@ -32,6 +34,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/use_cudnn.h"
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 #if GOOGLE_CUDA
 #include "google/protobuf/duration.pb.h"
@@ -49,6 +55,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
@@ -75,6 +82,132 @@ struct Int8x4ToInt32<int8> {
   using type = int32;
 };
 }  // namespace
+
+// WARNING: Packing specializations defined in eigen_spatial_convolutions.h do
+// not support packing expressions of QInt8 type. However, default Eigen
+// gebp_kernel for QInt8 is too slow to be considered useful for anything.
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+
+template <typename BiasType, typename ScaleType>
+class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
+ public:
+  void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
+              const Tensor& conv_input, ScaleType conv_input_scale,
+              const Tensor& filter, int32 row_stride, int32 col_stride,
+              const Eigen::PaddingType& padding, const Tensor& side_input,
+              ScaleType side_input_scale, const Tensor& bias,
+              ActivationMode activation_mode, TensorFormat data_format,
+              FilterTensorFormat filter_format, Tensor* output) {
+    static_assert(std::is_same<BiasType, ScaleType>::value,
+                  "Scale and Bias must be of the same type.");
+
+    // Output tensor has type T (QInt8), but we can only evaluate Int8 Tensor
+    // contraction using 32-bit accumulation (QInt32).
+    Tensor temp_output(DT_QINT32, output->shape());
+
+    using T = qint8;
+    using TempT = qint32;
+
+    constexpr int32 row_dilation = 1;
+    constexpr int32 col_dilation = 1;
+
+    auto& device = ctx->eigen_device<CPUDevice>();
+
+    // CPU convolution works with input in NHWC and filter in HWIO data formats.
+    // NOTE: This code is mostly shared with 'Conv2D' and 'FusedConv2D'.
+
+    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+        col_stride == 1) {
+      int conv_width =  // Width for the convolution step.
+          output->dim_size(0) * output->dim_size(1) * output->dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+
+      auto out = temp_output.shaped<TempT, 2>({conv_width, filter.dim_size(3)});
+      auto in0 = conv_input.shaped<T, 2>({conv_width, filter.dim_size(2)});
+      auto in1 = filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)});
+
+      out.device(device) = in0.contract(in1, dim_pair /*, output_kernel*/);
+
+    } else if (filter.dim_size(0) == conv_input.dim_size(1) &&
+               filter.dim_size(1) == conv_input.dim_size(2) &&
+               row_dilation == 1 && col_dilation == 1 &&
+               padding == Eigen::PaddingType::PADDING_VALID) {
+      // If the input data and filter have the same height/width,
+      // reduce the 2D convolution to matrix multiplication.
+      const auto k =  // Length of reduction dimension.
+          filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+
+      auto out = temp_output.shaped<TempT, 2>(
+          {conv_input.dim_size(0), filter.dim_size(3)});
+      auto in0 = conv_input.shaped<T, 2>({conv_input.dim_size(0), k});
+      auto in1 = filter.shaped<T, 2>({k, filter.dim_size(3)});
+
+      out.device(device) = in0.contract(in1, dim_pair /*, output_kernel*/);
+
+    } else {
+      auto out = temp_output.tensor<TempT, 4>();
+      auto in0 = conv_input.tensor<T, 4>();
+      auto in1 = filter.tensor<T, 4>();
+
+      // Need to swap row/col when calling Eigen.
+      out.device(device) = Eigen::SpatialConvolution(
+          in0, in1, col_stride, row_stride, padding, col_dilation,
+          row_dilation /*, output_kernel*/);
+    }
+
+    constexpr int8 max_range = 127;
+    constexpr int8 min_range = -128;
+
+#if defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::IndexList<int, int, int, Eigen::type2index<1>> broadcast_bias;
+    broadcast_bias.set(0, temp_output.dim_size(0));
+    broadcast_bias.set(1, temp_output.dim_size(1));
+    broadcast_bias.set(2, temp_output.dim_size(2));
+#else
+    const Eigen::array<int, 4> broadcast_bias(temp_output.dim_size(0),
+                                              temp_output.dim_size(1),
+                                              temp_output.dim_size(2), 1);
+#endif
+
+    // TODO(ezhulenev): Bias and SideInput could be added to the result of
+    // convolution using Eigen output kernels.
+
+    auto temp_t = temp_output.tensor<TempT, 4>();
+    auto bias_t = bias.shaped<BiasType, 4>({1, 1, 1, temp_output.dim_size(3)});
+    auto side_input_t = side_input.tensor<T, 4>();
+
+    auto conv_output_scaled = temp_t.cast<ScaleType>() * conv_input_scale;
+    auto broadcasted_bias = bias_t.broadcast(broadcast_bias);
+    auto side_input_scaled = side_input_t.cast<ScaleType>() * side_input_scale;
+
+    // This expression corresponds to cuDNN implementation of INT8
+    // cudnnConvolutionBiasActivationForward.
+    // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#scaling-parameters__fig-conv-bias-activation-forward
+
+    if (activation_mode == ActivationMode::NONE) {
+      output->tensor<T, 4>().device(device) =
+          (conv_output_scaled + broadcasted_bias + side_input_scaled)
+              .round()
+              .clip(static_cast<ScaleType>(min_range),
+                    static_cast<ScaleType>(max_range))
+              .template cast<T>();
+    } else if (activation_mode == ActivationMode::RELU) {
+      output->tensor<T, 4>().device(device) =
+          (conv_output_scaled + broadcasted_bias + side_input_scaled)
+              .round()
+              .clip(0, static_cast<ScaleType>(max_range))
+              .template cast<T>();
+    } else {
+      OP_REQUIRES(ctx, false, errors::Internal("Unsupported activation mode"));
+    }
+  }
+};
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 // T is the element type of the conv_input, filter and side_input tensors.
 // BiasType is the element type of the bias tensor, which can be different.
@@ -120,19 +253,45 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         errors::Unimplemented("Convolutional strides are not supported in "
                               "the batch and depth dimensions."));
 
-    // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
-    constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
+    std::vector<int32> dilations;
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
+    OP_REQUIRES(context, dilations == std::vector<int32>({1, 1, 1, 1}),
+                errors::InvalidArgument("Dilations must be all equal to 1."));
 
-    // Note: Only NCHW_VECT_C format is supported for int8.
-    // This is because it is expected to be the fastest, and our previous tests
-    // found cudnn 6 does not fully support the other formats for int8 mode.
-    OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
-                errors::InvalidArgument(
-                    "qint8 should be used with data_format NCHW_VECT_C."));
+    constexpr bool is_cpu = std::is_same<Device, CPUDevice>::value;
+    constexpr bool is_gpu = std::is_same<Device, GPUDevice>::value;
+    OP_REQUIRES(context, is_cpu || is_gpu,
+                errors::InvalidArgument("Unknown Device type."));
 
-    OP_REQUIRES(context, (is_int8x4 == (filter_format_ == FORMAT_OIHW_VECT_I)),
-                errors::InvalidArgument(
-                    "qint8 should be used with filter_format OIHW_VECT_I."));
+    constexpr bool is_qint8 = std::is_same<T, qint8>::value;
+
+    if (is_qint8 && is_gpu) {
+      // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
+
+      // Note: Only NCHW_VECT_C format is supported for int8 on GPU.
+      // This is because it is expected to be the fastest, and our previous
+      // tests found cudnn 6 does not fully support the other formats for int8
+      // mode.
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NCHW_VECT_C,
+          errors::InvalidArgument(
+              "qint8 should be used with data_format NCHW_VECT_C on GPU."));
+      OP_REQUIRES(
+          context, filter_format_ == FORMAT_OIHW_VECT_I,
+          errors::InvalidArgument(
+              "qint8 should be used with filter_format OIHW_VECT_I on GPU."));
+
+    } else if (is_qint8 && is_cpu) {
+      // On CPU we implement convolution with Eigen Tensor contraction, it
+      // requries NHWC and HWIO formats for input and kernel.
+
+      OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                  errors::InvalidArgument(
+                      "qint8 should be used with data_format NHWC on CPU."));
+      OP_REQUIRES(context, filter_format_ == FORMAT_HWIO,
+                  errors::InvalidArgument(
+                      "qint8 should be used with filter_format HWIO on CPU."));
+    }
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_type_));
     eigen_padding_type_ = BrainPadding2EigenPadding(padding_type_);
@@ -254,6 +413,15 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 
   TF_DISALLOW_COPY_AND_ASSIGN(FusedConv2DBiasActivationOp);
 };
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+REGISTER_KERNEL_BUILDER(
+    Name("FusedConv2DBiasActivation")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("T")
+        .TypeConstraint<float>("Tbias"),
+    FusedConv2DBiasActivationOp<CPUDevice, qint8, float, float>);
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 #if GOOGLE_CUDA
 namespace dnn = se::dnn;

@@ -286,7 +286,7 @@ class IteratorContext {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
           env(ctx->env()),
-          lib(ctx->lib()),
+          flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
@@ -297,7 +297,7 @@ class IteratorContext {
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()),
-          lib(ctx->function_library()),
+          flr(ctx->function_library()),
           runner(*(ctx->runner())) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
@@ -321,10 +321,7 @@ class IteratorContext {
     Env* env = nullptr;
 
     // The FunctionLibraryRuntime object to be used to make function calls.
-    //
-    // TODO(jsimsa): Rename to `flr` and possibly consolidate with `lib_def`
-    // using `FunctionLibraryRuntimeOverlay`.
-    FunctionLibraryRuntime* lib = nullptr;
+    FunctionLibraryRuntime* flr = nullptr;
 
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
@@ -366,7 +363,7 @@ class IteratorContext {
 
   Env* env() const { return params_.env; }
 
-  FunctionLibraryRuntime* lib() { return params_.lib; }
+  FunctionLibraryRuntime* flr() { return params_.flr; }
 
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;

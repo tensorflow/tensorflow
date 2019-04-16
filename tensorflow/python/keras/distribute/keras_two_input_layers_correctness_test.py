@@ -40,18 +40,17 @@ class TestTwoInputLayersCorrectness(
   def get_model(self, initial_weights=None, distribution=None):
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
 
-      real_batch_size = (1 if distribution else
-                         self._distribution_to_test.num_replicas_in_sync)
+      batch_size = self._distribution_to_test.num_replicas_in_sync
 
       user_input = keras.layers.Input(
           shape=(self._batch_size,),
-          batch_size=real_batch_size,
+          batch_size=batch_size,
           name="users",
           dtype=dtypes.int32)
 
       item_input = keras.layers.Input(
           shape=(self._batch_size,),
-          batch_size=real_batch_size,
+          batch_size=batch_size,
           name="items",
           dtype=dtypes.int32)
 

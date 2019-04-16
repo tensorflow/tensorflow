@@ -345,7 +345,7 @@ FunctionDef Swap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
        {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
@@ -360,7 +360,7 @@ FunctionDef EmptyBodySwap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {},
       // Output mapping
@@ -384,6 +384,22 @@ FunctionDef ResourceOutput() {
           {{"mul"}, "Mul", {"x", "two:output:0"}, {{"T", DT_FLOAT}}, {}},
       },
       {{"y_out", "y"}, {"two_x", "mul:z:0"}});
+}
+
+FunctionDef ResourceIdentity() {
+  return FDH::Create(
+      // Name
+      "ResourceIdentity",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {},
+      // Output mapping
+      {{"y", "x"}});
 }
 
 FunctionDef ReadResourceVariable() {

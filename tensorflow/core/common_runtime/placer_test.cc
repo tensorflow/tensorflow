@@ -221,20 +221,14 @@ class PlacerTest : public ::testing::Test {
   // names for use in placement, and later lookup.
   Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
     TF_RETURN_IF_ERROR(GraphDefBuilderToGraph(builder, out_graph));
-    nodes_by_name_.clear();
-    for (Node* node : out_graph->nodes()) {
-      nodes_by_name_[node->name()] = node->id();
-    }
+    RebuildNodeNameMap(*out_graph);
     return Status::OK();
   }
 
   Status BuildGraph(const GraphDef& graph_def, Graph* out_graph) {
     GraphConstructorOptions opts;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def, out_graph));
-    nodes_by_name_.clear();
-    for (Node* node : out_graph->nodes()) {
-      nodes_by_name_[node->name()] = node->id();
-    }
+    RebuildNodeNameMap(*out_graph);
     return Status::OK();
   }
 
@@ -244,8 +238,8 @@ class PlacerTest : public ::testing::Test {
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
                bool log_device_placement) {
-    Placer placer(graph, devices, nullptr, allow_soft_placement,
-                  log_device_placement);
+    Placer placer(graph, &graph->flib_def(), devices, nullptr,
+                  allow_soft_placement, log_device_placement);
     return placer.Run();
   }
 
@@ -272,11 +266,19 @@ class PlacerTest : public ::testing::Test {
  protected:
   std::vector<std::unique_ptr<Device>> local_devices_;
   DeviceSet devices_;
-  Placer::NodeNameToIdMap nodes_by_name_;
+  std::unordered_map<string, int> nodes_by_name_;
 
   Status ReferenceTestHelper(const string& variable_op_type,
                              const string& assign_op_type,
                              const DeviceType& expected_device_type);
+
+ private:
+  void RebuildNodeNameMap(const Graph& graph) {
+    nodes_by_name_.clear();
+    for (Node* node : graph.nodes()) {
+      nodes_by_name_[node->name()] = node->id();
+    }
+  }
 };
 
 // Fixture that add a parameter for allow_soft_placement.
@@ -309,6 +311,18 @@ INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
                 .FindDeviceByName(                                      \
                     GetNodeByName((g), (name))->assigned_device_name()) \
                 ->attributes()                                          \
+                .device_type())
+
+#define EXPECT_SAME_TYPE(g, node1, node2)                                \
+  EXPECT_EQ(devices_                                                     \
+                .FindDeviceByName(                                       \
+                    GetNodeByName((g), (node1))->assigned_device_name()) \
+                ->attributes()                                           \
+                .device_type(),                                          \
+            devices_                                                     \
+                .FindDeviceByName(                                       \
+                    GetNodeByName((g), (node2))->assigned_device_name()) \
+                ->attributes()                                           \
                 .device_type())
 
 #define EXPECT_DEVICE_CONTAINS(g, name, device_substr) \
@@ -394,6 +408,8 @@ TEST_F(PlacerTest, TestGPUInputColocatedWithPrioritizedKernel) {
 
 REGISTER_OP("CreateDatasetCPU").Output("o: resource");
 REGISTER_KERNEL_BUILDER(Name("CreateDatasetCPU").Device("FakeCPU"), DummyOp);
+REGISTER_OP("CreateDatasetGPU").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("CreateDatasetGPU").Device("FakeGPU"), DummyOp);
 
 REGISTER_OP("CreateDatasetSP").Output("o: resource");
 REGISTER_KERNEL_BUILDER(Name("CreateDatasetSP").Device("FakeCPU").Priority(2),
@@ -1714,6 +1730,8 @@ REGISTER_KERNEL_BUILDER(Name("Mul").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Mul").Device("FakeGPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device("FakeGPU"), DummyOp);
 
 TEST_P(SoftPlacementPlacerTest,
        RequestedDeviceOnResourceGeneratorIsTreatedAsAssigned) {

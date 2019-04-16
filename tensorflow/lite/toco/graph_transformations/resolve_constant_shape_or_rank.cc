@@ -19,9 +19,11 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveConstantShapeOrRank::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+namespace {
+
+::tensorflow::Status ResolveConstantShapeOrRankImpl(
+    Model* model, std::size_t op_index, bool only_for_constant_input,
+    bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
@@ -39,6 +41,10 @@ namespace toco {
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until the input array's shape has been resolved.
+    return ::tensorflow::Status::OK();
+  }
+
+  if (only_for_constant_input && !input_array.buffer) {
     return ::tensorflow::Status::OK();
   }
 
@@ -70,6 +76,25 @@ namespace toco {
   model->operators.erase(it);
   *modified = true;
   return ::tensorflow::Status::OK();
+}
+
+}  // namespace
+
+::tensorflow::Status ResolveConstantShapeOrRank::Run(Model* model,
+                                                     std::size_t op_index,
+                                                     bool* modified) {
+  return ResolveConstantShapeOrRankImpl(model, op_index,
+
+                                        /*only_for_constant_input=*/false,
+                                        modified
+
+  );
+}
+
+::tensorflow::Status ResolveConstantShapeOrRankOnlyForConstantInput::Run(
+    Model* model, std::size_t op_index, bool* modified) {
+  return ResolveConstantShapeOrRankImpl(
+      model, op_index, /*only_for_constant_input=*/true, modified);
 }
 
 }  // namespace toco

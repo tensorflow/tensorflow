@@ -177,6 +177,15 @@ Status DatasetOpsTestBase::CreateDataset(OpKernel* kernel,
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::RestoreIterator(
+    IteratorContext* ctx, IteratorStateReader* reader,
+    const string& output_prefix, const DatasetBase& dataset,
+    std::unique_ptr<IteratorBase>* iterator) {
+  TF_RETURN_IF_ERROR(dataset.MakeIterator(ctx, output_prefix, iterator));
+  TF_RETURN_IF_ERROR((*iterator)->Restore(ctx, reader));
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CreateIteratorContext(
     OpKernelContext* const op_context,
     std::unique_ptr<IteratorContext>* iterator_context) {

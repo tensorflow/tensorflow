@@ -529,7 +529,11 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   int resource_index = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      ctx->SetOutput(i, xla::GetTupleElement(while_result, i));
+      if (IsTensorListInput(ctx, i)) {
+        ctx->SetTensorListOutput(i, xla::GetTupleElement(while_result, i));
+      } else {
+        ctx->SetOutput(i, xla::GetTupleElement(while_result, i));
+      }
       ++resource_index;
     } else {
       break;

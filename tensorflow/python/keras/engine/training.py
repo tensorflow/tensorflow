@@ -1329,13 +1329,8 @@ class Model(network.Network):
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
     if self.run_eagerly:
-      if (isinstance(inputs, iterator_ops.IteratorV2) or
-          (isinstance(inputs, dataset_ops.DatasetV2))):
-        inputs = training_utils.cast_if_floating_dtype(inputs)
-      elif isinstance(inputs, collections.Sequence):
-        inputs = [
-            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
-
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      if isinstance(inputs, collections.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1796,23 +1791,48 @@ class Model(network.Network):
       first_layer = layers[0]
       static_batch_size = training_utils.get_static_batch_size(first_layer)
       if static_batch_size is not None:
+        split_batch_size = self._distribution_strategy and \
+            distributed_training_utils.global_batch_size_supported(
+                self._distribution_strategy)
+        if split_batch_size:
+          num_replicas = self._distribution_strategy.num_replicas_in_sync
 
         # Check `batch_size` argument is consistent with InputLayer.
-        if batch_size is not None and batch_size != static_batch_size:
-          raise ValueError('The `batch_size` argument value {} is incompatible '
-                           'with the specified batch size of your Input Layer: '
-                           '{}'.format(batch_size, static_batch_size))
+        if batch_size is not None:
+          if split_batch_size:
+            if batch_size % num_replicas != 0:
+              raise ValueError('The `batch_size` argument value {} cannot be '
+                               'divisible by number of replicas {}'.format(
+                                   batch_size, num_replicas))
+            per_replica_batch_size = batch_size // num_replicas
+          else:
+            per_replica_batch_size = batch_size
+
+          if per_replica_batch_size != static_batch_size:
+            raise ValueError('The `batch_size` argument value {} is '
+                             'incompatible with the specified batch size of '
+                             'your Input Layer: {}'.format(
+                                 per_replica_batch_size, static_batch_size))
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.IteratorV2)):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
-          if ds_batch_size is not None and ds_batch_size != static_batch_size:
-            raise ValueError('The batch output shape of your `Dataset` is {}, '
-                             'which is incompatible with the specified batch '
-                             'size of your Input Layer: {}'.format(
-                                 ds_batch_size, static_batch_size))
+          if ds_batch_size is not None:
+            if split_batch_size:
+              if ds_batch_size % num_replicas != 0:
+                raise ValueError(
+                    'The batch output shape of your `Dataset` {} '
+                    'cannot be divisible by number of replicas {}'.format(
+                        ds_batch_size, num_replicas))
+              ds_batch_size = ds_batch_size // num_replicas
+
+            if ds_batch_size != static_batch_size:
+              raise ValueError('The batch output shape of your `Dataset` is '
+                               '{}, which is incompatible with the specified '
+                               'batch size of your Input Layer: {}'.format(
+                                   ds_batch_size, static_batch_size))
 
         # Set inferred batch size from the InputLayer.
         if steps is None:

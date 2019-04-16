@@ -116,6 +116,9 @@ class XlaCompiler {
 
       // Argument is an XLA token.
       kToken,
+
+      // Argument is a TensorList.
+      kTensorList,
     };
 
     Kind kind = kInvalid;
@@ -226,6 +229,9 @@ class XlaCompiler {
     // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
     // the index of the input that contains the resource.
     int input_index;
+
+    // Whether this output is a TensorList.
+    bool is_tensor_list = false;
   };
 
   // Describes a variable write side effect of the computation.

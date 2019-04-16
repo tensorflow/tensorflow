@@ -185,7 +185,7 @@ Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {
   // The context's runtime will be used for all subsequent calls.
-  FunctionLibraryRuntime* lib = ctx->lib();
+  FunctionLibraryRuntime* lib = ctx->flr();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = lib_def_.get();
   inst_opts.create_kernels_eagerly = true;
@@ -402,34 +402,17 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
 
-  if (captured_func_->is_multi_device_function()) {
-    std::vector<Tensor> inputs = std::move(args);
-    inputs.reserve(inputs.size() + captured_func_->captured_inputs().size());
-    for (auto& input : captured_func_->captured_inputs()) {
-      inputs.push_back(input);
-    }
-
-    Notification n;
-    Status s;
-    lib_->Run(f_opts, f_handle_, inputs, rets, [&n, &s](Status func_status) {
-      s.Update(func_status);
-      n.Notify();
-    });
-    n.WaitForNotification();
-    return s;
-  } else {
-    OwnedArgsCallFrame frame(std::move(args),
-                             &captured_func_->captured_inputs(), ret_types_);
-    Notification n;
-    Status s;
-    lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
-      s.Update(func_status);
-      n.Notify();
-    });
-    n.WaitForNotification();
-    TF_RETURN_IF_ERROR(s);
-    return frame.ConsumeRetvals(rets);
-  }
+  OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
+                           ret_types_);
+  Notification n;
+  Status s;
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+    s.Update(func_status);
+    n.Notify();
+  });
+  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(s);
+  return frame.ConsumeRetvals(rets);
 }
 
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(

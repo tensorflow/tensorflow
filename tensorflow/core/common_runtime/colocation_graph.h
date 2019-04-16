@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -166,35 +167,14 @@ class Member {
   PrioritizedDeviceTypeVector supported_device_types_;
 
   // If this node is a root, stores a list of Devices to which this node
-  // and all of its children have been assigned, or nullptr if this
-  // has not yet been computed.
+  // and all of its children can be assigned.
+  // `possible_devices` is empty if they have not yet been computed.
   std::vector<Device*> possible_devices_;
-};  // namespace
+};
 
 // This class maintains the connected components of a colocation
 // constraint graph, and uses this information to assign a satisfying
 // device placement to the nodes of the graph.
-//
-// The typical usage pattern is:
-//
-//   Graph graph = ...;
-//   DeviceSet device_set = ...;
-//   ColocationGraph colocation_graph(graph, device_set);
-//
-//   // Add all the nodes of the `graph` to the `colocation_graph`.
-//   for (Node* node : graph.nodes()) {
-//     TF_RETURN_IF_ERROR(colocation_graph.AddNode(*node));
-//   }
-//
-//   // Add one or more colocation constraints.
-//   Node node_1 = *graph.FindNodeId(...);
-//   Node node_2 = *graph.FindNodeId(...);
-//   TF_RETURN_IF_ERROR(colocation_graph.ColocateNodes(node_1, node_2));
-//
-//   // Assign devices based on the accumulated constraints.
-//   for (Node* node : graph.nodes()) {
-//     TF_RETURN_IF_ERROR(colocation_graph.AssignDevice(node));
-//   }
 //
 // This implementation uses the Union-Find algorithm to efficiently maintain the
 // connected components and incrementally adds edges via
@@ -205,9 +185,11 @@ class Member {
 // device is ignored.
 class ColocationGraph {
  public:
-  ColocationGraph(const Graph* graph, const DeviceSet* device_set,
-                  const Device* default_device, bool allow_soft_placement,
-                  bool log_device_placement);
+  // graph, flib_def, and device_set must not be null and must outlive this
+  // ColocationGraph. default_device can be null. If not, must outlive this.
+  ColocationGraph(const Graph* graph, const FunctionLibraryDefinition* flib_def,
+                  const DeviceSet* device_set, const Device* default_device,
+                  bool allow_soft_placement, bool log_device_placement);
 
   // Adds each node of the Graph to this ColocationGraph as a singleton.
   //
@@ -280,13 +262,16 @@ class ColocationGraph {
   // given id is connected.
   int FindRoot(int node_id) { return Member::FindRoot(&members_, node_id); }
 
-  const Graph* const graph_;  // Not owned.
+  const Graph& graph_;
+  const FunctionLibraryDefinition& flib_def_;
   std::vector<Member> members_;
-  const DeviceSet* device_set_;  // Not owned.
+  const DeviceSet& device_set_;
   const std::vector<DeviceType> device_types_;
   const Device* default_device_;
   const bool allow_soft_placement_;
   const bool log_device_placement_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ColocationGraph);
 };
 
 }  // namespace tensorflow

@@ -31987,9 +31987,7 @@ func TensorStridedSliceUpdateShrinkAxisMask(value int64) TensorStridedSliceUpdat
 //
 // NOTE this op currently does not support broadcasting and so `value`'s shape
 // must be exactly the shape produced by the slice of `input`.
-//
-// Returns the created operation.
-func TensorStridedSliceUpdate(scope *Scope, input tf.Output, begin tf.Output, end tf.Output, strides tf.Output, value tf.Output, optional ...TensorStridedSliceUpdateAttr) (o *tf.Operation) {
+func TensorStridedSliceUpdate(scope *Scope, input tf.Output, begin tf.Output, end tf.Output, strides tf.Output, value tf.Output, optional ...TensorStridedSliceUpdateAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -32004,7 +32002,8 @@ func TensorStridedSliceUpdate(scope *Scope, input tf.Output, begin tf.Output, en
 		},
 		Attrs: attrs,
 	}
-	return scope.AddOperation(opspec)
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Compute the regularized incomplete beta integral \\(I_x(a, b)\\).

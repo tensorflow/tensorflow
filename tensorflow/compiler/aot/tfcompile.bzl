@@ -163,7 +163,10 @@ def tf_library(
     header_file = name + ".h"
     metadata_object_file = name + "_tfcompile_metadata.o"
     function_object_file = name + "_tfcompile_function.o"
-    ep = ("__" + native.package_name() + "__" + name).replace("/", "_")
+
+    # The XLA backends morph kernal name prefix __ that is not in the form of
+    # __xla_.
+    ep = ("__xla_" + native.package_name() + "__" + name).replace("/", "_")
     if type(tfcompile_flags) == type(""):
         flags = tfcompile_flags
     else:

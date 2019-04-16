@@ -2730,6 +2730,7 @@ tf_cc_test(
         ":eigen_contraction_kernel",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//third_party/eigen3",
     ],
 )
 

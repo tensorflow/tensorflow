@@ -422,7 +422,8 @@ class TensorTracer(object):
     """Returns True if TensorTracer is enabled."""
 
     if TensorTracer._is_flag_on(_FLAG_NAME_ENABLE):
-      logging.info('Tensor Tracer is enabled.')
+      logging.info('Tensor Tracer is enabled with flags %s.' %
+                   os.getenv(_FLAGS_ENV_VAR))
       return True
     else:
       return False
