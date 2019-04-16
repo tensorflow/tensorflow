@@ -34,12 +34,14 @@ class Adam(optimizer_v2.OptimizerV2):
   Adam optimization is a stochastic gradient descent method that is based on
   adaptive estimation of first-order and second-order moments.
   According to the paper 
-  [Adam: A Method for Stochastic Optimization. Kingma et al., 2014](http://arxiv.org/abs/1412.6980),
+  [Adam: A Method for Stochastic Optimization. Kingma et al., 
+  2014](http://arxiv.org/abs/1412.6980),
    the method is "*computationally efficient, has little memory
   requirement, invariant to diagonal rescaling of gradients, and is well suited
   for problems that are large in terms of data/parameters*".
 
-  For AMSGrad see [On The Convergence Of Adam And Beyond. Reddi et al., 5-8](https://openreview.net/pdf?id=ryQu7f-RZ).
+  For AMSGrad see [On The Convergence Of Adam And Beyond. 
+  Reddi et al., 5-8](https://openreview.net/pdf?id=ryQu7f-RZ).
   """
 
   def __init__(self,
