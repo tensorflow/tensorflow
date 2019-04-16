@@ -5,6 +5,7 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
@@ -598,15 +599,17 @@ cc_library(
     srcs = ["cusolver_context.cc"],
     hdrs = ["cusolver_context.h"],
     deps = [
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cusolver",
-    ],
+    ] + if_static(
+        ["@local_config_cuda//cuda:cusolver"],
+        ["//tensorflow/stream_executor/cuda:cusolver_stub"],
+    ),
 )
 
 cc_library(
