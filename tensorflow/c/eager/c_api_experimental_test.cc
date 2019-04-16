@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 
 #include <string.h>
+
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
@@ -24,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/trace_events.pb.h"
+#include "tensorflow/core/protobuf/trace_events.pb.h"
 
 using tensorflow::string;
 

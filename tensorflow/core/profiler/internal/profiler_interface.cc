@@ -12,37 +12,35 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_TRACER_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_TRACER_H_
-
-#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 
+#include "absl/synchronization/mutex.h"
+
 namespace tensorflow {
-namespace profiler {
-namespace gpu {
+namespace {
+std::vector<ProfilerFactory>* GetFactories() {
+  static auto factories = new std::vector<ProfilerFactory>();
+  return factories;
+}
+absl::Mutex* GetMutex() {
+  static auto mutex = new absl::Mutex;
+  return mutex;
+}
+}  // namespace
 
-class Tracer : public ProfilerInterface {
- public:
-  static std::unique_ptr<ProfilerInterface> Create();
+void RegisterProfilerFactory(ProfilerFactory factory) {
+  absl::MutexLock lock(GetMutex());
+  GetFactories()->push_back(factory);
+}
 
-  Status Start() override;
-
-  Status Stop() override;
-
-  Status CollectData(RunMetadata* run_metadata) override;
-
- private:
-  Tracer();
-
-  // Trace is neither copyable nor movable.
-  Tracer(const Tracer&) = delete;
-  Tracer& operator=(const Tracer&) = delete;
-
-  std::unique_ptr<DeviceTracer> device_tracer_;
-};
-
-}  // namespace gpu
-}  // namespace profiler
+void CreateProfilers(
+    const ProfilerContext* context,
+    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
+  absl::MutexLock lock(GetMutex());
+  for (auto factory : *GetFactories()) {
+    if (auto profiler = factory(context)) {
+      result->push_back(std::move(profiler));
+    }
+  }
+}
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_TRACER_H_

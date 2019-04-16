@@ -12,23 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
-
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/optional.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace cpu {
+std::unique_ptr<ProfilerInterface> CreateHostTracer(const ProfilerContext*);
+
 namespace {
+
+Status CollectData(ProfilerInterface* profiler, RunMetadata* run_metadata) {
+  return profiler->CollectData(run_metadata);
+}
 
 using ::testing::ElementsAre;
 using ::testing::Pair;
@@ -74,7 +80,7 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
 TEST(HostTracerTest, CollectsTraceMeEvents) {
   uint32 thread_id = Env::Default()->GetCurrentThreadId();
 
-  auto tracer = HostTracer::Create(/*host_trace_level=*/1);
+  auto tracer = CreateHostTracer(nullptr);
 
   TF_ASSERT_OK(tracer->Start());
   { TraceMe traceme("hello"); }
@@ -86,7 +92,7 @@ TEST(HostTracerTest, CollectsTraceMeEvents) {
   TF_ASSERT_OK(tracer->Stop());
 
   RunMetadata run_metadata;
-  TF_ASSERT_OK(tracer->CollectData(&run_metadata));
+  TF_ASSERT_OK(CollectData(tracer.get(), &run_metadata));
 
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 1);
   EXPECT_EQ(run_metadata.step_stats().dev_stats(0).node_stats_size(), 6);
@@ -112,15 +118,15 @@ void ValidateResult(const RunMetadata& run_metadata, const string& trace_name) {
 }
 
 TEST(HostTracerTest, CollectsTraceMeEventsBetweenTracing) {
-  auto tracer = HostTracer::Create(/*host_trace_level=*/1);
+  auto tracer = CreateHostTracer(nullptr);
   RunMetadata run_metadata;
   RunMetadata run_metadata2;
 
   TF_ASSERT_OK(tracer->Start());
   { TraceMe traceme("hello"); }
-  TF_ASSERT_OK(tracer->CollectData(&run_metadata));
+  TF_ASSERT_OK(CollectData(tracer.get(), &run_metadata));
   { TraceMe traceme("world"); }
-  TF_ASSERT_OK(tracer->CollectData(&run_metadata2));
+  TF_ASSERT_OK(CollectData(tracer.get(), &run_metadata2));
   TF_ASSERT_OK(tracer->Stop());
 
   ValidateResult(run_metadata, "hello");
