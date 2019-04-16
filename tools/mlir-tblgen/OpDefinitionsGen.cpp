@@ -548,6 +548,8 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   auto &method =
       opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
 
+  bool hasVariadicOperand = op.hasVariadicOperand();
+
   // Push all result types to the result
   if (numResults > 0) {
     if (!useOperandType && !useAttrType) {
@@ -578,7 +580,10 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
           resultType = formatv("{0}.getType()", namedAttr.name);
         }
       } else {
-        resultType = formatv("{0}->getType()", getArgumentName(op, 0)).str();
+        const char *index =
+            (numOperands == 1 && hasVariadicOperand) ? ".front()" : "";
+        resultType =
+            formatv("{0}{1}->getType()", getArgumentName(op, 0), index).str();
       }
       method.body() << "  " << builderOpState << "->addTypes({" << resultType;
       for (unsigned i = 1; i != numResults; ++i)
@@ -588,7 +593,6 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   }
 
   // Push all operands to the result
-  bool hasVariadicOperand = op.hasVariadicOperand();
   int numNonVariadicOperands =
       numOperands - static_cast<int>(hasVariadicOperand);
   if (numNonVariadicOperands > 0) {
