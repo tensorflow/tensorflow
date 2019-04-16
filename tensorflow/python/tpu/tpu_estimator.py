@@ -115,11 +115,13 @@ _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 # explicitly).
 _WRAP_INPUT_FN_INTO_WHILE_LOOP = False
 
-ops.register_proto_function(
-    '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR),
-    proto_type=variable_pb2.VariableDef,
-    to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
-    from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
+if ops.get_to_proto_function(
+    '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)) is None:
+  ops.register_proto_function(
+      '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR),
+      proto_type=variable_pb2.VariableDef,
+      to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
+      from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
 
 
 def _is_iterable(obj):
