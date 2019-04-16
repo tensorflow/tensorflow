@@ -27,8 +27,6 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
     :param num_shards: number of shards to split graph over
     :param input_ts: tensor closest to the datafeed in graph
     :param loss_ts: tensor closest to the loss in graph
-    :param train_ops: an operation or list of operations which are returned by
-                      Optimizer.minimize()
     :param edge_filter: a callable predicate, with the signature fn(edge), where
                         edge is a tuple with the name of the source op, and the
                         name of the destination op.

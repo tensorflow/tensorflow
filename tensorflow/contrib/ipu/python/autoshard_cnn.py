@@ -17,6 +17,7 @@ import itertools
 import networkx as nx
 import numpy as np
 
+from tensorflow.python.ops.variables import trainable_variables
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.contrib.ipu.python import sharding
 from tensorflow.core.framework import attr_value_pb2
@@ -37,18 +38,30 @@ def children(op):
 
 
 def convert_ops_to_nx(fwd_ops, bwd_ops=None):
-  bwd_inputs = [t for op in bwd_ops for t in op.inputs]
+  grad_ops = [op for op in bwd_ops if 'gradients/' in op.name.lower()]
+  bwd_inputs = [t for op in grad_ops for t in op.inputs]
   graph = nx.DiGraph()
   dictionary = dict()
+  # collect all variables including momentum types
+  variable_ops = [op for op in fwd_ops + bwd_ops if op.type == 'ReadVariableOp' and op.inputs[0].op.type == 'VarHandleOp']
+  var_mem = dict()
+  all_variables = [t.name for t in trainable_variables()]
+  for var in all_variables:
+    # assign all memory for momentum type variables to root trainable variable
+    var_ops = [op for op in variable_ops if op.inputs[0].name.startswith(var.split(":")[0])]
+    var_mem[var] = np.sum([tensor_memory_use(t) for op in var_ops for t in op.outputs])
   variables_seen = []
   for op in fwd_ops:
-    if op.type == 'ReadVariableOp' and op.inputs[0].name not in variables_seen:
-      parameter_mem = np.sum([tensor_memory_use(t) for t in op.outputs])
+    if op.type == 'ReadVariableOp' \
+            and op.inputs[0].op.type == 'VarHandleOp'\
+            and op.inputs[0].name not in variables_seen\
+            and op.inputs[0].name in all_variables:
+      parameter_mem = var_mem[op.inputs[0].name]
       variables_seen.append(op.inputs[0].name)
     else:
       parameter_mem = 0
     bwd_links = [t for t in op.outputs if t in bwd_inputs]
-    if bwd_links != [] and op.type != 'ReadVariableOp':
+    if bwd_links != [] and op.type != 'ReadVariableOp' and not (op.type == 'Cast' and list(op.inputs)[0].op.type == 'ReadVariableOp'):
       saved_mem = np.sum([tensor_memory_use(t) for t in bwd_links])
     else:
       saved_mem = 0
@@ -76,11 +89,13 @@ def convert_ops_to_nx(fwd_ops, bwd_ops=None):
   return graph, dictionary
 
 
-def calculate_memory(graph, nodes):
+def calculate_memory(graph, nodes, parameter=True, saved=True):
   total_mem = 0
   for n in nodes:
-    total_mem += graph.nodes[n]['saved_mem']
-    total_mem += graph.nodes[n]['parameter_mem']
+    if saved:
+      total_mem += graph.nodes[n]['saved_mem']
+    if parameter:
+      total_mem += graph.nodes[n]['parameter_mem']
   return total_mem
 
 
@@ -119,7 +134,7 @@ def find_all_subgraphs(graph, splitting_edges, input_node, output_node):
     sg = W.pop(index)
     subgraphs += [graph.subgraph(sg)]
     if len(W) > 0:
-      #find edge in subgraph
+      # find edge in subgraph
       edge_generator = (e for e in splitting_edges if e[0] in sg)
       edge = next(edge_generator, None)
       if edge is None:
@@ -139,8 +154,6 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
     :param num_shards: number of shards to split graph over
     :param input_ts: tensor closest to the datafeed in graph
     :param loss_ts: tensor closest to the loss in graph
-    :param train_ops: an operation or list of operations which are returned by
-                      Optimizer.minimize()
     :param edge_filter: a callable predicate, with the signature fn(edge), where
                         edge is a tuple with the name of the source op, and the
                         name of the destination op.
@@ -152,7 +165,6 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   op_list = list(filter(lambda o: 'IPU' in o.device, all_ops))
 
   fwd_ops = []
-  bwd_ops = []
 
   assert len(op_list) > 0
 
@@ -162,7 +174,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
     fwd_ops = marked_collection
   else:
     for op in op_list:
-      if 'gradient' not in op.name.lower():
+      if not any([s in op.name.lower() for s in ['gradients/', '/update_']]):
         fwd_ops.append(op)
 
   fwd_ops = list(fwd_ops)
@@ -212,8 +224,14 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
                                         loss_op.name)
 
   subgraph_mem = [calculate_memory(graph_fwd, g) for g in subgraphs]
+  logging.debug('Subgraph memory use ' + str(
+    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g)) / (1024 * 1024)) for g in subgraphs]))
 
-  logging.debug('Subgraph memory use ' + str(subgraph_mem))
+  logging.debug('Subgraph memory use (variables only) ' + str(
+    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, saved=False)) / (1024 * 1024)) for g in subgraphs]))
+
+  logging.debug('Subgraph memory use (activations only) ' + str(
+    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, parameter=False)) / (1024 * 1024)) for g in subgraphs]))
 
   # Verify that we have enough subgraphs to fill all of the available shards
   if len(edges) + 1 < num_shards:
@@ -227,7 +245,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
   # Choose the best grouping based on:
   #       1. min max memory
   #       2. variance of memory
-  # could use minimum data transfered between IPUs?
+  # could use minimum data transferred between IPUs?
   min_max_mem = np.inf
   best_ind = []
   best_mem = []
@@ -270,6 +288,13 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
           [g0 for g in subgraphs[ind_pad[i]:ind_pad[i + 1]] for g0 in g.nodes])
       for i in range(len(ind) + 1)
   ]
+
+  logging.debug('Per shard subgraph memory use ' + str(
+    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g)) / (1024 * 1024)) for g in per_shard_subgraphs]))
+  logging.debug('Per shard subgraph memory use (variables only) ' + str(
+    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, saved=False)) / (1024 * 1024)) for g in per_shard_subgraphs]))
+  logging.debug('Per shard subgraph memory use (activations only) ' + str(
+    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, parameter=False)) / (1024 * 1024)) for g in per_shard_subgraphs]))
 
   for op in fwd_ops:
     shard_set = False
