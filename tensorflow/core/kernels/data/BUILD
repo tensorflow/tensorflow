@@ -187,6 +187,26 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "batch_dataset_op_test",
+    size = "small",
+    srcs = ["batch_dataset_op_test.cc"],
+    deps = [
+        ":batch_dataset_op",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "shard_dataset_op",
     srcs = ["shard_dataset_op.cc"],
