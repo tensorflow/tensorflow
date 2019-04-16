@@ -1,4 +1,5 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 201ed
+:/Emit The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -135,8 +136,7 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
   return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
-  IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty,
-						     LLVMTargetIRBuilder& llvm_target_ir_builder) {
+IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
   llvm::Value* block_id = gpu::EmitCallToTargetFunction(
       gpu::TargetFunctionID::kBlockIdx, {}, {}, 
       PRIMITIVE_TYPE_INVALID, {}, {},  b_);
@@ -196,8 +196,7 @@ llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
 }
 
 std::tuple<llvm::Value*, llvm::Value*>
-KernelMappingScheme::EmitThreadYXCoordinate(
-    llvm::Type* index_ty, LLVMTargetIRBuilder& llvm_target_ir_builder) {
+KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
   llvm::Value* thread_id_raw = gpu::EmitCallToTargetFunction(

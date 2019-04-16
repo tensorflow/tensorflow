@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -239,14 +238,8 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset,
-    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder, 
-    llvm::Module* module
-) 
-{
-  llvm::IRBuilder<>* builder = llvm_target_ir_builder.builder();
-
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
   llvm::Value* all_warps_mask = builder->getInt32(-1);
 
@@ -286,7 +279,6 @@ llvm::Value* EmitFullWarpShuffleDown(
       value->getType());
 }
 
-
 StatusOr<CudnnConvKind> GetCudnnConvKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
@@ -318,9 +310,7 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(
-    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder) {
-  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(
       b->CreateICmpEQ(
           b->getInt32(0),

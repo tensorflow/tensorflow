@@ -33,59 +33,60 @@ namespace gpu {
 namespace {
 // Utility functions to obtain NVPTX/AMDGPU specific information.
 
-//Wrapper structure for  intrinsic information for NVPTX/AMDGPU. 
-  struct TargetIntrinsicInfo {
-    TargetIntrinsicInfo() : intrinsic(llvm::Intrinsic::not_intrinsic) {}
-    TargetIntrinsicInfo(llvm::Intrinsic::ID x) : intrinsic(x) {}
-    llvm::Intrinsic::ID intrinsic;
-  };
+// Wrapper structure for  intrinsic information for NVPTX/AMDGPU.
+struct TargetIntrinsicInfo {
+  TargetIntrinsicInfo() : intrinsic(llvm::Intrinsic::not_intrinsic) {}
+  TargetIntrinsicInfo(llvm::Intrinsic::ID x) : intrinsic(x) {}
+  llvm::Intrinsic::ID intrinsic;
+};
 
-//Wrapper structure for  device functionc information for NVPTX/AMDGPU. 
-  struct TargetFunctionInfo {
-    TargetFunctionInfo() : callee_name(""), 
-                  input_types({ PRIMITIVE_TYPE_INVALID }),
-                  result_type(PRIMITIVE_TYPE_INVALID),
-                  use_bitcast(false) {}
-    TargetFunctionInfo(const string callee_name_) : callee_name(callee_name_), 
-                  input_types({ PRIMITIVE_TYPE_INVALID }),
-                  result_type(PRIMITIVE_TYPE_INVALID),
-                  use_bitcast(false) {}
-    TargetFunctionInfo(const string callee_name_, 
-                       absl::Span<const PrimitiveType> input_types_, 
-                       const PrimitiveType output_type_,
-                       bool use_bitcast_) : 
-                  callee_name(callee_name_), 
-                  input_types(input_types_),
-                  result_type(output_type_),
-                  use_bitcast(use_bitcast_) {}
-    // Device function name. 
-    const string callee_name;
-    // Inpute types accespted by the device function.
-    absl::Span<const PrimitiveType> input_types;
-    // Result type of the device function.
-    PrimitiveType result_type;
-    // Use bitcast to generate casts if the desired signature at the call site 
-    // does not match the signature of the device function.
-    bool use_bitcast;
-  } target_function_info; 
+// Wrapper structure for  device functionc information for NVPTX/AMDGPU.
+struct TargetFunctionInfo {
+  TargetFunctionInfo()
+      : callee_name(""),
+        input_types({PRIMITIVE_TYPE_INVALID}),
+        result_type(PRIMITIVE_TYPE_INVALID),
+        use_bitcast(false) {}
+  TargetFunctionInfo(const string callee_name_)
+      : callee_name(callee_name_),
+        input_types({PRIMITIVE_TYPE_INVALID}),
+        result_type(PRIMITIVE_TYPE_INVALID),
+        use_bitcast(false) {}
+  TargetFunctionInfo(const string callee_name_,
+                     absl::Span<const PrimitiveType> input_types_,
+                     const PrimitiveType output_type_, bool use_bitcast_)
+      : callee_name(callee_name_),
+        input_types(input_types_),
+        result_type(output_type_),
+        use_bitcast(use_bitcast_) {}
+  // Device function name.
+  const string callee_name;
+  // Inpute types accespted by the device function.
+  absl::Span<const PrimitiveType> input_types;
+  // Result type of the device function.
+  PrimitiveType result_type;
+  // Use bitcast to generate casts if the desired signature at the call site
+  // does not match the signature of the device function.
+  bool use_bitcast;
+} target_function_info;
 
 // Wrapper structure to carry either information about the intrinsic
 // or device function for NVPTX/AMDGPU.
 struct TargetInfo {
   struct TargetIntrinsicInfo target_intrinsic_info;
-  struct TargetFunctionInfo target_function_info; 
-  TargetInfo( struct TargetIntrinsicInfo x, struct TargetFunctionInfo y): 
-                     target_intrinsic_info(x), target_function_info(y) {}
+  struct TargetFunctionInfo target_function_info;
+  TargetInfo(struct TargetIntrinsicInfo x, struct TargetFunctionInfo y)
+      : target_intrinsic_info(x), target_function_info(y) {}
 };
 
-
-// Wrapper structure for carrying function information for NVPTX/AMDGPU platforms.
+// Wrapper structure for carrying function information for NVPTX/AMDGPU
+// platforms.
 struct MultipleTargetInfo {
   struct TargetInfo nvptx_info;
   struct TargetInfo amdgpu_info;
-  MultipleTargetInfo( struct TargetInfo nvptx_info_,
-                      struct TargetInfo amdgpu_info_): 
-                     nvptx_info(nvptx_info_), amdgpu_info(amdgpu_info_) {}
+  MultipleTargetInfo(struct TargetInfo nvptx_info_,
+                     struct TargetInfo amdgpu_info_)
+      : nvptx_info(nvptx_info_), amdgpu_info(amdgpu_info_) {}
 };
 
 // Populates the function information for different platforms (NVPTX, AMDGPU)
@@ -217,40 +218,40 @@ llvm::Value* EmitCallToTargetFunction(
      else if (gpu_info->target_function_info.use_bitcast){
         converted_operands.push_back(b->CreateBitCast(operands[index],
                       llvm_ir::PrimitiveTypeToIrType(to_type, module)));
-     }
-     else if( primitive_util::IsFloatingPointType(from_type) && 
-             primitive_util::IsSignedIntegralType(to_type) ) {
-        converted_operands.push_back(b->CreateFPToSI(operands[index],
-                      llvm_ir::PrimitiveTypeToIrType(to_type, module)));
-      }
-      else {
+     } else if (primitive_util::IsFloatingPointType(from_type) &&
+                primitive_util::IsSignedIntegralType(to_type)) {
+       converted_operands.push_back(b->CreateFPToSI(
+           operands[index], llvm_ir::PrimitiveTypeToIrType(to_type, module)));
+     } else {
        LOG(FATAL) << "unhandled conversion operation from " << PrimitiveType_Name(from_type) << "to" << PrimitiveType_Name(to_type);
-      }
+     }
       ir_input_types.push_back(
           llvm_ir::PrimitiveTypeToIrType(to_type, module));
     }
-    llvm::FunctionType* callee_type = llvm::FunctionType::get(
-        llvm_ir::PrimitiveTypeToIrType(gpu_info->target_function_info.result_type, module),  // Return type.
-       ir_input_types,                                       // Parameter types.
-        false);  // No variadic arguments.
+    llvm::FunctionType* callee_type =
+        llvm::FunctionType::get(llvm_ir::PrimitiveTypeToIrType(
+                                    gpu_info->target_function_info.result_type,
+                                    module),     // Return type.
+                                ir_input_types,  // Parameter types.
+                                false);          // No variadic arguments.
 
-   string munged_callee = gpu_info->target_function_info.callee_name;
-   switch (gpu_info->target_function_info.result_type) {
-    case S32:
-      StrAppend(&munged_callee, "_i32");
-      break;
-    case S64:
-      StrAppend(&munged_callee, "_i64");
-      break;
-    case F32:
-      StrAppend(&munged_callee, "_f32");
-      break;
-    case F64:
-      StrAppend(&munged_callee, "_f64");
-      break;
-    default:
-       LOG(FATAL) << "Bad Type " << PrimitiveType_Name(output_type) << "\n";
-   }
+    string munged_callee = gpu_info->target_function_info.callee_name;
+    switch (gpu_info->target_function_info.result_type) {
+      case S32:
+        StrAppend(&munged_callee, "_i32");
+        break;
+      case S64:
+        StrAppend(&munged_callee, "_i64");
+        break;
+      case F32:
+        StrAppend(&munged_callee, "_f32");
+        break;
+      case F64:
+        StrAppend(&munged_callee, "_f64");
+        break;
+      default:
+        LOG(FATAL) << "Bad Type " << PrimitiveType_Name(output_type) << "\n";
+    }
     // Declares the callee if it is not declared already.
     llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
             b->GetInsertBlock()->getModule()->getOrInsertFunction(

@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Enmeration to get target specific function information.
+// Enumeration to get target specific function information.
 enum class TargetFunctionID {
   kShflDownF32 = 0,
   kShflDownI32,

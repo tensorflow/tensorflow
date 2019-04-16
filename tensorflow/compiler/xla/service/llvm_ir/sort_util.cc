@@ -149,8 +149,7 @@ Status EmitTiledCompareLoop(
     const std::vector<IrArray>& params,
     const std::vector<llvm::Value*>& param_shmem_buffers, int64 tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    LLVMTargetIRBuilder& llvm_target_ir_builder) {
-  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
+    llvm::IRBuilder<>* b) {
   KernelSupportLibrary ksl(b);
   llvm::Value* thread_id = gpu::EmitCallToTargetFunction(
       gpu::TargetFunctionID::kThreadIdx, {}, {},
@@ -298,10 +297,9 @@ Status EmitTiledCompareLoop(
 Status EmitSortInPlace(
     int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64> xor_masks,
-    const gpu::LaunchDimensions& launch_dimensions,
+    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
     int64 num_iterations_in_sort_dim, const int64 tile_size,
-    const EmitCallToNestedComputationCallback& emit_compare_callback,
-    LLVMTargetIRBuilder& llvm_target_ir_builder) {
+    const EmitCallToNestedComputationCallback& emit_compare_callback) {
   // Iterate through the keys shape in physical order, but skip the dimension to
   // sort and make it the innermost loop which is the loop where the comparisons
   // happen. In the dimension to sort, if we use tiling, we iterate through it
@@ -311,7 +309,6 @@ Status EmitSortInPlace(
   // within those 64 elements and are therefore independent of the other
   // comparisons).
 
-  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
   const Shape& keys_shape = values_arrays[0].GetShape();
   int64 rank = keys_shape.rank();
   int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
@@ -370,7 +367,7 @@ Status EmitSortInPlace(
       TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
           keys_index, dimension_to_sort, dimension_to_sort_bound, xor_masks,
           values_arrays, param_shmem_buffers, tile_size, emit_compare_callback,
-          llvm_target_ir_builder));
+          b));
     } else {
       auto element_address = [&](int64 operand, llvm::Value* index) {
         keys_multi_index[dimension_to_sort] = index;
