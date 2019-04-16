@@ -1329,13 +1329,8 @@ class Model(network.Network):
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
     if self.run_eagerly:
-      if (isinstance(inputs, iterator_ops.IteratorV2) or
-          (isinstance(inputs, dataset_ops.DatasetV2))):
-        inputs = training_utils.cast_if_floating_dtype(inputs)
-      elif isinstance(inputs, collections.Sequence):
-        inputs = [
-            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
-
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      if isinstance(inputs, collections.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]

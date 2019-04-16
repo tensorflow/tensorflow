@@ -24,7 +24,6 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -207,6 +206,18 @@ class BackendUtilsTest(test.TestCase):
     if not context.executing_eagerly():
       for y in ys:
         self.assertEqual(y.op.name[:12], 'StopGradient')
+
+  def test_placeholder(self):
+    x = keras.backend.placeholder(shape=(3, 4))
+    self.assertEqual(x.shape.as_list(), [3, 4])
+    x = keras.backend.placeholder(shape=(3, 4), sparse=True)
+    self.assertEqual(x.shape.as_list(), [3, 4])
+
+  def test_is_placeholder(self):
+    x = keras.backend.placeholder(shape=(1,))
+    self.assertEqual(keras.backend.is_placeholder(x), True)
+    x = keras.backend.variable(1)
+    self.assertEqual(keras.backend.is_placeholder(x), False)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1381,6 +1392,38 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(
           keras.backend.eval(last_states[0]), expected_last_state)
 
+  def test_batch_normalization(self):
+    g_val = np.random.random((3,))
+    b_val = np.random.random((3,))
+    gamma = keras.backend.variable(g_val)
+    beta = keras.backend.variable(b_val)
+
+    # 3D NHC case
+    val = np.random.random((10, 5, 3))
+    x = keras.backend.variable(val)
+    mean, var = nn.moments(x, (0, 1), None, None, False)
+    normed = keras.backend.batch_normalization(
+        x, mean, var, beta, gamma, axis=-1, epsilon=1e-3)
+    self.assertEqual(normed.shape.as_list(), [10, 5, 3])
+
+    # 4D NHWC case
+    val = np.random.random((10, 5, 5, 3))
+    x = keras.backend.variable(val)
+    mean, var = nn.moments(x, (0, 1, 2), None, None, False)
+    normed = keras.backend.batch_normalization(
+        x, mean, var, beta, gamma, axis=-1, epsilon=1e-3)
+    self.assertEqual(normed.shape.as_list(), [10, 5, 5, 3])
+
+    # 4D NCHW case
+    if not context.executing_eagerly():
+      # Eager CPU kernel for NCHW does not exist.
+      val = np.random.random((10, 3, 5, 5))
+      x = keras.backend.variable(val)
+      mean, var = nn.moments(x, (0, 2, 3), None, None, False)
+      normed = keras.backend.batch_normalization(
+          x, mean, var, beta, gamma, axis=1, epsilon=1e-3)
+      self.assertEqual(normed.shape.as_list(), [10, 3, 5, 5])
+
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))
     x = keras.backend.variable(val)
@@ -1575,41 +1618,69 @@ class TestRandomOps(test.TestCase):
     self.assertAllClose(np.max(y), 2., atol=0.01)
     self.assertAllClose(np.min(y), -2., atol=0.01)
 
-  def test_string_input(self):
-    seq = keras.Sequential([
-        keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
-        keras.layers.Lambda(lambda x: x[0])
-    ])
-    preds = seq.predict([['tensorflow eager']])
-    self.assertEqual(preds.shape, (1,))
 
+@test_util.run_all_in_graph_and_eager_modes
+class FunctionTest(test.TestCase):
 
-class BackendGraphTests(test.TestCase):
-
-  @test_util.run_deprecated_v1
-  def test_is_placeholder(self):
-    x = keras.backend.placeholder(shape=(1,))
-    self.assertEqual(keras.backend.is_placeholder(x), True)
-    # Test with TF placeholder
-    x = keras.backend.array_ops.placeholder(dtype='float32', shape=(1,))
-    self.assertEqual(keras.backend.is_placeholder(x), True)
-    x = keras.backend.variable(1)
-    self.assertEqual(keras.backend.is_placeholder(x), False)
-
-  @test_util.run_in_graph_and_eager_modes
   def test_function_basics(self):
     x1 = keras.backend.placeholder(shape=(), dtype='float32')
     x2 = keras.backend.placeholder(shape=(), dtype='int32')
     v = keras.backend.variable(10.)
-    with keras.backend.get_graph().as_default():
-      y1 = x1 + keras.backend.cast(x2, 'float32') + v
-      y2 = x1 * keras.backend.cast(x2, 'float32')
-      with ops.control_dependencies([y1]):
-        u = keras.backend.update(v, 5.)
+
+    y1 = x1 + keras.backend.cast(x2, 'float32') + v
+    y2 = x1 * keras.backend.cast(x2, 'float32')
+
+    with ops.control_dependencies([y1]):
+      u = keras.backend.update(v, x1)
+
     f = keras.backend.function([x1, x2], [y1, y2], updates=[u])
     output_values = f([2, 3])
     self.assertEqual(output_values, [15., 6.])
-    self.assertEqual(keras.backend.eval(v), 5.)
+    self.assertEqual(keras.backend.eval(v), 2.)
+
+  def test_function_dict_outputs(self):
+    x_ph = keras.backend.placeholder(shape=(), name='x')
+    y_ph = keras.backend.placeholder(shape=(), name='y')
+    outputs = {'x*y': y_ph * x_ph, 'x*x': x_ph * x_ph}
+
+    f = keras.backend.function(inputs=[x_ph, y_ph], outputs=outputs)
+    x, y = 2., 5.
+    results = f([x, y])
+
+    self.assertEqual(results['x*y'], 10.)
+    self.assertEqual(results['x*x'], 4)
+
+  def test_function_dict_inputs(self):
+    placeholders = {
+        'x': keras.backend.placeholder(shape=()),
+        'y': keras.backend.placeholder(shape=())
+    }
+    outputs = [placeholders['x'] * placeholders['y']]
+
+    f = keras.backend.function(inputs=placeholders, outputs=outputs)
+    results = f({'x': 2., 'y': 3.})
+    self.assertEqual(results[0], 6.)
+
+  def test_function_single_input_output(self):
+    x_ph = keras.backend.placeholder(shape=(), name='x')
+    output = x_ph * x_ph
+    f = keras.backend.function(x_ph, output)
+    result = f(2.)
+    self.assertEqual(result, 4.)
+
+  def test_tuple_updates(self):
+    x_ph = keras.backend.placeholder(ndim=2)
+    v = keras.backend.variable(np.ones((4, 2)))
+    output = x_ph ** 2 + v
+    new_v = v + x_ph
+    f = keras.backend.function(x_ph, output, updates=[(v, new_v)])
+    input_val = np.random.random((4, 2))
+    result = f(input_val)
+    self.assertAllClose(result, input_val ** 2 + 1)
+    self.assertAllClose(keras.backend.get_value(v), np.ones((4, 2)) + input_val)
+
+
+class BackendGraphTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_function_placeholder_with_default(self):
@@ -1772,77 +1843,6 @@ class BackendGraphTests(test.TestCase):
 
       self.assertEqual(callback.times_called, 1)
       self.assertEqual(callback.callback_result, 200)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_function_dict_outputs(self):
-    x_ph = keras.backend.placeholder(shape=(), name='x')
-    y_ph = keras.backend.placeholder(shape=(), name='y')
-    outputs = {'x*y': y_ph * x_ph, 'x*x': x_ph * x_ph}
-
-    f = keras.backend.function(inputs=[x_ph, y_ph], outputs=outputs)
-    x, y = 2., 5.
-    results = f([x, y])
-
-    self.assertEqual(results['x*y'], 10.)
-    self.assertEqual(results['x*x'], 4)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_function_dict_inputs(self):
-    placeholders = {
-        'x': keras.backend.placeholder(shape=()),
-        'y': keras.backend.placeholder(shape=())
-    }
-    outputs = [placeholders['x'] * placeholders['y']]
-
-    f = keras.backend.function(inputs=placeholders, outputs=outputs)
-    results = f({'x': 2., 'y': 3.})
-    self.assertEqual(results[0], 6.)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_function_single_input_output(self):
-    x_ph = keras.backend.placeholder(shape=(), name='x')
-    output = x_ph * x_ph
-    f = keras.backend.function(x_ph, output)
-    result = f(2.)
-    self.assertEqual(result, 4.)
-
-  def test_placeholder(self):
-    x = keras.backend.placeholder(shape=(3, 4))
-    self.assertEqual(x.shape.as_list(), [3, 4])
-    x = keras.backend.placeholder(shape=(3, 4), sparse=True)
-    self.assertEqual(x.shape.as_list(), [3, 4])
-
-  @test_util.run_deprecated_v1
-  def test_batch_normalization(self):
-    # No eager CPU kernel.
-    g_val = np.random.random((3,))
-    b_val = np.random.random((3,))
-    gamma = keras.backend.variable(g_val)
-    beta = keras.backend.variable(b_val)
-
-    # 3D NHC case
-    val = np.random.random((10, 5, 3))
-    x = keras.backend.variable(val)
-    mean, var = nn.moments(x, (0, 1), None, None, False)
-    normed = keras.backend.batch_normalization(
-        x, mean, var, beta, gamma, axis=-1, epsilon=1e-3)
-    self.assertEqual(normed.shape.as_list(), [10, 5, 3])
-
-    # 4D NHWC case
-    val = np.random.random((10, 5, 5, 3))
-    x = keras.backend.variable(val)
-    mean, var = nn.moments(x, (0, 1, 2), None, None, False)
-    normed = keras.backend.batch_normalization(
-        x, mean, var, beta, gamma, axis=-1, epsilon=1e-3)
-    self.assertEqual(normed.shape.as_list(), [10, 5, 5, 3])
-
-    # 4D NCHW case
-    val = np.random.random((10, 3, 5, 5))
-    x = keras.backend.variable(val)
-    mean, var = nn.moments(x, (0, 2, 3), None, None, False)
-    normed = keras.backend.batch_normalization(
-        x, mean, var, beta, gamma, axis=1, epsilon=1e-3)
-    self.assertEqual(normed.shape.as_list(), [10, 3, 5, 5])
 
   def test_get_session_different_graphs(self):
     with ops.Graph().as_default():

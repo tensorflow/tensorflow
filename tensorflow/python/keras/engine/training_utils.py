@@ -986,7 +986,8 @@ def check_steps_argument(input_data, steps, steps_name):
 
 
 def cast_single_tensor(x):
-  if tensor_util.is_tensor(x) and x.dtype.is_floating:
+  x = ops.convert_to_tensor(x)
+  if x.dtype.is_floating:
     return math_ops.cast(x, dtype=K.floatx())
   return x
 
@@ -1000,14 +1001,7 @@ def cast_if_floating_dtype(x):
 
   Returns:
     Converted input.
-
-  Raises:
-    RuntimeError: if data isn't tensors.
   """
-  if not has_tensors(x):
-    raise RuntimeError(
-        'Please provide tensors for casting, got: {x}'.format(x=x))
-
   return nest.map_structure(cast_single_tensor, x)
 
 

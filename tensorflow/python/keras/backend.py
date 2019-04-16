@@ -3201,7 +3201,9 @@ class EagerExecutionFunction(object):
       else:
         if hasattr(update, 'op'):
           update = update.op
-        updates_ops.append(update)
+        if update is not None:
+          # `update.op` may have been None in certain cases.
+          updates_ops.append(update)
 
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
