@@ -773,9 +773,9 @@ def save(obj, export_dir, signatures=None):
 
   @compatibility(eager)
   Not well supported when graph building. From TensorFlow 1.x,
-  `tf.enable_eager_execution()` should run first. Calling tf.saved_model.save in
-  a loop when graph building from TensorFlow 1.x will add new save operations to
-  the default graph each iteration.
+  `tf.compat.v1.enable_eager_execution()` should run first. Calling
+  tf.saved_model.save in a loop when graph building from TensorFlow 1.x will
+  add new save operations to the default graph each iteration.
 
   May not be called from within a function body.
   @end_compatibility
