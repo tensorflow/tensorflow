@@ -580,6 +580,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.distribute.CrossDeviceOps":
+            "tf.distribute.CrossDeviceOps",
+        "tf.contrib.distribute.ReductionToOneDeviceCrossDeviceOps":
+            "tf.distribute.ReductionToOneDevice",
         "tf.contrib.estimator.make_early_stopping_hook":
             "tf.estimator.experimental.make_early_stopping_hook",
         "tf.contrib.estimator.stop_if_higher_hook":
@@ -1164,6 +1168,64 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "default, instead of HDF5. To continue saving to HDF5, add the "
         "argument save_format='h5' to the save() function.")
 
+    contrib_dist_strat_warning = (
+        ast_edits.WARNING,
+        "(Manual edit required) tf.contrib.distribute.* have been migrated to"
+        "tf.distribute.*. Please check out the new module for updates APIs.")
+
+    distribute_strategy_api_changes = (
+        "If you're using the strategy with a "
+        "custom training loop, note the following changes in methods: "
+        "make_dataset_iterator->experimental_distribute_dataset, "
+        "experimental_make_numpy_iterator->experimental_make_numpy_dataset, "
+        "extended.call_for_each_replica->experimental_run_v2, "
+        "reduce requires an axis argument, "
+        "unwrap->experimental_local_results "
+        "experimental_initialize and experimenta_finalize no longer needed ")
+
+    contrib_mirrored_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.distribute.MirroredStrategy has "
+        "been migrated to tf.distribute.MirroredStrategy. Things to note: "
+        "Constructor arguments have changed. If you are using "
+        "MirroredStrategy with Keras training framework, the input provided to "
+        "`model.fit` will be assumed to have global batch size and split "
+        "across the replicas. " + distribute_strategy_api_changes)
+
+    core_mirrored_strategy_warning = (
+        ast_edits.WARNING,
+        "(Manual edit may be required) tf.distribute.MirroredStrategy API has "
+        "changed. " + distribute_strategy_api_changes)
+
+    contrib_one_device_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.distribute.OneDeviceStrategy has "
+        "been migrated to tf.distribute.OneDeviceStrategy. " +
+        distribute_strategy_api_changes)
+
+    contrib_tpu_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.distribute.TPUStrategy has "
+        "been migrated to tf.distribute.experimental.TPUStrategy. Note the "
+        "slight changes in constructor. " + distribute_strategy_api_changes)
+
+    contrib_collective_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) "
+        "tf.contrib.distribute.CollectiveAllReduceStrategy has "
+        "been migrated to "
+        "tf.distribute.experimental.MultiWorkerMirroredStrategy. Note the "
+        "changes in constructor. " + distribute_strategy_api_changes)
+
+    contrib_ps_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) "
+        "tf.contrib.distribute.ParameterServerStrategy has "
+        "been migrated to "
+        "tf.distribute.experimental.ParameterServerStrategy (multi machine) "
+        " and tf.distribute.experimental.CentralStorageStrategy (one machine). "
+        "Note the changes in constructors. " + distribute_strategy_api_changes)
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     # You can use *. to add items which do not check the FQN, and apply to e.g.,
@@ -1454,7 +1516,19 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
              "<function name> cannot be converted automatically. "
              "`tf.pywrap_tensorflow` will not be distributed with "
              "TensorFlow 2.0, please consider an alternative in public "
-             "TensorFlow APIs.")
+             "TensorFlow APIs."),
+        "tf.contrib.distribute.MirroredStrategy":
+            contrib_mirrored_strategy_warning,
+        "tf.distribute.MirroredStrategy":
+            core_mirrored_strategy_warning,
+        "tf.contrib.distribute.OneDeviceStrategy":
+            contrib_one_device_strategy_warning,
+        "tf.contrib.distribute.TPUStrategy":
+            contrib_tpu_strategy_warning,
+        "tf.contrib.distribute.CollectiveAllReduceStrategy":
+            contrib_collective_strategy_warning,
+        "tf.contrib.distribute.ParameterServerStrategy":
+            contrib_ps_strategy_warning
     }
 
     # Warnings that are emitted only if a specific arg is found.
@@ -1776,6 +1850,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.cudnn_rnn": contrib_cudnn_rnn_warning,
         "tf.contrib.rnn": contrib_rnn_warning,
         "tf.flags": flags_warning,
+        "tf.contrib.distribute": contrib_dist_strat_warning
     }
 
 
