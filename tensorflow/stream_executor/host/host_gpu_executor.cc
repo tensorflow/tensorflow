@@ -47,9 +47,7 @@ void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
-  if (!mem->is_sub_buffer()) {
-    delete[] static_cast<char *>(mem->opaque());
-  }
+  delete[] static_cast<char *>(mem->opaque());
 }
 
 bool HostExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {

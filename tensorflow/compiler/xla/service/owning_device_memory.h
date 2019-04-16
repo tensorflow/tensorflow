@@ -107,8 +107,7 @@ class OwningDeviceMemory {
     //
     // This is safe (i.e. not UB) because the casted pointer is derived from a
     // non-const pointer, namely mem_.opaque().
-    return se::DeviceMemoryBase(const_cast<void*>(opaque()), size(),
-                                /*is_sub_buffer=*/false);
+    return se::DeviceMemoryBase(const_cast<void*>(opaque()), size());
   }
 
   // Returns the wrapped DeviceMemoryBase without freeing it, and deactivates
