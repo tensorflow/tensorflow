@@ -1635,7 +1635,10 @@ void Attribute::print(raw_ostream &os) const {
   ModulePrinter(os, state).printAttribute(*this);
 }
 
-void Attribute::dump() const { print(llvm::errs()); }
+void Attribute::dump() const {
+  print(llvm::errs());
+  llvm::errs() << "\n";
+}
 
 void Type::print(raw_ostream &os) const {
   ModuleState state(getContext());
