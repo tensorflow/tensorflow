@@ -67,6 +67,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
 
@@ -136,14 +137,15 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
+    "tf_additional_numa_copts",
     "tf_additional_numa_deps",
     "tf_additional_numa_lib_defines",
-    "tf_additional_numa_copts",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_additional_verbs_lib_defines",
+    "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_compiler_deps",
@@ -157,7 +159,6 @@ load(
     "tf_protos_grappler",
     "tf_protos_grappler_impl",
     "tf_pyclif_proto_library",
-    "tf_grpc_service_all",
 )
 load(
     ":platform/default/build_config_root.bzl",
@@ -221,6 +222,7 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
+    "protobuf/trace_events.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -948,6 +950,7 @@ tf_cuda_library(
         "util/events_writer.h",
         "util/example_proto_fast_parsing.h",
         "util/example_proto_helper.h",
+        "util/gpu_kernel_helper.h",
         "util/guarded_philox_random.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
@@ -1688,6 +1691,8 @@ filegroup(
         ":protos_all_proto_text_srcs",
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/profiler:mobile_srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2200,7 +2205,9 @@ tf_proto_library(
     srcs = ["protobuf/conv_autotuning.proto"],
     cc_api_version = 2,
     default_header = True,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/stream_executor:dnn_proto",
+    ],
     provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
@@ -2910,7 +2917,10 @@ cc_library(
 
 tf_cuda_library(
     name = "cuda_device_functions",
-    hdrs = ["util/cuda_device_functions.h"],
+    hdrs = [
+        "util/cuda_device_functions.h",
+        "util/gpu_device_functions.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [":framework_lite"],
 )
@@ -3051,7 +3061,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/debugger_state_interface.h",
     "common_runtime/device_resolver_local.h",
     "common_runtime/dma_helper.h",
-    "common_runtime/eigen_thread_pool.h",
     "common_runtime/executor.h",
     "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
@@ -3237,7 +3246,6 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":core_cpu_internal",
-        ":device_tracer",
         ":framework",
         ":framework_internal",
         ":graph",
@@ -3247,6 +3255,8 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/profiler/lib:profiler_graph_lib",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
     alwayslink = 1,
 )
@@ -3273,9 +3283,6 @@ cc_library(
 tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
-    hdrs = [
-        "platform/device_tracer.h",
-    ],
     copts = tf_copts(),
     cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = [
@@ -3285,7 +3292,10 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        # "//tensorflow/stream_executor/lib",
     ] + tf_additional_device_tracer_deps(),
+    alwayslink = True,
 )
 
 tf_proto_library_cc(
@@ -3893,6 +3903,7 @@ tf_cc_tests(
         "common_runtime/pending_counts_test.cc",
         "common_runtime/placer_test.cc",
         "common_runtime/session_test.cc",
+        "common_runtime/threadpool_device_test.cc",
         "example/feature_util_test.cc",
         "framework/allocator_test.cc",
         "framework/attr_value_util_test.cc",
@@ -4320,9 +4331,9 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_only_cc_test(
-    name = "util_cuda_kernel_helper_test",
+    name = "util_gpu_kernel_helper_test",
     srcs = [
-        "util/cuda_kernel_helper_test.cu.cc",
+        "util/gpu_kernel_helper_test.cu.cc",
     ],
     deps = [
         ":test",
@@ -4911,6 +4922,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],
 )

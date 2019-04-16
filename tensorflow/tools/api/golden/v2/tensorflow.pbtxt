@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DeviceSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -503,10 +507,6 @@ tf_module {
   member_method {
     name: "clip_by_value"
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "complex"

@@ -577,8 +577,6 @@ class _GraphTensorArrayV2(object):
           element_dtype=self._dtype,
           element_shape=element_shape,
           name=name)
-      if self._element_shape:
-        value.set_shape(self._element_shape[0].dims)
       return value
 
   @tf_should_use.should_use_result
@@ -610,8 +608,6 @@ class _GraphTensorArrayV2(object):
           input_handle=self._flow,
           element_dtype=self._dtype,
           element_shape=element_shape)
-      if self._element_shape and self._element_shape[0].dims is not None:
-        value.set_shape([None] + self._element_shape[0].dims)
       return value
 
   def gather(self, indices, name=None):
@@ -626,8 +622,6 @@ class _GraphTensorArrayV2(object):
         element_dtype=self._dtype,
         element_shape=element_shape,
         name=name)
-    if self._element_shape and self._element_shape[0].dims is not None:
-      value.set_shape([None] + self._element_shape[0].dims)
     return value
 
   def concat(self, name=None):

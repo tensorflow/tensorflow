@@ -150,6 +150,7 @@ py_library(
         ":nn",
         ":ops",
         ":platform",
+        ":proto_ops",
         ":pywrap_tensorflow",
         ":saver_test_utils",
         ":script_ops",
@@ -197,6 +198,7 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:component_api_helper",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:tpu_noestimator",
         "//third_party/py/numpy",
     ],
 )
@@ -628,6 +630,7 @@ py_library(
     deps = [
         ":constant_op",
         ":device",
+        ":device_spec",
         ":dtypes",
         ":framework_ops",
         ":function",
@@ -649,6 +652,7 @@ py_library(
     deps = [
         ":constant_op",
         ":device",
+        ":device_spec",
         ":dtypes",
         ":framework_ops",
         ":op_def_library",
@@ -744,6 +748,15 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+    ],
+)
+
+py_library(
+    name = "device_spec",
+    srcs = ["framework/device_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
     ],
 )
 
@@ -1666,6 +1679,19 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "framework/sparse_tensor_test.py",
+)
+
+tf_py_test(
+    name = "framework_device_spec_test",
+    size = "small",
+    srcs = ["framework/device_spec_test.py"],
+    additional_deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "framework/device_spec_test.py",
 )
 
 tf_py_test(
@@ -2708,6 +2734,7 @@ py_library(
         ":linalg_ops_impl",
         ":math_ops",
         ":random_ops",
+        ":stateless_random_ops",
         ":util",
         "//third_party/py/numpy",
     ],
@@ -2829,6 +2856,53 @@ py_library(
         ":util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "loss_scale",
+    srcs = ["training/experimental/loss_scale.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "loss_scale_optimizer",
+    srcs = ["training/experimental/loss_scale_optimizer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loss_scale",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "loss_scale_optimizer_test",
+    size = "small",
+    srcs = ["training/experimental/loss_scale_optimizer_test.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "loss_scale_test",
+    size = "small",
+    srcs = ["training/experimental/loss_scale_test.py"],
+    deps = [
+        ":loss_scale",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -3362,6 +3436,7 @@ py_library(
         ":numerics",
         ":parsing_ops",
         ":partitioned_variables",
+        ":proto_ops",
         ":random_ops",
         ":script_ops",
         ":session_ops",
@@ -3924,6 +3999,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops",
         ":device",
+        ":device_spec",
         ":distribute",
         ":errors",
         ":framework",
@@ -3934,6 +4010,8 @@ py_library(
         ":io_ops",
         ":layers_util",
         ":lookup_ops",
+        ":loss_scale",
+        ":loss_scale_optimizer",
         ":math_ops",
         ":platform",
         ":pywrap_tensorflow",
@@ -4255,6 +4333,17 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
     main = "util/lock_util_test.py",
+)
+
+tf_py_test(
+    name = "deprecation_wrapper_test",
+    size = "small",
+    srcs = ["util/deprecation_wrapper_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":util",
+        "@six_archive//:six",
+    ],
 )
 
 tf_proto_library(
@@ -6251,6 +6340,32 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "auto_mixed_precision_test",
+    size = "small",
+    srcs = [
+        "grappler/auto_mixed_precision_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":constant_op",
+        ":dtypes",
+        ":math_ops",
+        ":nn",
+        ":ops",
+        ":random_ops",
+        ":control_flow_ops",
+        ":training",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    tags = [
+        "grappler",
+    ],
+)
+
 tf_gen_op_wrapper_private_py(
     name = "nccl_ops_gen",
     visibility = ["//tensorflow:internal"],
@@ -6292,6 +6407,30 @@ cuda_py_test(
         "no_oss",
         "noguitar",
         "notap",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "decode_proto_ops_gen",
+    deps = [
+        "//tensorflow/core:decode_proto_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "encode_proto_ops_gen",
+    deps = [
+        "//tensorflow/core:encode_proto_ops_op_lib",
+    ],
+)
+
+py_library(
+    name = "proto_ops",
+    srcs = ["ops/proto_ops.py"],
+    deps = [
+        ":decode_proto_ops_gen",
+        ":encode_proto_ops_gen",
+        "//tensorflow/python:framework_ops",
     ],
 )
 

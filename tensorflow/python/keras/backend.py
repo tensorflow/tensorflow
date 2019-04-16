@@ -40,6 +40,7 @@ from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -532,7 +533,12 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
+    if tfdev.is_device_spec(device):
+      device = device.to_string()
     self.device = device
+
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
 
 
 def _get_current_tf_device():
@@ -546,7 +552,7 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return op.device
+  return tfdev.DeviceSpec.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -3195,7 +3201,9 @@ class EagerExecutionFunction(object):
       else:
         if hasattr(update, 'op'):
           update = update.op
-        updates_ops.append(update)
+        if update is not None:
+          # `update.op` may have been None in certain cases.
+          updates_ops.append(update)
 
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
@@ -3620,7 +3628,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
@@ -3659,7 +3667,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
 
         flat_output = nest.flatten(output)
@@ -3684,7 +3692,7 @@ def rnn(step_function,
 
   # static shape inference
   def set_shape(output_):
-    if hasattr(output_, 'set_shape'):
+    if isinstance(output_, ops.Tensor):
       shape = output_.shape.as_list()
       shape[0] = time_steps
       shape[1] = batch
@@ -4314,8 +4322,6 @@ def conv2d(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow data format
-          for inputs/kernels/outputs.
       dilation_rate: tuple of 2 integers.
 
   Returns:
@@ -4363,8 +4369,6 @@ def conv2d_transpose(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
       dilation_rate: Tuple of 2 integers.
 
   Returns:
@@ -4378,8 +4382,6 @@ def conv2d_transpose(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
-  if isinstance(output_shape, (tuple, list)):
-    output_shape = array_ops.stack(output_shape)
 
   # `atrous_conv2d_transpose` only supports NHWC format, even on GPU.
   if data_format == 'channels_first' and dilation_rate != (1, 1):
@@ -4393,7 +4395,9 @@ def conv2d_transpose(x,
     output_shape = (output_shape[0], output_shape[2], output_shape[3],
                     output_shape[1])
   if output_shape[0] is None:
-    output_shape = (array_ops.shape(x)[0],) + tuple(output_shape[1:])
+    output_shape = (shape(x)[0],) + tuple(output_shape[1:])
+
+  if isinstance(output_shape, (tuple, list)):
     output_shape = array_ops.stack(list(output_shape))
 
   padding = _preprocess_padding(padding)
@@ -4606,8 +4610,6 @@ def conv3d(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
       dilation_rate: tuple of 3 integers.
 
   Returns:
@@ -4653,8 +4655,6 @@ def conv3d_transpose(x,
       strides: strides tuple.
       padding: string, "same" or "valid".
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
 
   Returns:
       A tensor, result of transposed 3D convolution.
@@ -5087,6 +5087,10 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
   """Returns a tensor with random binomial distribution of values.
 
+  The binomial distribution with parameters `n` and `p` is the probability
+  distribution of the number of successful Bernoulli process. Only supports
+  `n` = 1 for now.
+
   Arguments:
       shape: A tuple of integers, the shape of tensor to create.
       p: A float, `0. <= p <= 1`, probability of binomial distribution.
@@ -5420,7 +5424,8 @@ def configure_and_create_distributed_session(distribution_strategy):
 
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def cast_variables_to_tensor(tensors):

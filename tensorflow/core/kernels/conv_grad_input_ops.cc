@@ -972,8 +972,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    LogConvAutotuneResults(ctx->op_kernel().def(), pre_transformed_in_backprop,
-                           transformed_filter, transformed_out_backprop,
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_DATA,
+                           se::dnn::ToDataType<T>::value, input_desc,
+                           filter_desc, output_desc, conv_desc,
                            stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,

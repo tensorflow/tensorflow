@@ -85,10 +85,6 @@ class Thunk {
     return Status::OK();
   }
 
-  // Returns true if this kernel will autotune for the stream device the next
-  // time it is run.
-  virtual bool WillAutotuneKernel(se::Stream* /*stream*/) { return false; }
-
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's
   // lifetime. 'stream' and 'profiler' must be non-null.

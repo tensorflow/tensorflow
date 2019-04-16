@@ -922,6 +922,7 @@ REGISTER_OP("CombinedNonMaxSuppression")
     .Output("nmsed_classes: float")
     .Output("valid_detections: int32")
     .Attr("pad_per_class: bool = false")
+    .Attr("clip_boxes: bool = true")
     .SetShapeFn(CombinedNMSShapeFn);
 
 }  // namespace tensorflow

@@ -55,6 +55,9 @@ class VariablesToConstantsTest(test.TestCase):
     actual_value = nest.flatten(converted_concrete_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
+    # Ensure the shape is retained.
+    self.assertEqual(converted_concrete_func.inputs[0].shape, input_data.shape)
+
     # Save the converted ConcreteFunction as a signature.
     save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
     save(obj, save_dir, {"mykey": converted_concrete_func})
@@ -93,6 +96,27 @@ class VariablesToConstantsTest(test.TestCase):
   def testVariableModel(self):
     """Test a basic model with Variables."""
     input_data = constant_op.constant(1., shape=[1])
+    root = tracking.AutoTrackable()
+    root.v1 = variables.Variable(3.)
+    root.v2 = variables.Variable(2.)
+    root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
+    input_func = root.f.get_concrete_function(input_data)
+
+    variable_graph_def = input_func.graph.as_graph_def()
+    self.assertEqual(2, self._getNumVariables(variable_graph_def))
+
+    output_func = convert_to_constants.convert_variables_to_constants_v2(
+        input_func)
+    constant_graph_def = output_func.graph.as_graph_def()
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
+  @test_util.run_v2_only
+  def testScalarModel(self):
+    """Test a basic model with Variables."""
+    input_data = constant_op.constant(1., shape=[])
     root = tracking.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)

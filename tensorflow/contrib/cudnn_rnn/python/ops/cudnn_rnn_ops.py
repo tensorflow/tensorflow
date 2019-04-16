@@ -68,15 +68,19 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
 
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
-        num_units, forget_bias=0, cell_clip=None, use_peephole=False,
-        reuse=reuse, name="cudnn_compatible_lstm_cell")
+        num_units,
+        forget_bias=0,
+        cell_clip=None,
+        use_peephole=False,
+        reuse=reuse,
+        name="cudnn_compatible_lstm_cell")
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
 
 class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   r"""Cudnn Compatible GRUCell.
 
-  A GRU impl akin to `tf.nn.rnn_cell.GRUCell` to use along with
+  A GRU impl akin to `tf.compat.v1.nn.rnn_cell.GRUCell` to use along with
   `tf.contrib.cudnn_rnn.CudnnGRU`. The latter's params can be used by
   it seamlessly.
 
@@ -97,7 +101,8 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
-  Other GRU (see `tf.nn.rnn_cell.GRUCell` and `tf.contrib.rnn.GRUBlockCell`):
+  Other GRU (see `tf.compat.v1.nn.rnn_cell.GRUCell` and
+  `tf.contrib.rnn.GRUBlockCell`):
   ```python
   # new memory gate
   \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
@@ -117,8 +122,8 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
 
   def build(self, inputs_shape):
     if inputs_shape[1].value is None:
-      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % inputs_shape)
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s" %
+                       inputs_shape)
 
     input_depth = inputs_shape[1].value
     self._gate_kernel = self.add_variable(
@@ -128,10 +133,9 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
     self._gate_bias = self.add_variable(
         "gates/%s" % _BIAS_VARIABLE_NAME,
         shape=[2 * self._num_units],
-        initializer=(
-            self._bias_initializer
-            if self._bias_initializer is not None
-            else init_ops.constant_initializer(1.0, dtype=self.dtype)))
+        initializer=(self._bias_initializer
+                     if self._bias_initializer is not None else
+                     init_ops.constant_initializer(1.0, dtype=self.dtype)))
 
     self._candidate_input_kernel = self.add_variable(
         "candidate/input_projection/%s" % _WEIGHTS_VARIABLE_NAME,
@@ -145,17 +149,15 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
     self._candidate_input_bias = self.add_variable(
         "candidate/input_projection/%s" % _BIAS_VARIABLE_NAME,
         shape=[self._num_units],
-        initializer=(
-            self._bias_initializer
-            if self._bias_initializer is not None
-            else init_ops.zeros_initializer(dtype=self.dtype)))
+        initializer=(self._bias_initializer
+                     if self._bias_initializer is not None else
+                     init_ops.zeros_initializer(dtype=self.dtype)))
     self._candidate_hidden_bias = self.add_variable(
         "candidate/hidden_projection/%s" % _BIAS_VARIABLE_NAME,
         shape=[self._num_units],
-        initializer=(
-            self._bias_initializer
-            if self._bias_initializer is not None
-            else init_ops.zeros_initializer(dtype=self.dtype)))
+        initializer=(self._bias_initializer
+                     if self._bias_initializer is not None else
+                     init_ops.zeros_initializer(dtype=self.dtype)))
 
   def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
@@ -173,7 +175,7 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
         math_ops.matmul(state, self._candidate_hidden_kernel),
         self._candidate_hidden_bias)
     candidate = self._activation(candidate)
-    new_h = (1-u) * candidate + u * state
+    new_h = (1 - u) * candidate + u * state
     return new_h, new_h
 
 
@@ -231,6 +233,7 @@ class CudnnParamsFormatConverter(object):
     Args:
       opaque_param: An opaque tensor storing cudnn rnn params (weights and
         biases).
+
     Returns:
       2 list for weights and biases respectively.
     """
@@ -252,6 +255,7 @@ class CudnnParamsFormatConverter(object):
     Args:
       cu_weights: a list of tensors, Cudnn canonical weights.
       cu_biases: a list of tensors, Cudnn canonical biases.
+
     Returns:
       a single opaque tensor.
     """
@@ -285,6 +289,7 @@ class CudnnParamsFormatConverter(object):
     Args:
       cu_weights: a list of tensors of Cudnn canonical weights.
       cu_biases: a list of tensors of Cudnn canonical biases.
+
     Returns:
       1 tuple, tf canonical weights and biases.
     """
@@ -298,8 +303,9 @@ class CudnnParamsFormatConverter(object):
                                  layer_weights_num]
       layer_biases = cu_biases[i * layer_biases_num:(i + 1) * layer_biases_num]
       if self._direction == CUDNN_RNN_UNIDIRECTION:
-        self._cu_canonical_to_tf_canonical_single_layer(
-            layer_weights, layer_biases, tf_weights, tf_biases)
+        self._cu_canonical_to_tf_canonical_single_layer(layer_weights,
+                                                        layer_biases,
+                                                        tf_weights, tf_biases)
       else:
         fw_weights = layer_weights[:len(layer_weights) // 2]
         bw_weights = layer_weights[len(layer_weights) // 2:]
@@ -372,10 +378,12 @@ class CudnnParamsFormatConverter(object):
         cu_weights.extend(self._tf_to_cudnn_weights(i, *layer_weights))
         cu_biases.extend(self._tf_to_cudnn_biases(*layer_biases))
       else:
-        fw_weights, bw_weights = layer_weights[:len(
-            layer_weights) // 2], layer_weights[len(layer_weights) // 2:]
-        fw_biases, bw_biases = layer_biases[:len(
-            layer_biases) // 2], layer_biases[len(layer_biases) // 2:]
+        fw_weights, bw_weights = layer_weights[:len(layer_weights) //
+                                               2], layer_weights[
+                                                   len(layer_weights) // 2:]
+        fw_biases, bw_biases = layer_biases[:len(layer_biases) //
+                                            2], layer_biases[len(layer_biases
+                                                                ) // 2:]
         cu_weights.extend(self._tf_to_cudnn_weights(i, *fw_weights))
         cu_biases.extend(self._tf_to_cudnn_biases(*fw_biases))
 
@@ -424,7 +432,7 @@ class CudnnParamsFormatConverterLSTM(CudnnParamsFormatConverter):
     W_o = array_ops.concat([w_o, r_o], axis=1)
     # pylint: enable=invalid-name
     # Cudnn LSTM weights are in ifco order, other tf LSTMs are in icfo order.
-    reordered = self._cudnn_to_tf_gate_params(* [W_i, W_f, W_c, W_o])
+    reordered = self._cudnn_to_tf_gate_params(*[W_i, W_f, W_c, W_o])
     return (array_ops.transpose(array_ops.concat(reordered, axis=0)),)
 
   def _tf_to_cudnn_weights(self, layer, *tf_weights):
@@ -441,8 +449,8 @@ class CudnnParamsFormatConverterLSTM(CudnnParamsFormatConverter):
     (tf_weight,) = tf_weights
     w = array_ops.transpose(tf_weight)
     # pylint: disable=invalid-name
-    W_i, W_f, W_c, W_o = self._tf_to_cudnn_gate_params(*array_ops.split(
-        w, 4, axis=0))
+    W_i, W_f, W_c, W_o = self._tf_to_cudnn_gate_params(
+        *array_ops.split(w, 4, axis=0))
 
     w_i, r_i = array_ops.split(W_i, [input_weight_width, num_units], axis=1)
     w_c, r_c = array_ops.split(W_c, [input_weight_width, num_units], axis=1)
@@ -463,15 +471,15 @@ class CudnnParamsFormatConverterLSTM(CudnnParamsFormatConverter):
     B_c = b_wc + b_rc
     B_o = b_wo + b_ro
     # pylint: enable=invalid-name
-    reordered = self._cudnn_to_tf_gate_params(* [B_i, B_f, B_c, B_o])
+    reordered = self._cudnn_to_tf_gate_params(*[B_i, B_f, B_c, B_o])
     return (array_ops.concat(reordered, axis=0),)
 
   def _tf_to_cudnn_biases(self, *tf_biases):
     r"""Reverse the operations in StitchBiases()."""
     (tf_bias,) = tf_biases
     # pylint: disable=invalid-name
-    B_i, B_f, B_c, B_o = self._tf_to_cudnn_gate_params(*array_ops.split(
-        tf_bias, 4, axis=0))
+    B_i, B_f, B_c, B_o = self._tf_to_cudnn_gate_params(
+        *array_ops.split(tf_bias, 4, axis=0))
     # pylint: enable=invalid-name
     # pylint: disable=unbalanced-tuple-unpacking
     b_wi, b_ri = (B_i * 0.5,) * 2
@@ -539,8 +547,8 @@ class CudnnParamsFormatConverterGRU(CudnnParamsFormatConverter):
         # return two biases each with half the value. Since RNN does not
         # regularize by weight decay, it has no side effect in training or
         # inference.
-        array_ops.concat([b_wi, b_wr], axis=0) + array_ops.concat(
-            [b_ri, b_rr], axis=0),
+        array_ops.concat([b_wi, b_wr], axis=0) +
+        array_ops.concat([b_ri, b_rr], axis=0),
         b_wh,
         b_rh)
 
@@ -720,8 +728,8 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
         for param, param_name in zip(params, prefixed_param_names)
     ]
-    super(CudnnOpaqueParamsSaveable, self).__init__(
-        array_ops.identity(self._variables), specs, name)
+    super(CudnnOpaqueParamsSaveable,
+          self).__init__(array_ops.identity(self._variables), specs, name)
 
   @property
   def format_converter(self):
@@ -760,8 +768,8 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     cuDNN-compatible cells.
 
     Args:
-      trackable: An object inheriting from `Trackable` to add
-        dependencies too (typically the cuDNN `Layer`).
+      trackable: An object inheriting from `Trackable` to add dependencies too
+        (typically the cuDNN `Layer`).
       dtype: The dtype for the canonical parameter Tensors.
     """
     split_dependencies = split_dependency.split_dependency(
@@ -905,9 +913,9 @@ _cudnn_rnn_common_doc_string = """
 
 def _check_rnn_mode(rnn_mode):
   if rnn_mode not in (CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_TANH, CUDNN_RNN_RELU):
-    raise ValueError("Invalid rnn_mode: %s, expect one of (%s, %s, %s, %s)" %
-                     (rnn_mode, CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_TANH,
-                      CUDNN_RNN_RELU))
+    raise ValueError(
+        "Invalid rnn_mode: %s, expect one of (%s, %s, %s, %s)" %
+        (rnn_mode, CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_TANH, CUDNN_RNN_RELU))
 
 
 def _get_seed(seed):
@@ -967,13 +975,13 @@ def _cudnn_rnn(inputs,
 
   Args:
     inputs: the input sequence to the RNN model. If `time_major` is True
-        (default), the Tensor shape is [max_time, batch_size, input_size]. If
-        `time_major` is False, the shape is [batch_size, max_time, input_size].
-    input_h: the initial hidden state for h. If `time_major` is True
-        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
-        `time_major` is False, the shape is [batch_size, num_layers, num_units].
-    input_c: the initial hidden state for c. This is only relevant for LSTM.
-      A Tensor of the same shape as input_h.
+      (default), the Tensor shape is [max_time, batch_size, input_size]. If
+      `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True (default),
+      the Tensor shape is [num_layers, batch_size, num_units]. If `time_major`
+      is False, the shape is [batch_size, num_layers, num_units].
+    input_c: the initial hidden state for c. This is only relevant for LSTM. A
+      Tensor of the same shape as input_h.
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
     rnn_mode: one of ('lstm', 'gru', 'rnn_relu', 'rnn_tanh').
@@ -986,20 +994,20 @@ def _cudnn_rnn(inputs,
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
       form. This param is only effective when 'sequence_lengths' is used.
-    input_mode: indicate whether there is a linear projection between the
-      input and the actual computation before the first layer. It could be
-      'linear_input', 'skip_input' or 'auto_select'.
-      'linear_input' (default) always applies a linear projection of input
-      onto RNN hidden state. (standard RNN behavior).
-      'skip_input' is only allowed when input_size == num_units;
-      'auto_select' implies 'skip_input' when input_size == num_units;
-      otherwise, it implies 'linear_input'.
+    input_mode: indicate whether there is a linear projection between the input
+      and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+      always applies a linear projection of input onto RNN hidden state.
+      (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+      num_units; 'auto_select' implies 'skip_input' when input_size ==
+      num_units; otherwise, it implies 'linear_input'.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     outputs, output_h, output_c
   """
@@ -1058,13 +1066,13 @@ def cudnn_lstm(inputs,
 
   Args:
     inputs: the input sequence to the RNN model. If `time_major` is True
-        (default), the Tensor shape is [max_time, batch_size, input_size]. If
-        `time_major` is False, the shape is [batch_size, max_time, input_size].
-    input_h: the initial hidden state for h. If `time_major` is True
-        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
-        `time_major` is False, the shape is [batch_size, num_layers, num_units].
-    input_c: the initial hidden state for c. This is only relevant for LSTM.
-      A Tensor of the same shape as input_h.
+      (default), the Tensor shape is [max_time, batch_size, input_size]. If
+      `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True (default),
+      the Tensor shape is [num_layers, batch_size, num_units]. If `time_major`
+      is False, the shape is [batch_size, num_layers, num_units].
+    input_c: the initial hidden state for c. This is only relevant for LSTM. A
+      Tensor of the same shape as input_h.
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
     sequence_lengths: an int32 array representing the variable sequence lengths
@@ -1076,20 +1084,20 @@ def cudnn_lstm(inputs,
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
       form. This param is only effective when 'sequence_lengths' is used.
-    input_mode: indicate whether there is a linear projection between the
-        input and the actual computation before the first layer. It could be
-        'linear_input', 'skip_input' or 'auto_select'.
-        'linear_input' (default) always applies a linear projection of input
-        onto RNN hidden state. (standard RNN behavior).
-        'skip_input' is only allowed when input_size == num_units;
-        'auto_select' implies 'skip_input' when input_size == num_units;
-        otherwise, it implies 'linear_input'.
+    input_mode: indicate whether there is a linear projection between the input
+      and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+      always applies a linear projection of input onto RNN hidden state.
+      (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+      num_units; 'auto_select' implies 'skip_input' when input_size ==
+      num_units; otherwise, it implies 'linear_input'.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     outputs, output_h, output_c
   """
@@ -1114,11 +1122,11 @@ def _cudnn_rnn_no_input_c(inputs,
 
   Args:
     inputs: the input sequence to the RNN model. If `time_major` is True
-        (default), the Tensor shape is [max_time, batch_size, input_size]. If
-        `time_major` is False, the shape is [batch_size, max_time, input_size].
-    input_h: the initial hidden state for h. If `time_major` is True
-        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
-        `time_major` is False, the shape is [batch_size, num_layers, num_units].
+      (default), the Tensor shape is [max_time, batch_size, input_size]. If
+      `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True (default),
+      the Tensor shape is [num_layers, batch_size, num_units]. If `time_major`
+      is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
     rnn_mode: one of ('lstm', 'gru', 'rnn_relu', 'rnn_tanh').
@@ -1131,27 +1139,28 @@ def _cudnn_rnn_no_input_c(inputs,
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
       form. This param is only effective when 'sequence_lengths' is used.
-    input_mode: indicate whether there is a linear projection between the
-      input and the actual computation before the first layer. It could be
-      'linear_input', 'skip_input' or 'auto_select'.
-      'linear_input' (default) always applies a linear projection of input
-      onto RNN hidden state. (standard RNN behavior).
-      'skip_input' is only allowed when input_size == num_units;
-      'auto_select' implies 'skip_input' when input_size == num_units;
-      otherwise, it implies 'linear_input'.
+    input_mode: indicate whether there is a linear projection between the input
+      and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+      always applies a linear projection of input onto RNN hidden state.
+      (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+      num_units; 'auto_select' implies 'skip_input' when input_size ==
+      num_units; otherwise, it implies 'linear_input'.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     outputs, output_h
   """
   input_c = array_ops.constant([], dtype=input_h.dtype)
-  outputs, output_h, _ = _cudnn_rnn(
-      inputs, input_h, input_c, params, is_training, rnn_mode, sequence_lengths,
-      time_major, input_mode, direction, dropout, seed, name)
+  outputs, output_h, _ = _cudnn_rnn(inputs, input_h, input_c, params,
+                                    is_training, rnn_mode, sequence_lengths,
+                                    time_major, input_mode, direction, dropout,
+                                    seed, name)
   return outputs, output_h
 
 
@@ -1170,21 +1179,20 @@ def cudnn_gru(inputs,
 
   Args:
     inputs: the input sequence to the RNN model. If `time_major` is True
-        (default), the Tensor shape is [max_time, batch_size, input_size]. If
-        `time_major` is False, the shape is [batch_size, max_time, input_size].
-    input_h: the initial hidden state for h. If `time_major` is True
-        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
-        `time_major` is False, the shape is [batch_size, num_layers, num_units].
+      (default), the Tensor shape is [max_time, batch_size, input_size]. If
+      `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True (default),
+      the Tensor shape is [num_layers, batch_size, num_units]. If `time_major`
+      is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
       input_mode: indicate whether there is a linear projection between the
         input and the actual computation before the first layer. It could be
-        'linear_input', 'skip_input' or 'auto_select'.
-        'linear_input' (default) always applies a linear projection of input
-        onto RNN hidden state. (standard RNN behavior).
-        'skip_input' is only allowed when input_size == num_units;
-        'auto_select' implies 'skip_input' when input_size == num_units;
-        otherwise, it implies 'linear_input'.
+        'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+        always applies a linear projection of input onto RNN hidden state.
+        (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+        num_units; 'auto_select' implies 'skip_input' when input_size ==
+        num_units; otherwise, it implies 'linear_input'.
     sequence_lengths: an int32 array representing the variable sequence lengths
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
@@ -1195,11 +1203,12 @@ def cudnn_gru(inputs,
       By default this function accepts input and emits output in time-major
       form. This param is only effective when 'sequence_lengths' is used.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     outputs, output_h
   """
@@ -1223,11 +1232,11 @@ def cudnn_rnn_relu(inputs,
 
   Args:
     inputs: the input sequence to the RNN model. If `time_major` is True
-        (default), the Tensor shape is [max_time, batch_size, input_size]. If
-        `time_major` is False, the shape is [batch_size, max_time, input_size].
-    input_h: the initial hidden state for h. If `time_major` is True
-        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
-        `time_major` is False, the shape is [batch_size, num_layers, num_units].
+      (default), the Tensor shape is [max_time, batch_size, input_size]. If
+      `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True (default),
+      the Tensor shape is [num_layers, batch_size, num_units]. If `time_major`
+      is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
       input_mode: indicate whether there is a linear projection between the
@@ -1240,8 +1249,8 @@ def cudnn_rnn_relu(inputs,
     direction: the direction model that the model operates. Could be either
       'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-      for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     sequence_lengths: an int32 array representing the variable sequence lengths
       in a batch. The size of the array has to equal the batch_size. If not
       provided, the same sequence length will be assumed.
@@ -1275,21 +1284,20 @@ def cudnn_rnn_tanh(inputs,
 
   Args:
     inputs: the input sequence to the RNN model. If `time_major` is True
-        (default), the Tensor shape is [max_time, batch_size, input_size]. If
-        `time_major` is False, the shape is [batch_size, max_time, input_size].
-    input_h: the initial hidden state for h. If `time_major` is True
-        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
-        `time_major` is False, the shape is [batch_size, num_layers, num_units].
+      (default), the Tensor shape is [max_time, batch_size, input_size]. If
+      `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True (default),
+      the Tensor shape is [num_layers, batch_size, num_units]. If `time_major`
+      is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
       input_mode: indicate whether there is a linear projection between the
         input and the actual computation before the first layer. It could be
-        'linear_input', 'skip_input' or 'auto_select'.
-        'linear_input' (default) always applies a linear projection of input
-        onto RNN hidden state. (standard RNN behavior).
-        'skip_input' is only allowed when input_size == num_units;
-        'auto_select' implies 'skip_input' when input_size == num_units;
-        otherwise, it implies 'linear_input'.
+        'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+        always applies a linear projection of input onto RNN hidden state.
+        (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+        num_units; 'auto_select' implies 'skip_input' when input_size ==
+        num_units; otherwise, it implies 'linear_input'.
     sequence_lengths: an int32 array representing the variable sequence lengths
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
@@ -1300,11 +1308,12 @@ def cudnn_rnn_tanh(inputs,
       By default this function accepts input and emits output in time-major
       form. This param is only effective when 'sequence_lengths' is used.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     outputs, output_h
   """
@@ -1327,26 +1336,25 @@ def cudnn_rnn_opaque_params_to_canonical(rnn_mode,
 
   Args:
     rnn_mode: a string specifies the mode, under which this RNN model runs.
-        Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
+      Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
     num_layers: the number of layers for the RNN model.
     num_units: the number of units within the RNN model.
-    input_size: the size of the input, it could be different from the
-        num_units.
+    input_size: the size of the input, it could be different from the num_units.
     params: opaque cudnn params var.
-    input_mode: indicate whether there is a linear projection between the
-        input and the actual computation before the first layer. It could be
-        'linear_input', 'skip_input' or 'auto_select'.
-        'linear_input' (default) always applies a linear projection of input
-        onto RNN hidden state. (standard RNN behavior).
-        'skip_input' is only allowed when input_size == num_units;
-        'auto_select' implies 'skip_input' when input_size == num_units;
-        otherwise, it implies 'linear_input'.
+    input_mode: indicate whether there is a linear projection between the input
+      and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+      always applies a linear projection of input onto RNN hidden state.
+      (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+      num_units; 'auto_select' implies 'skip_input' when input_size ==
+      num_units; otherwise, it implies 'linear_input'.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     weights list and bias list
   Raises:
@@ -1389,27 +1397,26 @@ def cudnn_rnn_canonical_to_opaque_params(rnn_mode,
 
   Args:
     rnn_mode: a string specifies the mode, under which this RNN model runs.
-        Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
+      Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
     num_layers: the number of layers for the RNN model.
     num_units: the number of units within the RNN model.
-    input_size: the size of the input, it could be different from the
-        num_units.
+    input_size: the size of the input, it could be different from the num_units.
     weights: a Tensor for weight parameters.
     biases: a Tensor for bias parameters.
-    input_mode: indicate whether there is a linear projection between the
-        input and the actual computation before the first layer. It could be
-        'linear_input', 'skip_input' or 'auto_select'.
-        'linear_input' (default) always applies a linear projection of input
-        onto RNN hidden state. (standard RNN behavior).
-        'skip_input' is only allowed when input_size == num_units;
-        'auto_select' implies 'skip_input' when input_size == num_units;
-        otherwise, it implies 'linear_input'.
+    input_mode: indicate whether there is a linear projection between the input
+      and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+      always applies a linear projection of input onto RNN hidden state.
+      (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+      num_units; 'auto_select' implies 'skip_input' when input_size ==
+      num_units; otherwise, it implies 'linear_input'.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     an opaque Cudnn param.
   Raises:
@@ -1448,26 +1455,25 @@ def cudnn_rnn_opaque_params_size(rnn_mode,
 
   Args:
     rnn_mode: a string specifies the mode, under which this RNN model runs.
-        Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
+      Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
     num_layers: the number of layers for the RNN model.
     num_units: the number of units within the RNN model.
-    input_size: the size of the input, it could be different from the
-        num_units.
-    input_mode: indicate whether there is a linear projection between the
-        input and the actual computation before the first layer. It could be
-        'linear_input', 'skip_input' or 'auto_select'.
-        'linear_input' (default) always applies a linear projection of input
-        onto RNN hidden state. (standard RNN behavior).
-        'skip_input' is only allowed when input_size == num_units;
-        'auto_select' implies 'skip_input' when input_size == num_units;
-        otherwise, it implies 'linear_input'.
+    input_size: the size of the input, it could be different from the num_units.
+    input_mode: indicate whether there is a linear projection between the input
+      and the actual computation before the first layer. It could be
+      'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+      always applies a linear projection of input onto RNN hidden state.
+      (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+      num_units; 'auto_select' implies 'skip_input' when input_size ==
+      num_units; otherwise, it implies 'linear_input'.
     direction: the direction model that the model operates. Could be either
-        'unidirectional' or 'bidirectional'
+      'unidirectional' or 'bidirectional'
     dtype: one of tf.float32 or tf.float64.
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-        for behavior.
+    seed: the op seed used for initializing dropout. See
+      `tf.compat.v1.set_random_seed` for behavior.
     name: name of the operation.
+
   Returns:
     a int, size of Cudnn opaque params.
   Raises:
@@ -1515,25 +1521,25 @@ class _CudnnRNN(object):
 
     Args:
       rnn_mode: a string specifies the mode, under which this RNN model runs.
-          Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
+        Could be either 'lstm', 'gru', 'rnn_tanh' or 'rnn_relu'.
       num_layers: the number of layers for the RNN model.
       num_units: the number of units within the RNN model.
       input_size: the size of the input, it could be different from the
-          num_units.
+        num_units.
       input_mode: indicate whether there is a linear projection between the
-          input and the actual computation before the first layer. It could be
-          'linear_input', 'skip_input' or 'auto_select'.
-          'linear_input' (default) always applies a linear projection of input
-          onto RNN hidden state. (standard RNN behavior).
-          'skip_input' is only allowed when input_size == num_units;
-          'auto_select' implies 'skip_input' when input_size == num_units;
-          otherwise, it implies 'linear_input'.
+        input and the actual computation before the first layer. It could be
+        'linear_input', 'skip_input' or 'auto_select'. 'linear_input' (default)
+        always applies a linear projection of input onto RNN hidden state.
+        (standard RNN behavior). 'skip_input' is only allowed when input_size ==
+        num_units; 'auto_select' implies 'skip_input' when input_size ==
+        num_units; otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
-          'unidirectional' or 'bidirectional'
+        'unidirectional' or 'bidirectional'
       dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
-          for behavior.
+      seed: the op seed used for initializing dropout. See
+        `tf.compat.v1.set_random_seed` for behavior.
+
     Raises:
       ValueError: if direction is invalid.
     """
@@ -1704,15 +1710,14 @@ class CudnnLSTM(_CudnnRNN):
       num_layers: the number of layers for the RNN model.
       num_units: the number of units within the RNN model.
       input_size: the size of the input, it could be different from the
-          num_units.
+        num_units.
       input_mode: indicate whether there is a linear projection between the
-          input and The actual computation before the first layer. It could be
-          'skip_input', 'linear_input' or 'auto_select'.
-          'skip_input' is only allowed when input_size == num_units;
-          'auto_select' implies 'skip_input' when input_size == num_units;
-          otherwise, it implies 'linear_input'.
+        input and The actual computation before the first layer. It could be
+        'skip_input', 'linear_input' or 'auto_select'. 'skip_input' is only
+        allowed when input_size == num_units; 'auto_select' implies 'skip_input'
+        when input_size == num_units; otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
-          'unidirectional' or 'bidirectional'
+        'unidirectional' or 'bidirectional'
       dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the seed used for initializing dropout.
@@ -1756,9 +1761,10 @@ class CudnnLSTM(_CudnnRNN):
         true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
         If false, these Tensors must be shaped ['batch_size', 'max_time',
         'depth']. By default this function accepts input and emits output in
-        time-major form. This param is only effective when 'sequence_lengths'
-        is used.
+        time-major form. This param is only effective when 'sequence_lengths' is
+        used.
       is_training: whether this operation will be used in training or inference.
+
     Returns:
       output: the output sequence.
       output_h: the final state for h.
@@ -1794,15 +1800,14 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       num_layers: the number of layers for the RNN model.
       num_units: the number of units within the RNN model.
       input_size: the size of the input, it could be different from the
-          num_units.
+        num_units.
       input_mode: indicate whether there is a linear projection between the
-          input and The actual computation before the first layer. It could be
-          'skip_input', 'linear_input' or 'auto_select'.
-          'skip_input' is only allowed when input_size == num_units;
-          'auto_select' implies 'skip_input' when input_size == num_units;
-          otherwise, it implies 'linear_input'.
+        input and The actual computation before the first layer. It could be
+        'skip_input', 'linear_input' or 'auto_select'. 'skip_input' is only
+        allowed when input_size == num_units; 'auto_select' implies 'skip_input'
+        when input_size == num_units; otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
-          'unidirectional' or 'bidirectional'
+        'unidirectional' or 'bidirectional'
       dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the seed used for initializing dropout.
@@ -1850,9 +1855,10 @@ class _CudnnRNNNoInputC(_CudnnRNN):
         true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
         If false, these Tensors must be shaped ['batch_size', 'max_time',
         'depth']. By default this function accepts input and emits output in
-        time-major form. This param is only effective when 'sequence_lengths'
-        is used.
+        time-major form. This param is only effective when 'sequence_lengths' is
+        used.
       is_training: whether this operation will be used in training or inference.
+
     Returns:
       output: the output sequence.
       output_h: the final state for h.

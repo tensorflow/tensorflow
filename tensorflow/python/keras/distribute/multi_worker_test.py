@@ -34,9 +34,11 @@ from tensorflow.python.distribute import collective_all_reduce_strategy as colle
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -49,6 +51,23 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+
+
+# TODO(b/130375202): remove this class which is a temporary solution before we
+# get rid of configure method.
+class ParameterServerStrategy(distribute_lib.Strategy):
+  """Temporarily mock the original strategy to bypass cluster_spec check."""
+
+  def __init__(self, cluster_resolver=None):
+    """Initializes this strategy."""
+    # The `cluster_resolver` must be set so that
+    # `ParameterServerStrategyExtended` will keep num_gpus for `configure`
+    # method.
+    if cluster_resolver is None:
+      cluster_resolver = TFConfigClusterResolver()
+    extended = parameter_server_strategy.ParameterServerStrategyExtended(
+        self, cluster_resolver=cluster_resolver)
+    super(ParameterServerStrategy, self).__init__(extended)
 
 
 def _mnist_synthetic_dataset(batch_size, steps_per_epoch):
@@ -301,7 +320,7 @@ class KerasMultiWorkerTestStandaloneClient(test.TestCase,
           mode=['graph'],
           strategy_cls=[
               mirrored_strategy.MirroredStrategy,
-              parameter_server_strategy.ParameterServerStrategy,
+              ParameterServerStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
@@ -383,7 +402,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
-          strategy_cls=[parameter_server_strategy.ParameterServerStrategy],
+          strategy_cls=[ParameterServerStrategy],
           required_gpus=[0, 1]))
   def testSimpleModelIndependentWorkerAsync(self, strategy_cls):
     num_workers = 2

@@ -251,6 +251,8 @@ def write_test_cases(fp, model_name, examples):
       fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
+      fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
+               "\"\n")
     fp.write("}\n")
 
 
@@ -623,7 +625,7 @@ def make_pool_tests(pool_op_in):
   """Make a set of tests to do average pooling.
 
   Args:
-    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool`.
+    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool2d`.
 
   Returns:
     A function representing the true generator (after curried pool_op_in).
@@ -3805,6 +3807,17 @@ def make_conv2d_transpose_tests(options):
       "input_shape": [[1, 50, 54, 3]],
       "filter_shape": [[1, 1, 8, 3], [1, 2, 8, 3], [1, 3, 8, 3], [1, 4, 8, 3]],
       "output_shape": [[1, 100, 108, 8]],
+      "dynamic_output_shape": [True, False],
+  }, {
+      "input_shape": [[1, 16, 1, 512]],
+      "filter_shape": [[4, 1, 512, 512]],
+      "output_shape": [[1, 32, 1, 512]],
+      "dynamic_output_shape": [True, False],
+  }, {
+      "input_shape": [[1, 128, 128, 1]],
+      "filter_shape": [[4, 4, 1, 1]],
+      "output_shape": [[1, 256, 256, 1]],
+      "dynamic_output_shape": [True, False],
   }]
 
   def build_graph(parameters):
@@ -3815,14 +3828,21 @@ def make_conv2d_transpose_tests(options):
     filter_tensor = tf.placeholder(
         dtype=tf.float32, name="filter", shape=parameters["filter_shape"])
 
+    input_tensors = [input_tensor, filter_tensor]
+
+    if parameters["dynamic_output_shape"]:
+      output_shape = tf.placeholder(dtype=tf.int32, shape=[4])
+      input_tensors.append(output_shape)
+    else:
+      output_shape = parameters["output_shape"]
+
     out = tf.nn.conv2d_transpose(
         input_tensor,
         filter_tensor,
-        output_shape=parameters["output_shape"],
+        output_shape=output_shape,
         padding="SAME",
         strides=(1, 2, 2, 1))
 
-    input_tensors = [input_tensor, filter_tensor]
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -3830,13 +3850,16 @@ def make_conv2d_transpose_tests(options):
         create_tensor_data(np.float32, parameters["input_shape"]),
         create_tensor_data(np.float32, parameters["filter_shape"])
     ]
+    if parameters["dynamic_output_shape"]:
+      values.append(np.array(parameters["output_shape"]))
+
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
 # Since compute output_shape is fairly complicated for
-# tf.nn.conv2d_backprop_input input_sizes argument, so we here first perform a
+# tf.nn.conv2d_transpose input_sizes argument, so we here first perform a
 # "conv2d" operation to get the output, then we use the output to feed in
 # tf.nn.conv2d_backprop_input.
 # This test will depend on the "conv2d" operation's correctness.
@@ -3944,26 +3967,38 @@ def make_expand_dims_tests(options):
 
   test_parameters = [{
       "input_type": [tf.float32, tf.int32],
-      "input_shape": [[3, 4], [10, 10, 3]],
-      "axis_value": [0, 1, 2, -1, -2],
+      "input_shape": [[5, 4]],
+      "axis_value": [0, 1, 2, -1, -2, -3],
+      "constant_axis": [True, False],
   }]
 
   def build_graph(parameters):
     """Build the where op testing graph."""
+    inputs = []
     input_value = tf.placeholder(
         dtype=parameters["input_type"],
         name="input",
         shape=parameters["input_shape"])
-    axis_value = tf.placeholder(dtype=tf.int32, name="axis", shape=[1])
+    inputs.append(input_value)
+
+    if parameters["constant_axis"]:
+      axis_value = tf.constant(
+          parameters["axis_value"], dtype=tf.int32, shape=[1])
+    else:
+      axis_value = tf.placeholder(dtype=tf.int32, name="axis", shape=[1])
+      inputs.append(axis_value)
+
     out = tf.expand_dims(input_value, axis=axis_value)
-    return [input_value, axis_value], [out]
+    return inputs, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_value = create_tensor_data(parameters["input_type"],
-                                     parameters["input_shape"])
-    axis_value = np.array([parameters["axis_value"]], dtype=np.int32)
-    return [input_value, axis_value], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_value, axis_value])))
+    input_values = []
+    input_values.append(
+        create_tensor_data(parameters["input_type"], parameters["input_shape"]))
+    if not parameters["constant_axis"]:
+      input_values.append(np.array([parameters["axis_value"]], dtype=np.int32))
+    return input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
@@ -3973,7 +4008,7 @@ def make_sparse_to_dense_tests(options):
   """Make a set of tests to do sparse to dense."""
 
   test_parameters = [{
-      "value_dtype": [tf.float32, tf.int32],
+      "value_dtype": [tf.float32, tf.int32, tf.int64],
       "index_dtype": [tf.int32, tf.int64],
       "value_count": [1, 3, 6, 8],
       "dense_shape": [[15], [3, 10], [4, 4, 4, 4], [7, 10, 9]],
@@ -4131,7 +4166,7 @@ def make_range_tests(options):
   """Make a set of tests to do range."""
 
   test_parameters = [{
-      "dtype": [tf.int32],
+      "dtype": [tf.int32, tf.float32],
       "offset": [10, 100, 1000],
       "delta": [1, 2, 3, 4, -1, -2, -3, -4],
   }]
@@ -4146,7 +4181,7 @@ def make_range_tests(options):
       offset = parameters["offset"]
     delta = parameters["delta"]
     limit_tensor = input_tensor + offset
-    delta_tensor = tf.constant(delta, dtype=tf.int32)
+    delta_tensor = tf.constant(delta, dtype=parameters["dtype"])
     out = tf.range(input_tensor, limit_tensor, delta_tensor)
     return [input_tensor], [out]
 
@@ -4532,7 +4567,7 @@ def make_reverse_sequence_tests(options):
 
 @register_make_test_function()
 def make_matrix_diag_tests(options):
-  """Make a set of tests for tf.matrix_diag op."""
+  """Make a set of tests for tf.linalg.diag op."""
 
   test_parameters = [
       {
@@ -4560,7 +4595,7 @@ def make_matrix_diag_tests(options):
 
 @register_make_test_function()
 def make_matrix_set_diag_tests(options):
-  """Make a set of tests for tf.matrix_set_diag op."""
+  """Make a set of tests for tf.linalg.set_diag op."""
 
   test_parameters = [
       {

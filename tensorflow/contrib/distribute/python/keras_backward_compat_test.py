@@ -20,12 +20,12 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -164,7 +164,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)

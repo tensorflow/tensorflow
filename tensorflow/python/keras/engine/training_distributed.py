@@ -497,7 +497,8 @@ def experimental_tpu_test_loop(model,
       # We reduce all other metrics using mean for now. This is temporary
       # workaround until new metrics are in place.
       reduce_op = ds_reduce_util.ReduceOp.MEAN
-    output_tensors[label] = current_strategy.reduce(reduce_op, output)
+    output_tensors[label] = current_strategy.reduce(reduce_op, output,
+                                                    axis=None)
   test_op = control_flow_ops.group(list(output_tensors.values()))
 
   if verbose >= 1:

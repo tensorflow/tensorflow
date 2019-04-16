@@ -951,7 +951,7 @@ class ModelCheckpoint(Callback):
         # call. This is because the SyncOnReadVariable needs to be synced across
         # all the workers in order to be read, and all workers need to initiate
         # that.
-        temp_file_name = tempfile.mkstemp()[1]
+        file_handle, temp_file_name = tempfile.mkstemp()
         extension = os.path.splitext(self.filepath)[1]
         filepath = temp_file_name + '.' + extension
 
@@ -987,6 +987,7 @@ class ModelCheckpoint(Callback):
       # not checkpoint.
       if K.in_multi_worker_mode(
       ) and not dc_context.get_current_worker_context().should_checkpoint:
+        os.close(file_handle)
         os.remove(filepath)
 
 

@@ -2903,6 +2903,7 @@ cc_library(
         "hlo_pass_pipeline.h",
     ],
     deps = [
+        ":compilation_stats",
         ":dump",
         ":hlo",
         ":hlo_graph_dumper",
@@ -2913,7 +2914,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -3911,6 +3911,19 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "compilation_stats",
+    srcs = ["compilation_stats.cc"],
+    hdrs = ["compilation_stats.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

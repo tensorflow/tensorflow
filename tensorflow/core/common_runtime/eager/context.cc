@@ -175,8 +175,9 @@ void EagerContext::CloseRemoteContexts() {
 
   int i = 0;
   for (const auto& worker_and_context_id : remote_contexts_) {
-    auto* client =
-        remote_eager_workers_->GetClient(worker_and_context_id.first);
+    eager::EagerClient* client;
+    Status s =
+        remote_eager_workers_->GetClient(worker_and_context_id.first, &client);
 
     requests[i].set_context_id(worker_and_context_id.second);
     client->CloseContextAsync(
@@ -321,8 +322,9 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
     requests[i].set_context_id(target_and_context_id.second);
     *requests[i].mutable_function_def() = fdef;
 
-    auto* eager_client =
-        remote_eager_workers_->GetClient(target_and_context_id.first);
+    eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(
+        target_and_context_id.first, &eager_client));
 
     eager_client->RegisterFunctionAsync(
         &requests[i], &responses[i],
@@ -409,7 +411,8 @@ Status EagerContext::GetClientAndContextID(Device* device,
   string device_task_name;
   TF_RETURN_IF_ERROR(GetTaskName(device, &device_task_name));
 
-  *client = remote_eager_workers_->GetClient(device_task_name);
+  TF_RETURN_IF_ERROR(
+      remote_eager_workers_->GetClient(device_task_name, client));
 
   if (*client == nullptr) {
     return errors::InvalidArgument(
@@ -537,8 +540,17 @@ Status EagerContext::InitializeRemote(
                 if (keep_alive_secs_ > 0) {
                   {
                     for (const auto& worker_and_context_id : remote_contexts_) {
-                      auto* client = remote_eager_workers_->GetClient(
-                          worker_and_context_id.first);
+                      eager::EagerClient* client;
+                      Status s = remote_eager_workers_->GetClient(
+                          worker_and_context_id.first, &client);
+
+                      if (!s.ok()) {
+                        LOG(WARNING) << "Keep-alive thread was unable to find "
+                                        "a client for target "
+                                     << worker_and_context_id.first
+                                     << ". Got error: " << s;
+                        continue;
+                      }
 
                       eager::KeepAliveRequest* request =
                           new eager::KeepAliveRequest;

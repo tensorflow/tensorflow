@@ -36,6 +36,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "deprecation_test",
+    srcs = ["deprecation_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
 tf_cc_binary(
     name = "convert_from_multiline",
     srcs = ["convert_from_multiline.cc"],

@@ -2056,8 +2056,7 @@ tf_export('io.extract_jpeg_shape', 'image.extract_jpeg_shape',
 @tf_export('io.decode_image', 'image.decode_image',
            v1=['io.decode_image', 'image.decode_image'])
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
-  """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
-  and `decode_png`.
+  """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
   appropriate operation to convert the input bytes `string` into a `Tensor`
@@ -3496,6 +3495,7 @@ def combined_non_max_suppression(boxes,
                                  iou_threshold=0.5,
                                  score_threshold=float('-inf'),
                                  pad_per_class=False,
+                                 clip_boxes=True,
                                  name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
@@ -3532,6 +3532,9 @@ def combined_non_max_suppression(boxes,
       scores and classes are padded to be of length
       `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
       which case it is clipped to `max_total_size`. Defaults to false.
+    clip_boxes: If true, the coordinates of output nmsed boxes will be clipped
+      to [0, 1]. If false, output the box coordinates as it is. Defaults to
+      true.
     name: A name for the operation (optional).
 
   Returns:
@@ -3553,7 +3556,7 @@ def combined_non_max_suppression(boxes,
         score_threshold, dtype=dtypes.float32, name='score_threshold')
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
-        score_threshold, pad_per_class)
+        score_threshold, pad_per_class, clip_boxes)
 
 
 @tf_export('image.draw_bounding_boxes', v1=[])

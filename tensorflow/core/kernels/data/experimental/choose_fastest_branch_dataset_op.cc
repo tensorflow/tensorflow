@@ -128,7 +128,12 @@ class WrapperDataset : public DatasetBase {
 class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ChooseFastestBranchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
+      : UnaryDatasetOpKernel(ctx),
+        lib_def_(std::make_shared<FunctionLibraryDefinition>(
+            ctx->function_library()
+                ->GetFunctionLibraryDefinition()
+                ->default_registry(),
+            FunctionDefLibrary{})) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &funcs_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_elements_per_branch",
                                      &num_elements_per_branch_));
@@ -136,6 +141,16 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("other_arguments_lengths",
                                      &other_arguments_lengths_));
+
+    for (const auto& func : funcs_) {
+      std::shared_ptr<FunctionLibraryDefinition> result;
+      OP_REQUIRES_OK(
+          ctx, CreateFunctionLibraryDefinition(
+                   ctx->function_library()->GetFunctionLibraryDefinition(),
+                   func.name(), &result));
+      OP_REQUIRES_OK(ctx, lib_def_->AddLibrary(*result));
+    }
+
     OP_REQUIRES(
         ctx, funcs_.size() == other_arguments_lengths_.size(),
         errors::InvalidArgument(
@@ -163,6 +178,8 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
 
+    CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     // Keeps track of starting index into other_arguments for a given function.
     int index = 0;
     for (int i = 0; i < funcs_.size(); ++i) {
@@ -172,9 +189,9 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       for (; index < end_index; ++index) {
         captured_args.push_back(inputs[index]);
       }
-      OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                              funcs_[i], ctx, std::move(captured_args),
-                              /*params=*/{}, &captured_funcs[i]));
+      OP_REQUIRES_OK(ctx, CapturedFunction::Create(funcs_[i], ctx,
+                                                   std::move(captured_args),
+                                                   params, &captured_funcs[i]));
     }
     *output =
         new Dataset(ctx, input, funcs_, std::move(captured_funcs),
@@ -536,6 +553,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   std::vector<NameAttrList> funcs_;
   std::vector<int32> other_arguments_lengths_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };  // class ChooseFastestBranchDatasetOp
 
 // Register the kernel implementation for ChooseFastestBranchDataset.

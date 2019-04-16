@@ -39,8 +39,6 @@ renames = {
         'tf.compat.v1.ConditionalAccumulatorBase',
     'tf.ConfigProto':
         'tf.compat.v1.ConfigProto',
-    'tf.DeviceSpec':
-        'tf.compat.v1.DeviceSpec',
     'tf.Dimension':
         'tf.compat.v1.Dimension',
     'tf.Event':
@@ -339,10 +337,24 @@ renames = {
         'tf.math.erfc',
     'tf.estimator.experimental.KMeans':
         'tf.compat.v1.estimator.experimental.KMeans',
+    'tf.estimator.experimental.dnn_logit_fn_builder':
+        'tf.compat.v1.estimator.experimental.dnn_logit_fn_builder',
+    'tf.estimator.experimental.linear_logit_fn_builder':
+        'tf.compat.v1.estimator.experimental.linear_logit_fn_builder',
     'tf.estimator.inputs.numpy_input_fn':
         'tf.compat.v1.estimator.inputs.numpy_input_fn',
     'tf.estimator.inputs.pandas_input_fn':
         'tf.compat.v1.estimator.inputs.pandas_input_fn',
+    'tf.estimator.tpu.InputPipelineConfig':
+        'tf.compat.v1.estimator.tpu.InputPipelineConfig',
+    'tf.estimator.tpu.RunConfig':
+        'tf.compat.v1.estimator.tpu.RunConfig',
+    'tf.estimator.tpu.TPUConfig':
+        'tf.compat.v1.estimator.tpu.TPUConfig',
+    'tf.estimator.tpu.TPUEstimator':
+        'tf.compat.v1.estimator.tpu.TPUEstimator',
+    'tf.estimator.tpu.TPUEstimatorSpec':
+        'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -577,8 +589,26 @@ renames = {
         'tf.math.lgamma',
     'tf.lin_space':
         'tf.linspace',
+    'tf.linalg.transpose':
+        'tf.linalg.matrix_transpose',
+    'tf.lite.OpHint':
+        'tf.compat.v1.lite.OpHint',
     'tf.lite.TocoConverter':
         'tf.compat.v1.lite.TocoConverter',
+    'tf.lite.constants.GRAPHVIZ_DOT':
+        'tf.compat.v1.lite.constants.GRAPHVIZ_DOT',
+    'tf.lite.constants.INT8':
+        'tf.compat.v1.lite.constants.INT8',
+    'tf.lite.constants.TFLITE':
+        'tf.compat.v1.lite.constants.TFLITE',
+    'tf.lite.experimental.convert_op_hints_to_stubs':
+        'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.nn.TFLiteLSTMCell':
+        'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
+    'tf.lite.experimental.nn.TfLiteRNNCell':
+        'tf.compat.v1.lite.experimental.nn.TfLiteRNNCell',
+    'tf.lite.experimental.nn.dynamic_rnn':
+        'tf.compat.v1.lite.experimental.nn.dynamic_rnn',
     'tf.lite.toco_convert':
         'tf.compat.v1.lite.toco_convert',
     'tf.local_variables':
@@ -704,7 +734,7 @@ renames = {
     'tf.matrix_solve_ls':
         'tf.linalg.lstsq',
     'tf.matrix_transpose':
-        'tf.linalg.transpose',
+        'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
     'tf.metrics.accuracy':
@@ -897,6 +927,8 @@ renames = {
         'tf.compat.v1.ragged.RaggedTensorValue',
     'tf.ragged.constant_value':
         'tf.compat.v1.ragged.constant_value',
+    'tf.ragged.placeholder':
+        'tf.compat.v1.ragged.placeholder',
     'tf.random.get_seed':
         'tf.compat.v1.random.get_seed',
     'tf.random.set_random_seed':
@@ -1367,6 +1399,8 @@ renames = {
         'tf.compat.v1.train.create_global_step',
     'tf.train.do_quantize_training_on_graphdef':
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
+    'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':

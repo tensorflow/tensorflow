@@ -266,12 +266,12 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR_SIMPLE(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
-DEFINE_GET_ATTR(int32, i, "int", emplace_back, static_cast<int32>(v),
-                if (static_cast<int64>(static_cast<int32>(v)) != v) {
-                  return errors::InvalidArgument("Attr ", attr_name,
-                                                 " has value ", v,
-                                                 " out of range for an int32");
-                })
+DEFINE_GET_ATTR(
+    int32, i, "int", emplace_back, static_cast<int32>(v),
+    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+      return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
+                                     " out of range for an int32");
+    })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
 // std::vector<bool> specialization does not have emplace_back until
 // c++14, so we have to use push_back (see
@@ -285,13 +285,12 @@ DEFINE_GET_ATTR(TensorShape, shape, "shape", emplace_back, TensorShape(v),
 DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
                 PartialTensorShape(v),
                 TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(v));)
-DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
-                if (!t.FromProto(v)) {
-                  return errors::InvalidArgument(
-                      "Attr ", attr_name, " has value ",
-                      ProtoShortDebugString(v),
-                      " that can't be converted to a Tensor");
-                })
+DEFINE_GET_ATTR(
+    Tensor, tensor, "tensor", emplace_back, t, Tensor t; if (!t.FromProto(v)) {
+      return errors::InvalidArgument("Attr ", attr_name, " has value ",
+                                     ProtoShortDebugString(v),
+                                     " that can't be converted to a Tensor");
+    })
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
@@ -344,13 +343,15 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 
 namespace {  // Helper for InOutTypesForNode().
 
-Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
-                   DataTypeVector* sig) {
+template <class NodeDefOrAttrSlice>
+Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
+                   const OpDef::ArgDef& arg_def, DataTypeVector* sig) {
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
     int32 repeats = -1;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node_def, arg_def.number_attr(), &repeats));
+    TF_RETURN_IF_ERROR(
+        GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     if (repeats < 0) {
       return errors::InvalidArgument("Value for number_attr() ", repeats,
                                      " < 0");
@@ -358,7 +359,8 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
 
     if (!arg_def.type_attr().empty()) {
       DataType dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node_def, arg_def.type_attr(), &dtype));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(node_or_attrs, arg_def.type_attr(), &dtype));
       for (int i = 0; i < repeats; ++i) {
         sig->push_back(dtype);
       }
@@ -373,12 +375,12 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_def).Find(arg_def.type_attr(), &attr_value));
+        AttrSlice(node_or_attrs).Find(arg_def.type_attr(), &attr_value));
     sig->push_back(attr_value->type());
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_def).Find(arg_def.type_list_attr(), &attr_value));
+        AttrSlice(node_or_attrs).Find(arg_def.type_list_attr(), &attr_value));
     for (int dtype : attr_value->list().type()) {
       sig->push_back(static_cast<DataType>(dtype));
     }
@@ -441,6 +443,14 @@ Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                           DataTypeVector* outputs) {
   for (const auto& arg : op_def.output_arg()) {
     TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, outputs));
+  }
+  return Status::OK();
+}
+
+Status OutputTypesForNode(const AttrSlice& attrs, const OpDef& op_def,
+                          DataTypeVector* outputs) {
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(attrs, arg, outputs));
   }
   return Status::OK();
 }

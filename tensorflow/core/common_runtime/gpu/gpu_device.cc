@@ -745,6 +745,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 }
 
+void BaseGPUDevice::CopyTensorInSameDevice(const Tensor* input_tensor,
+                                           Tensor* output_tensor,
+                                           const DeviceContext* device_context,
+                                           StatusCallback done) {
+  GPUUtil::CopyGPUTensorToSameGPU(static_cast<Device*>(this), device_context,
+                                  input_tensor, output_tensor, std::move(done));
+}
+
 namespace {
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
@@ -974,6 +982,36 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
+
+Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
+  se::Platform* gpu_manager = GPUMachineManager();
+  if (gpu_manager == nullptr) {
+    return Status::OK();
+  }
+
+  int device_count = gpu_manager->VisibleDeviceCount();
+  if (device_count <= 0) {
+    return Status::OK();
+  }
+
+  std::vector<PlatformGpuId> visible_gpu_order(device_count);
+  int deviceNo = 0;
+  std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
+                [&deviceNo] { return deviceNo++; });
+
+  std::vector<PlatformGpuId> valid_platform_gpu_ids;
+  TF_RETURN_IF_ERROR(
+      GetValidDeviceIds(visible_gpu_order, &valid_platform_gpu_ids));
+
+  for (PlatformGpuId platform_gpu_id : valid_platform_gpu_ids) {
+    const string device_name =
+        strings::StrCat("/physical_device:GPU:", platform_gpu_id.value());
+    devices->push_back(device_name);
+  }
+
+  return Status::OK();
+}
 
 Status BaseGPUDeviceFactory::CreateDevices(
     const SessionOptions& options, const string& name_prefix,

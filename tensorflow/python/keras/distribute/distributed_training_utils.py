@@ -107,7 +107,7 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
     loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
-                                        grouped_outputs[0])
+                                        grouped_outputs[0], axis=None)
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
     all_outputs = [loss] + all_outputs
@@ -395,7 +395,8 @@ def global_batch_size_supported(distribution_strategy):
 # TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def is_dataset_shape_fully_defined(dataset):
