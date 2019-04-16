@@ -1339,9 +1339,9 @@ def internal_operation_seed():
 def executing_eagerly():
   """Returns True if the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via `tf.enable_eager_execution`,
-  but may also be enabled within the context of a Python function via
-  tf.contrib.eager.py_func.
+  Eager execution is typically enabled via
+  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
+  context of a Python function via tf.contrib.eager.py_func.
   """
   if context_safe() is None:
     return default_execution_mode == EAGER_MODE
@@ -1411,7 +1411,7 @@ def device(name):
   with tf.device('gpu:0'):
     with tf.device('cpu:0'):
       shape = tf.constant([], dtype=tf.int32)
-    x = tf.truncated_normal(shape, tf.float32)
+    x = tf.random.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
   operation runs on GPU 0.

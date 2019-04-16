@@ -542,12 +542,13 @@ def replicate(computation,
     name: (Deprecated) Does nothing.
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
-      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
-      tf.TensorShape or -1 in a tensor-like object) will be padded to the
-      maximum size of that dimension over all replicas. Note that if the input
-      dimension is already static, we won't do padding on it and we require the
-      maximum_shapes to have the same value or None on that dimension. The
-      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+      should be padded. Any unknown dimensions (e.g.
+      tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
+      object) will be padded to the maximum size of that dimension over all
+      replicas. Note that if the input dimension is already static, we won't do
+      padding on it and we require the maximum_shapes to have the same value or
+      None on that dimension. The structure of `maximum_shapes` needs to be the
+      same as `inputs[0]`.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -699,12 +700,13 @@ def split_compile_and_replicate(computation,
       placed on GPU if one is available, and on CPU if not).
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
-      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
-      tf.TensorShape or -1 in a tensor-like object) will be padded to the
-      maximum size of that dimension over all replicas. Note that if the input
-      dimension is already static, we won't do padding on it and we require the
-      maximum_shapes to have the same value or None on that dimension. The
-      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+      should be padded. Any unknown dimensions (e.g.
+      tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
+      object) will be padded to the maximum size of that dimension over all
+      replicas. Note that if the input dimension is already static, we won't do
+      padding on it and we require the maximum_shapes to have the same value or
+      None on that dimension. The structure of `maximum_shapes` needs to be the
+      same as `inputs[0]`.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1491,13 +1493,14 @@ def validate_inference_rewrite_for_variables(graph):
 
      The rewrite_for_inference() method is supposed to append GuaranteeConstOps
      after ReadVariableOps, but this mechanism works only if you are using
-     tf.get_variable() to create and access variables in your tpu computation.
-     This validation method can be called immediately after calling
+     tf.compat.v1.get_variable() to create and access variables in your tpu
+     computation. This validation method can be called immediately after calling
      tpu.rewrite_for_inference() to check whether GuaranteeConstOps where added
      to the graph.
 
      Typical usages:
-       tpu.validate_inference_rewrite_for_variables(tf.get_default_graph())
+       tpu.validate_inference_rewrite_for_variables(
+           tf.compat.v1.get_default_graph())
 
        tpu.validate_inference_rewrite_for_variables(sess.graph)
 
@@ -1524,11 +1527,11 @@ def rewrite_for_inference(computation,
      Other than 'rewriting' the computation to run on a TPU, if using variables
      in your computation, it moves the ReadVariableOps outside the TPU
      computation, and adds GuaranteeConst ops just after the ReadVariableOps.
-     This mechanism works only if you are using tf.get_variable() to create and
-     access variables in your tpu computation. You can validate whether this
-     worked, by calling validate_inference_rewrite_for_variables() method
-     immediately after this method to check whether GuaranteeConstOps where
-     added to the graph.
+     This mechanism works only if you are using tf.compat.v1.get_variable() to
+     create and access variables in your tpu computation. You can validate
+     whether this worked, by calling validate_inference_rewrite_for_variables()
+     method immediately after this method to check whether GuaranteeConstOps
+     where added to the graph.
 
   Args:
     computation: A Python function that builds a computation to apply to the

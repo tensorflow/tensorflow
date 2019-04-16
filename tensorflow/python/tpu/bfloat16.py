@@ -33,7 +33,8 @@ def _get_custom_getter():
 
   ```python
   network = ConvNetBuilder(...)
-  with tf.variable_scope('cg', custom_getter=network.get_custom_getter()):
+  with tf.compat.v1.variable_scope('cg',
+                                   custom_getter=network.get_custom_getter()):
     network.conv(...)
     # Call more methods of network here
   ```

@@ -161,7 +161,7 @@ def implicit_val_and_grad(f):
   Example:
 
   ```python
-  dense_layer = tf.layers.Dense(1)
+  dense_layer = tf.compat.v1.layers.Dense(1)
   def loss(x, y):
     return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
@@ -175,7 +175,7 @@ def implicit_val_and_grad(f):
   print('Value of loss: %s' % value)
 
   # Apply the gradients to Variables.
-  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
   optimizer.apply_gradients(grads_and_vars)
   ```
 
@@ -235,7 +235,7 @@ def implicit_grad(f):
   Example:
 
   ```python
-  dense_layer = tf.layers.Dense(1)
+  dense_layer = tf.compat.v1.layers.Dense(1)
   def loss(x, y):
     return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
@@ -248,7 +248,7 @@ def implicit_grad(f):
   grads_and_vars = grad_fn(x, y)
 
   # Apply the gradients to Variables.
-  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
   optimizer.apply_gradients(grads_and_vars)
   ```
 
@@ -668,9 +668,9 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.Variable` or `tf.get_variable`, where
-  `trainable=True` is default in both cases) are automatically watched. Tensors
-  can be manually watched by invoking the `watch` method on this context
+  Trainable variables (created by `tf.Variable` or `tf.compat.v1.get_variable`,
+  where `trainable=True` is default in both cases) are automatically watched.
+  Tensors can be manually watched by invoking the `watch` method on this context
   manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can

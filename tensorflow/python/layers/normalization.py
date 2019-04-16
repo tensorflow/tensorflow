@@ -106,8 +106,8 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If
@@ -214,11 +214,11 @@ def batch_normalization(inputs,
   example:
 
   ```python
-    x_norm = tf.layers.batch_normalization(x, training=training)
+    x_norm = tf.compat.v1.layers.batch_normalization(x, training=training)
 
     # ...
 
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
     train_op = optimizer.minimize(loss)
     train_op = tf.group([train_op, update_ops])
   ```
@@ -286,8 +286,8 @@ def batch_normalization(inputs,
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If
