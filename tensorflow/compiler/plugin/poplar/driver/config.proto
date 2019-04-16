@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package xla;
+package xla.poplarplugin;
 
 message IpuOptions {
 

@@ -183,7 +183,26 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
 
   proto.set_engine(poplar_executable_filename);
 
-  // TODO expand this when poplar engine serialization support is ready
+  auto* iomap = proto.mutable_io_map();
+  iomap->set_num_streaming_inputs(
+      executable.input_output_aliasing_map_.GetNumStreamingInputs());
+  iomap->set_num_streaming_outputs(
+      executable.input_output_aliasing_map_.GetNumStreamingOutputs());
+
+  for (const auto& infeed : executable.infeed_infos_) {
+    auto* feed = proto.add_infeeds();
+    feed->set_stream_prefix(infeed.stream_prefix);
+    feed->set_config(infeed.config);
+    *(feed->mutable_shape()) = infeed.shape.ToProto();
+  }
+
+  for (const auto& outfeed : executable.outfeed_infos_) {
+    auto* feed = proto.add_infeeds();
+    feed->set_stream_prefix(outfeed.stream_prefix);
+    feed->set_config(outfeed.config);
+    *(feed->mutable_shape()) = outfeed.shape.ToProto();
+  }
+
   return WriteBinaryProto(tensorflow::Env::Default(), filename, proto);
 }
 
