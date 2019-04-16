@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -36,6 +38,22 @@ namespace xla {
 namespace xla_python {
 
 namespace py = pybind11;
+
+struct Uniquer {
+  absl::Mutex mu;
+  NameUniquer name_uniquer GUARDED_BY(mu);
+};
+
+Uniquer* GetUniquer() {
+  static Uniquer* uniquer = new Uniquer;
+  return uniquer;
+}
+
+static string UniquifyName(const string& name) {
+  Uniquer* uniquer = GetUniquer();
+  absl::MutexLock lock(&uniquer->mu);
+  return uniquer->name_uniquer.GetUniqueName(name);
+}
 
 PYBIND11_MODULE(xla_extension, m) {
   // Types
@@ -189,7 +207,9 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<XlaOp>(m, "XlaOp");
 
   py::class_<XlaBuilder>(m, "XlaBuilder")
-      .def(py::init<const std::string&>())
+      .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {
+        return absl::make_unique<XlaBuilder>(UniquifyName(name));
+      }))
       .def(
           "Build",
           [](XlaBuilder& builder, absl::optional<XlaOp> root) {
