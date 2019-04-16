@@ -94,17 +94,60 @@ TF_CAPI_EXPORT extern void TFE_MonitoringSetGauge(const char* name,
                                                   const char* label,
                                                   int64_t value);
 
-// Increase a Counter metric by the given value. If the metric with given name
-// does not exist, it will create a new Counter metric.
-TF_CAPI_EXPORT extern void TFE_MonitoringAddCounter(const char* name,
-                                                    const char* label,
-                                                    int64_t value);
-
 // Add the given value to a Sampler metric. If the metric with given name
 // does not exist, it will create a new Sampler metric.
 TF_CAPI_EXPORT extern void TFE_MonitoringAddSampler(const char* name,
                                                     const char* label,
                                                     double value);
+
+// -----------------------------------------------------------------------------
+// Monitoring Counter APIs.
+// These APIs de-templated monitoring Counter for swig.
+
+typedef struct TFE_MonitoringCounterCell TFE_MonitoringCounterCell;
+
+// Atomically increments the value of the cell. The value must be non-negative.
+TF_CAPI_EXPORT extern void TFE_MonitoringCounterCellIncrementBy(
+    TFE_MonitoringCounterCell* cell, int64_t value);
+
+// Retrieves the current value of the cell.
+TF_CAPI_EXPORT extern int64_t TFE_MonitoringCounterCellValue(
+    TFE_MonitoringCounterCell* cell);
+
+// APIs for Counter without label.
+typedef struct TFE_MonitoringCounter0 TFE_MonitoringCounter0;
+// Returns a new Counter metric object. The caller should manage lifetime of
+// the object. Using duplicate metric name will crash the program with fatal
+// error.
+TF_CAPI_EXPORT extern TFE_MonitoringCounter0* TFE_MonitoringNewCounter0(
+    const char* name, TF_Status* status, const char* description);
+// Deletes the Counter object.
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteCounter0(
+    TFE_MonitoringCounter0* counter);
+// Retrieves the cell from the Counter object. The Counter object will manage
+// lifetime of the cell.
+TF_CAPI_EXPORT extern TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter0(
+    TFE_MonitoringCounter0* counter);
+
+// APIs for Counter with 1 label.
+typedef struct TFE_MonitoringCounter1 TFE_MonitoringCounter1;
+TF_CAPI_EXPORT extern TFE_MonitoringCounter1* TFE_MonitoringNewCounter1(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteCounter1(
+    TFE_MonitoringCounter1* counter);
+TF_CAPI_EXPORT extern TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter1(
+    TFE_MonitoringCounter1* counter, const char* label1);
+
+// APIs for Counter with 2 labels.
+typedef struct TFE_MonitoringCounter2 TFE_MonitoringCounter2;
+TF_CAPI_EXPORT extern TFE_MonitoringCounter2* TFE_MonitoringNewCounter2(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteCounter2(
+    TFE_MonitoringCounter2* counter);
+TF_CAPI_EXPORT extern TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter2(
+    TFE_MonitoringCounter2* counter, const char* label1, const char* label2);
 
 #ifdef __cplusplus
 } /* end extern "C" */

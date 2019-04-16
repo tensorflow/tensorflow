@@ -148,8 +148,15 @@ TEST(CAPI, MonitoringSetGauge) {
             metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
 }
 
-TEST(CAPI, MonitoringAddCounter) {
-  TFE_MonitoringAddCounter("test/counter", "label", 1);
+TEST(CAPI, MonitoringCounter0) {
+  TF_Status* status = TF_NewStatus();
+  auto* counter =
+      TFE_MonitoringNewCounter0("test/counter", status, "description");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  auto* cell = TFE_MonitoringGetCellCounter0(counter);
+  TFE_MonitoringCounterCellIncrementBy(cell, 1);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell), 1);
   auto* collection_registry = monitoring::CollectionRegistry::Default();
   monitoring::CollectionRegistry::CollectMetricsOptions options;
   std::unique_ptr<monitoring::CollectedMetrics> metrics =
@@ -160,10 +167,37 @@ TEST(CAPI, MonitoringAddCounter) {
   EXPECT_EQ(
       1, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
 
-  TFE_MonitoringAddCounter("test/counter", "label", 5);
+  TFE_MonitoringCounterCellIncrementBy(cell, 5);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell), 6);
   metrics = collection_registry->CollectMetrics(options);
   EXPECT_EQ(
       6, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+
+  TFE_MonitoringDeleteCounter0(counter);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(metrics->point_set_map.end(),
+            metrics->point_set_map.find("test/counter"));
+}
+
+TEST(CAPI, MonitoringCounterMultiple) {
+  TF_Status* status = TF_NewStatus();
+  auto* counter1 = TFE_MonitoringNewCounter1("test/counter1", status,
+                                             "description", "label1");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell1 = TFE_MonitoringGetCellCounter1(counter1, "test");
+  TFE_MonitoringCounterCellIncrementBy(cell1, 1);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell1), 1);
+
+  auto* counter2 = TFE_MonitoringNewCounter2("test/counter2", status,
+                                             "description", "label1", "label2");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  auto* cell2 = TFE_MonitoringGetCellCounter2(counter2, "foo", "bar");
+  TFE_MonitoringCounterCellIncrementBy(cell2, 2);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell2), 2);
+
+  TFE_MonitoringDeleteCounter1(counter1);
+  TFE_MonitoringDeleteCounter2(counter2);
 }
 
 TEST(CAPI, MonitoringAddSampler) {

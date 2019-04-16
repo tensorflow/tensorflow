@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_C_API_INTERNAL_H_
 #define TENSORFLOW_C_EAGER_C_API_INTERNAL_H_
 
-#include "tensorflow/c/eager/c_api.h"
-
 #include <algorithm>
 #include <cstddef>
 #include <map>
@@ -28,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
@@ -131,6 +131,32 @@ struct TFE_Profiler {
   }
 
   std::unique_ptr<tensorflow::ProfilerSession> profiler;
+};
+
+struct TFE_MonitoringCounterCell {
+  tensorflow::monitoring::CounterCell cell;
+};
+
+template <int NumLabels>
+struct TFE_MonitoringCounter {
+  template <typename... LabelDesc>
+  TFE_MonitoringCounter(const char* name, const char* description,
+                        LabelDesc&&... label) {
+    counter = absl::WrapUnique(tensorflow::monitoring::Counter<NumLabels>::New(
+        name, description, label...));
+  }
+
+  std::unique_ptr<tensorflow::monitoring::Counter<NumLabels>> counter;
+};
+
+struct TFE_MonitoringCounter0 : TFE_MonitoringCounter<0> {
+  using TFE_MonitoringCounter::TFE_MonitoringCounter;
+};
+struct TFE_MonitoringCounter1 : TFE_MonitoringCounter<1> {
+  using TFE_MonitoringCounter::TFE_MonitoringCounter;
+};
+struct TFE_MonitoringCounter2 : TFE_MonitoringCounter<2> {
+  using TFE_MonitoringCounter::TFE_MonitoringCounter;
 };
 
 namespace tensorflow {
