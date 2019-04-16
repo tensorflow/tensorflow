@@ -78,6 +78,9 @@ from tensorflow.python.keras.layers.core import Lambda
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.keras.layers.core import ActivityRegularization
 
+# Dense Attention layers.
+from tensorflow.python.keras.layers.dense_attention import Attention
+
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 

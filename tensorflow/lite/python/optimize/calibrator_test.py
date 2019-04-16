@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 
+from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
@@ -38,7 +39,8 @@ class CalibratorTest(test_util.TensorFlowTestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
 
-    quantized_model = quantizer.calibrate_and_quantize(input_gen)
+    quantized_model = quantizer.calibrate_and_quantize(
+        input_gen, constants.FLOAT, constants.FLOAT)
     self.assertIsNotNone(quantized_model)
 
   def test_calibration_with_quantization_multiple_inputs(self):
@@ -54,7 +56,8 @@ class CalibratorTest(test_util.TensorFlowTestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 8, 8, 3), dtype=np.float32) for _ in range(4)]
 
-    quantized_model = quantizer.calibrate_and_quantize(input_gen)
+    quantized_model = quantizer.calibrate_and_quantize(
+        input_gen, constants.FLOAT, constants.FLOAT)
     self.assertIsNotNone(quantized_model)
 
   def test_invalid_model_buffer(self):
@@ -74,7 +77,8 @@ class CalibratorTest(test_util.TensorFlowTestCase):
         yield i
 
     with self.assertRaises(RuntimeError):
-      quantizer.calibrate_and_quantize(empty_input_gen)
+      quantizer.calibrate_and_quantize(empty_input_gen, constants.FLOAT,
+                                       constants.FLOAT)
 
   def test_invalid_shape_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(
@@ -88,7 +92,8 @@ class CalibratorTest(test_util.TensorFlowTestCase):
         yield [np.ones(shape=(1, 2, 2, 3), dtype=np.float32)]
 
     with self.assertRaisesWithRegexpMatch(ValueError, 'Dimension mismatch'):
-      quantizer.calibrate_and_quantize(input_gen)
+      quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
+                                       constants.FLOAT)
 
   def test_invalid_type_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(
@@ -102,7 +107,8 @@ class CalibratorTest(test_util.TensorFlowTestCase):
         yield np.ones(shape=(1, 5, 5, 3), dtype=np.int32)
 
     with self.assertRaises(ValueError):
-      quantizer.calibrate_and_quantize(input_gen)
+      quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
+                                       constants.FLOAT)
 
 
 if __name__ == '__main__':

@@ -30,7 +30,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
@@ -509,7 +508,33 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class EagerIterator(trackable.Trackable):
+class IteratorResourceDeleter(object):
+  """An object which cleans up an iterator resource handle.
+
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
+
+  def __init__(self, handle, device, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._device = device
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    with ops.device(self._device):
+      # Make sure the resource is deleted in the same mode as it was created in.
+      if self._eager_mode:
+        with context.eager_mode():
+          gen_dataset_ops.delete_iterator(
+              handle=self._handle, deleter=self._deleter)
+      else:
+        with context.graph_mode():
+          gen_dataset_ops.delete_iterator(
+              handle=self._handle, deleter=self._deleter)
+
+
+class IteratorV2(trackable.Trackable):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
   def __init__(self, dataset):
@@ -532,12 +557,6 @@ class EagerIterator(trackable.Trackable):
       RuntimeError: When invoked without eager execution enabled.
     """
 
-    if not context.executing_eagerly():
-      raise RuntimeError(
-          "{} objects can only be used when eager execution is enabled, use "
-          "tf.data.Dataset.make_initializable_iterator or "
-          "tf.data.Dataset.make_one_shot_iterator for graph construction".
-          format(type(self)))
     self._device = context.context().device_name
     with ops.device("/cpu:0"):
       # pylint: disable=protected-access
@@ -547,13 +566,16 @@ class EagerIterator(trackable.Trackable):
       self._flat_output_types = self._structure._flat_types
       self._flat_output_shapes = self._structure._flat_shapes
       with ops.colocate_with(ds_variant):
-        self._iterator_resource = gen_dataset_ops.anonymous_iterator(
-            output_types=self._flat_output_types,
-            output_shapes=self._flat_output_shapes)
+        self._iterator_resource, self._deleter = (
+            gen_dataset_ops.anonymous_iterator_v2(
+                output_types=self._flat_output_types,
+                output_shapes=self._flat_output_shapes))
         gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
         # Delete the resource when this object is deleted
-        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-            handle=self._iterator_resource, handle_device=self._device)
+        self._resource_deleter = IteratorResourceDeleter(
+            handle=self._iterator_resource,
+            device=self._device,
+            deleter=self._deleter)
       # pylint: enable=protected-access
 
   def __iter__(self):
@@ -565,6 +587,14 @@ class EagerIterator(trackable.Trackable):
   def _next_internal(self):
     """Returns a nested structure of `tf.Tensor`s containing the next element.
     """
+    if not context.executing_eagerly():
+      with ops.device(self._device):
+        ret = gen_dataset_ops.iterator_get_next(
+            self._iterator_resource,
+            output_types=self._flat_output_types,
+            output_shapes=self._flat_output_shapes)
+      return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
+
     # This runs in sync mode as iterators use an error status to communicate
     # that there is no more data to iterate over.
     # TODO(b/77291417): Fix
@@ -681,6 +711,7 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
 
 
+@tf_export("data.experimental.get_next_as_optional")
 def get_next_as_optional(iterator):
   """Returns an `Optional` that contains the next value from the iterator.
 

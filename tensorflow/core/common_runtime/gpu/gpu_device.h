@@ -90,6 +90,10 @@ class BaseGPUDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override;
+
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
@@ -259,6 +263,7 @@ class GPUKernelTracker {
 
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 

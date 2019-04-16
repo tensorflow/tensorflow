@@ -38,7 +38,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("lite.experimental.nn.dynamic_rnn")
+@tf_export(v1=["lite.experimental.nn.dynamic_rnn"])
 def dynamic_rnn(cell,
                 inputs,
                 sequence_length=None,

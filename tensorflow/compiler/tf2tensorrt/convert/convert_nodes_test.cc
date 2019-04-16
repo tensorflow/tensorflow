@@ -212,6 +212,19 @@ std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
   return res;
 }
 
+template <typename InCType, typename OutCType>
+struct StaticCaster {
+  OutCType operator()(InCType in) const { return static_cast<OutCType>(in); }
+};
+
+template <typename InCType, typename OutCType>
+std::vector<OutCType> CastTestVector(const std::vector<InCType>& vals) {
+  std::vector<OutCType> res(vals.size());
+  std::transform(vals.begin(), vals.end(), res.begin(),
+                 StaticCaster<InCType, OutCType>());
+  return res;
+}
+
 // Fake ITensor implementation for testing purposes.
 class FakeITensor : public nvinfer1::ITensor {
  public:
@@ -721,19 +734,25 @@ TEST_F(ConverterTest, TransposeTensor) {
   ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
 }
 
-void TestPrepareTensorForShape_Tensor(
-    const std::vector<int>& tensor_dims, const std::vector<int>& reshape_dims,
-    const std::vector<int>& expected_tensor_dims, Converter* converter,
+void TestPrepareTensorForShape(
+    const std::vector<int>& input_dims, const std::vector<int>& reshape_dims,
+    const std::vector<int>& expected_tensor_dims, bool input_is_tensor,
+    Converter* converter, TrtWeightStore* weight_store,
     error::Code expected_code = error::OK,
     const char* expected_error_msg_substr = nullptr) {
-  nvinfer1::ITensor* input_tensor = converter->network()->addInput(
-      "", nvinfer1::DataType::kFLOAT, GetTestDims(tensor_dims));
+  TRT_TensorOrWeights input;
+  if (input_is_tensor) {
+    input = TRT_TensorOrWeights(converter->network()->addInput(
+        "", nvinfer1::DataType::kFLOAT, GetTestDims(input_dims)));
+  } else {
+    input = TRT_TensorOrWeights(weight_store->GetTempWeights(
+        nvinfer1::DataType::kFLOAT, GetTestDims(input_dims)));
+  }
   nvinfer1::ITensor* output_tensor = nullptr;
 
   for (bool validation_only : {false, true}) {
     const Status status = converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(input_tensor), GetTestDims(reshape_dims),
-        validation_only, &output_tensor);
+        input, GetTestDims(reshape_dims), validation_only, &output_tensor);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
@@ -748,49 +767,45 @@ void TestPrepareTensorForShape_Tensor(
   }
 }
 
-TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
-  // Shape size doesn't match.
+TEST_F(ConverterTest, PrepareTensorForShape) {
+  for (bool input_is_tensor : {true, false}) {
+    // Shape size doesn't match.
+    Reset();
+    TestPrepareTensorForShape({2, 3, 5}, {2, 3, 6}, {}, input_is_tensor,
+                              converter_.get(), weight_store_,
+                              error::INVALID_ARGUMENT, "Incompatible shapes");
+
+    // Regular shape.
+    Reset();
+    TestPrepareTensorForShape({2, 3, 5}, {10, 3}, {10, 3}, input_is_tensor,
+                              converter_.get(), weight_store_);
+
+    // Reshape to zero rank.
+    Reset();
+    TestPrepareTensorForShape({1, 1}, {}, {}, input_is_tensor, converter_.get(),
+                              weight_store_);
+  }
+
+  // Tensor input with zero rank.
   Reset();
-  TestPrepareTensorForShape_Tensor({2, 3, 5}, {2, 3, 6}, {}, converter_.get(),
-                                   error::INVALID_ARGUMENT,
-                                   "Incompatible shapes");
+  TestPrepareTensorForShape({}, {1, 1}, {1, 1}, /*input_is_tensor=*/true,
+                            converter_.get(), weight_store_);
 
   // TODO(aaroey): we should check the case where uninferred dimensions are
   // not an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
 
-  // Infer shape, ok.
+  // Infer tensor shape, ok.
   Reset();
-  TestPrepareTensorForShape_Tensor({2, 3, 5}, {-1, 2}, {15, 2},
-                                   converter_.get());
+  TestPrepareTensorForShape({2, 3, 5}, {-1, 2}, {15, 2},
+                            /*input_is_tensor=*/true, converter_.get(),
+                            weight_store_);
 
-  // Regular shape.
+  // Infer weight shape, should fail.
   Reset();
-  TestPrepareTensorForShape_Tensor({2, 3, 5}, {10, 3}, {10, 3},
-                                   converter_.get());
-
-  // Input with zero rank.
-  Reset();
-  TestPrepareTensorForShape_Tensor({}, {1, 1}, {1, 1}, converter_.get());
-
-  // Reshape to zero rank.
-  Reset();
-  TestPrepareTensorForShape_Tensor({1, 1}, {}, {}, converter_.get());
-}
-
-TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
-  TRT_ShapedWeights weights = weight_store_->GetTempWeights(
-      nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
-  nvinfer1::ITensor* output_tensor = nullptr;
-  for (bool validation_only : {false, true}) {
-    TF_EXPECT_OK(converter_->PrepareTensorForShape(
-        TRT_TensorOrWeights(weights), GetTestDims({10, 3}), validation_only,
-        &output_tensor));
-    if (validation_only) {
-      EXPECT_EQ(nullptr, output_tensor);
-    } else {
-      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
-    }
-  }
+  TestPrepareTensorForShape({2, 3, 5}, {-1, 2}, {15, 2},
+                            /*input_is_tensor=*/false, converter_.get(),
+                            weight_store_, error::INVALID_ARGUMENT,
+                            "Shape is not fully defined");
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
@@ -4908,6 +4923,279 @@ TEST_F(OpConverterTest, ConvertArgMinMax) {
   // and ArgMax.
   // TestConvertArgMinMax<ops::ArgMin, DT_INT32>(this);
   // TestConvertArgMinMax<ops::ArgMax, DT_INT32>(this);
+}
+
+// Get the NodeDef for DepthToSpace or SpaceToSpace.
+template <typename OpType>
+NodeDef GetDepthSpaceShuffleNodeDef(DataType dtype, int block_size,
+                                    string data_format) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto attrs = OpType::DataFormat(data_format);
+  auto shuffle = OpType(s.WithOpName("my_shuffle"), input, block_size, attrs);
+  return shuffle.operation.node()->def();
+}
+
+template <typename CType>
+struct DepthSpaceShuffleTestParams {
+  std::vector<int> input_dims;
+  std::vector<CType> input_value;
+  int block_size;
+  string data_format;
+  std::vector<int> expected_output_dims;
+  std::vector<CType> expected_output;
+};
+
+template <typename OpType, DataType dtype, typename CType>
+void TestConvertDepthSpaceShuffle(
+    OpConverterTest* test,
+    const std::vector<DepthSpaceShuffleTestParams<CType>>& params) {
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+
+    NodeDef node_def = GetDepthSpaceShuffleNodeDef<OpType>(
+        dtype, params[i].block_size, params[i].data_format);
+    test->AddTestTensor("input", params[i].input_dims, 1,
+                        TfDataTypeToTrt(dtype));
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_shuffle", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    DataVec input_data{{"input", test::AsTensor<CType>(params[i].input_value)}};
+    DataVec output_data{{"my_shuffle", ConstructTensor<CType>(
+                                           params[i].expected_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(params[i].expected_output));
+  }
+}
+
+template <DataType dtype>
+void TestConvertDepthToSpace(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+  const std::vector<CType> common_input = InitTestVector<CType>(16);
+  std::vector<DepthSpaceShuffleTestParams<CType>> params = {
+      {
+          /*input_shape=*/{4, 2, 2},
+          /*input_value=*/common_input,
+          /*block_size=*/2,
+          /*data_format=*/"NCHW",
+          /*expected_output_dims=*/{1, 4, 4},
+          /*expected_output=*/
+          CastTestVector<int, CType>(
+              {0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15}),
+      },
+      {
+          /*input_shape=*/{2, 2, 4},
+          /*input_value=*/common_input,
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{4, 4, 1},
+          /*expected_output=*/
+          CastTestVector<int, CType>(
+              {0, 1, 4, 5, 2, 3, 6, 7, 8, 9, 12, 13, 10, 11, 14, 15}),
+      },
+      {
+          /*input_shape=*/{16, 1, 1},
+          /*input_value=*/common_input,
+          /*block_size=*/4,
+          /*data_format=*/"NCHW",
+          /*expected_output_dims=*/{1, 4, 4},
+          /*expected_output=*/InitTestVector<CType>(16),
+      },
+      {
+          /*input_shape=*/{2, 2, 8},
+          /*input_value=*/InitTestVector<CType>(32),
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{4, 4, 2},
+          /*expected_output=*/CastTestVector<int, CType>({0,  1,  2,  3,  8,
+                                                          9,  10, 11, 4,  5,
+                                                          6,  7,  12, 13, 14,
+                                                          15, 16, 17, 18, 19,
+                                                          24, 25, 26, 27, 20,
+                                                          21, 22, 23, 28, 29,
+                                                          30, 31}),
+      },
+  };
+
+  TestConvertDepthSpaceShuffle<ops::DepthToSpace, dtype, CType>(test, params);
+}
+
+TEST_F(OpConverterTest, ConvertDepthToSpace) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_shuffle", "DepthToSpace", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "DepthToSpace got 0 inputs but expected 1, at my_shuffle");
+  }
+  {
+    // Input is a weight, should fail.
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::DepthToSpace>(DT_FLOAT, 2, "NCHW");
+    AddTestWeights<float>("input", {4, 1, 1}, {1, 2, 3, 4});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"input\" for DepthToSpace must be a "
+                               "tensor, at my_shuffle");
+  }
+  {
+    // Input rank != 4
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::DepthToSpace>(DT_FLOAT, 2, "NCHW");
+    AddTestTensor("input", {16, 32});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "The input to DepthToSpace must be rank 4, at my_shuffle");
+  }
+  {
+    // Channels not divisible by block_size, should fail.
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::DepthToSpace>(DT_FLOAT, 3, "NCHW");
+    AddTestTensor("input", {16, 32, 32});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Number of channels must be divisible by "
+                               "block_size*block_size, at my_shuffle");
+  }
+  {
+    // Unsupported format, should fail.
+    Reset();
+    NodeDef node_def = GetDepthSpaceShuffleNodeDef<ops::DepthToSpace>(
+        DT_FLOAT, 2, "NCHW_VECT_C");
+    AddTestTensor("input", {16, 32, 32});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Data format NCHW_VECT_C is not supported, at my_shuffle");
+  }
+
+  TestConvertDepthToSpace<DT_FLOAT>(this);
+  TestConvertDepthToSpace<DT_HALF>(this);
+  TestConvertDepthToSpace<DT_INT32>(this);
+}
+
+template <DataType dtype>
+void TestConvertSpaceToDepth(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+  const std::vector<CType> common_input = InitTestVector<CType>(16);
+  std::vector<DepthSpaceShuffleTestParams<CType>> params = {
+      {
+          /*input_shape=*/{1, 4, 4},
+          /*input_value=*/common_input,
+          /*block_size=*/2,
+          /*data_format=*/"NCHW",
+          /*expected_output_dims=*/{4, 2, 2},
+          /*expected_output=*/
+          CastTestVector<int, CType>(
+              {0, 2, 8, 10, 1, 3, 9, 11, 4, 6, 12, 14, 5, 7, 13, 15}),
+      },
+      {
+          /*input_shape=*/{4, 4, 1},
+          /*input_value=*/common_input,
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{2, 2, 4},
+          /*expected_output=*/
+          CastTestVector<int, CType>(
+              {0, 1, 4, 5, 2, 3, 6, 7, 8, 9, 12, 13, 10, 11, 14, 15}),
+      },
+      {
+          /*input_shape=*/{1, 4, 4},
+          /*input_value=*/common_input,
+          /*block_size=*/4,
+          /*data_format=*/"NCHW",
+          /*expected_output_dims=*/{16, 1, 1},
+          /*expected_output=*/InitTestVector<CType>(16),
+      },
+      {
+          /*input_shape=*/{4, 4, 2},
+          /*input_value=*/InitTestVector<CType>(32),
+          /*block_size=*/2,
+          /*data_format=*/"NHWC",
+          /*expected_output_dims=*/{2, 2, 8},
+          /*expected_output=*/CastTestVector<int, CType>({0,  1,  2,  3,  8,
+                                                          9,  10, 11, 4,  5,
+                                                          6,  7,  12, 13, 14,
+                                                          15, 16, 17, 18, 19,
+                                                          24, 25, 26, 27, 20,
+                                                          21, 22, 23, 28, 29,
+                                                          30, 31}),
+      },
+  };
+
+  TestConvertDepthSpaceShuffle<ops::SpaceToDepth, dtype, CType>(test, params);
+}
+
+TEST_F(OpConverterTest, ConvertSpaceToDepth) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_shuffle", "SpaceToDepth", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "SpaceToDepth got 0 inputs but expected 1, at my_shuffle");
+  }
+  {
+    // Input is a weight, should fail.
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(DT_FLOAT, 2, "NCHW");
+    AddTestWeights<float>("input", {4, 1, 1}, {1, 2, 3, 4});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"input\" for SpaceToDepth must be a "
+                               "tensor, at my_shuffle");
+  }
+  {
+    // Input rank != 4
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(DT_FLOAT, 2, "NCHW");
+    AddTestTensor("input", {16, 32});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "The input to SpaceToDepth must be rank 4, at my_shuffle");
+  }
+  {
+    // Width not divisble by block_size, should fail.
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(DT_FLOAT, 3, "NCHW");
+    AddTestTensor("input", {16, 9, 32});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Width and height must be divisible by "
+                               "block_size, at my_shuffle");
+  }
+  {
+    // Height not divisble by block_size, should fail.
+    Reset();
+    NodeDef node_def =
+        GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(DT_FLOAT, 3, "NCHW");
+    AddTestTensor("input", {16, 32, 9});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Width and height must be divisible by "
+                               "block_size, at my_shuffle");
+  }
+  {
+    // Unsupported format, should fail.
+    Reset();
+    NodeDef node_def = GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(
+        DT_FLOAT, 2, "NCHW_VECT_C");
+    AddTestTensor("input", {16, 32, 32});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Data format NCHW_VECT_C is not supported, at my_shuffle");
+  }
+
+  TestConvertSpaceToDepth<DT_FLOAT>(this);
+  TestConvertSpaceToDepth<DT_HALF>(this);
+  TestConvertSpaceToDepth<DT_INT32>(this);
 }
 
 }  // namespace convert

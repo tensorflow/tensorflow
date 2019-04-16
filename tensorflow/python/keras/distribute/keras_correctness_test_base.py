@@ -79,11 +79,14 @@ def all_strategies_excluding_tpu_and_input_config_combinations():
 def strategies_for_embedding_models():
   """Returns distribution strategies to test for embedding models.
 
-  Since embedding models take longer to train, we disregard OneDeviceStrategy
-  and DefaultStrategy in order to prevent testing timeouts.
+  Since embedding models take longer to train, we disregard DefaultStrategy
+  in order to prevent testing timeouts.
   """
 
-  return [s for s in all_strategies if s.required_tpu or s.required_gpus]
+  return [
+      s for s in all_strategies if s.required_tpu or s.required_gpus or
+      s is strategy_combinations.one_device_strategy
+  ]
 
 
 def test_combinations_for_embedding_model():
@@ -130,7 +133,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)
@@ -294,7 +298,8 @@ def compare_results(results_with_ds, results_without_ds, distribution,
 
   for key in results_with_ds:
     if (key.startswith('training_history') and
-        isinstance(distribution, tpu_strategy.TPUStrategy) and
+        isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                  tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       # TODO(b/119894254): Enable this test for all cases once the
       # underlying bug is fixed.
@@ -311,7 +316,8 @@ def compare_results(results_with_ds, results_without_ds, distribution,
 
 def should_skip_tpu_with_eager(distribution):
   return (context.executing_eagerly() and
-          isinstance(distribution, tpu_strategy.TPUStrategy))
+          isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                    tpu_strategy.TPUStrategyV1)))
 
 
 class LearningRateBatchScheduler(keras.callbacks.Callback):
@@ -373,13 +379,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def skip_unsupported_test_configuration(self, distribution):
     if should_skip_tpu_with_eager(distribution):
       self.skipTest('TPUStrategy does not support eager mode now.')
-
-    if context.executing_eagerly() and self.use_numpy:
-      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
-
-    if context.executing_eagerly() and self.use_validation_data:
-      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
-                    'data for eager execution.')
     return
 
   def run_correctness_test(self,

@@ -52,10 +52,25 @@ _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
 _TPU_CONN_RETRIES = 120
 
-_GCE_METADATA_ENDPOINT = 'https://metadata.google.internal'
+_GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
 
 DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
+
+
+def is_running_in_gce():
+  """Checks for GCE presence by attempting to query the metadata service."""
+  try:
+    req = Request(
+        '%s/computeMetadata/v1' % _GCE_METADATA_ENDPOINT,
+        headers={'Metadata-Flavor': 'Google'})
+    resp = urllib.request.urlopen(req, timeout=1)
+    info = resp.info()
+    if 'Metadata-Flavor' in info and info['Metadata-Flavor'] == 'Google':
+      return True
+  except URLError:
+    pass
+  return False
 
 
 @tf_export('distribute.cluster_resolver.TPUClusterResolver')
@@ -66,9 +81,14 @@ class TPUClusterResolver(ClusterResolver):
   service. As Cloud TPUs are in alpha, you will need to specify a API definition
   file for this to consume, in addition to a list of Cloud TPUs in your Google
   Cloud Platform project.
+
+  TPUClusterResolver supports the following distinct environments:
+  Google Compute Engine
+  Google Kubernetes Engine
+  Google internal
   """
 
-  def _tpuService(self):
+  def _tpu_service(self):
     """Creates a new Cloud TPU API object.
 
     This works around an issue where the underlying HTTP connection sometimes
@@ -96,13 +116,13 @@ class TPUClusterResolver(ClusterResolver):
           'tpu', 'v1alpha1',
           credentials=credentials)
 
-  def _requestComputeMetadata(self, path):
+  def _request_compute_metadata(self, path):
     req = Request('%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
                   headers={'Metadata-Flavor': 'Google'})
     resp = urlopen(req)
     return compat.as_bytes(resp.read())
 
-  def _isGoogleEnvironment(self):
+  def _is_google_environment(self):
     return (
         self._tpu == compat.as_bytes('') or
         self._tpu == compat.as_bytes('local') or
@@ -110,13 +130,12 @@ class TPUClusterResolver(ClusterResolver):
         self._tpu.startswith(compat.as_bytes('/bns')) or
         self._tpu.startswith(compat.as_bytes('uptc://')))
 
-  def _shouldResolve(self):
+  def _should_resolve(self):
     if isinstance(self._should_resolve_override, bool):
       return self._should_resolve_override
     else:
-      return not (
-          self._tpu.startswith(compat.as_bytes('grpc://')) or
-          self._isGoogleEnvironment())
+      return not (self._tpu.startswith(compat.as_bytes('grpc://')) or
+                  self._is_google_environment())
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -151,37 +170,23 @@ class TPUClusterResolver(ClusterResolver):
     return num_cores_per_host_set.pop()
 
   @staticmethod
-  def _inGke():
+  def _in_gke():
     """When running in GKE, the environment variable will be set."""
     return _GKE_ENV_VARIABLE in os.environ
 
   @staticmethod
-  def _gkeEndpoints():
+  def _gke_endpoints():
     return os.environ[_GKE_ENV_VARIABLE]
 
   @staticmethod
-  def _envVarFallback():
+  def _env_var_fallback():
     if _DEFAULT_ENV_VARIABLE in os.environ:
       return os.environ[_DEFAULT_ENV_VARIABLE]
     return None
 
   @staticmethod
-  def _environmentDiscoveryUrl():
+  def _environment_discovery_url():
     return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
-
-  @staticmethod
-  def _isRunningInGCE():
-    """Checks for GCE presence by attempting to query the metadata service."""
-    try:
-      req = Request('%s/computeMetadata/v1' % _GCE_METADATA_ENDPOINT,
-                    headers={'Metadata-Flavor': 'Google'})
-      resp = urllib.request.urlopen(req, timeout=1)
-      info = resp.info()
-      if 'Metadata-Flavor' in info and info['Metadata-Flavor'] == 'Google':
-        return True
-    except URLError:
-      pass
-    return False
 
   def __init__(self,
                tpu=None,
@@ -201,10 +206,10 @@ class TPUClusterResolver(ClusterResolver):
     Args:
       tpu: A string corresponding to the TPU to use. If the string is the empty
         string, the string 'local', or a string that begins with 'grpc://' or
-        '/bns', then it is assumed to not correspond with a Cloud TPU and will
-        instead be passed as the session master and no ClusterSpec propagation
-        will be done. In the future, this may also support a list of strings
-        when multiple Cloud TPUs are used.
+          '/bns', then it is assumed to not correspond with a Cloud TPU and will
+          instead be passed as the session master and no ClusterSpec propagation
+          will be done. In the future, this may also support a list of strings
+          when multiple Cloud TPUs are used.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.
@@ -223,11 +228,11 @@ class TPUClusterResolver(ClusterResolver):
       service: The GCE API object returned by the googleapiclient.discovery
         function. If you specify a custom service object, then the credentials
         parameter will be ignored.
-      discovery_url: A URL template that points to the location of
-        the discovery service. It should have two parameters {api} and
-        {apiVersion} that when filled in produce an absolute URL to the
-        discovery document for that service. The environment variable
-        'TPU_API_DISCOVERY_URL' will override this.
+      discovery_url: A URL template that points to the location of the discovery
+        service. It should have two parameters {api} and {apiVersion} that when
+        filled in produce an absolute URL to the discovery document for that
+        service. The environment variable 'TPU_API_DISCOVERY_URL' will override
+        this.
 
     Raises:
       ImportError: If the googleapiclient is not installed.
@@ -243,13 +248,13 @@ class TPUClusterResolver(ClusterResolver):
             'Using multiple TPUs in a single session is not yet implemented')
       tpu = tpu[0]
 
-    in_gke = self._inGke()
+    in_gke = self._in_gke()
     # When using GKE with Cloud TPUs, the env variable will be set.
     if tpu is None:
       if in_gke:
-        tpu = self._gkeEndpoints()
+        tpu = self._gke_endpoints()
       else:
-        tpu = self._envVarFallback()
+        tpu = self._env_var_fallback()
 
     if tpu is None:
       raise ValueError('Please provide a TPU Name to connect to.')
@@ -257,7 +262,7 @@ class TPUClusterResolver(ClusterResolver):
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
 
     # If we are running in Cloud and don't specify a TPU name
-    if self._isRunningInGCE() and not self._tpu:
+    if is_running_in_gce() and not self._tpu:
       raise RuntimeError('You need to specify a TPU Name if you are running in '
                          'the Google Cloud environment.')
 
@@ -266,14 +271,14 @@ class TPUClusterResolver(ClusterResolver):
     self.task_type = job_name
     self.task_id = 0
 
-    if self._isGoogleEnvironment():
+    if self._is_google_environment():
       self._environment = 'google'
       self.rpc_layer = None
     else:
       self._environment = ''
       self.rpc_layer = 'grpc'
 
-    # Setting this overrides the return value of self._shouldResolve()
+    # Setting this overrides the return value of self._should_resolve()
     self._should_resolve_override = None
 
     # We strip out the protocol if it is included, and override the
@@ -285,7 +290,7 @@ class TPUClusterResolver(ClusterResolver):
       self._should_resolve_override = False
 
     # Whether we should actually attempt to contact Cloud APIs
-    should_resolve = self._shouldResolve()
+    should_resolve = self._should_resolve()
 
     # We error out if we are in a non-Cloud environment which cannot talk to the
     # Cloud APIs using the standard class and a special object is not passed in.
@@ -307,14 +312,14 @@ class TPUClusterResolver(ClusterResolver):
     # Automatically detect project and zone if unspecified.
     if not project and should_resolve:
       project = compat.as_str(
-          self._requestComputeMetadata('project/project-id'))
+          self._request_compute_metadata('project/project-id'))
     if not zone and should_resolve:
-      zone_path = compat.as_str(self._requestComputeMetadata('instance/zone'))
+      zone_path = compat.as_str(self._request_compute_metadata('instance/zone'))
       zone = zone_path.split('/')[-1]
     self._project = project
     self._zone = zone
 
-    self._discovery_url = self._environmentDiscoveryUrl() or discovery_url
+    self._discovery_url = self._environment_discovery_url() or discovery_url
 
     self._coordinator_name = coordinator_name
     if (coordinator_name and not coordinator_address and
@@ -348,7 +353,7 @@ class TPUClusterResolver(ClusterResolver):
     Raises:
       ValueError: If none of the TPUs specified exists.
     """
-    if self._shouldResolve():
+    if self._should_resolve():
       # We are going to communicate with the Cloud TPU APIs to get a Cluster.
       cluster_spec = self.cluster_spec()
       if task_type is not None and task_id is not None:
@@ -374,8 +379,7 @@ class TPUClusterResolver(ClusterResolver):
     return self.master()
 
   def get_job_name(self):
-    if (self._shouldResolve() or
-        self._isRunningInGCE()):
+    if (self._should_resolve() or is_running_in_gce()):
       return self.task_type
 
   def cluster_spec(self):
@@ -402,13 +406,9 @@ class TPUClusterResolver(ClusterResolver):
     #  3. [Other (legacy non-gRPC).] We should return an empty ClusterSpec.
     ############################################################################
 
-    if self._shouldResolve():
+    if self._should_resolve():
       # Case 1.
-      full_name = 'projects/%s/locations/%s/nodes/%s' % (
-          self._project, self._zone, compat.as_text(self._tpu))
-      service = self._tpuService()
-      request = service.projects().locations().nodes().get(name=full_name)
-      response = request.execute()
+      response = self._fetch_cloud_tpu_metadata()  # pylint: disable=protected-access
 
       if 'state' in response and response['state'] != 'READY':
         raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
@@ -447,6 +447,20 @@ class TPUClusterResolver(ClusterResolver):
       cluster_spec[self._coordinator_name] = [self._coordinator_address]
 
     return server_lib.ClusterSpec(cluster_spec)
+
+  def _fetch_cloud_tpu_metadata(self):
+    """Returns the TPU metadata object from the TPU Get API call."""
+    res = []
+    try:
+      full_name = 'projects/%s/locations/%s/nodes/%s' % (
+          self._project, self._zone, compat.as_text(self._tpu))
+      service = self._tpu_service()
+      request = service.projects().locations().nodes().get(name=full_name)
+      res = request.execute()
+    except:  # pylint: disable=bare-except
+      pass
+    finally:
+      return res  # pylint: disable=lost-exception
 
   def num_accelerators(self,
                        task_type=None,
@@ -497,8 +511,8 @@ class TPUClusterResolver(ClusterResolver):
     return self._environment
 
   def _start_local_server(self):
-    address = compat.as_text(self._requestComputeMetadata(
-        'instance/network-interfaces/0/ip'))
+    address = compat.as_text(
+        self._request_compute_metadata('instance/network-interfaces/0/ip'))
     self._server = server_lib.Server(
         {
             'local': ['0.0.0.0:0']

@@ -88,6 +88,8 @@ class InputLayer(base_layer.Layer):
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
+    elif isinstance(input_shape, int):
+      input_shape = (input_shape,)
 
     if input_tensor is None:
       if input_shape is not None:
@@ -184,26 +186,26 @@ def Input(  # pylint: disable=invalid-name
       **kwargs: deprecated arguments support.
 
   Returns:
-      A tensor.
+    A `tensor`.
 
   Example:
 
-      ```python
-      # this is a logistic regression in Keras
-      x = Input(shape=(32,))
-      y = Dense(16, activation='softmax')(x)
-      model = Model(x, y)
-      ```
+  ```python
+  # this is a logistic regression in Keras
+  x = Input(shape=(32,))
+  y = Dense(16, activation='softmax')(x)
+  model = Model(x, y)
+  ```
 
-      Note that even if eager execution is enabled,
-      `Input` produces a symbolic tensor (i.e. a placeholder).
-      This symbolic tensor can be used with other
-      TensorFlow ops, as such:
+  Note that even if eager execution is enabled,
+  `Input` produces a symbolic tensor (i.e. a placeholder).
+  This symbolic tensor can be used with other
+  TensorFlow ops, as such:
 
-      ```python
-      x = Input(shape=(32,))
-      y = tf.square(x)
-      ```
+  ```python
+  x = Input(shape=(32,))
+  y = tf.square(x)
+  ```
 
   Raises:
     ValueError: in case of invalid arguments.

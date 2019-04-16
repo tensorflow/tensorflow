@@ -2,8 +2,8 @@
 
 This tutorial provides a simple Android mobile application to classify images
 using the Android device camera. In this tutorial, you will download the demo
-application from the Tensorflow repository, build it on your computer, and
-install it on your Android device. You will also learn how to customize the
+application from the Tensorflow examples repository, build it on your computer,
+and install it on your Android device. You will also learn how to customize the
 application to suit your requirements.
 
 ### Prerequisites
@@ -16,17 +16,18 @@ application to suit your requirements.
 
 ### Step 1. Clone the TensorFlow source code
 
-Clone the GitHub repository to your computer to get the demo application.
+Clone the TensorFlow examples GitHub repository to your computer to get the demo
+application.
 
 ```
 
-git clone https://github.com/tensorflow/tensorflow
+git clone https://github.com/tensorflow/examples
 
 ```
 
 Open the TensorFlow source code in Android Studio. To do this, open Android
 Studio and select `Open an existing project` setting the folder to
-`tensorflow/lite/examples/android`
+`examples/lite/examples/image_classification/android`
 
 <img src="images/classifydemo_img1.png" />
 
@@ -79,16 +80,16 @@ Re-installing the app may require you to uninstall the previous installations.
 
 This mobile application gets the camera input using the functions defined in the
 file CameraActivity.java in the folder
-`tensorflow/tensorflow/lite/examples/android/app/src/main/java/org/tensorflow/demo/CameraActivity.java.`
+`examples/lite/examples/image_classification/android/app/src/main/java/org/tensorflow/lite/examples/classification/CameraActivity.java.`
 This file depends on `AndroidManifest.xml` in the folder
-`tensorflow/tensorflow/lite/examples/android/app/src/main` to set the camera
-orientation.
+`examples/lite/examples/image_classification/android/app/src/main` to set the
+camera orientation.
 
 ### Pre-process bitmap image
 
 The mobile application code that pre-processes the images and runs inference is
 in
-`tensorflow/tensorflow/lite/examples/android/app/src/main/java/org/tensorflow/demo/TFLiteImageClassifier.java.`
+`examples/lite/examples/image_classification/android/app/src/main/java/org/tensorflow/lite/examples/classification/tflite/Classifier.java.`
 Here, we take the input camera bitmap image and convert it to a Bytebuffer
 format for efficient processing. We pre-allocate the memory for ByteBuffer
 object based on the image dimensions because Bytebuffer objects can't infer the

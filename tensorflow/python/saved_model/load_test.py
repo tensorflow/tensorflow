@@ -22,6 +22,7 @@ import collections
 import functools
 import os
 import tempfile
+import weakref
 
 from absl.testing import parameterized
 
@@ -33,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
@@ -88,16 +90,30 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(imported.v2.numpy(), 2.0)
     self.assertFalse(imported.v2.trainable)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
     root = tracking.AutoTrackable()
     root.weights = variables.Variable(2.)
+    self.evaluate(root.weights.initializer)
     root.f = def_function.function(
         lambda x: root.weights * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    for _ in range(cycles):
+      imported = self.cycle(root, 1)
+      self.evaluate(imported.weights.initializer)
+    self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
+    self.evaluate(imported.weights.assign(4.0))
+    self.assertEqual(8., self.evaluate(imported.f(constant_op.constant(2.))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_capture_constant(self, cycles):
+    root = tracking.AutoTrackable()
+    captured_constant = constant_op.constant(2.)
+    root.f = def_function.function(
+        lambda x: captured_constant * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     imported = self.cycle(root, cycles)
-    self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
-    imported.weights.assign(4.0)
-    self.assertEqual(8., imported.f(constant_op.constant(2.)).numpy())
+    self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
 
   def test_control_outputs(self, cycles):
     exported = tracking.AutoTrackable()
@@ -125,6 +141,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       f.write(contents)
     return filename
 
+  @test_util.run_in_graph_and_eager_modes
   def test_assets(self, cycles):
     file1 = self._make_asset("contents 1")
     file2 = self._make_asset("contents 2")
@@ -142,9 +159,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     file_io.rename(save_dir, load_dir)
 
     imported = load.load(load_dir)
-    with open(imported.asset1.asset_path.numpy(), "r") as f:
+    with open(self.evaluate(imported.asset1.asset_path), "r") as f:
       self.assertEqual("contents 1", f.read())
-    with open(imported.asset2.asset_path.numpy(), "r") as f:
+    with open(self.evaluate(imported.asset2.asset_path), "r") as f:
       self.assertEqual("contents 2", f.read())
 
   def test_capture_assets(self, cycles):
@@ -1062,6 +1079,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
     self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
 
+  def test_table_collections_untouched_eager(self, cycles):
+
+    def _gather_nonempty_collections():
+      graph = ops.get_default_graph()
+      gathered = {}
+      for collection in graph.collections:
+        collection_contents = graph.get_collection(collection)
+        if collection_contents:
+          gathered[collection] = collection_contents
+      return gathered
+
+    root = self._make_model_with_tables()
+    # Warm up collections to ignore those that don't expand every iteration,
+    # e.g. the __varscope collection.
+    self.cycle(root, 1)
+    original_collections = _gather_nonempty_collections()
+    self.cycle(root, cycles)
+    self.assertEqual(original_collections, _gather_nonempty_collections())
+
   def test_table_in_graph(self, cycles):
     root = self._make_model_with_tables()
 
@@ -1141,9 +1177,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
   def test_partial(self, cycles):
-    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
-    self.skipTest("Partial does not work for serialization.")
-
     def f(x, y):
       return x + y
 
@@ -1158,7 +1191,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(), [1.0])
 
   def test_partial_with_non_tensor_defaults(self, cycles):
-    def f(x, y):
+
+    def f(x, y=3):
       return x + y
 
     func = def_function.function(functools.partial(f, y=5))
@@ -1171,9 +1205,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(1), 6)
 
   def test_partial_with_positional(self, cycles):
-    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
-    self.skipTest("Partial does not work for serialization.")
-
     def f(x, y):
       return x + y
 
@@ -1186,9 +1217,59 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
     self.assertAllEqual(root.f(1), 6)
 
+  def test_partial_with_positional_captured_tensors(self, cycles):
+
+    def f(x, y):
+      return x + y
+
+    tensor = constant_op.constant(5) + constant_op.constant(7)
+    func = def_function.function(functools.partial(f, tensor))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(1), 13)
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(1), 13)
+
+  def test_partial_keyword_hiding_default(self, cycles):
+
+    def f(x=3, training=True, y=7):
+      if training:
+        return x + y
+      else:
+        return x + y + 2
+
+    func = def_function.function(functools.partial(f, y=6))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertEqual(root.f().numpy(), 9)
+    self.assertEqual(root.f(training=False).numpy(), 11)
+
+    root = self.cycle(root, cycles)
+    self.assertEqual(root.f().numpy(), 9)
+    self.assertEqual(root.f(training=False).numpy(), 11)
+
+  def test_partial_with_kwargs(self, cycles):
+
+    def f(a, b, *args, **kwargs):
+      args_sum = sum(args)
+      return a + b + kwargs["some_tensor"] * kwargs["learning_rate"] + args_sum
+
+    constant_tensor = constant_op.constant(10)
+    func = def_function.function(
+        functools.partial(
+            f, 7, 1, 2, learning_rate=3, some_tensor=constant_tensor))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertEqual(root.f(constant_op.constant(4)).numpy(), 44)
+
+    root = self.cycle(root, cycles)
+    self.assertEqual(root.f(constant_op.constant(5)).numpy(), 45)
+
   def test_partial_with_passed_fn_as_default(self, cycles):
-    # TODO(b/124441704): Figure out the story for FunctionSpec vs partial.
-    self.skipTest("Partial does not work for serialization.")
 
     def f(x, y):
       return x(3) + y
@@ -1284,6 +1365,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         [None, 2], signature.inputs[1].shape.as_list())
     self.assertEqual(
         [None, 5], signature.outputs[0].shape.as_list())
+
+  def test_variables_destroyed(self, cycles):
+    v1 = variables.Variable(1.)
+    weak_v1 = weakref.ref(v1)
+    root = util.Checkpoint(v=v1)
+    root = self.cycle(root, cycles)
+    del v1
+    self.assertIsNone(weak_v1())
+    weak_v2 = weakref.ref(root.v)
+    del root
+    self.assertIsNone(weak_v2())
+
+  def test_variable_attributes_preserved(self, cycles):
+    v = variables.Variable(
+        1.,
+        trainable=False,
+        synchronization=variables.VariableSynchronization.NONE,
+        aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.assertEqual(variables.VariableSynchronization.NONE,
+                     v.synchronization)
+    self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                     v.aggregation)
+    root = util.Checkpoint(v=v)
+    root = self.cycle(root, cycles)
+    self.assertEqual(False, root.v.trainable)
+    self.assertEqual(variables.VariableSynchronization.NONE,
+                     root.v.synchronization)
+    self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                     root.v.aggregation)
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),

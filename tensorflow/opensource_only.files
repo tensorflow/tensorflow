@@ -216,6 +216,7 @@ tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/pprof.BUILD
 tensorflow/third_party/BUILD
 tensorflow/third_party/tflite_mobilenet_quant.BUILD
+tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/lmdb.BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/BUILD
@@ -247,6 +248,7 @@ tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/jsoncpp.BUILD
 tensorflow/third_party/tflite_ovic_testdata.BUILD
+tensorflow/third_party/__init__.py
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/third_party/eigen.BUILD

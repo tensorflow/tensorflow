@@ -28,6 +28,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 _TEST_TYPES = (dtypes.int64, dtypes.float32,
@@ -488,6 +490,26 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(TypeError, "batch_dims must be an int"):
       array_ops.gather(params=[[1]], indices=[[1]], batch_dims=one)
 
+  @test_util.run_v1_only("RefVariable is not supported in v2")
+  def testGatherRefVariable(self):
+    with self.cached_session():
+      v = variables.RefVariable(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      self.evaluate(variables.global_variables_initializer())
+      gather = array_ops.gather(v, [0, 2])
+      if not context.executing_eagerly():  # .op doesn't make sense in Eager
+        self.assertEqual("GatherV2", gather.op.name)
+      self.assertAllEqual([[1, 2], [5, 6]], gather)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherResourceVariable(self):
+    with self.cached_session():
+      v = resource_variable_ops.ResourceVariable(
+          constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      self.evaluate(variables.global_variables_initializer())
+      gather = array_ops.gather(v, [0, 2])
+      if not context.executing_eagerly():  # .op doesn't make sense in Eager
+        self.assertEqual("ResourceGather", gather.op.inputs[0].op.type)
+      self.assertAllEqual([[1, 2], [5, 6]], gather)
 
 if __name__ == "__main__":
   test.main()

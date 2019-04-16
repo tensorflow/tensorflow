@@ -5,6 +5,8 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV2\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.AbstractRNNCell\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -48,6 +50,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "name_scope"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "non_trainable_variables"
     mtype: "<type \'property\'>"
   }
@@ -77,6 +83,10 @@ tf_class {
   }
   member {
     name: "state_size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
     mtype: "<type \'property\'>"
   }
   member {
@@ -202,6 +212,10 @@ tf_class {
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "zero_state"

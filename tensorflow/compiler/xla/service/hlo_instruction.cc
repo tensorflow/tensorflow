@@ -599,6 +599,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction->AppendOperand(instruction_map.at(operand_id));
       }
       if (instruction->opcode() != HloOpcode::kFusion) {
+        if (instruction->opcode() == HloOpcode::kCall) {
+          TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+              << "Call should have 1 called computation but has "
+              << proto.called_computation_ids_size();
+        }
         for (const int64 computation_id : proto.called_computation_ids()) {
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));
@@ -2746,7 +2751,12 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  visitor->ReserveVisitStates(root->GetModule()->instruction_count());
+  // Calculating the instruction count within a module can be expensive on large
+  // models so only do it if the visit state is empty. This will help when the
+  // same visitor is reused across many computations of a single module.
+  if (visitor->VisitStateSize() == 0) {
+    visitor->ReserveVisitStates(root->GetModule()->instruction_count());
+  }
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //

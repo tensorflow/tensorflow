@@ -469,11 +469,12 @@ TEST_F(GpuFusibleTest,
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_UnfusedOps) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {
-      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
-      exp = f32[2,2,2]{2,1,0} exponential(p0)
-      reduce = f32[2,2]{1,0} reduce(exp, c0), dimensions={2}, to_apply=scalar_add
-      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce, exp)
+      exp = f32[32,32,32]{2,1,0} exponential(p0)
+      reduce = f32[32,32]{1,0} reduce(exp, c0), dimensions={2},
+        to_apply=scalar_add
+      ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, exp)
     })"))
                     .ValueOrDie();
   const HloInstruction* reduce =
@@ -573,24 +574,28 @@ TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_DifferentReduceDimensions) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduce_1 {
-      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
+      p0.1 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
-      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} p0.1, f32[] c0), dimensions={0}, to_apply=scalar_add
+      ROOT reduce = f32[32,32]{1,0} reduce(f32[32,32,32]{2,1,0} p0.1, f32[] c0),
+        dimensions={0}, to_apply=scalar_add
     }
 
     fused_reduce_2 {
-      p0.2 = f32[2,2,2]{2,1,0} parameter(0)
-      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2, f32[2,2,2]{2,1,0} p0.2)
+      p0.2 = f32[32,32,32]{2,1,0} parameter(0)
+      mul = f32[32,32,32]{2,1,0} multiply(f32[32,32,32]{2,1,0} p0.2,
+        f32[32,32,32]{2,1,0} p0.2)
       c1 = f32[] constant(0)
-      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} mul, f32[] c1), dimensions={2}, to_apply=scalar_add
+      ROOT reduce = f32[32,32]{1,0} reduce(f32[32,32,32]{2,1,0} mul, f32[] c1),
+        dimensions={2}, to_apply=scalar_add
     }
 
     ENTRY reduce {
-      p0 = f32[2,2,2]{2,1,0} parameter(0)
-      p1 = f32[2,2,2]{2,1,0} parameter(1)
-      reduce_1 = f32[2,2]{1,0} fusion(p0), kind=kLoop, calls=fused_reduce_1
-      reduce_2 = f32[2,2]{1,0} fusion(p1), kind=kLoop, calls=fused_reduce_2
-      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce_1, reduce_2)
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
+      p1 = f32[32,32,32]{2,1,0} parameter(1)
+      reduce_1 = f32[32,32]{1,0} fusion(p0), kind=kLoop, calls=fused_reduce_1
+      reduce_2 = f32[32,32]{1,0} fusion(p1), kind=kLoop, calls=fused_reduce_2
+      ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0})
+        tuple(reduce_1, reduce_2)
     })"))
                     .ValueOrDie();
   const HloInstruction* fusion_1 =
@@ -604,28 +609,31 @@ TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_NoReductionToVector) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_element_wise {
-      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
-      p1.1 = f32[2,2,2]{2,1,0} parameter(1)
-      ROOT add = f32[2,2,2]{2,1,0} add(p0.1, p1.1)
+      p0.1 = f32[32,32,32]{2,1,0} parameter(0)
+      p1.1 = f32[32,32,32]{2,1,0} parameter(1)
+      ROOT add = f32[32,32,32]{2,1,0} add(p0.1, p1.1)
     }
 
     fused_reduce {
-      p0.2 = f32[2,2,2]{2,1,0} parameter(0)
-      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2,
-        f32[2,2,2]{2,1,0} p0.2)
-      broadcast = f32[2,2,2,2]{3,2,1,0} broadcast(mul), dimensions={3,2,1}
+      p0.2 = f32[32,32,32]{2,1,0} parameter(0)
+      mul = f32[32,32,32]{2,1,0} multiply(f32[32,32,32]{2,1,0} p0.2,
+        f32[32,32,32]{2,1,0} p0.2)
+      broadcast = f32[32,32,32,32]{3,2,1,0} broadcast(mul), dimensions={3,2,1}
       c1 = f32[] constant(0)
       // Note that reduce is not a reduction-to-vector.
-      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2,2]{3,2,1,0} broadcast,
+      ROOT reduce = f32[32,32]{1,0} reduce(f32[32,32,32,32]{3,2,1,0} broadcast,
         f32[] c1), dimensions={1,3}, to_apply=scalar_add
     }
 
     ENTRY reduce {
-      p0 = f32[2,2,2]{2,1,0} parameter(0)
-      p1 = f32[2,2,2]{2,1,0} parameter(1)
-      element_wise = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_element_wise
-      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(element_wise), kind=kLoop, calls=fused_reduce
-      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
+      p1 = f32[32,32,32]{2,1,0} parameter(1)
+      element_wise = f32[32,32,32]{2,1,0} fusion(p0, p1), kind=kLoop,
+        calls=fused_element_wise
+      fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(element_wise),
+        kind=kLoop, calls=fused_reduce
+      ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0})
+        tuple(fusion, element_wise)
     })"))
                     .ValueOrDie();
   const HloInstruction* fusion_1 =

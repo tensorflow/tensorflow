@@ -13,11 +13,12 @@ exports_files(["LICENSE"])
 py_library(
     name = "distribute",
     srcs = [
+        "__init__.py",
         "distributed_training_utils.py",
-        "training_distributed.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -76,6 +77,20 @@ distribute_py_test(
     ],
     deps = [
         ":distribute_strategy_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "distributed_training_utils_test",
+    srcs = ["distributed_training_utils_test.py"],
+    full_precision = True,
+    main = "distributed_training_utils_test.py",
+    deps = [
+        ":distribute",
+        ":distribute_strategy_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/keras:callbacks",
     ],
 )
 
@@ -283,14 +298,15 @@ cuda_py_test(
     additional_deps = [":multi_worker_test_main_lib"],
     shard_count = 32,
     tags = [
+        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
         # TODO(b/124344198): Add "multi_and_single_gpu",
     ],
 )
 
 py_library(
     name = "multi_worker_test_main_lib",
-    testonly = True,
     srcs = ["multi_worker_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -302,11 +318,32 @@ py_library(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_callback_test",
+    srcs = ["multi_worker_callback_test.py"],
+    additional_deps = [
+        ":distribute",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 12,
+    tags = [
+        "multi_and_single_gpu",
     ],
 )

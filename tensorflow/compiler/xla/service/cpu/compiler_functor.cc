@@ -209,7 +209,6 @@ void CompilerFunctor::AddOptimizationPasses(
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0 && size_level == 0;
   builder.SLPVectorize = opt_level > 1 && size_level == 0;

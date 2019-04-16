@@ -57,7 +57,7 @@ LIBS := \
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
-CCFLAGS := ${CXXFLAGS}
+CFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
 CFLAGS :=
 LDOPTS := -L/usr/local/lib
@@ -122,7 +122,14 @@ $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
 
+BUILD_WITH_MMAP=true
 ifeq ($(BUILD_TYPE),micro)
+	BUILD_WITH_MMAP=false
+endif
+ifeq ($(BUILD_TYPE),windows)
+	BUILD_WITH_MMAP=false
+endif
+ifeq ($(BUILD_WITH_MMAP),true)
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
@@ -162,8 +169,6 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
-	tensorflow/lite/testing/init_tensorflow.cc \
-	$(wildcard $(TESTING_SRCS_DIR)/*.cc) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS)
 
@@ -208,14 +213,14 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
 BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS))))
 
-# For normal manually-created TensorFlow C++ source files.
+# For normal manually-created TensorFlow Lite C++ source files.
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-# For normal manually-created TensorFlow C++ source files.
+# For normal manually-created TensorFlow Lite C source files.
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)

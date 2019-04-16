@@ -37,14 +37,13 @@ limitations under the License.
 #include "google/protobuf/duration.pb.h"
 #include "absl/time/time.h"
 #include "cuda/include/cudnn.h"
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/activation_mode.h"
+#include "tensorflow/stream_executor/dnn.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -309,31 +308,29 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
-void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
-                                 const Tensor& filter, const Tensor& output,
-                                 const Tensor& bias, const Tensor* side_input,
-                                 se::StreamExecutor* stream_exec,
-                                 absl::Span<const AutotuneResult> results) {
+void LogFusedConvAutotuneResults(
+    se::dnn::ConvolutionKind kind, se::dnn::DataType element_type,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
+    double side_value_scale, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
   AutotuningLog log;
-  ConvNodeDef instr;
-  *instr.mutable_conv() = node;
-  input.shape().AsProto(instr.mutable_input()->mutable_tensor_shape());
-  instr.mutable_input()->set_dtype(input.dtype());
-  filter.shape().AsProto(instr.mutable_filter()->mutable_tensor_shape());
-  instr.mutable_filter()->set_dtype(filter.dtype());
-  output.shape().AsProto(instr.mutable_output()->mutable_tensor_shape());
-  instr.mutable_output()->set_dtype(output.dtype());
-  bias.shape().AsProto(instr.mutable_bias()->mutable_tensor_shape());
-  instr.mutable_bias()->set_dtype(bias.dtype());
-  if (side_input) {
-    side_input->shape().AsProto(
-        instr.mutable_side_input()->mutable_tensor_shape());
-    instr.mutable_side_input()->set_dtype(side_input->dtype());
+  {
+    ConvolutionProto instr;
+    instr.set_kind(kind);
+    *instr.mutable_input() = input_desc.ToProto(element_type);
+    *instr.mutable_filter() = filter_desc.ToProto(element_type);
+    *instr.mutable_output() = output_desc.ToProto(element_type);
+    *instr.mutable_conv_desc() = conv_desc.ToProto();
+    instr.set_conv_scale(conv_scale);
+    instr.set_side_value_scale(side_value_scale);
+    instr.set_activation(activation_mode);
+    log.mutable_instr()->PackFrom(std::move(instr));
   }
-  log.mutable_instr()->PackFrom(std::move(instr));
-  *log.mutable_cudnn_version() = internal::GetCudnnVersion(stream_exec);
-  *log.mutable_compute_capability() =
-      internal::GetComputeCapability(stream_exec);
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
+  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
   for (const auto& result : results) {
     *log.add_results() = result;
@@ -729,9 +726,11 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    internal::LogFusedConvAutotuneResults(ctx->op_kernel().def(), *conv_input,
-                                          *filter, *output, bias, side_input,
-                                          stream->parent(), results);
+    internal::LogFusedConvAutotuneResults(
+        se::dnn::ConvolutionKind::FORWARD,
+        se::dnn::ToDataType<typename RawType<T>::type>::value, conv_input_desc,
+        filter_desc, output_desc, conv_desc, conv_input_scale, side_input_scale,
+        dnn_activation_mode, stream->parent(), results);
     OP_REQUIRES_OK(
         ctx, internal::BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBiasActivation::GetInstance()->Insert(fused_conv_parameters,

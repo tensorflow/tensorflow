@@ -65,6 +65,51 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kShuffledInputWorkspaceTensor = 1;
 
+inline TfLiteStatus CheckTypes(TfLiteContext* context,
+                               const TfLiteTensor* input,
+                               const TfLiteTensor* filter,
+                               const TfLiteTensor* bias, TfLiteTensor* output,
+                               TfLiteFullyConnectedParams* params) {
+  const bool is_quantized =
+      ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8));
+  const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
+  const bool is_shuffled =
+      is_quantized && (params->weights_format ==
+                       kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8);
+
+  // optional bias tensor.
+  const bool is_optional_bias_float = !bias || (bias->type == kTfLiteFloat32);
+  const bool is_optional_bias_int = !bias || (bias->type == kTfLiteInt32);
+
+  if (is_quantized) {
+    if (is_shuffled) {
+      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteUInt8);
+      TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteUInt8);
+      TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt16);
+      TF_LITE_ENSURE_EQ(context, is_optional_bias_int, true);
+    } else if (is_hybrid) {
+      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
+    } else {
+      TF_LITE_ENSURE(context,
+                     input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
+      TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
+                                  output->type == kTfLiteInt8 ||
+                                  output->type == kTfLiteInt16);
+      TF_LITE_ENSURE_EQ(context, is_optional_bias_int, true);
+    }
+  } else {
+    // Only float32 is supported currently
+    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
+  }
+
+  return kTfLiteOk;
+}
+
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
@@ -98,6 +143,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  // Check proper datatype match among all Input Tensors
+  TF_LITE_ENSURE_STATUS(
+      CheckTypes(context, input, filter, bias, output, params));
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -205,15 +254,6 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* input, const TfLiteTensor* filter,
                         const TfLiteTensor* bias, TfLiteTensor* input_quantized,
                         TfLiteTensor* scaling_factors, TfLiteTensor* output) {
-  // Check the types for this hybrid Op.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-  TF_LITE_ENSURE(context,
-                 filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8);
-  if (bias) {
-    TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
-  }
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-
   int total_input_size = 1;
   for (int i = 0; i < input->dims->size; i++) {
     total_input_size *= input->dims->data[i];
@@ -382,9 +422,7 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
 
   // TODO(b/110697972) decide more consistently if / how / where we want
   // to perform this kind of runtime data type checks.
-  if (input->type != kTfLiteUInt8 || filter->type != kTfLiteUInt8 ||
-      bias->type != kTfLiteInt32 || output->type != kTfLiteInt16 ||
-      shuffled_input_workspace->type != kTfLiteUInt8) {
+  if (shuffled_input_workspace->type != kTfLiteUInt8) {
     context->ReportError(context, "Unexpected data type");
     return kTfLiteError;
   }

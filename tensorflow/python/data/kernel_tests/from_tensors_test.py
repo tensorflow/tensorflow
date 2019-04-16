@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
@@ -50,6 +51,17 @@ class FromTensorsTest(test_base.DatasetTestBase):
         nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)))
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  def testFromTensorsTensorArray(self):
+    """Test a dataset that represents a TensorArray."""
+    components = (
+        tensor_array_ops.TensorArray(dtypes.float32, element_shape=(), size=2)
+        .unstack([1.0, 2.0]))
+
+    dataset = dataset_ops.Dataset.from_tensors(components)
+
+    self.assertDatasetProduces(
+        dataset, expected_output=[[1.0, 2.0]], requires_initialization=True)
 
   def testFromTensorsSparse(self):
     """Test a dataset that represents a single tuple of tensors."""

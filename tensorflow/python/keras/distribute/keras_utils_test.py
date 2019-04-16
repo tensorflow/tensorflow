@@ -34,7 +34,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rms_prop_keras
-from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 
@@ -93,7 +92,8 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
         validation_steps=validation_steps,
         callbacks=[counter])
 
-    if isinstance(distribution, tpu_strategy.TPUStrategy):
+    if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                 tpu_strategy.TPUStrategyV1)):
       # TPU Strategy can have multi step training, from extended.steps_per_run
       # if steps_per_run = 1, then num_batch_call_per_epoch = steps_per_epoch
       steps_per_run = distribution.extended.steps_per_run
@@ -318,26 +318,6 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[strategy_combinations.one_device_strategy],
-          mode=['graph']))
-  def test_distribution_strategy_with_add_metric(self, distribution):
-    with distribution.scope():
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
-
-      err_msg = (
-          'We currently do not support compiling the model with distribution '
-          r'strategy if `model.add_metric\(tensor\)` has been called.')
-
-      # Test with add_metric.
-      model = keras.models.Model(x, y)
-      model.add_metric(
-          math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
-      with self.assertRaisesRegex(ValueError, err_msg):
-        model.compile('sgd',)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.one_device_strategy],
           mode=['eager']))
   def test_distribution_strategy_with_run_eagerly(self, distribution):
     with distribution.scope():
@@ -502,7 +482,8 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       keras_test_lib.all_strategy_combinations_minus_default())
   def test_save_load_trackable(self, distribution):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
-    if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+    if (isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                  tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       self.skipTest('MultiStep TPU Strategy deadlocks with optimizer restore.')
     with self.cached_session():

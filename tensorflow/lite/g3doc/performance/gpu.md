@@ -35,16 +35,16 @@ Note: This requires OpenGL ES 3.1 or higher.
 git clone https://github.com/tensorflow/tensorflow
 ```
 
-#### Step 2. Edit `app/build.gradle` to use the experimental GPU AAR
+#### Step 2. Edit `app/build.gradle` to use the nightly GPU AAR
 
-Replace the existing `tensorflow-lite` package in the existing `dependencies`
-block.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
 ```
 dependencies {
     ...
-    // implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-gpu-experimental'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-gpu-nightly'
 }
 ```
 

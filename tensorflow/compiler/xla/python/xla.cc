@@ -75,7 +75,9 @@ PYBIND11_MODULE(xla_extension, m) {
             if (layout) {
               return ShapeUtil::MakeShapeWithLayout(type, dims, *layout);
             } else {
-              return ShapeUtil::MakeShape(type, dims);
+              Shape shape = ShapeUtil::MakeShape(type, dims);
+              shape.clear_layout();
+              return shape;
             }
           },
           "Makes an array shape.", py::arg("type"), py::arg("dims"),
@@ -87,7 +89,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("tuple_shapes",
            static_cast<const std::vector<Shape>& (Shape::*)() const>(
                &Shape::tuple_shapes))
-      .def("__repr__", [](const Shape& shape) { return shape.ToString(); });
+      .def("__repr__", [](const Shape& shape) {
+        return shape.ToString(/*print_layouts=*/true);
+      });
 
   py::class_<ProgramShape>(m, "ProgramShape")
       .def(py::init(
@@ -139,39 +143,28 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
-  py::class_<LocalClient>(m, "LocalClient")
-      .def_static("Get", &GetLocalClient, py::return_value_policy::reference)
-      .def("DeviceCount", &LocalClient::device_count)
-      .def("TransferToInfeed", &LocalClient::TransferToInfeedLocal,
-           py::call_guard<py::gil_scoped_release>())
-      .def("TransferFromOutfeed",
-           [](LocalClient* client, const Shape& shape,
-              int device_ordinal) -> StatusOr<py::object> {
-             Literal literal;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(literal, client->TransferFromOutfeedLocal(
-                                                shape, device_ordinal));
-             }
-             return LiteralToPython(
-                 absl::make_unique<Literal>(std::move(literal)));
-           });
+  py::class_<PyLocalClient>(m, "LocalClient")
+      .def_static("Get", &PyLocalClient::Get)
+      .def("DeviceCount", &PyLocalClient::device_count)
+      .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
+      .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
 
   py::class_<LocalShapedBuffer>(m, "LocalShapedBuffer")
       .def_static("FromPython", &LocalShapedBuffer::FromPython)
+      .def_static("FromPythonValues", &LocalShapedBuffer::FromPythonValues)
       .def("Delete", &LocalShapedBuffer::Delete)
       .def("DestructureTuple", &LocalShapedBuffer::DestructureTuple)
       .def("ToPython", &LocalShapedBuffer::ToPython)
       .def("shape", &LocalShapedBuffer::shape);
 
-  py::class_<LocalExecutableWrapper>(m, "LocalExecutable")
-      .def_static("Compile", &LocalExecutableWrapper::Compile,
+  py::class_<PyLocalExecutable>(m, "LocalExecutable")
+      .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
-      .def("DeviceOrdinals", &LocalExecutableWrapper::DeviceOrdinals)
-      .def("Delete", &LocalExecutableWrapper::Delete)
-      .def("Execute", &LocalExecutableWrapper::Execute,
+      .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
+      .def("Delete", &PyLocalExecutable::Delete)
+      .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>())
-      .def("ExecutePerReplica", &LocalExecutableWrapper::ExecutePerReplica,
+      .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>());
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")

@@ -25,6 +25,7 @@ import csv
 import io
 import json
 import os
+import tempfile
 import time
 
 import numpy as np
@@ -161,7 +162,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.EagerIterator)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorV2)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
@@ -933,20 +934,27 @@ class ModelCheckpoint(Callback):
     """
     logs = logs or {}
 
-    # TODO(rchao): Replace dc_context reference with
-    # distributed_training_utils.should_current_worker_checkpoint() once
-    # distributed_training_utils.py no longer depends on callbacks.py.
-    if K.in_multi_worker_mode(
-    ) and not dc_context.get_current_worker_context().should_checkpoint:
-      # For multi-worker training, it should not checkpoint a model in certain
-      # worker setting (e.g. non-chief worker in MultiWorkerMirroredStrategy).
-      return
-
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
 
-      filepath = self.filepath.format(epoch=epoch + 1, **logs)
+      # TODO(rchao): Replace dc_context reference with
+      # distributed_training_utils.should_current_worker_checkpoint() once
+      # distributed_training_utils.py no longer depends on callbacks.py.
+      if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
+      ).should_checkpoint:
+        filepath = self.filepath.format(epoch=epoch + 1, **logs)
+      else:
+        # If this is multi-worker training, and this worker should not
+        # save checkpoint, we replace the filepath with a dummy filepath so
+        # it writes to a file that will be removed at the end of _save_model()
+        # call. This is because the SyncOnReadVariable needs to be synced across
+        # all the workers in order to be read, and all workers need to initiate
+        # that.
+        file_handle, temp_file_name = tempfile.mkstemp()
+        extension = os.path.splitext(self.filepath)[1]
+        filepath = temp_file_name + '.' + extension
+
       if self.save_best_only:
         current = logs.get(self.monitor)
         if current is None:
@@ -974,6 +982,13 @@ class ModelCheckpoint(Callback):
           self.model.save_weights(filepath, overwrite=True)
         else:
           self.model.save(filepath, overwrite=True)
+
+      # Remove the file in multi-worker training where this worker should
+      # not checkpoint.
+      if K.in_multi_worker_mode(
+      ) and not dc_context.get_current_worker_context().should_checkpoint:
+        os.close(file_handle)
+        os.remove(filepath)
 
 
 @keras_export('keras.callbacks.EarlyStopping')
@@ -1304,7 +1319,7 @@ class TensorBoard(Callback):
         with self._get_writer(self._train_run_name).as_default():
           with summary_ops_v2.always_record_summaries():
             if not model.run_eagerly:
-              summary_ops_v2.graph(K.get_graph())
+              summary_ops_v2.graph(K.get_graph(), step=0)
 
             summary_writable = (
                 self.model._is_graph_network or  # pylint: disable=protected-access

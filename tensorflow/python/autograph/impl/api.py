@@ -60,7 +60,7 @@ def is_autograph_strict_conversion_mode():
 # to write converter.
 def convert(
     recursive=False,
-    optional_features=converter.Feature.ALL):
+    optional_features=None):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -172,7 +172,10 @@ def _call_unconverted(f, args, kwargs):
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
-  return f(*args, **kwargs)
+  if kwargs is not None:
+    return f(*args, **kwargs)
+  else:
+    return f(*args)
 
 
 def _is_known_loaded_type(f, module_name, entity_name):
@@ -205,15 +208,12 @@ def _is_known_loaded_type(f, module_name, entity_name):
 
 def converted_call(f, owner, options, args, kwargs):
   """Compiles a function call inline. For internal use only."""
-  logging.log(1,
-              'Converted call: %s; owner: %s\n    args: %s\n    kwargs: %s\n',
-              f, owner, args, kwargs)
-
   if owner is not None:
     if not isinstance(f, str):
       raise ValueError(
           'When owner is specified, the function name must be specified as'
           ' a string: {}'.format(f))
+    owner_attr = f
 
     # Special case when the owner is a 'super' object. In that case lookups of
     # dynamic attributes won't work. See
@@ -223,12 +223,21 @@ def converted_call(f, owner, options, args, kwargs):
 
     f = getattr(owner, f)
 
-  if inspect_utils.isbuiltin(f):
-    return py_builtins.overload_of(f)(*args, **kwargs)
+  if logging.has_verbosity(1):
+    if owner is not None:
+      composite_desc = '("{}" attr of {})'.format(owner_attr, owner)
+    else:
+      composite_desc = ''
 
-  if _is_known_loaded_type(f, 'weakref', 'ref'):
-    logging.log(2, 'Permanently whitelisted: %s: weakref', f)
-    return _call_unconverted(f, args, kwargs)
+    logging.log(1,
+                'Converted call: %s %s\n    args: %s\n    kwargs: %s\n',
+                f, composite_desc, args, kwargs)
+
+  if inspect_utils.isbuiltin(f):
+    if kwargs:
+      return py_builtins.overload_of(f)(*args, **kwargs)
+    else:
+      return py_builtins.overload_of(f)(*args)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
@@ -240,6 +249,10 @@ def converted_call(f, owner, options, args, kwargs):
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return _call_unconverted(f, args, kwargs)
 
+  if _is_known_loaded_type(f, 'functools', '_lru_cache_wrapper'):
+    logging.log(2, 'Permanently whitelisted: %s: lru_cache', f)
+    return _call_unconverted(f, args, kwargs)
+
   # Constructors are permanently whitelisted.
   # TODO(mdan): Toggle as experimental feature instead.
   # TODO(b/124016764): Remove this limitation.
@@ -249,9 +262,7 @@ def converted_call(f, owner, options, args, kwargs):
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  # Note: TF linter disallows importing inspect.
-  if any(f in m.__dict__.values()
-         for m in (collections, pdb, copy, tf_inspect._inspect)):  # pylint:disable=protected-access
+  if any(f in m.__dict__.values() for m in (collections, pdb, copy, inspect)):
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return _call_unconverted(f, args, kwargs)
 
@@ -275,7 +286,8 @@ def converted_call(f, owner, options, args, kwargs):
       new_kwargs = {}
       if f.keywords is not None:
         new_kwargs.update(f.keywords)
-      new_kwargs.update(kwargs)
+      if kwargs is not None:
+        new_kwargs.update(kwargs)
       kwargs = new_kwargs
       f = f.func
 
@@ -307,6 +319,12 @@ def converted_call(f, owner, options, args, kwargs):
       target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
+    if (not tf_inspect.isclass(target_entity) and
+        not hasattr(target_entity, '__code__')):
+      logging.log(
+          2, 'Permanently whitelisted: %s: native binding', target_entity)
+      return _call_unconverted(f, args, kwargs)
+
     converted_f = to_graph(
         target_entity,
         recursive=options.recursive,
@@ -317,7 +335,11 @@ def converted_call(f, owner, options, args, kwargs):
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
-      callargs = tf_inspect.getcallargs(converted_f, *effective_args, **kwargs)
+      if kwargs is not None:
+        callargs = tf_inspect.getcallargs(
+            converted_f, *effective_args, **kwargs)
+      else:
+        callargs = tf_inspect.getcallargs(converted_f, *effective_args)
       formatted_callargs = '\n'.join(
           '    {}: {}'.format(k, v) for k, v in callargs.items())
       logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
@@ -342,7 +364,10 @@ def converted_call(f, owner, options, args, kwargs):
 
     return _call_unconverted(f, args, kwargs)
 
-  result = converted_f(*effective_args, **kwargs)
+  if kwargs is not None:
+    result = converted_f(*effective_args, **kwargs)
+  else:
+    result = converted_f(*effective_args)
 
   return result
 
@@ -352,7 +377,7 @@ def to_graph(entity,
              recursive=True,
              arg_values=None,
              arg_types=None,
-             experimental_optional_features=converter.Feature.ALL):
+             experimental_optional_features=None):
   """Converts a Python entity into a TensorFlow graph.
 
   Also see: `tf.autograph.to_code`, `tf.function`.
@@ -436,7 +461,7 @@ def to_code(entity,
             arg_values=None,
             arg_types=None,
             indentation='  ',
-            experimental_optional_features=converter.Feature.ALL):
+            experimental_optional_features=None):
   """Similar to `to_graph`, but returns Python source code as a string.
 
   Also see: `tf.autograph.to_graph`.

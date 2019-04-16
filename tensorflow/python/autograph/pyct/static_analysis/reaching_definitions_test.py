@@ -91,6 +91,63 @@ class DefinitionInfoTest(test.TestCase):
 
     self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
 
+  def test_try_in_conditional(self):
+
+    def test_fn(a, b):  # pylint:disable=unused-argument
+      a = []
+      if b:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          pass
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+
+  def test_conditional_in_try_in_conditional(self):
+
+    def test_fn(a, b):
+      a = []
+      if b:
+        try:
+          if b:
+            a = []
+        except TestException:  # pylint:disable=undefined-variable,unused-variable
+          pass
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+    # Note: `TestException` and `e` are not tracked.
+    self.assertHasDefinedIn(fn_body[1].body[0].body[0], ('a', 'b'))
+
+  def test_conditional_in_except_in_conditional(self):
+
+    def test_fn(a, b):
+      a = []
+      if b:
+        try:
+          pass
+        except TestException as e:  # pylint:disable=undefined-variable,unused-variable
+          if b:
+            a = []
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+    # Note: `TestException` and `e` are not tracked.
+    self.assertHasDefinedIn(fn_body[1].body[0].handlers[0].body[0], ('a', 'b'))
+
   def test_while(self):
 
     def test_fn(a):

@@ -39,6 +39,8 @@ const char* kConstInputAddModel = "add_with_const_input.bin";
 
 const char* kFloatConcatMax5Max10Max10 = "concat.bin";
 
+const char* kModelWithCustomOp = "custom_op.bin";
+
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];
   vsnprintf(buf, sizeof(buf), format, args);
