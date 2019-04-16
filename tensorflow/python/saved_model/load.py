@@ -262,13 +262,18 @@ class _Loader(object):
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
+    name = proto.name if proto.name else None
+    if name is not None:
+      dbg_name = name
+    else:
+      dbg_name = "<variable loaded from saved model>"
     synchronization, aggregation, trainable = (
         variables.validate_synchronization_aggregation_trainable(
             proto.synchronization, proto.aggregation, proto.trainable,
-            # TODO(allenl): We should save variable names.
-            name="<variable recreated from SavedModel>"))
+            name=dbg_name))
     return variables.Variable(
         dummy_value,
+        name=name,
         trainable=trainable,
         synchronization=synchronization,
         aggregation=aggregation), setattr
