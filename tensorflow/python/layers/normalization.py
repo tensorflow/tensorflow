@@ -36,6 +36,18 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
 
   Sergey Ioffe, Christian Szegedy
 
+  Keras APIs handle BatchNormalization updates to the moving_mean and
+  moving_variance as part of their `fit()` and `evaluate()` loops. However, if a
+  custom training loop is used with an instance of `Model`, these updates need
+  to be explicitly included.  Here's a simple example of how it can be done:
+
+  ```python
+    #`model` is an instance of `Model` with `tf.keras.layers.BatchNormalization`
+    update_ops = model.get_updates_for(None) + model.get_updates_for(features)
+    train_op = optimizer.minimize(loss)
+    train_op = tf.group([train_op, update_ops])
+  ```
+
   Arguments:
     axis: An `int` or list of `int`, the axis or axes that should be
         normalized, typically the features axis/axes. For instance, after a
@@ -156,7 +168,10 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None, instructions='Use keras.layers.BatchNormalization instead.')
+    date=None, instructions='Use keras.layers.BatchNormalization instead.  In '
+    'particular, `tf.control_dependencies(tf.GraphKeys.UPDATE_OPS)` should not '
+    'be used (consult the `tf.keras.layers.batch_normalization`).'
+    'documentation.')
 @tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,
