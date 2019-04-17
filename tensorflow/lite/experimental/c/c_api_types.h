@@ -1,1 +1,1 @@
-#include "../../c/c_api_internal.h"
+../../c/c_api_internal.h
