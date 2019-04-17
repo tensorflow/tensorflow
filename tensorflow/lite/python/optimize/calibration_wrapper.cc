@@ -154,10 +154,10 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Got tensor of type %d"
-                 " but expected type %d for input %d, name: %s ",
-                 python_utils::TfLiteTypeFromPyArray(array), tensor->type,
-                 index, tensor->name);
+                 " Got tensor of type %s"
+                 " but expected type %s for input %d, name: %s ",
+                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(tensor->type), index, tensor->name);
     return nullptr;
   }
 
