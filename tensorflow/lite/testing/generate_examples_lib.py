@@ -251,19 +251,8 @@ def write_test_cases(fp, model_name, examples):
       fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
-
-      # In these tests, TFLite produces output shapes which are different from
-      # TensorFlow. It's complicated to construct a regular expression to
-      # blacklist exactly broken cases. Therefore a quick hack is put here to
-      # disable output shape check for all of these tests.
-      # TODO(b/130328328): Investigate Pack tests.
-      # TODO(b/130328180): Investigate LSTM and RNN tests.
-      # When resolving these todo items, please remove the hack in the
-      # following line.
-      if not re.match(r".*/(unidirectional_sequence_(lstm|rnn))_.*",
-                      model_name):
-        fp.write("  output_shape: \"" +
-                 ",".join([str(dim) for dim in t.shape]) + "\"\n")
+      fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
+               "\"\n")
     fp.write("}\n")
 
 
@@ -636,7 +625,7 @@ def make_pool_tests(pool_op_in):
   """Make a set of tests to do average pooling.
 
   Args:
-    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool`.
+    pool_op_in: TensorFlow pooling operation to test  i.e. `tf.nn.avg_pool2d`.
 
   Returns:
     A function representing the true generator (after curried pool_op_in).
@@ -3870,7 +3859,7 @@ def make_conv2d_transpose_tests(options):
 
 
 # Since compute output_shape is fairly complicated for
-# tf.nn.conv2d_backprop_input input_sizes argument, so we here first perform a
+# tf.nn.conv2d_transpose input_sizes argument, so we here first perform a
 # "conv2d" operation to get the output, then we use the output to feed in
 # tf.nn.conv2d_backprop_input.
 # This test will depend on the "conv2d" operation's correctness.
@@ -4578,7 +4567,7 @@ def make_reverse_sequence_tests(options):
 
 @register_make_test_function()
 def make_matrix_diag_tests(options):
-  """Make a set of tests for tf.matrix_diag op."""
+  """Make a set of tests for tf.linalg.diag op."""
 
   test_parameters = [
       {
@@ -4606,7 +4595,7 @@ def make_matrix_diag_tests(options):
 
 @register_make_test_function()
 def make_matrix_set_diag_tests(options):
-  """Make a set of tests for tf.matrix_set_diag op."""
+  """Make a set of tests for tf.linalg.set_diag op."""
 
   test_parameters = [
       {

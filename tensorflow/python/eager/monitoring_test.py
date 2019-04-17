@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import test
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 
 
@@ -28,8 +29,28 @@ class MonitoringTest(test_util.TensorFlowTestCase):
   def test_monitoring(self):
     # These methods should not throw any exception.
     monitoring.gauge('test/gauge', 'label', 1)
-    monitoring.counter('test/counter', 'label', 1)
     monitoring.sampler('test/sampler', 'label', 1.0)
+
+  def test_counter(self):
+    counter = monitoring.Counter('test/counter', 'test counter')
+    counter.get_cell().increase_by(1)
+    self.assertEqual(counter.get_cell().value(), 1)
+    counter.get_cell().increase_by(5)
+    self.assertEqual(counter.get_cell().value(), 6)
+
+  def test_multiple_counters(self):
+    counter1 = monitoring.Counter('test/counter1', 'test counter', 'label1')
+    counter1.get_cell('foo').increase_by(1)
+    self.assertEqual(counter1.get_cell('foo').value(), 1)
+    counter2 = monitoring.Counter('test/counter2', 'test counter', 'label1',
+                                  'label2')
+    counter2.get_cell('foo', 'bar').increase_by(5)
+    self.assertEqual(counter2.get_cell('foo', 'bar').value(), 5)
+
+  def test_same_counter(self):
+    counter1 = monitoring.Counter('test/same_counter', 'test counter')  # pylint: disable=unused-variable
+    with self.assertRaises(errors.AlreadyExistsError):
+      counter2 = monitoring.Counter('test/same_counter', 'test counter')  # pylint: disable=unused-variable
 
 
 if __name__ == '__main__':

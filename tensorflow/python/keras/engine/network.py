@@ -457,36 +457,18 @@ class Network(base_layer.Layer):
           state_updates += layer.updates
     return state_updates
 
-  def get_weights(self):
-    """Retrieves the weights of the model.
+  @property
+  def weights(self):
+    """Returns the list of all layer variables/weights.
 
     Returns:
-        A flat list of Numpy arrays.
+      A list of variables.
     """
     weights = []
-    for layer in self.layers:
+    for layer in self._layers:
       weights += layer.weights
     weights += (self._trainable_weights + self._non_trainable_weights)
-    return backend.batch_get_value(weights)
-
-  def set_weights(self, weights):
-    """Sets the weights of the model.
-
-    Arguments:
-        weights: A list of Numpy arrays with shapes and types matching
-            the output of `model.get_weights()`.
-    """
-    tuples = []
-    for layer in self.layers:
-      num_param = len(layer.weights)
-      layer_weights = weights[:num_param]
-      for sw, w in zip(layer.weights, layer_weights):
-        tuples.append((sw, w))
-      weights = weights[num_param:]
-    for sw, w in zip(self._trainable_weights + self._non_trainable_weights,
-                     weights):
-      tuples.append((sw, w))
-    backend.batch_set_value(tuples)
+    return weights
 
   def compute_mask(self, inputs, mask):
     if not self._is_graph_network:

@@ -2020,7 +2020,7 @@ inline void DepthwiseConvPerChannel(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    gemmlowp::GemmContext* gemm_context = nullptr) {
+    gemmlowp::GemmContext* gemmlowp_context = nullptr) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -2042,7 +2042,8 @@ inline void DepthwiseConvPerChannel(
     thread_count = thread_count_row;
   }
 
-  const int max_threads = gemm_context ? gemm_context->max_num_threads() : 1;
+  const int max_threads =
+      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
@@ -2062,7 +2063,7 @@ inline void DepthwiseConvPerChannel(
           output_data, thread_start, thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemm_context->workers_pool()->Execute(tasks);
+    gemmlowp_context->workers_pool()->Execute(tasks);
   }
 }
 

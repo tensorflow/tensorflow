@@ -351,6 +351,28 @@ cc_library(
 )
 
 cc_library(
+    name = "cusolver_stub",
+    srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
+    textual_hdrs = ["cusolver_dense_10_0.inc"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
+cc_library(
+    name = "cusparse_stub",
+    srcs = if_cuda_is_configured(["cusparse_stub.cc"]),
+    textual_hdrs = glob(["cusparse_*.inc"]),
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
+cc_library(
     name = "cuda_kernel",
     srcs = if_cuda_is_configured(["cuda_kernel.cc"]),
     hdrs = if_cuda_is_configured(["cuda_kernel.h"]),

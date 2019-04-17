@@ -552,10 +552,7 @@ void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
 }
 
 void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
-  // CUDA "sub-buffers" are just pointer + offset, so no dealloc is necessary.
-  if (!mem->is_sub_buffer()) {
-    GpuDriver::DeviceDeallocate(context_, mem->opaque());
-  }
+  GpuDriver::DeviceDeallocate(context_, mem->opaque());
 }
 
 bool GpuExecutor::HostMemoryRegister(void* location, uint64 size) {

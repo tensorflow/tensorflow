@@ -133,6 +133,20 @@ py_library(
 )
 
 py_library(
+    name = "tpu_noestimator",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column",
+        ":preempted_hook_py",
+        ":tpu_embedding",
+        ":tpu_lib",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",

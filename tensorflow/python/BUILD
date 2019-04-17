@@ -198,6 +198,7 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:component_api_helper",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:tpu_noestimator",
         "//third_party/py/numpy",
     ],
 )
@@ -6340,8 +6341,7 @@ tf_py_test(
     ],
 )
 
-# (TODO: b/130419137)
-tf_py_test(
+cuda_py_test(
     name = "auto_mixed_precision_test",
     size = "small",
     srcs = [

@@ -222,6 +222,7 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
+    "protobuf/trace_events.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -1691,6 +1692,7 @@ filegroup(
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/profiler:mobile_srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -3244,7 +3246,6 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":core_cpu_internal",
-        ":device_tracer",
         ":framework",
         ":framework_internal",
         ":graph",
@@ -3254,6 +3255,8 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/profiler/lib:profiler_graph_lib",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
     alwayslink = 1,
 )
@@ -3280,9 +3283,6 @@ cc_library(
 tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
-    hdrs = [
-        "platform/device_tracer.h",
-    ],
     copts = tf_copts(),
     cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = [
@@ -3292,7 +3292,10 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        # "//tensorflow/stream_executor/lib",
     ] + tf_additional_device_tracer_deps(),
+    alwayslink = True,
 )
 
 tf_proto_library_cc(

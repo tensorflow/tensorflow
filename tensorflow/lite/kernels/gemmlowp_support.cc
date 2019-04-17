@@ -12,30 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/kernels/gemm_support.h"
+#include "tensorflow/lite/kernels/gemmlowp_support.h"
 
 #include <memory>
 
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
-namespace gemm_support {
+namespace gemmlowp_support {
 namespace {
 
-struct RefCountedGemmContext : public TfLiteExternalContext {
-  std::unique_ptr<gemmlowp::GemmContext> gemm_context;
+struct RefCountedGemmlowpContext : public TfLiteExternalContext {
+  std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context;
   int num_references = 0;
 };
 
-RefCountedGemmContext* GetGemmLowpContext(TfLiteContext* context) {
-  return reinterpret_cast<RefCountedGemmContext*>(
+RefCountedGemmlowpContext* GetGemmLowpContext(TfLiteContext* context) {
+  return reinterpret_cast<RefCountedGemmlowpContext*>(
       context->GetExternalContext(context, kTfLiteGemmLowpContext));
 }
 
 TfLiteStatus Refresh(TfLiteContext* context) {
   auto* ptr = GetGemmLowpContext(context);
   if (ptr != nullptr) {
-    ptr->gemm_context->set_max_num_threads(context->recommended_num_threads);
+    ptr->gemmlowp_context->set_max_num_threads(
+        context->recommended_num_threads);
   }
   return kTfLiteOk;
 }
@@ -45,12 +46,13 @@ TfLiteStatus Refresh(TfLiteContext* context) {
 void IncrementUsageCounter(TfLiteContext* context) {
   auto* ptr = GetGemmLowpContext(context);
   if (ptr == nullptr) {
-    ptr = new RefCountedGemmContext;
+    ptr = new RefCountedGemmlowpContext;
     ptr->type = kTfLiteGemmLowpContext;
     ptr->Refresh = Refresh;
-    ptr->gemm_context.reset(new gemmlowp::GemmContext());
+    ptr->gemmlowp_context.reset(new gemmlowp::GemmContext());
     if (context->recommended_num_threads != -1) {
-      ptr->gemm_context->set_max_num_threads(context->recommended_num_threads);
+      ptr->gemmlowp_context->set_max_num_threads(
+          context->recommended_num_threads);
     }
     ptr->num_references = 0;
     context->SetExternalContext(context, kTfLiteGemmLowpContext, ptr);
@@ -77,8 +79,8 @@ gemmlowp::GemmContext* GetFromContext(TfLiteContext* context) {
     TF_LITE_FATAL(
         "Call to GetFromContext() not preceded by IncrementUsageCounter()");
   }
-  return ptr->gemm_context.get();
+  return ptr->gemmlowp_context.get();
 }
 
-}  // namespace gemm_support
+}  // namespace gemmlowp_support
 }  // namespace tflite

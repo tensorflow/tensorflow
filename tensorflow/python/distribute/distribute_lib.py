@@ -39,8 +39,11 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -82,12 +85,24 @@ class UpdateContext(object):
 
 @tf_export(v1=["distribute.get_loss_reduction"])
 def get_loss_reduction():
-  """DEPRECATED: Now always returns `tf.distribute.ReduceOp.SUM`.
+  """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
 
-  We now always make the complete adjustment when computing the loss, so
-  code should always add gradients/losses across replicas, never average.
+  This is used to decide whether loss should be scaled in optimizer (used only
+  for estimator + v1 optimizer use case).
+
+  Returns:
+    `tf.distribute.ReduceOp` corresponding to the last loss reduction for
+    estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
   """
-  return reduce_util.ReduceOp.SUM
+  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
+    # If we are not in Estimator context then return 'SUM'. We do not need to
+    # scale loss in the optimizer.
+    return reduce_util.ReduceOp.SUM
+  last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
+  if (last_reduction == losses_impl.Reduction.SUM or
+      last_reduction == loss_reduction.ReductionV2.SUM):
+    return reduce_util.ReduceOp.SUM
+  return reduce_util.ReduceOp.MEAN
 
 
 # ------------------------------------------------------------------------------
@@ -331,10 +346,29 @@ class Strategy(object):
   def __init__(self, extended):
     self._extended = extended
 
+    # Flag that is used to indicate whether distribution strategy is used with
+    # Estimator. This is required for backward compatibility of loss scaling
+    # when using v1 optimizer with estimator.
+    self._scale_loss_for_estimator = False
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
     return self._extended
+
+  @tf_contextlib.contextmanager
+  def _scale_loss_for_estimator_enabled(self):
+    """Scope which sets a flag used for scaling losses in optimizer.
+
+    Yields:
+      `_scale_loss_for_estimator_enabled` is a context manager with a
+      side effect, but doesn't return a value.
+    """
+    self._scale_loss_for_estimator = True
+    try:
+      yield
+    finally:
+      self._scale_loss_for_estimator = False
 
   def scope(self):
     """Returns a context manager selecting this Strategy as current.

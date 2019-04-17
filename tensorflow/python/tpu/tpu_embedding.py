@@ -59,8 +59,8 @@ class TableConfig(
       dimension: The embedding dimension.
       initializer: A variable initializer function to be used in embedding
         variable initialization. If not specified, defaults to
-        `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
-        `1/sqrt(dimension)`.
+        `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and standard
+        deviation `1/sqrt(dimension)`.
       combiner: A string specifying how to reduce if there are multiple entries
         in a single row. Currently 'mean', 'sqrtn', 'sum' and None are
         supported, with 'mean' the default. 'sqrtn' often achieves good

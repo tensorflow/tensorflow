@@ -12,28 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_GEMM_SUPPORT_H_
-#define TENSORFLOW_LITE_KERNELS_GEMM_SUPPORT_H_
+#ifndef TENSORFLOW_LITE_KERNELS_GEMMLOWP_SUPPORT_H_
+#define TENSORFLOW_LITE_KERNELS_GEMMLOWP_SUPPORT_H_
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 
 namespace tflite {
-namespace gemm_support {
+namespace gemmlowp_support {
 
 // Returns the GemmContext stored in 'context', allowing multiple ops to
 // share a single object, as long as they share a TfLiteContext. The caller
 // must ensure that this is called between IncrementUsageCounter() and
 // DecrementUsageCounter(). For example, in the implementation of an op:
 //   void* Init(TfLiteContext* context, const char*, size_t) {
-//     gemm_support::IncrementUsageCounter(context);
+//     gemmlowp_support::IncrementUsageCounter(context);
 //     return nullptr;
 //   }
 //   void Free(TfLiteContext* context, void*) {
-//     gemm_support::DecrementUsageCounter(context);
+//     gemmlowp_support::DecrementUsageCounter(context);
 //   }
 //   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-//     auto* gemm_context = gemm_support::GetFromContext(context);
+//     auto* gemmlowp_context = gemmlowp_support::GetFromContext(context);
 //   }
 gemmlowp::GemmContext* GetFromContext(TfLiteContext* context);
 
@@ -45,7 +45,7 @@ void IncrementUsageCounter(TfLiteContext* context);
 // 'context'. If there are no more usages the GemmContext will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
 
-}  // namespace gemm_support
+}  // namespace gemmlowp_support
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_GEMM_SUPPORT_H_
+#endif  // TENSORFLOW_LITE_KERNELS_GEMMLOWP_SUPPORT_H_

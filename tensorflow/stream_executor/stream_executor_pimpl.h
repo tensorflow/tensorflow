@@ -848,9 +848,7 @@ DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
   if (opaque == nullptr) {
     return DeviceMemory<T>{};
   }
-  CreateAllocRecord(opaque, sizeof(T) * element_count);
-  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count,
-                                          true /* = is_sub_buffer */));
+  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
 }
 
 template <typename... Params, typename... Args>

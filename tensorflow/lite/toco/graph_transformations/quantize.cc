@@ -70,7 +70,8 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kReduceMin ||
          type == OperatorType::kTransposeConv ||
          type == OperatorType::kMatrixSetDiag ||
-         type == OperatorType::kMatrixDiag;
+         type == OperatorType::kMatrixDiag || type == OperatorType::kRange ||
+         type == OperatorType::kRank;
 }
 
 // The quantized op allows output arrays of type float using

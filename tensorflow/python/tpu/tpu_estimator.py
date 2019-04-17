@@ -2106,7 +2106,7 @@ class TPUEstimator(estimator_lib.Estimator):
   def metric_fn(labels, logits):
     predictions = tf.argmax(logits, 1)
     return {
-      'accuracy': tf.metrics.precision(
+      'accuracy': tf.compat.v1.metrics.precision(
           labels=labels, predictions=predictions),
     }
 
@@ -2176,7 +2176,7 @@ class TPUEstimator(estimator_lib.Estimator):
   def predict_input_fn(params):
     batch_size = params['batch_size']
 
-    images = tf.random_uniform(
+    images = tf.random.uniform(
         [total_examples, height, width, 3], minval=-1, maxval=1)
 
     dataset = tf.data.Dataset.from_tensor_slices(images)
@@ -2211,8 +2211,8 @@ class TPUEstimator(estimator_lib.Estimator):
   Exporting
   =========
 
-  `export_savedmodel` exports 2 metagraphs, one with `tag_constants.SERVING`,
-  and another with `tag_constants.SERVING` and `tag_constants.TPU`.
+  `export_savedmodel` exports 2 metagraphs, one with `saved_model.SERVING`,
+  and another with `saved_model.SERVING` and `saved_model.TPU`.
   At serving time, these tags are used to select metagraph to load.
 
   Before running the graph on TPU, TPU system needs to be initialized. If

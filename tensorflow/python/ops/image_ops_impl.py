@@ -2056,8 +2056,7 @@ tf_export('io.extract_jpeg_shape', 'image.extract_jpeg_shape',
 @tf_export('io.decode_image', 'image.decode_image',
            v1=['io.decode_image', 'image.decode_image'])
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
-  """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
-  and `decode_png`.
+  """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
   appropriate operation to convert the input bytes `string` into a `Tensor`

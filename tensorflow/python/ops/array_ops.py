@@ -555,11 +555,11 @@ def _slice_helper(tensor, slice_spec, var=None):
   Some useful examples:
 
   ```python
-  # strip leading and trailing 2 elements
+  # Strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
   print(foo[2:-2].eval())  # => [3,4]
 
-  # skip every row and reverse every column
+  # Skip every other row and reverse the order of the columns
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
   print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
 
@@ -579,7 +579,7 @@ def _slice_helper(tensor, slice_spec, var=None):
   print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
 
-  # masks
+  # Masks
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
   print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
   ```

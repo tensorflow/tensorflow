@@ -43,6 +43,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
@@ -89,6 +90,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(imported.v1.trainable)
     self.assertEqual(imported.v2.numpy(), 2.0)
     self.assertFalse(imported.v2.trainable)
+
+  def test_variables_name(self, cycles):
+    root = tracking.AutoTrackable()
+    # Test 2 variables with same name: should work as the checkpoint
+    # is based on object name and not on variable name.
+    root.v1 = variables.Variable(1., trainable=True, name="v1")
+    root.v2 = variables.Variable(2., trainable=False, name="v1")
+    imported = self.cycle(root, cycles)
+    self.assertEqual(imported.v1.numpy(), 1.0)
+    self.assertEqual(imported.v2.numpy(), 2.0)
+    self.assertEqual(imported.v1.name, root.v1.name)
+    self.assertEqual(imported.v2.name, root.v2.name)
+    with variable_scope.variable_scope("foo"):
+      imported = self.cycle(root, cycles)
+      self.assertTrue(imported.v1.name.startswith("foo/"))
+      self.assertTrue(imported.v2.name.startswith("foo/"))
 
   @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
