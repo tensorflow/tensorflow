@@ -4,34 +4,6 @@ package xla.poplarplugin;
 
 import "tensorflow/compiler/xla/xla_data.proto";
 
-message PoplarExecutableIoMap {
-  enum IoType {
-    StreamedVariable = 0;
-    ResourceModified = 1;
-    ResourceNotModified = 2;
-    ResourceOutputOnly = 3;
-  }
-
-  message IoDescriptor {
-    IoType type = 1;
-    int64 index = 2;
-  }
-
-  // Descriptions of the type of inputs and if they map to outputs
-  repeated IoDescriptor inputs = 1;
-
-  // Descriptions of the type of outputs and if they map to inputs
-  repeated IoDescriptor outputs = 2;
-
-  // The number of inputs which are streamed.  Other inputs will be loaded as
-  // if they are resources.
-  int32 num_streaming_inputs = 3;
-
-  // The number of outputs which are streamed.  Other outputs will be retained
-  // on the device.
-  int32 num_streaming_outputs = 4;
-}
-
 // Configuration for one of the infeed/outfeed streams
 message FeedConfig {
   string stream_prefix = 1;
@@ -44,8 +16,8 @@ message PoplarExecutableProto {
   // The serialized Engine
   string engine = 1;
 
-  // Map from outputs to inputs for in-place updates
-  PoplarExecutableIoMap io_map = 2;
+  // The number of replicas
+  int32 replication_factor = 2;
 
   // Names of the infeed instructions
   repeated FeedConfig infeeds = 3;

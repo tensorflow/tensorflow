@@ -144,8 +144,8 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
 
 /*static*/ StatusOr<PoplarExecutable*> PoplarExecutable::Deserialize(
     std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    std::unique_ptr<HloProfilePrinterData> profile_printer,
+    std::unique_ptr<HloProfileIndexMap> profile_index_map,
     const std::string& filename) {
   VLOG(1) << "Restoring executable from " << filename;
 
@@ -155,13 +155,42 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
   TF_RETURN_IF_ERROR(
       ReadBinaryProto(tensorflow::Env::Default(), filename, &proto));
 
-  // Load poplar executable
-  std::string poplar_executable_filename = filename + ".poplar_exec";
+  // TODO Load poplar executable
+  std::string poplar_executable_filename = proto.engine();
 
-  // Can we verify that the streams in the loaded poplar executable match the
-  // streams in the TF PoplarExecutable.
+  // Load metadata
+  int replication_factor = proto.replication_factor();
 
-  return Status::OK();
+  InfeedInfos infeeds;
+  for (const auto infeed : proto.infeeds()) {
+    FeedInfo info;
+    info.stream_prefix = infeed.stream_prefix();
+    info.config = infeed.config();
+    info.shape = Shape(infeed.shape());
+
+    infeeds.push_back(info);
+  }
+
+  OutfeedInfos outfeeds;
+  for (const auto infeed : proto.outfeeds()) {
+    FeedInfo info;
+    info.stream_prefix = infeed.stream_prefix();
+    info.config = infeed.config();
+    info.shape = Shape(infeed.shape());
+
+    outfeeds.push_back(info);
+  }
+
+  // TODO
+  //
+  // verify that the streams in the loaded poplar executable match the streams
+  // in the TF PoplarExecutable.  Maybe we can use Engine::listStreams()
+
+  return new PoplarExecutable(
+      std::move(hlo_module), std::move(profile_printer),
+      std::move(profile_index_map), std::move(nullptr),
+      std::move(InputOutputAliasingMap(hlo_module.get())), false, {}, false, {},
+      replication_factor, std::move(infeeds), std::move(outfeeds));
 }
 
 /*static*/ Status PoplarExecutable::Serialize(
@@ -183,11 +212,7 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
 
   proto.set_engine(poplar_executable_filename);
 
-  auto* iomap = proto.mutable_io_map();
-  iomap->set_num_streaming_inputs(
-      executable.input_output_aliasing_map_.GetNumStreamingInputs());
-  iomap->set_num_streaming_outputs(
-      executable.input_output_aliasing_map_.GetNumStreamingOutputs());
+  proto.set_replication_factor(executable.replication_factor_);
 
   for (const auto& infeed : executable.infeed_infos_) {
     auto* feed = proto.add_infeeds();
