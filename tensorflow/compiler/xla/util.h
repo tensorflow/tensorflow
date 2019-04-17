@@ -85,7 +85,7 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 // Helper for macros above.  Don't use directly.
 #define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
   ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, VLOG_IS_ON(level))
+      label, counter, VLOG_IS_ON(level))
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
@@ -93,11 +93,17 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 struct ScopedLoggingTimer {
   // The timer does nothing if enabled is false.  This lets you pass in your
   // file's VLOG_IS_ON value.
-  ScopedLoggingTimer(const string& label, bool enabled);
+  //
+  // timer_id should be derived from a __COUNTER__ macro. This is unique
+  // per each XLA_SCOPED_LOGGING_TIMER* invocation, which lets us display
+  // cumulative time across different timer instances created for the same
+  // macro in the source code.
+  ScopedLoggingTimer(const std::string& label, uint64 timer_id, bool enabled);
   ~ScopedLoggingTimer();
 
   bool enabled;
   string label;
+  uint64 timer_id;
   uint64 start_micros;
 };
 

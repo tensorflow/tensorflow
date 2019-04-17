@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include <stdarg.h>
+
 #include <numeric>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -30,6 +32,20 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
+namespace {
+tensorflow::mutex timer_stats_lock(tensorflow::LINKER_INITIALIZED);
+
+struct TimerStats {
+  double cumulative_secs = 0;
+  double max_secs = 0;
+  int64 times_called = 0;
+};
+
+// Global mapping from timer IDs to timer statistics.
+auto& timers_stats GUARDED_BY(timer_stats_lock) =
+    *new absl::flat_hash_map<uint64, TimerStats>();
+}  // namespace
+
 namespace xla {
 
 Status WithLogBacktrace(const Status& status) {
@@ -39,8 +55,9 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
-    : enabled(enabled), label(label) {
+ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label,
+                                       uint64 timer_id, bool enabled)
+    : enabled(enabled), label(label), timer_id(timer_id) {
   if (enabled) {
     start_micros = tensorflow::Env::Default()->NowMicros();
   }
@@ -48,11 +65,27 @@ ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
 
 ScopedLoggingTimer::~ScopedLoggingTimer() {
   if (enabled) {
+    // Locking here should not affect the performance, since logging requires
+    // locking in any case.
+    tensorflow::mutex_lock lock(timer_stats_lock);
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
+    TimerStats& stats = timers_stats[timer_id];
+    stats.cumulative_secs += secs;
+    if (secs > stats.max_secs) {
+      stats.max_secs = secs;
+    }
+    stats.times_called++;
+
     LOG(INFO) << label << " time: "
-              << tensorflow::strings::HumanReadableElapsedTime(secs);
+              << tensorflow::strings::HumanReadableElapsedTime(secs)
+              << " (cumulative: "
+              << tensorflow::strings::HumanReadableElapsedTime(
+                     stats.cumulative_secs)
+              << ", max: "
+              << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
+              << ", #called: " << stats.times_called << ")";
   }
 }
 
