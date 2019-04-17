@@ -377,7 +377,6 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -407,7 +406,6 @@ tf_xla_py_test(
         "nomsan",
         "notsan",
         "optonly",  # Times out frequently in fastbuild mode.
-        "no_rocm",
     ],
     deps = [
         ":xla_test",
@@ -465,7 +463,6 @@ tf_xla_py_test(
     tags = [
         "manual",
         "notap",
-        "no_rocm",
     ],
     deps = [
         ":xla_test",
