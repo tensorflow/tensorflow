@@ -125,7 +125,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(e0, 2.0)
       l, e1 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.assertAllEqual(e1, 1.0)
-      self.assertAllEqual(list_ops.tensor_list_length(l), 0)
+      self.assertAllEqual(list_ops.tensor_list_length(l), 2)
 
   def testGetSet(self):
     with self.cached_session(), self.test_scope():
