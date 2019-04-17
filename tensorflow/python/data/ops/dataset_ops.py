@@ -566,27 +566,25 @@ class DatasetV2(object):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6 }
-    c = { (7, 8), (9, 10), (11, 12) }
-    d = { 13, 14 }
+    a = Dataset.range(1, 4)  # [ 1, 2, 3 ]
+    b = Dataset.range(4, 7)  # [ 4, 5, 6 ]
+    c = Dataset.from_tensor_slices(tf.reshape(tf.range(7,13), (3,2)))  # [ [7, 8], [9, 10], [11, 12] ]
+    d = Dataset.range(13, 15)  # [ 13, 14 ]
 
     # The nested structure of the `datasets` argument determines the
     # structure of elements in the resulting dataset.
-    Dataset.zip((a, b)) == { (1, 4), (2, 5), (3, 6) }
-    Dataset.zip((b, a)) == { (4, 1), (5, 2), (6, 3) }
+    Dataset.zip((a, b)) # ==> [ (1, 4), (2, 5), (3, 6) ]
+    Dataset.zip((b, a)) # ==> [ (4, 1), (5, 2), (6, 3) ]
 
     # The `datasets` argument may contain an arbitrary number of
     # datasets.
-    Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
-                                (2, 5, (9, 10)),
-                                (3, 6, (11, 12)) }
-
+    Dataset.zip((a, b, c))  # ==> [ (1, 4, [7, 8]),
+                            #       (2, 5, [9, 10]),
+                            #       (3, 6, [11, 12]) ]
+        
     # The number of elements in the resulting dataset is the same as
     # the size of the smallest dataset in `datasets`.
-    Dataset.zip((a, d)) == { (1, 13), (2, 14) }
+    Dataset.zip((a, d))  # ==> [ (1, 13), (2, 14) ]
     ```
 
     Args:
