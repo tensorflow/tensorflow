@@ -68,6 +68,35 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       result = sess.run(res, {v: np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
 
+  def testSingleInfeedRepeatNonTupleFiniteDataset(self):
+    dataset = tu.create_single_increasing_dataset(
+        10, shape=[4, 4], repeat=False)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def body(v, x):
+      v = v + x
+      return (v)
+
+    def my_net(v):
+      r = loops.repeat(10, body, (v), infeed_queue)
+      return r
+
+    with ops.device('cpu'):
+      v = array_ops.placeholder(np.float32, [4, 4])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[v])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res, {v: np.ones([4, 4], np.float32)})
+      self.assertAllClose(result[0], np.broadcast_to(46, [4, 4]))
+
   def testSingleInfeedRepeatTuple(self):
     dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
 

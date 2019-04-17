@@ -93,11 +93,11 @@ InputOutputAliasingMap::GetEntryOutputInfos() const {
   return entry_output_infos_;
 }
 
-const uint64& InputOutputAliasingMap::GetNumStreamingInputs() {
+const uint64& InputOutputAliasingMap::GetNumStreamingInputs() const {
   return num_streaming_inputs_;
 }
 
-const uint64& InputOutputAliasingMap::GetNumStreamingOutputs() {
+const uint64& InputOutputAliasingMap::GetNumStreamingOutputs() const {
   return num_streaming_outputs_;
 }
 

@@ -79,7 +79,7 @@ class IpuConfigureHardwareOp : public OpKernel {
 
     auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
-    xla::IpuOptions options;
+    xla::poplarplugin::IpuOptions options;
     options.ParseFromString(config_);
 
     OP_REQUIRES_OK(ctx, p->ConfigurePoplarDevices(options));

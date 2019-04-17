@@ -105,6 +105,9 @@ class PoplarExecutable : public Executable {
  private:
   friend class GraphCompileIoMapTest;
 
+  // If you add fields which are specific to a compiled engine, then you will
+  // need to add them to the poplar_executable.proto, and the serialization code
+  // in PoplarExecutable.
   std::unique_ptr<poplar::Engine> poplar_engine_;
   InputOutputAliasingMap input_output_aliasing_map_;
   std::vector<std::vector<Literal>> literal_output_;

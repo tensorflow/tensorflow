@@ -51,7 +51,10 @@ def create_ipu_config(profiling=False,
                       enable_ipu_events=False,
                       use_poplar_text_report=False,
                       use_poplar_cbor_report=False,
+                      profile_execution=False,
                       report_every_nth_execution=0,
+                      max_report_size=0x10000000,
+                      report_directory="",
                       always_rearrange_copies_on_the_host=False,
                       disable_graph_convolution_caching=False,
                       retain_control_dependencies=False,
@@ -59,14 +62,21 @@ def create_ipu_config(profiling=False,
   """Create an empty IPU session configuration structure.
 
   Args:
-    :param profiling: Enable compilation and execution reports,and IPU trace
-                      events.
+    :param profiling: Enable compilation reports, and IPU trace events.
     :param enable_ipu_events: Enable IPU trace events without poplar reports.
     :param use_poplar_text_report: Enable the poplar textual report summary
     :param use_poplar_cbor_report: Enable the poplar CBOR reports
+    :param profile_execution: Include Poplar execution profiles in the execution
+                              events.
     :param report_every_nth_execution: Only produce an execution report on
                                        every Nth execution.  0=One report
                                        only.
+    :param max_report_size: The maximum size of Poplar profiles to include in
+                            the profile events.
+    :param report_directory: When set, reports will be written to files in this
+                             directory, instead of being written into the
+                             events.  The events will contain the full paths of
+                             the report files.
     :param always_rearrange_copies_on_the_host: *** Experimental Flag ***
                                                 The data which is streamed
                                                 to/from the device might be
@@ -106,6 +116,9 @@ def create_ipu_config(profiling=False,
     raise Exception(
         "`profiling` and `enable_ipu_events` are mutually exclusive")
 
+  if profile_execution and not profiling:
+    raise Exception("`profiling` is required when `profile_execution` is set")
+
   opts = IpuOptions()
   opts.ipu_model_config.enable_ipu_model = True
   opts.ipu_model_config.compile_ipu_code = True
@@ -113,10 +126,12 @@ def create_ipu_config(profiling=False,
   opts.profiling.enable_ipu_trace_events = profiling or enable_ipu_events
   opts.profiling.enable_compilation_trace = profiling
   opts.profiling.enable_io_trace = profiling
-  opts.profiling.enable_execution_trace = profiling
+  opts.profiling.enable_execution_trace = profiling and profile_execution
   opts.profiling.enable_poplar_reports_text = use_poplar_text_report
   opts.profiling.enable_poplar_reports_cbor = use_poplar_cbor_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
+  opts.profiling.max_report_size = max_report_size
+  opts.profiling.report_directory = report_directory
 
   opts.speed_size_config.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
 
@@ -706,7 +721,8 @@ def extract_execute_reports(events):
       try:
         module = evt.execute.module_name.decode('utf-8')
         rep = evt.execute.execution_report.decode('utf-8')
-        result += [(module, rep)]
+        if len(rep) > 0:
+          result += [(module, rep)]
       except UnicodeDecodeError:
         pass
   return result

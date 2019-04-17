@@ -105,8 +105,8 @@ class InputOutputAliasingMap {
 
   const std::vector<InputInfo>& GetEntryInputInfos() const;
   const std::vector<OutputInfo>& GetEntryOutputInfos() const;
-  const uint64& GetNumStreamingInputs();
-  const uint64& GetNumStreamingOutputs();
+  const uint64& GetNumStreamingInputs() const;
+  const uint64& GetNumStreamingOutputs() const;
 
   std::string ToString() const;
 

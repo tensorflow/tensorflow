@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package xla;
+package xla.poplarplugin;
 
 message IpuOptions {
 
@@ -42,6 +42,13 @@ message IpuOptions {
 
     // Set to have the poplar reports in CBOR, not JSON
     bool enable_poplar_reports_cbor = 8;
+
+    // When non-empty, reports will be written into this directory, instead of
+    // into the Tensorboard events
+    string report_directory = 9;
+
+    // Reports over this size (in bytes) will be discarded
+    int64 max_report_size = 10;
   };
   Profiling profiling = 2;
 

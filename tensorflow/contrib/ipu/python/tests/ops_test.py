@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import tempfile
 
 from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
@@ -106,6 +107,10 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(Exception):
       cfg = ipu.utils.create_ipu_config(profiling=True, enable_ipu_events=True)
 
+    with self.assertRaises(Exception):
+      cfg = ipu.utils.create_ipu_config(
+          profiling=False, profile_execution=True)
+
   def testEventFetchAndStringDecode(self):
     with ops.device("/device:IPU:0"):
       a = array_ops.placeholder(np.float32, [1], name="a")
@@ -136,6 +141,78 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       dump = ipu.utils.extract_all_strings_from_event_trace(e)
       self.assertTrue(len(dump) > 100)
 
+  def testMaxReportSize(self):
+    with ops.device("/device:IPU:0"):
+      a = array_ops.placeholder(np.float32, [1], name="a")
+      b = array_ops.placeholder(np.float32, [1], name="b")
+      out = a + b
+
+    events = gen_ipu_ops.ipu_event_trace()
+
+    cfg = ipu.utils.create_ipu_config(
+        profiling=True, profile_execution=True, max_report_size=10)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      # Discard any existing events
+      sess.run(events)
+
+      result = sess.run(out, {a: [1.0], b: [2.0]})
+      self.assertAllClose(result, [3.0])
+
+      # 1x compile begin, 1x compile end, 1x load engine, 1x execute
+      e = sess.run(events)
+      self.assertEqual(len(e), 4)
+
+      reps = ipu.utils.extract_compile_reports(e)
+      self.assertEqual(len(reps), 0)
+
+      reps = ipu.utils.extract_execute_reports(e)
+      self.assertEqual(len(reps), 0)
+
+  def testDumpReportsToFile(self):
+    with ops.device("/device:IPU:0"):
+      a = array_ops.placeholder(np.float32, [1], name="a")
+      b = array_ops.placeholder(np.float32, [1], name="b")
+      out = a + b
+
+    tmpdir = tempfile.mkdtemp()
+
+    events = gen_ipu_ops.ipu_event_trace()
+
+    cfg = ipu.utils.create_ipu_config(
+        profiling=True, profile_execution=True, report_directory=tmpdir)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      # Discard any existing events
+      sess.run(events)
+
+      result = sess.run(out, {a: [1.0], b: [2.0]})
+      self.assertAllClose(result, [3.0])
+
+      # 1x compile begin, 1x compile end, 1x load engine, 1x execute
+      e = sess.run(events)
+      self.assertEqual(len(e), 4)
+
+      reps = ipu.utils.extract_compile_reports(e)
+      self.assertEqual(len(reps), 1)
+      self.assertTrue(reps[0][1].startswith(tmpdir))
+      with open(reps[0][1]) as f:
+        rep = f.read()
+        self.assertTrue(len(rep) > 1000)
+        self.assertEqual(rep[0], '{')
+
+      reps = ipu.utils.extract_execute_reports(e)
+      self.assertEqual(len(reps), 1)
+      self.assertTrue(reps[0][1].startswith(tmpdir))
+      with open(reps[0][1]) as f:
+        rep = f.read()
+        self.assertTrue(len(rep) > 1000)
+        self.assertEqual(rep[0], '{')
+
   def testIpuSimpleScopeAndExecutionReport(self):
     def my_net(a, b):
       c = a + b
@@ -149,7 +226,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     with ipu.ops.ipu_scope("/device:IPU:0"):
       r = ipu_compiler.compile(my_net, inputs=[a, b])
 
-    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.create_ipu_config(profiling=True, profile_execution=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     ipu.utils.configure_ipu_system(cfg)
 

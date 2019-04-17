@@ -22,10 +22,9 @@ genrule(
 )
 
 tf_proto_library(
-    name = "protos",
+    name = "config_protos",
     srcs = [
       "driver/config.proto",
-      "driver/poplar_executable.proto",
       "driver/trace.proto",
     ],
     cc_api_version = 2,
@@ -34,8 +33,11 @@ tf_proto_library(
 )
 
 xla_proto_library(
-    name = "backend_config",
-    srcs = ["driver/backend_config.proto"],
+    name = "backend_protos",
+    srcs = [
+      "driver/backend_config.proto",
+      "driver/poplar_executable.proto",
+    ],
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
@@ -176,7 +178,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":backend_config",
+        ":backend_protos",
         ":custom_kernels_util",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:call_inliner",
@@ -279,7 +281,7 @@ cc_library(
         ":common",
         ":custom_kernels_util",
         ":optimizers",
-        ":protos_cc_impl",
+        ":config_protos_cc_impl",
         "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:xla_headers_lib",
@@ -487,7 +489,7 @@ cc_library(
     ],
     data = [
         ":tf_graph_program",
-        ":protos_py",
+        ":config_protos_py",
         "@local_config_poplar//poplar:poplar_lib",
     ],
     linkstatic=1,

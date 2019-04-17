@@ -744,8 +744,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     input = np.ones((1, 4, 4, 2))
 
     with ops.device("/device:IPU:0"):
-      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
-      lr = array_ops.placeholder(np.float32, shape=[])
+      x = array_ops.placeholder(np.float16, shape=[1, 4, 4, 2])
+      lr = array_ops.placeholder(np.float16, shape=[])
       with variable_scope.variable_scope("vs", use_resource=True):
         y = layers.Conv2D(
             2,
@@ -780,7 +780,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       for var, val in zip(tvars, tvars_vals):
         if var.name == "vs/a/bias:0":
           # Value computed using the CPU backend
-          self.assertAllClose(val, [-0.6, -0.6])
+          self.assertAllClose(val, [-0.6, -0.6], atol=0.001)
           found = True
       self.assertTrue(found)
 

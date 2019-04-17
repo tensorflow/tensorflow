@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -361,6 +362,7 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
 
     while (false == infeed_thread_cancelled_) {
       for (auto& infeed_dataset_iterator : infeed_dataset_iterators) {
+        bool end_of_sequence = false;
         {
           std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
 
@@ -368,22 +370,16 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
           // dequeued every iteration. If all tensors have been used, then get
           // the next set of tensors.
           if (infeed_dataset_iterator->all_tensors_used()) {
-            bool end_of_sequence;
             std::vector<tensorflow::Tensor> outputs;
             TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
                 infeed_dataset_iterator->iterator_ctx.get(), &outputs,
                 &end_of_sequence));
             infeed_dataset_iterator->tensors = outputs;
-            if (end_of_sequence) {
-              LOG(INFO) << "The dataset iterator has reached the end of the "
-                           "dataset.";
-              infeed_thread_cancelled_ = true;
-            }
             absl::c_fill(infeed_dataset_iterator->used, false);
           }
         }
 
-        if (!infeed_thread_cancelled_) {
+        if (!end_of_sequence) {
           auto tensor_count = infeed_dataset_iterator->shapes.size();
           for (auto j = 0; j < tensor_count; ++j) {
             auto tensor = infeed_dataset_iterator->tensors[j];
@@ -400,6 +396,10 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
               return;
             }
           }
+        } else {
+          infeed_thread_cancelled_ = true;
+          LOG(INFO)
+              << "The dataset iterator has reached the end of the dataset.";
         }
 
         std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
@@ -831,12 +831,34 @@ void PoplarExecutor::AddCompileEndEventRecord(const std::string& module_name,
                                               const std::string& report,
                                               const std::string& tensor_map,
                                               int64 duration) {
+  std::string rep = std::move(report);
+  std::string map = std::move(tensor_map);
+
+  if (ReportDirectory().size() > 0) {
+    std::unique_ptr<tensorflow::WritableFile> file;
+
+    std::string filename = tensorflow::io::JoinPath(
+        ReportDirectory(), module_name + ".compile_report.json");
+
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(rep));
+    TF_CHECK_OK(file->Close());
+    rep = filename;
+
+    filename = tensorflow::io::JoinPath(ReportDirectory(),
+                                        module_name + ".tensor_map.json");
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(map));
+    TF_CHECK_OK(file->Close());
+    map = filename;
+  }
+
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::COMPILE_END);
   evt.mutable_compile_end()->set_module_name(std::move(module_name));
-  evt.mutable_compile_end()->set_compilation_report(std::move(report));
+  evt.mutable_compile_end()->set_compilation_report(std::move(rep));
   evt.mutable_compile_end()->set_duration(duration);
-  evt.mutable_compile_end()->set_tensor_map(tensor_map);
+  evt.mutable_compile_end()->set_tensor_map(std::move(map));
 
   reports_.push_back(evt);
 }
@@ -867,10 +889,22 @@ void PoplarExecutor::AddLoadEngineEventRecord(const std::string& module_name) {
 
 void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
                                            const std::string& report) {
+  std::string rep = std::move(report);
+  if (ReportDirectory().size() > 0) {
+    std::unique_ptr<tensorflow::WritableFile> file;
+
+    std::string filename = tensorflow::io::JoinPath(
+        ReportDirectory(), module_name + ".execute_report.json");
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(rep));
+    TF_CHECK_OK(file->Close());
+    rep = filename;
+  }
+
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::EXECUTE);
   evt.mutable_execute()->set_module_name(std::move(module_name));
-  evt.mutable_execute()->set_execution_report(std::move(report));
+  evt.mutable_execute()->set_execution_report(std::move(rep));
 
   reports_.push_back(evt);
 }
@@ -1547,6 +1581,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
             current_engine_->resetExecutionProfile();
           }
+        }
+
+        if (report_stream.tellp() > MaxReportSize()) {
+          LOG(WARNING) << "Dropping Poplar execution report, size was "
+                       << report_stream.tellp();
+          report_stream.str(std::string());
         }
 
         AddExecuteEventRecord(executable.module().name(), report_stream.str());
