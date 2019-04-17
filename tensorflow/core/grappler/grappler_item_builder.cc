@@ -645,6 +645,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
     const string& id, const string& meta_graph_file, const ItemConfig& cfg) {
   MetaGraphDef meta_graph;
   if (!ReadMetaGraphDefFromFile(meta_graph_file, &meta_graph).ok()) {
+    LOG(ERROR) << "Failed to read " << meta_graph_file;
     return nullptr;
   }
   return GrapplerItemFromMetaGraphDef(id, meta_graph, cfg);
