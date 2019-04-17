@@ -79,9 +79,10 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
   // definition closure following the loop induction variable.
   getForwardSlice(forOp, &loopDefinedOps);
 
-  for (auto i : loopDefinedOps) {
-    LLVM_DEBUG(i->print(llvm::dbgs() << "\nLoop-dependent op\n"));
-  }
+  LLVM_DEBUG(for (auto i
+                  : loopDefinedOps) {
+    (i->print(llvm::dbgs() << "\nLoop-dependent op\n"));
+  });
 
   for (auto &op : *loopBody) {
     // If the operation is loop invariant, insert it into opsToMove.
@@ -118,10 +119,9 @@ void LoopInvariantCodeMotion::runOnFunction() {
       [&](AffineForOp forOp) { forOps.push_back(forOp); });
   // We gather loops first, and then go over them later because we don't want to
   // mess the iterators up.
-  for (auto forOp : forOps) {
-    auto *forInst = forOp.getOperation();
-    LLVM_DEBUG(forInst->print(llvm::dbgs() << "\nOriginal loop\n"));
-    runOnAffineForOp(forOp);
+  for (auto op : forOps) {
+    LLVM_DEBUG(op.getOperation()->print(llvm::dbgs() << "\nOriginal loop\n"));
+    runOnAffineForOp(op);
   }
 }
 
