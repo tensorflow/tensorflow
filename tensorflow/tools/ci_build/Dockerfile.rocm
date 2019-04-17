@@ -71,9 +71,14 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
 
 # Build HIP from source
+# roc-2.3.x branch as base + cherry-pick the merge commit for PR 981 (hipModuleGetGlobal fix)
+# the git config is required for the git cherry-pick command...
 RUN cd $HOME && git clone -b roc-2.3.x https://github.com/ROCm-Developer-Tools/HIP.git && \
-    mkdir HIP/build && cd HIP/build && \
-    cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
+    cd $HOME/HIP && \
+    git config --global user.name "Deven Desai" && \
+    git config --global user.email "deven.desai.amd@gmail.com" && \
+    git cherry-pick 4b7177ac4225c32ed0b02096a83b78fab0b9347a && \
+    mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
