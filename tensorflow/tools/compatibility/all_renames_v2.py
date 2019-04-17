@@ -38,7 +38,9 @@ manual_symbol_renames = {
     "tf.estimator.inputs":
         "tf.compat.v1.estimator.inputs",
     "tf.extract_image_patches":
-        "tf.image.extract_image_patches",
+        "tf.image.extract_patches",
+    "tf.image.extract_image_patches":
+        "tf.image.extract_patches",
     "tf.gfile.Copy":
         "tf.io.gfile.copy",
     "tf.gfile.DeleteRecursively":

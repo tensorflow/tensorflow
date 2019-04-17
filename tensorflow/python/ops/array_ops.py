@@ -3924,7 +3924,7 @@ def searchsorted(sorted_sequence,
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
 
 
-@tf_export("image.extract_image_patches", v1=[])
+@tf_export("image.extract_patches")
 def extract_image_patches_v2(
     images,
     sizes,

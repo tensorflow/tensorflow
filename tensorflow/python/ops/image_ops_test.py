@@ -1189,7 +1189,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1200,7 +1200,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1211,7 +1211,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
@@ -1227,7 +1227,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1248,7 +1248,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
@@ -1264,7 +1264,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)

@@ -94,6 +94,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.crop_and_resize": {
             "box_ind": "box_indices",
         },
+        "tf.extract_image_patches": {
+            "ksizes": "sizes",
+        },
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -102,9 +105,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.image.resize_images": {
             "align_corners": None,
-        },
-        "tf.extract_image_patches": {
-            "ksizes": "sizes",
         },
         "tf.expand_dims": {
             "dim": "axis",

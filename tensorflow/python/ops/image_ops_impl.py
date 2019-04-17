@@ -514,12 +514,7 @@ def _rot90_4D(images, k, name_scope):
   return result
 
 
-@tf_export(v1=['image.transpose', 'image.transpose_image'])
-def transpose_image(image):
-  return transpose(image=image, name=None)
-
-
-@tf_export('image.transpose', v1=[])
+@tf_export('image.transpose', v1=['image.transpose', 'image.transpose_image'])
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
 
@@ -822,7 +817,9 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     return cropped
 
 
-@tf_export('image.resize_image_with_crop_or_pad')
+@tf_export('image.resize_with_crop_or_pad',
+           v1=['image.resize_with_crop_or_pad',
+               'image.resize_image_with_crop_or_pad'])
 def resize_image_with_crop_or_pad(image, target_height, target_width):
   """Crops and/or pads an image to a target width and height.
 
@@ -1154,7 +1151,7 @@ def resize_images_v2(images,
     Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
-    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3, 
+    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
     sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
