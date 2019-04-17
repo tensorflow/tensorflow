@@ -568,7 +568,7 @@ class DatasetV2(object):
     ```python
     a = Dataset.range(1, 4)  # [ 1, 2, 3 ]
     b = Dataset.range(4, 7)  # [ 4, 5, 6 ]
-    c = Dataset.from_tensor_slices(tf.reshape(tf.range(7,13), (3,2)))  # [ [7, 8], [9, 10], [11, 12] ]
+    c = Dataset.from_tensor_slices([[7, 8], [9, 10], [11, 12]])
     d = Dataset.range(13, 15)  # [ 13, 14 ]
 
     # The nested structure of the `datasets` argument determines the
@@ -599,18 +599,16 @@ class DatasetV2(object):
     """Creates a `Dataset` by concatenating given dataset with this dataset.
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6, 7 }
+    a = Dataset.range(1, 4)  # [ 1, 2, 3 ]
+    b = Dataset.range(4, 8)  # [ 4, 5, 6, 7 ]
 
     # Input dataset and dataset to be concatenated should have same
     # nested structures and output types.
-    # c = { (8, 9), (10, 11), (12, 13) }
-    # d = { 14.0, 15.0, 16.0 }
+    # c = Dataset.from_tensor_slices([[8, 9], [10, 11], [12, 13]]) 
+    # d = Dataset.from_tensor_slices([14.0, 15.0, 16.0])
     # a.concatenate(c) and a.concatenate(d) would result in error.
 
-    a.concatenate(b) == { 1, 2, 3, 4, 5, 6, 7 }
+    a.concatenate(b) # ==> [ 1, 2, 3, 4, 5, 6, 7 ]
     ```
 
     Args:
