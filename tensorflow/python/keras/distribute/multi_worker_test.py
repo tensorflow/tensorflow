@@ -32,6 +32,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribute_lib
@@ -39,6 +40,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -299,7 +301,10 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
 
 def get_strategy_object(strategy_cls):
   if strategy_cls == mirrored_strategy.MirroredStrategy:
-    return strategy_cls(mirrored_strategy.all_local_devices())
+    return strategy_cls(
+        mirrored_strategy.all_local_devices(),
+        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
+            ['/job:worker/task:0', '/job:worker/task:1'], context.num_gpus()))
   else:
     # CollectiveAllReduceStrategy and ParameterServerStrategy.
     return strategy_cls()
@@ -345,7 +350,6 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
-              mirrored_strategy.MirroredStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
