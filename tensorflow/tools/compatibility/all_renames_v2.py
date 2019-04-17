@@ -209,6 +209,38 @@ manual_symbol_renames = {
         "tf.compat.v1.summary.initialize",
     "tf.contrib.summary.scalar":
         "tf.compat.v2.summary.scalar",
+    "tf.contrib.tpu.CrossShardOptimizer":
+        "tf.compat.v1.tpu.CrossShardOptimizer",
+    "tf.contrib.tpu.InputPipelineConfig":
+        "tf.compat.v1.estimator.tpu.InputPipelineConfig",
+    "tf.contrib.tpu.RunConfig":
+        "tf.compat.v1.estimator.tpu.RunConfig",
+    "tf.contrib.tpu.TPUConfig":
+        "tf.compat.v1.estimator.tpu.TPUConfig",
+    "tf.contrib.tpu.TPUEstimator":
+        "tf.compat.v1.estimator.tpu.TPUEstimator",
+    "tf.contrib.tpu.TPUEstimatorSpec":
+        "tf.compat.v1.estimator.tpu.TPUEstimatorSpec",
+    "tf.contrib.tpu.batch_parallel":
+        "tf.compat.v1.tpu.batch_parallel",
+    "tf.contrib.tpu.bfloat16_scope":
+        "tf.compat.v1.tpu.bfloat16_scope",
+    "tf.contrib.tpu.core":
+        "tf.compat.v1.tpu.core",
+    "tf.contrib.tpu.cross_replica_sum":
+        "tf.compat.v1.tpu.cross_replica_sum",
+    "tf.contrib.tpu.initialize_system":
+        "tf.compat.v1.tpu.initialize_system",
+    "tf.contrib.tpu.outside_compilation":
+        "tf.compat.v1.tpu.outside_compilation",
+    "tf.contrib.tpu.replicate":
+        "tf.compat.v1.tpu.replicate",
+    "tf.contrib.tpu.rewrite":
+        "tf.compat.v1.tpu.rewrite",
+    "tf.contrib.tpu.shard":
+        "tf.compat.v1.tpu.shard",
+    "tf.contrib.tpu.shutdown_system":
+        "tf.compat.v1.tpu.shutdown_system",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
     "tf.manip.batch_to_space_nd":
