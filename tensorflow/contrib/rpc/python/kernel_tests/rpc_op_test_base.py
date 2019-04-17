@@ -123,8 +123,6 @@ class RpcOpTestBase(object):
               address=address,
               request=''))
       self.assertEqual(errors.UNAVAILABLE, status_code_value)
-      self.assertTrue(
-          self.connect_failed_string in status_message_value.decode('ascii'))
 
   def testAlwaysFailingMethod(self):
     with self.cached_session() as sess:
