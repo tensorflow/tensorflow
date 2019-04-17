@@ -68,7 +68,7 @@ class Backend(object):
     """Allocates buffers and populates them with `pyvals`."""
     return [
         self.buffer_from_pyval(pyval, device)
-        for pyval, device in zip(pyvals_and_devices)
+        for pyval, device in pyvals_and_devices
     ]
 
   @abc.abstractmethod
@@ -348,9 +348,6 @@ class Buffer(object):
 
   def is_deleted(self):
     return self.c_buffer is None
-
-  def __del__(self):
-    self.delete()
 
 
 # TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
