@@ -1287,6 +1287,28 @@ renames = {
         'tf.compat.v1.to_int32',
     'tf.to_int64':
         'tf.compat.v1.to_int64',
+    'tf.tpu.CrossShardOptimizer':
+        'tf.compat.v1.tpu.CrossShardOptimizer',
+    'tf.tpu.batch_parallel':
+        'tf.compat.v1.tpu.batch_parallel',
+    'tf.tpu.bfloat16_scope':
+        'tf.compat.v1.tpu.bfloat16_scope',
+    'tf.tpu.core':
+        'tf.compat.v1.tpu.core',
+    'tf.tpu.cross_replica_sum':
+        'tf.compat.v1.tpu.cross_replica_sum',
+    'tf.tpu.initialize_system':
+        'tf.compat.v1.tpu.initialize_system',
+    'tf.tpu.outside_compilation':
+        'tf.compat.v1.tpu.outside_compilation',
+    'tf.tpu.replicate':
+        'tf.compat.v1.tpu.replicate',
+    'tf.tpu.rewrite':
+        'tf.compat.v1.tpu.rewrite',
+    'tf.tpu.shard':
+        'tf.compat.v1.tpu.shard',
+    'tf.tpu.shutdown_system':
+        'tf.compat.v1.tpu.shutdown_system',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':

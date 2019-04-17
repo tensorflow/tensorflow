@@ -40,6 +40,7 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
@@ -81,6 +82,7 @@ def _tpu_system_device_name(job):
     return "/job:%s/device:TPU_SYSTEM:0" % job
 
 
+@tf_export(v1=["tpu.initialize_system"])
 def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
@@ -102,13 +104,22 @@ def initialize_system(embedding_config=None, job=None):
     return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
 
 
+@tf_export(v1=["tpu.shutdown_system"])
 def shutdown_system(job=None):
-  """Shuts down a running a distributed TPU system."""
+  """Shuts down a running a distributed TPU system.
+
+  Args:
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be shutdown. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
+  """
   with ops.device(_tpu_system_device_name(job)):
     shutdown_distributed_tpu = tpu_ops.shutdown_distributed_tpu()
   return shutdown_distributed_tpu
 
 
+@tf_export(v1=["tpu.core"])
 def core(num):
   """Returns the device name for a core in a replicated TPU computation.
 
@@ -472,6 +483,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return self._pivot
 
 
+@tf_export(v1=["tpu.outside_compilation"])
 def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
 
@@ -514,6 +526,7 @@ def outside_compilation(computation, *args, **kwargs):
   return retval
 
 
+@tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
               infeed_queue=None,
@@ -1237,6 +1250,7 @@ def split_compile_and_shard(computation,
   return compile_op, results
 
 
+@tf_export(v1=["tpu.shard"])
 def shard(computation,
           inputs=None,
           num_shards=1,
@@ -1317,6 +1331,7 @@ def shard(computation,
       name=name)[1]
 
 
+@tf_export(v1=["tpu.batch_parallel"])
 def batch_parallel(computation,
                    inputs=None,
                    num_shards=1,
@@ -1373,6 +1388,7 @@ def batch_parallel(computation,
       name=name)
 
 
+@tf_export(v1=["tpu.rewrite"])
 def rewrite(computation,
             inputs=None,
             infeed_queue=None,
