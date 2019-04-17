@@ -134,7 +134,7 @@ static StatusOr<LocalShapedBuffer> TransferHostToDeviceAsync(
 /* static */
 StatusOr<LocalShapedBuffer> LocalShapedBuffer::FromPython(
     const py::object& argument, PyLocalClient* client, int device_ordinal) {
-  tensorflow::profiler::TraceMe("LocalShapedBuffer::FromPython");
+  tensorflow::profiler::TraceMe traceme("LocalShapedBuffer::FromPython");
   TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
 
   // We are done manipulating Python objects; release the GIL.
@@ -156,7 +156,7 @@ StatusOr<LocalShapedBuffer> LocalShapedBuffer::FromPython(
 LocalShapedBuffer::FromPythonValues(
     const std::vector<std::pair<py::object, int>>& arguments,
     PyLocalClient* client) {
-  tensorflow::profiler::TraceMe("LocalShapedBuffer::FromPythonValues");
+  tensorflow::profiler::TraceMe traceme("LocalShapedBuffer::FromPythonValues");
   int num_arguments = static_cast<int>(arguments.size());
   std::vector<LocalShapedBuffer> outputs(num_arguments);
   if (num_arguments == 0) {
@@ -240,7 +240,7 @@ const Shape& LocalShapedBuffer::shape() const {
 }
 
 StatusOr<py::object> LocalShapedBuffer::ToPython() const {
-  tensorflow::profiler::TraceMe("LocalShapedBuffer::ToPython");
+  tensorflow::profiler::TraceMe traceme("LocalShapedBuffer::ToPython");
   auto literal = absl::make_unique<Literal>();
   {
     py::gil_scoped_release gil_release;
@@ -251,7 +251,7 @@ StatusOr<py::object> LocalShapedBuffer::ToPython() const {
 }
 
 StatusOr<std::vector<LocalShapedBuffer>> LocalShapedBuffer::DestructureTuple() {
-  tensorflow::profiler::TraceMe("LocalShapedBuffer::DestructureTuple");
+  tensorflow::profiler::TraceMe traceme("LocalShapedBuffer::DestructureTuple");
   const Shape tuple_shape = shape();
 
   if (!tuple_shape.IsTuple()) {
@@ -312,7 +312,7 @@ std::vector<int> PyLocalExecutable::DeviceOrdinals() const {
 
 StatusOr<LocalShapedBuffer> PyLocalExecutable::Execute(
     absl::Span<LocalShapedBuffer* const> argument_handles) {
-  tensorflow::profiler::TraceMe("LocalExecutable::Execute");
+  tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute()",
@@ -347,7 +347,7 @@ StatusOr<LocalShapedBuffer> PyLocalExecutable::Execute(
 
 StatusOr<std::vector<LocalShapedBuffer>> PyLocalExecutable::ExecutePerReplica(
     absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
-  tensorflow::profiler::TraceMe("LocalExecutable::ExecutePerReplica");
+  tensorflow::profiler::TraceMe traceme("LocalExecutable::ExecutePerReplica");
   const int num_devices = client_->device_count();
 
   if (argument_handles.size() != num_replicas()) {
@@ -501,7 +501,7 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
                            std::vector<Shape> argument_layouts,
                            const ExecutableBuildOptions* build_options,
                            PyLocalClient* client) {
-  tensorflow::profiler::TraceMe("LocalExecutable::Compile");
+  tensorflow::profiler::TraceMe traceme("LocalExecutable::Compile");
   std::vector<const Shape*> argument_layout_pointers;
   argument_layout_pointers.reserve(argument_layouts.size());
 
