@@ -75,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -458,11 +457,9 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
                                       &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
-  llvm_ir::AMDGPUMachineFeatures llvm_target_features =
-       llvm_ir::AMDGPUMachineFeatures::Singleton();
 
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               &ir_emitter_context, &llvm_target_features);
+                               &ir_emitter_context);
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 

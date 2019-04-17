@@ -38,7 +38,7 @@ namespace gpu {
 IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
                                  const HloComputation& nested_computation,
                                  IrEmitterContext* ir_emitter_context)
-    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true, nullptr),
+    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true),
       nested_computation_(nested_computation) {}
 
 // Nested function serves the same purpose on GPU as a thread-local function on

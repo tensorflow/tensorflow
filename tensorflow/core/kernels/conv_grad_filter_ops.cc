@@ -829,8 +829,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       device_id,                           // device_id
   };
   AlgorithmConfig algorithm_config;
-  ProfileResult best_result;
-  ProfileResult best_result_no_scratch;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -869,6 +867,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                            transformed_out_backprop, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
 #elif TENSORFLOW_USE_ROCM
+    ProfileResult best_result;
     LOG(INFO) << "running auto-tune for Backward-Filter";
     DnnScratchAllocator scratch_allocator(
         ConvolveBackwardFilterScratchSize, ctx);

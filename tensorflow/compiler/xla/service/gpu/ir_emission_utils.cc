@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -239,27 +238,18 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset,
-    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder, 
-    llvm::Module* module
-) 
-{
-  llvm::IRBuilder<>* builder = llvm_target_ir_builder.builder();
-
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
   llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    llvm::Value* value_as_int = builder->CreateBitCast(value, builder->getIntNTy(bit_width));
-    llvm::Value*  result = EmitDeviceFunctionCall(
-        "__ockl_readuplane_i32",
-        {value_as_int, offset},
-        {S32, S32}, S32, {}, builder, module);
-
-    llvm::Value* result_as_float = builder->CreateBitCast(result, value->getType());
-    return result_as_float;
+    return EmitCallToTargetFunction(
+        TargetFunctionID::kShflDownF32,
+        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)},
+        {S32, F32, S32, S32}, F32, {},{}, 
+        builder);
   }
 
 
@@ -274,10 +264,12 @@ llvm::Value* EmitFullWarpShuffleDown(
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        EmitDeviceFunctionCall("__ockl_readuplane_i32",
-                               {builder->CreateExtractElement(x, i),
-                                offset},
-                               {S32, S32}, S32, {}, builder, module),
+        EmitCallToTargetFunction(
+            TargetFunctionID::kShflDownI32,
+            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
+             builder->getInt32(kWarpSize - 1)},
+             {S32, S32, S32, S32}, S32, {}, 
+            {}, builder),
         i);
   }
   return builder->CreateBitCast(
@@ -318,16 +310,16 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(
-    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder) {
-  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
+          EmitCallToTargetFunction(TargetFunctionID::kThreadIdx, {}, {}, 
+             PRIMITIVE_TYPE_INVALID, {},  {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+          EmitCallToTargetFunction(TargetFunctionID::kThreadIdx, {}, 
+              {}, PRIMITIVE_TYPE_INVALID, {}, {}, b)));
 }
 
 }  // namespace gpu
