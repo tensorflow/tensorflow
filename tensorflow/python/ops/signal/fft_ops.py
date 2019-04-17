@@ -353,7 +353,7 @@ def fftshift(x, axes=None, name=None):
   Returns:
     A `Tensor`, The shifted tensor.
   """
-  with _ops.name_scope(name, "fftshift"):
+  with _ops.name_scope(name, "fftshift") as name:
     x = _ops.convert_to_tensor(x)
     if axes is None:
       axes = tuple(range(x.shape.ndims))
@@ -363,7 +363,7 @@ def fftshift(x, axes=None, name=None):
     else:
       shift = [int((x.shape[ax]) // 2) for ax in axes]
 
-    return manip_ops.roll(x, shift, axes)
+    return manip_ops.roll(x, shift, axes, name)
 
 
 @tf_export("signal.ifftshift")
@@ -394,7 +394,7 @@ def ifftshift(x, axes=None, name=None):
   Returns:
     A `Tensor`, The shifted tensor.
   """
-  with _ops.name_scope(name, "ifftshift"):
+  with _ops.name_scope(name, "ifftshift") as name:
     x = _ops.convert_to_tensor(x)
     if axes is None:
       axes = tuple(range(x.shape.ndims))
@@ -404,7 +404,7 @@ def ifftshift(x, axes=None, name=None):
     else:
       shift = [-int(x.shape[ax] // 2) for ax in axes]
 
-    return manip_ops.roll(x, shift, axes)
+    return manip_ops.roll(x, shift, axes, name)
 
 
 _ops.RegisterGradient("RFFT")(_rfft_grad_helper(1, irfft))
