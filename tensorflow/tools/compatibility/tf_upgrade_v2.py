@@ -50,6 +50,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
         },
+        "tf.autograph.to_code": {
+            "arg_types": None,
+            "arg_values": None,
+            "indentation": None,
+        },
+        "tf.autograph.to_graph": {
+            "arg_types": None,
+            "arg_values": None,
+        },
         "tf.nn.embedding_lookup": {
             "validate_indices": None,
         },
