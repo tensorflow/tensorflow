@@ -1757,6 +1757,7 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input1_shape, const T* input1_data,
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
+    int32* input_indices_tensor_data, int32* output_indices_tensor_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("SpaceToBatchND");
 
@@ -1774,16 +1775,18 @@ inline void SpaceToBatchND(
     int coeff;
   };
 
-  // Input data can be expanded to fit in paddings, so we have to capture actual
-  // coordinates based on Input shape - [Batch] + [spatial_shape]
+  // Input data can not be expanded to fit in paddings, so we have to capture
+  // actual coordinates based on Input shape - [Batch] + [spatial_shape]
   const int input_num_indices = block_num + 1;
   // As output data is allocated including Paddings, so we can capture
   // coordinates, based on Transformed One - block_shape + [batch] +
   // [padded_shape[1] / block_shape[0], ..., padded_shape[M] / block_shape[M-1]]
   const int output_num_indices = 2 * block_num + 1;
 
-  IndicesCoeffPair input_indices[input_num_indices] = {{0}};
-  IndicesCoeffPair output_indices[output_num_indices] = {{0}};
+  IndicesCoeffPair* input_indices =
+      reinterpret_cast<IndicesCoeffPair*>(input_indices_tensor_data);
+  IndicesCoeffPair* output_indices =
+      reinterpret_cast<IndicesCoeffPair*>(output_indices_tensor_data);
 
   // Depth is same as [remaining_shape] of input data which does not take part
   // in Space-To-Batch Transformation
@@ -1833,7 +1836,7 @@ inline void SpaceToBatchND(
   std::function<void(int, bool)> compute_permute =
       [&compute_permute, final_axis, depth, input_batch_size, pad_value,
        input_num_indices, output_num_indices, unextended_input1_shape,
-       block_num, &input_indices, &output_indices, output_data, input1_data,
+       block_num, input_indices, output_indices, output_data, input1_data,
        compute_offset, is_padded_block, paddings_data,
        block_shape_data](int axis, bool is_padded) {
         TFLITE_DCHECK_GE(axis, 1);

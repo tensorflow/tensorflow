@@ -100,6 +100,59 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               NumElements(op_context.block_shape) + 1);
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
+  // Currently only int32 is supported for block_shape &  padding
+  if (op_context.block_shape->type != kTfLiteInt32 ||
+      op_context.paddings->type != kTfLiteInt32) {
+    context->ReportError(
+        context,
+        "Space_to_batch only supports int32 for block_shape & paddings.");
+    return kTfLiteError;
+  }
+
+  // Allocate temporary tensors which are required in kernel operation
+  int temp_input_indices_tensor_id = 0;
+  int temp_output_indices_tensor_id = 0;
+  context->AddTensors(context, 1, &temp_input_indices_tensor_id);
+  context->AddTensors(context, 1, &temp_output_indices_tensor_id);
+
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(2);
+  node->temporaries->data[0] = temp_input_indices_tensor_id;
+  node->temporaries->data[1] = temp_output_indices_tensor_id;
+
+  // Input data can not be expanded to fit in paddings, so we have to capture
+  // actual coordinates based on Input shape - [Batch] + [spatial_shape] As we
+  // need to capture indices along with co-efficient, so multiply by 2
+  const int input_num_indices =
+      (SizeOfDimension(op_context.block_shape, 0) + 1) * 2;
+  // As output data is allocated including Paddings, so we can capture
+  // coordinates, based on Transformed One - block_shape + [batch] +
+  // [padded_shape[1] / block_shape[0], ..., padded_shape[M] / block_shape[M-1]]
+  const int output_num_indices =
+      (2 * SizeOfDimension(op_context.block_shape, 0) + 1) * 2;
+
+  TfLiteTensor* temp_input_indices_tensor =
+      GetTemporary(context, node, /*index=*/0);
+  temp_input_indices_tensor->type = op_context.block_shape->type;
+  temp_input_indices_tensor->allocation_type = kTfLiteArenaRw;
+
+  TfLiteIntArray* temp_input_indices_tensor_size = TfLiteIntArrayCreate(1);
+  temp_input_indices_tensor_size->data[0] = input_num_indices;
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, temp_input_indices_tensor,
+                                          temp_input_indices_tensor_size));
+
+  TfLiteTensor* temp_output_indices_tensor =
+      GetTemporary(context, node, /*index=*/1);
+  temp_output_indices_tensor->type = op_context.block_shape->type;
+  temp_output_indices_tensor->allocation_type = kTfLiteArenaRw;
+
+  TfLiteIntArray* temp_output_indices_tensor_size = TfLiteIntArrayCreate(1);
+  temp_output_indices_tensor_size->data[0] = output_num_indices;
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, temp_output_indices_tensor,
+                                          temp_output_indices_tensor_size));
+
   if (!IsConstantTensor(op_context.block_shape) ||
       !IsConstantTensor(op_context.paddings)) {
     SetTensorToDynamic(op_context.output);
@@ -111,6 +164,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   SpaceToBatchNDContext op_context(context, node);
+  TfLiteTensor* input_indices_tensor = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* output_indices_tensor =
+      GetTemporary(context, node, /*index=*/1);
 
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context.output)) {
@@ -126,6 +182,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        GetTensorData<int32_t>(op_context.block_shape), \
                        GetTensorShape(op_context.paddings),            \
                        GetTensorData<int32_t>(op_context.paddings),    \
+                       GetTensorData<int32_t>(input_indices_tensor),   \
+                       GetTensorData<int32_t>(output_indices_tensor),  \
                        GetTensorShape(op_context.output),              \
                        GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {  // Already know in/out types are same.
