@@ -68,7 +68,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
     case kTfLiteInt32:
     case kTfLiteUInt8:
-    case kTfLiteInt64:
       break;
     default:
       context->ReportError(context, "Type '%s' is not supported by floor_div.",
@@ -136,10 +135,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteUInt8: {
       return EvalImpl<uint8_t>(context, data->requires_broadcast, input1,
-                               input2, output);
-    }
-    case kTfLiteInt64: {
-      return EvalImpl<int64_t>(context, data->requires_broadcast, input1,
                                input2, output);
     }
     default: {

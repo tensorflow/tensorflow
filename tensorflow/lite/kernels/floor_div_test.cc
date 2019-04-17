@@ -113,27 +113,6 @@ TEST(FloorDivModel, BroadcastFloorDivFloat) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
 }
 
-TEST(FloorDivModel, NegativeValueInt64) {
-  FloorDivModel<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
-                               {TensorType_INT64, {1, 2, 2, 1}},
-                               {TensorType_INT64, {}});
-  model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<int64_t>(model.input2(), {2, 2, -3, -4});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(5, -5, 3, -2));
-}
-
-TEST(FloorDivModel, BroadcastFloorDivInt64) {
-  FloorDivModel<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
-                               {TensorType_INT64, {1}}, {TensorType_INT64, {}});
-  model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<int64_t>(model.input2(), {-3});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
-}
-
 TEST(FloorDivModel, SimpleUInt8) {
   FloorDivModel<uint8_t> model({TensorType_UINT8, {1, 2, 2, 1}},
                                {TensorType_UINT8, {1, 2, 2, 1}},
