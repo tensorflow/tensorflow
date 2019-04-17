@@ -775,9 +775,9 @@ distribute_py_test(
     ],
     deps = [
         "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
