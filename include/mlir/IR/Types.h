@@ -241,7 +241,7 @@ public:
     return static_cast<const void *>(type);
   }
   static Type getFromOpaquePointer(const void *pointer) {
-    return Type((ImplType *)(pointer));
+    return Type(reinterpret_cast<ImplType *>(const_cast<void *>(pointer)));
   }
 
 protected:
