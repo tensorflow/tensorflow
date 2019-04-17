@@ -1,4 +1,5 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 201ed
+:/Emit The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -134,10 +136,10 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
   return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
-  IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty,
-						     LLVMTargetIRBuilder& llvm_target_ir_builder) {
-  llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
-      gpu::TargetIntrinsicID::kBlockIdx, {}, {}, b_);
+IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
+  llvm::Value* block_id = gpu::EmitCallToTargetFunction(
+      gpu::TargetFunctionID::kBlockIdx, {}, {}, 
+      PRIMITIVE_TYPE_INVALID, {}, {},  b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
                             llvm::cast<llvm::Instruction>(block_id));
   llvm::Value* linear_block_id =
@@ -194,13 +196,13 @@ llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
 }
 
 std::tuple<llvm::Value*, llvm::Value*>
-KernelMappingScheme::EmitThreadYXCoordinate(
-    llvm::Type* index_ty, LLVMTargetIRBuilder& llvm_target_ir_builder) {
+KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
-  llvm::CallInst* thread_id_raw = gpu::EmitCallToTargetIntrinsic(
-      gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b_);
-  llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
+  llvm::Value* thread_id_raw = gpu::EmitCallToTargetFunction(
+      gpu::TargetFunctionID::kThreadIdx, {}, {}, 
+      PRIMITIVE_TYPE_INVALID, {}, {},  b_);
+  llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), llvm::cast<llvm::Instruction>(thread_id_raw));
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,
                         /*isSigned=*/true, "thread.id.x");
