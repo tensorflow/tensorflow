@@ -226,14 +226,15 @@ TODO : Flesh this section out.
 
 ### Instrumentation and constraint ops
 
-TODO : These ops are not defined yet
-
-*   instrument_stats : Assigns a unique id and signals that statistics should be
-    collected by the runtime when execution passes through this op.
-*   constrain_uniform : Constrains that for uniform quantization, the solver
-    should choose a type with certain characteristics such as the number of
-    fixed-point values, underlying storage type, or whether to constrain to
-    power of two scales.
+*   const_fake_quant : Emulates the logic of the historic TensorFlow
+    fake_quant_with_min_max_args op.
+*   stats_ref : Declares that statistics should be gathered at this point with a
+    unique key and made available to future passes of the solver.
+*   stats : Declares inline statistics (per layer and per axis) for the point in
+    the computation. stats_ref ops are generally converted to stats ops once
+    trial runs have been performed.
+*   coupled_ref : Declares points in the computation to be coupled from a type
+    inference perspective based on a unique key.
 
 ## Integration with simulated quantization at training time
 

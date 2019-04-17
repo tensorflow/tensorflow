@@ -36,45 +36,47 @@ class quant_Op<string mnemonic, list<OpTrait> traits> :
     Op<!strconcat("quant.", mnemonic), traits>;
 
 //===----------------------------------------------------------------------===//
-// Quantization barriers
+// Quantization casts
 //===----------------------------------------------------------------------===//
-class quant_BarrierOp<string mnemonic, list<OpTrait> traits> :
-    quant_Op<mnemonic, traits>, Arguments<(ins quant_RealValueType:$arg)>,
-    Results<(outs quant_RealValueType)>;
-
-// A QuantizeBarrier (qbarrier) represents a potential type shift from a
-// quantizable type to a quantized type.
+// A QuantizeCast (qcast) represents a potential type shift from a quantizable
+// type to a quantized type.
 //
-// At runtime, a qbarrier will apply the transformation expressed by its
+// At runtime, a qcast will apply the transformation expressed by its
 // operand and result type. For flexibility during transformation, it is also
-// possible to have a qbarrier that performs no transformation (both its
+// possible to have a qcast that performs no transformation (both its
 // operand and result type are quantizable).
 //
-// A qbarrier will typically originate from either:
+// A qcast will typically originate from either:
 //   a) An expressed or implied constraint in the source dialect which signals
 //      that a certain level of quantization is possible or required.
 //   b) An inference made by a quantization algorithm indicating that a
 //      quantized representation may be acceptable.
 //
 // Especially early in transformation, it is common to have pairs of
-// qbarrier/dbarrier at points where a transition to a quantized type is
-// required. In addition, it is also common to have an identity qbarrier
+// qcast/dcast at points where a transition to a quantized type is
+// required. In addition, it is also common to have an identity qcast
 // (where the operand and result type are not quantized) at all points where
 // it is legal to use a quantized representation (but is not known to be
 // acceptable).
-def quant_QuantizeBarrierOp : quant_BarrierOp<"qbarrier", [NoSideEffect]>;
+def quant_QuantizeCastOp : quant_Op<"qcast", [NoSideEffect]> {
+  let arguments = (ins quant_RealValueType:$arg);
+  let results = (outs quant_RealValueType);
+}
 
-// A DequantizeBarrier (dbarrier) represents the inverse of a qbarrier,
+// A DequantizeCast op (dcast) represents the inverse of a qcast,
 // converting back from a quantized to quantizable (expressed) type.
 //
-// Like qbarriers, a dbarrier is allowed to have both its operand and result
+// Like qcasts, a dcast is allowed to have both its operand and result
 // as non quantized types. This facilitates transformations and marks edges
 // where the computation must be carried out in the expressed type.
 //
-// Especially early in transformation, it is common to have dbarriers on
+// Especially early in transformation, it is common to have dcasts on
 // all operands to ops that must operate with the expressed type (typically
 // math ops prior to lowering to target-specific, quantized kernels).
-def quant_DequantizeBarrierOp : quant_BarrierOp<"dbarrier", [NoSideEffect]>;
+def quant_DequantizeCastOp : quant_Op<"dcast", [NoSideEffect]> {
+  let arguments = (ins quant_RealValueType:$arg);
+  let results = (outs quant_RealValueType);
+}
 
 // A StorageCast (scast) represents a cast from or to a type based on the
 // storage type and a type based on a corresponding quantized type.
@@ -87,13 +89,13 @@ def quant_DequantizeBarrierOp : quant_BarrierOp<"dbarrier", [NoSideEffect]>;
 //   i8 -> !quant<"uniform[i8:f32]{1.0}">
 //   tensor<4xi8> -> tensor<4x!quant<"uniform[i8:f32]{1.0}">>
 //   vector<4xi8> -> vector<4x!quant<"uniform[i8:f32]{1.0}">>
-def quant_StorageCastOp :
-    quant_Op<"scast", [NoSideEffect]>,
-    Arguments<(ins quant_RealOrStorageValueType:$arg)>,
-    Results<(outs quant_RealOrStorageValueType)>;
+def quant_StorageCastOp : quant_Op<"scast", [NoSideEffect]> {
+  let arguments = (ins quant_RealOrStorageValueType:$arg);
+  let results = (outs quant_RealOrStorageValueType);
+}
 
 //===----------------------------------------------------------------------===//
-// Training integration ops
+// Training integration and instrumentation ops
 //===----------------------------------------------------------------------===//
 
 def quant_ConstFakeQuant : quant_Op<"const_fake_quant",
@@ -102,11 +104,11 @@ def quant_ConstFakeQuant : quant_Op<"const_fake_quant",
       "Simulates the effect of uniform quantization with const range.";
 
   let description = [{
-Given a const min, max, num_bits and narrow_range attribute, applies the same
-uniform quantization simulation as is done by the TensorFlow
-fake_quant_with_min_max_args op. See the fakeQuantAttrsToType() utility
-method and the quant-convert-simulated-quantization pass for futher details.
-}];
+    Given a const min, max, num_bits and narrow_range attribute, applies the
+    same uniform quantization simulation as is done by the TensorFlow
+    fake_quant_with_min_max_args op. See the fakeQuantAttrsToType() utility
+    method and the quant-convert-simulated-quantization pass for futher details.
+  }];
 
   let arguments = (ins
     F32Tensor:$inputs,
@@ -121,6 +123,98 @@ method and the quant-convert-simulated-quantization pass for futher details.
   let results = (outs
     F32Tensor:$outputs
   );
+}
+
+def quant_StatisticsRefOp : quant_Op<"stats_ref", []> {
+  let summary =
+      "Indicates that statistics are resolved by reference.";
+
+  let description = [{
+    This op acts as an identity that, when encountered at runtime, should result
+    in statistics being collected about about the value of its operand/result.
+    Such statistics will be stored with the provided key, allowing this node
+    to later be converted to a 'stats' op if statistics with that key have been
+    encountered.
+  }];
+
+  let arguments = (ins
+    quant_RealValueType:$arg,
+    StrAttr:$statsKey
+  );
+  let results = (outs quant_RealValueType);
+}
+
+def quant_StatisticsOp : quant_Op<"stats", []> {
+  let summary =
+      "Identity op which associates statistics with the value.";
+
+  let description = [{
+    Associates statistics about the runtime ranges of values observed for
+    evaluations of this node.
+
+    Statistics about the entire type are reported in the 'layerStats' attribute
+    and those for each axis, in the (optional) `axisStats` attribute. The
+    interpretation of each is determined by the last dimension of its shape.
+    Currently, only dim=2 is supported, which is interpreted as [min, max].
+
+    `layerStats` must be a rank 1 tensor: [2]
+    `axisStats` must be a rank 2 tensor: [N, 2], where N=the rank of `arg`.
+  }];
+
+  let arguments = (ins
+    quant_RealValueType:$arg,
+    ElementsAttr:$layerStats,
+    OptionalAttr<ElementsAttr>:$axisStats);
+  let results = (outs quant_RealValueType);
+
+  let verifier = [{
+    auto tensorArg = arg()->getType().dyn_cast<TensorType>();
+    auto argRank = tensorArg ? tensorArg.getRank() : 0;
+    // Verify layerStats attribute.
+    {
+      auto layerStatsType = layerStats().getType();
+      if (!layerStatsType.getElementType().isa<FloatType>()) {
+        return emitOpError(
+            "layerStats must have a floating point element type");
+      }
+      if (layerStatsType.getRank() != 1 || layerStatsType.getDimSize(0) != 2) {
+        return emitOpError("layerStats must have shape [2]");
+      }
+    }
+    // Verify axisStats (optional) attribute.
+    if (axisStats()) {
+      auto axisStatsType = axisStats()->getType();
+      if (!axisStatsType.getElementType().isa<FloatType>()) {
+        return emitOpError("axisStats must have a floating point element type");
+      }
+      if (axisStatsType.getRank() != 2 ||
+          axisStatsType.getDimSize(1) != 2 ||
+          axisStatsType.getDimSize(0) != argRank) {
+        return emitOpError("axisStats must have shape [N,2] "
+                           "where N = the argument rank");
+      }
+    }
+    return success();
+  }];
+}
+
+def quant_CoupledRefOp : quant_Op<"coupled_ref", []> {
+  let summary =
+      "Indicates that one point of the computation is coupled to another.";
+
+  let description = [{
+    Ordinarily, relationships between ops for the purposes of determining
+    compatible quantized types is explicit based on the use-def chain. However,
+    in some situations, a use may be separated from its def by arbitrary
+    external connections. In such a case, during analysis, all coupled_ref
+    nodes in a module which share a coupledKey will be considered to be
+    directly connected as via an identity op for the purpose of type inference.
+  }];
+
+  let arguments = (ins
+    quant_RealValueType:$arg,
+    StrAttr:$coupledKey);
+  let results = (outs quant_RealValueType);
 }
 
 #endif // QUANT_OPS

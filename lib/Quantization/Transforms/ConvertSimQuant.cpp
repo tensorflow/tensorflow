@@ -82,10 +82,10 @@ public:
 
     // TODO: Map to a qbarrier with an attribute like [Forced] to signal that
     // this is a forced/hard-coded constraint.
-    auto qbarrier = rewriter.create<QuantizeBarrierOp>(
-        op->getLoc(), quantizedType, fqOp.inputs());
-    rewriter.replaceOpWithNewOp<DequantizeBarrierOp>(op, converter.inputType,
-                                                     qbarrier.getResult());
+    auto qbarrier = rewriter.create<QuantizeCastOp>(op->getLoc(), quantizedType,
+                                                    fqOp.inputs());
+    rewriter.replaceOpWithNewOp<DequantizeCastOp>(op, converter.inputType,
+                                                  qbarrier.getResult());
 
     return false;
   }

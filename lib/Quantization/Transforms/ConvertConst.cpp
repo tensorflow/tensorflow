@@ -44,7 +44,7 @@ public:
   };
 
   QuantizedConstRewrite(MLIRContext *context)
-      : RewritePattern(QuantizeBarrierOp::getOperationName(), 1, context) {}
+      : RewritePattern(QuantizeCastOp::getOperationName(), 1, context) {}
 
   PatternMatchResult match(Operation *op) const override;
   void rewrite(Operation *op, std::unique_ptr<PatternState> baseState,
@@ -59,7 +59,7 @@ PatternMatchResult QuantizedConstRewrite::match(Operation *op) const {
   State state;
 
   // Is the operand a constant?
-  auto qbarrier = op->cast<QuantizeBarrierOp>();
+  auto qbarrier = op->cast<QuantizeCastOp>();
   if (!matchPattern(qbarrier.arg(), m_Constant(&state.value))) {
     return matchFailure();
   }
