@@ -571,6 +571,8 @@ tf_py_test(
         "lift_to_graph",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
     ],
 )
 
