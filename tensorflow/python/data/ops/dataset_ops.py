@@ -932,17 +932,17 @@ class DatasetV2(object):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3, 4, 5 }
+    a = Dataset.range(1, 6)  # [ 1, 2, 3, 4, 5 ]
 
-    a.map(lambda x: x + 1) = { 2, 3, 4, 5, 6 }
+    a.map(lambda x: x + 1)  # ==> [ 2, 3, 4, 5, 6 ]
     ```
 
     The input signature of `map_func` is determined by the structure of each
     element in this dataset. For example:
 
     ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
     # Each element is a `tf.Tensor` object.
     a = { 1, 2, 3, 4, 5 }
     # `map_func` takes a single argument of type `tf.Tensor` with the same
