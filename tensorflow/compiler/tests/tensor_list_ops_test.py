@@ -211,6 +211,18 @@ class ListOpsTest(xla_test.XLATestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [0., 0., 0.])
 
+  def testZerosLikeForTensorList(self):
+    with self.cached_session(), self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=[],
+          max_num_elements=2)
+      l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
+      z = array_ops.zeros_like(l)
+      z = list_ops.tensor_list_stack(z, element_dtype=dtypes.float32)
+      self.assertAllEqual(z.shape.as_list(), [None])
+      self.assertAllEqual(z, [0.0, 0.0])
+
 if __name__ == "__main__":
   os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=2 ' +
                                 os.environ.get('TF_XLA_FLAGS', ''))
