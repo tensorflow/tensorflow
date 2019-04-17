@@ -107,6 +107,7 @@ _FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
 _FLAG_NAME_EXCLUDED_OPTYPES = 'excluded_optypes'
 _FLAG_NAME_INCLUDED_OPNAMES = 'included_opnames'
 _FLAG_NAME_INCLUDED_OPTYPES = 'included_optypes'
+_FLAG_NAME_INCLUDED_CORES = 'included_cores'
 _FLAG_NAME_TRACE_DIR = 'trace_dir'
 _FLAG_NAME_REPORT_FILE = 'report_file'
 _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR = 'use_test_undeclared_outputs_dir'
@@ -286,7 +287,8 @@ class TensorTracer(object):
         _FLAG_NAME_SUBMODE, _FLAG_NAME_EXCLUDED_OPNAMES,
         _FLAG_NAME_EXCLUDED_OPTYPES, _FLAG_NAME_INCLUDED_OPNAMES,
         _FLAG_NAME_INCLUDED_OPTYPES, _FLAG_NAME_TRACE_DIR,
-        _FLAG_NAME_REPORT_FILE, _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
+        _FLAG_NAME_INCLUDED_CORES, _FLAG_NAME_REPORT_FILE,
+        _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
         _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS, _FLAG_NAME_OP_RANGE,
         _FLAG_DUMP_BEFORE_AFTER_GRAPHS
     ]
@@ -331,6 +333,30 @@ class TensorTracer(object):
       pos = match.end()
     result += '\n'
     return result
+
+  @staticmethod
+  def flag_value_as_int_list(wanted_flag_name):
+    """Returns the integer list of a TensorTracer flag.
+
+    Args:
+      wanted_flag_name: the name of the flag we are looking for.
+
+    Returns:
+      the value of the flag.
+    Raises:
+      RuntimeError: If supposedly deadcode is reached.
+    """
+    int_list = []
+    found, flag_value = TensorTracer.get_flag_value(wanted_flag_name)
+
+    if found:
+      try:
+        integer_values = flag_value.split(',')
+        int_list = [int(int_val) for int_val in integer_values]
+      except ValueError:
+        logging.warning('Cannot convert %s to int for flag %s', int_list,
+                        wanted_flag_name)
+    return int_list
 
   @staticmethod
   def get_flag_int_value(wanted_flag_name, default_value):
@@ -713,6 +739,9 @@ class TensorTracer(object):
     _, self._graph_dump_path = TensorTracer.get_flag_value(
         _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
 
+    self._included_cores = TensorTracer.flag_value_as_int_list(
+        _FLAG_NAME_INCLUDED_CORES)
+
   def _add_replica_id_to_graph(self):
     """Adds nodes for computing the replica ID to the graph."""
 
@@ -890,7 +919,12 @@ class TensorTracer(object):
     self._write_report('%s %s\n'%(_FIELD_NAME_DEVICE, self._device_type))
     self._write_report('%s %s\n'%(_FIELD_NAME_TRACE_MODE, self._trace_mode))
     self._write_report('%s %s\n'%(_FIELD_NAME_SUBMODE, self._submode))
-    self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS, self._num_replicas))
+    if self._included_cores:
+      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
+                                    len(self._included_cores)))
+    else:
+      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
+                                    self._num_replicas))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS_PER_HOST,
                                   self._num_replicas_per_host))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_HOSTS, self._num_hosts))
@@ -1128,7 +1162,7 @@ class TensorTracer(object):
       tensors_to_print = _get_distance_k_tensors(self._trace_stack_size)
       print_ops = [_print_tensor(t.name, -1, t, t) for t in tensors_to_print]
       with ops.control_dependencies(print_ops):
-        return constant_op.constant(0)
+        return constant_op.constant(True)
 
     if self._trace_mode == _TRACE_MODE_FULL_IF_NAN:
       return _show_full_tensors
@@ -1672,11 +1706,19 @@ class TensorTracer(object):
             """Creates a cond op that traces the out_tensor if predicate is satisfied."""
             return control_flow_ops.cond(
                 predicate_tensor, lambda: trace_fn(out_tensor, out_tensor_name),
-                lambda: constant_op.constant(0)).op
+                lambda: constant_op.constant(False)).op
 
           if self._is_conditional_trace:
             trace_op = conditional_trace_fn(processed_out_tensor, out_tensor,
                                             tpu_wrap_trace_fn, tensor_name)
+          elif self._included_cores:
+            should_print = constant_op.constant(False)
+            for core in self._included_cores:
+              should_print = gen_math_ops.logical_or(
+                  should_print, gen_math_ops.equal(self._replica_id, core))
+            trace_op = conditional_trace_fn(should_print, processed_out_tensor,
+                                            tpu_wrap_trace_fn, tensor_name)
+
           else:
             trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
 
