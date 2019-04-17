@@ -83,6 +83,10 @@ FunctionPassBase *createLoopFusionPass(unsigned fastMemorySpace = 0,
                                        uint64_t localBufSizeThreshold = 0,
                                        bool maximalFusion = false);
 
+/// Creates a loop invariant code motion pass that hoists loop invariant
+/// instructions out of the loop.
+FunctionPassBase *createLoopInvariantCodeMotionPass();
+
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
 FunctionPassBase *createPipelineDataTransferPass();
