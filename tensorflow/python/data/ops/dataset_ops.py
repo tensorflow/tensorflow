@@ -1028,12 +1028,10 @@ class DatasetV2(object):
     dataset of their elements:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset. '[...]' represents a tensor.
-    a = {[1,2,3,4,5], [6,7,8,9], [10]}
+    a = Dataset.from_tensor_slices([ [1, 2, 3], [4, 5, 6], [7, 8, 9] ])
 
-    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) ==
-      {[1,2,3,4,5,6,7,8,9,10]}
+    a.flat_map(lambda x: Dataset.from_tensor_slices(x + 1)) # ==>
+    #  [ 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
     ```
 
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
