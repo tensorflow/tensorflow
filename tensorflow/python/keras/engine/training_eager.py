@@ -158,6 +158,9 @@ def _model_loss(model,
 
           # Compute the stateless loss value.
           output_loss = losses_utils.reduce_weighted_loss(weighted_losses)
+          if (current_loss_reduction ==
+              losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
         else:
           # Compute the stateless loss value for a custom loss class.
           # Here we assume that the class takes care of loss reduction
@@ -165,6 +168,8 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
+          # For custom losses we assume reduction was mean.
+          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs

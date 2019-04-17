@@ -3103,6 +3103,15 @@ class Graph(object):
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
     self._graph_key = "grap-key-%d/" % (uid(),)
+    # A string with the last reduction method passed to
+    # losses.compute_weighted_loss(), or None. This is required only for
+    # backward compatibility with Estimator and optimizer V1 use cases.
+    self._last_loss_reduction = None
+    # Flag that is used to indicate whether loss has been scaled by optimizer.
+    # If this flag has been set, then estimator uses it to scale losss back
+    # before reporting. This is required only for backward compatibility with
+    # Estimator and optimizer V1 use cases.
+    self._is_loss_scaled_by_optimizer = False
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
     # Set to True if this graph is being built in an
