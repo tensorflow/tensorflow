@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Usage: ci_sanity.sh [--pep8] [--incremental] [bazel flags]
+# Usage: ci_sanity.sh [--pep8] [--incremental] [--incremental:git_commit] [bazel flags]
 #
 # Options:
 #           run sanity checks: python 2&3 pylint checks and bazel nobuild
@@ -60,13 +60,36 @@ get_changed_files_in_last_non_merge_git_commit() {
   git diff-tree --no-commit-id --name-only -r $(get_last_non_merge_git_commit)
 }
 
+# List files changed (i.e., added, removed or revised)
+# since the specified commit
+# Usage: get_changed_files_in_last_non_merge_git_commit commit-sha
+get_changed_files_since_git_commit() {
+  git diff-tree --no-commit-id --name-only -r "$1"
+}
+
 # List Python files changed in the last non-merge git commit that still exist,
 # i.e., not removed.
-# Usage: get_py_files_to_check [--incremental]
+# Usage: get_py_files_to_check [--incremental] [--incremental:git-commit]
 get_py_files_to_check() {
   if [[ "$1" == "--incremental" ]]; then
     CHANGED_PY_FILES=$(get_changed_files_in_last_non_merge_git_commit | \
                        grep '.*\.py$')
+
+    # Do not include fies removed in the last non-merge commit.
+    PY_FILES=""
+    for PY_FILE in ${CHANGED_PY_FILES}; do
+      if [[ -f "${PY_FILE}" ]]; then
+        PY_FILES="${PY_FILES} ${PY_FILE}"
+      fi
+    done
+
+    echo "${PY_FILES}"
+
+  elif [[ "$1" == --incremental:* ]]; then
+    COMMIT=$(echo "$1" | cut -f2 -d:)
+    CHANGED_PY_FILES=$(get_changed_files_since_git_commit $COMMIT | \
+                       grep '.*\.py$')
+    echo "changed files $CHANGED_PY_FILES"
 
     # Do not include files removed in the last non-merge commit.
     PY_FILES=""
@@ -77,6 +100,7 @@ get_py_files_to_check() {
     done
 
     echo "${PY_FILES}"
+
   else
     find tensorflow -name '*.py'
   fi
@@ -85,7 +109,7 @@ get_py_files_to_check() {
 # Subfunctions for substeps
 # Run pylint
 do_pylint() {
-  # Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]
+  # Usage: do_pylint (PYTHON2 | source /tensorflow/tensorflow/tools/ci_build/ci_sanity.sh) [--incremental]
   #
   # Options:
   #   --incremental  Performs check on only the python files changed in the
@@ -126,6 +150,18 @@ do_pylint() {
 
   if [[ "$2" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
+
+    if [[ -z "${PYTHON_SRC_FILES}" ]]; then
+      echo "do_pylint will NOT run due to --incremental flag and due to the "\
+"absence of Python code changes in the last commit."
+      return 0
+    else
+      # For incremental builds, we still check all Python files in cases there
+      # are function signature changes that affect unchanged Python files.
+      PYTHON_SRC_FILES=$(get_py_files_to_check)
+    fi
+  elif [[ "$2" == --incremental:* ]]; then
+    PYTHON_SRC_FILES=$(get_py_files_to_check $2)
 
     if [[ -z "${PYTHON_SRC_FILES}" ]]; then
       echo "do_pylint will NOT run due to --incremental flag and due to the "\
@@ -560,6 +596,9 @@ for arg in "$@"; do
     SANITY_STEPS_DESC=("pep8 test")
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
+  elif [[ "${arg}" == --incremental:* ]]; then
+    echo "adding a new incremental ${arg}"
+    INCREMENTAL_FLAG="${arg}"
   else
     BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi
