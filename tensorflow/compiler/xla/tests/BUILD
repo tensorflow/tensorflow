@@ -312,7 +312,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:optional",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -997,7 +996,6 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-    tags = ["no_rocm"],
 )
 
 xla_test(
