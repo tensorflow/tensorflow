@@ -74,24 +74,17 @@ struct TargetFunctionInfo {
 // Wrapper structure to carry either information about the intrinsic
 // or device function for NVPTX/AMDGPU.
 struct TargetInfo {
-  struct TargetIntrinsicInfo target_intrinsic_info;
-  struct TargetFunctionInfo target_function_info;
-  TargetInfo(struct TargetIntrinsicInfo x, struct TargetFunctionInfo y,
-             bool intrinsic)
-      : target_intrinsic_info(x),
-        target_function_info(y),
-        has_intrinsic(intrinsic) {}
-  TargetInfo(struct TargetIntrinsicInfo x, struct TargetFunctionInfo y)
-      : target_intrinsic_info(x), target_function_info(y) {}
-  absl::optional<bool> has_intrinsic;
+  absl::optional<struct TargetIntrinsicInfo> target_intrinsic_info;
+  absl::optional<struct TargetFunctionInfo> target_function_info;
+  TargetInfo(struct TargetIntrinsicInfo x)
+      : target_intrinsic_info(x){}
+  TargetInfo(struct TargetFunctionInfo y):target_function_info(y) {}
 };
 
 // Populates the function information for different platforms (NVPTX, AMDGPU)
 // corresponding to the given TargetFunctionID.
 struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
                                 llvm::Triple& target_triple) {
-  TargetFunctionInfo default_nvptx_function_info, default_amdgpu_function_info;
-  TargetIntrinsicInfo default_nvptx_intrinsic_info, default_amdgpu_intrinsic_info;
 
   if (!(target_triple.getArch() == llvm::Triple::nvptx ||
         target_triple.getArch() == llvm::Triple::nvptx64 ||
@@ -108,11 +101,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
                   S32, true);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-         return TargetInfo(nvptx_intrinsic_info,
-                              default_nvptx_function_info);
+         return TargetInfo(nvptx_intrinsic_info);
       } else {
-         return TargetInfo(default_amdgpu_intrinsic_info,
-                               amdgpu_function_info);
+         return TargetInfo(amdgpu_function_info);
       }
     }
     case TargetFunctionID::kShflDownI32:{ 
@@ -124,9 +115,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
 
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(default_amdgpu_intrinsic_info, amdgpu_function_info);
+        return TargetInfo(amdgpu_function_info);
       }
     }
     case TargetFunctionID::kThreadIdx: {
@@ -134,9 +125,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workitem_id_x);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
 
@@ -146,9 +137,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workitem_id_y);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
 
@@ -157,9 +148,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workitem_id_z);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
 
@@ -168,9 +159,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workgroup_id_x);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
     case TargetFunctionID::kBlockIdy: {
@@ -178,9 +169,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workgroup_id_y);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
     case TargetFunctionID::kBlockIdz: {
@@ -188,9 +179,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_workgroup_id_z);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
     case TargetFunctionID::kBarrierId: {
@@ -198,9 +189,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       TargetIntrinsicInfo amdgpu_intrinsic_info(llvm::Intrinsic::amdgcn_s_barrier);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
-        return TargetInfo(nvptx_intrinsic_info, default_nvptx_function_info,true);
+        return TargetInfo(nvptx_intrinsic_info);
       } else {
-        return TargetInfo(amdgpu_intrinsic_info,default_amdgpu_function_info, true);
+        return TargetInfo(amdgpu_intrinsic_info);
       }
     }
   }
@@ -217,26 +208,26 @@ llvm::Value* EmitCallToTargetFunction(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   struct TargetInfo gpu_info = GetTargetInfo(function_id, target_triple);
 
-  if (gpu_info.has_intrinsic) {
+  if (gpu_info.target_intrinsic_info) {
     llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
-        module, gpu_info.target_intrinsic_info.intrinsic,
+        module, gpu_info.target_intrinsic_info->intrinsic,
         llvm_ir::AsArrayRef(overloaded_types));
     return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
   } else {
     std::vector<llvm::Value*> converted_operands;
     std::vector<llvm::Type*> ir_input_types;
-    auto indices = gpu_info.target_function_info.input_types.size();
+    auto indices = gpu_info.target_function_info->input_types.size();
     PrimitiveType from_type, to_type;
     CHECK_EQ(input_types.size(),
-             gpu_info.target_function_info.input_types.size());
+             gpu_info.target_function_info->input_types.size());
     CHECK_EQ(input_types.size(), operands.size());
     for (unsigned int index = 0; index < operands.size(); ++index){
-      to_type = gpu_info.target_function_info.input_types[index];
+      to_type = gpu_info.target_function_info->input_types[index];
       from_type = input_types[index];
       if (to_type == PRIMITIVE_TYPE_INVALID) continue;
       if (from_type == to_type) {
 	converted_operands.push_back(const_cast<llvm::Value*>(operands[index]));
-      } else if (gpu_info.target_function_info.use_bitcast) {
+      } else if (gpu_info.target_function_info->use_bitcast) {
         converted_operands.push_back(b->CreateBitCast(operands[index],
                       llvm_ir::PrimitiveTypeToIrType(to_type, module)));
       } else if (primitive_util::IsFloatingPointType(from_type) &&
@@ -253,13 +244,13 @@ llvm::Value* EmitCallToTargetFunction(
     }
     llvm::FunctionType* callee_type =
         llvm::FunctionType::get(llvm_ir::PrimitiveTypeToIrType(
-                                    gpu_info.target_function_info.result_type,
+                                    gpu_info.target_function_info->result_type,
                                     module),     // Return type.
                                 ir_input_types,  // Parameter types.
                                 false);          // No variadic arguments.
 
-    string munged_callee = gpu_info.target_function_info.callee_name;
-    switch (gpu_info.target_function_info.result_type) {
+    string munged_callee = gpu_info.target_function_info->callee_name;
+    switch (gpu_info.target_function_info->result_type) {
       case S32:
         StrAppend(&munged_callee, "_i32");
         break;
@@ -284,11 +275,11 @@ llvm::Value* EmitCallToTargetFunction(
     }
     llvm::Value* result =  b->CreateCall(callee, llvm_ir::AsArrayRef(converted_operands));
 
-    from_type = gpu_info.target_function_info.result_type;
+    from_type = gpu_info.target_function_info->result_type;
     to_type = output_type;
     if (from_type == to_type){
       return result;
-    } else if (gpu_info.target_function_info.use_bitcast) {
+    } else if (gpu_info.target_function_info->use_bitcast) {
       int bit_width = result->getType()->getPrimitiveSizeInBits();
       llvm::Value* converted_result = b->CreateBitCast(
           result, llvm_ir::PrimitiveTypeToIrType(to_type, module));
