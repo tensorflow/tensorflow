@@ -88,7 +88,7 @@ class BatchNormalizationV2(Layer):
       to get the means and variances for inference.
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
-      implementation if possible. If False, do not used the fused
+      implementation if possible. If False, do not use the fused
       implementation.
     trainable: Boolean, if `True` the variables will be marked as trainable.
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
@@ -791,7 +791,7 @@ class BatchNormalizationV1(BatchNormalizationV2):
       '''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
-      implementation if possible. If False, do not used the fused
+      implementation if possible. If False, do not use the fused
       implementation.''',
 
       '''
