@@ -107,7 +107,7 @@ public:
     return static_cast<const void *>(loc);
   }
   static Location getFromOpaquePointer(const void *pointer) {
-    return Location((ImplType *)(pointer));
+    return Location(reinterpret_cast<ImplType *>(const_cast<void *>(pointer)));
   }
 
 protected:
