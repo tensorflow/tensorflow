@@ -103,8 +103,16 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
-      return n / window_shift_ +
-             (n % window_shift_ == 0 || drop_remainder_ ? 0 : 1);
+      int64 cardinality = 0;
+      if (drop_remainder_) {
+        while (1 + (n - 1) / window_stride_ >= window_size_) {
+          cardinality++;
+          n = n - window_shift_;
+        }
+      } else {
+        cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
+      }
+      return cardinality;
     }
 
    protected:
