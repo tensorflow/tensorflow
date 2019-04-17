@@ -29,6 +29,10 @@ constexpr int kInputTensor = 0;
 constexpr int kAxisTensor = 1;
 constexpr int kOutputTensor = 0;
 
+// NOTE: Currently Tensorflow limits input of Reverse to be max 8-D, if changes
+// then please update accordingly here
+constexpr int kMaxInputDim = 8;
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -36,6 +40,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxisTensor);
   TF_LITE_ENSURE(context, NumDimensions(input) >= NumElements(axis));
+  TF_LITE_ENSURE(context, NumDimensions(input) <= kMaxInputDim);
 
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt16 &&
@@ -79,7 +84,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis_tensor = GetInput(context, node, kAxisTensor);
   const int dimension_size = NumDimensions(input);
   int axes_size = NumElements(axis_tensor);
-  bool axes[dimension_size] = {false};
+  bool axes[kMaxInputDim] = {false};
   const int32_t* axis_data = GetTensorData<int32_t>(axis_tensor);
   int axis = 0;
   for (int index = 0; index < axes_size; ++index) {
