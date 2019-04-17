@@ -720,6 +720,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -1095,6 +1096,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
 
     if rewrite_options.min_graph_nodes != 0:

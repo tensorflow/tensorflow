@@ -2875,6 +2875,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":loss_scale",
+        "//tensorflow/python/distribute:distribute_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2903,6 +2904,29 @@ py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "mixed_precision",
+    srcs = ["training/experimental/mixed_precision.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":config",
+        ":loss_scale",
+        ":loss_scale_optimizer",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "mixed_precision_test",
+    size = "small",
+    srcs = ["training/experimental/mixed_precision_test.py"],
+    additional_deps = [
+        ":mixed_precision",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -4013,6 +4037,7 @@ py_library(
         ":loss_scale",
         ":loss_scale_optimizer",
         ":math_ops",
+        ":mixed_precision",
         ":platform",
         ":pywrap_tensorflow",
         ":random_ops",
