@@ -4052,12 +4052,12 @@ tf_cc_test(
         "ops/cudnn_rnn_ops_test.cc",
     ],
     deps = [
+        ":core",
         ":framework",
         ":lib",
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/core",
     ],
 )
 
@@ -5072,6 +5072,7 @@ tf_cc_test_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/internal:profiler_interface",
     ],
 )
 
