@@ -1084,24 +1084,20 @@ class DatasetV2(object):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3, 4, 5 }
+    a = Dataset.range(1, 6)  # [ 1, 2, 3, 4, 5 ]
 
     # NOTE: New lines indicate "block" boundaries.
     a.interleave(lambda x: Dataset.from_tensors(x).repeat(6),
-                 cycle_length=2, block_length=4) == {
-        1, 1, 1, 1,
-        2, 2, 2, 2,
-        1, 1,
-        2, 2,
-        3, 3, 3, 3,
-        4, 4, 4, 4,
-        3, 3,
-        4, 4,
-        5, 5, 5, 5,
-        5, 5,
-    }
+                cycle_length=2, block_length=4) # ==> [1, 1, 1, 1,
+                                                #      2, 2, 2, 2,
+                                                #      1, 1,
+                                                #      2, 2,
+                                                #      3, 3, 3, 3,
+                                                #      4, 4, 4, 4,
+                                                #      3, 3,
+                                                #      4, 4,
+                                                #      5, 5, 5, 5,
+                                                #      5, 5]
     ```
 
     NOTE: The order of elements yielded by this transformation is
