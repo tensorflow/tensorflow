@@ -1315,19 +1315,19 @@ See also
 :              :                     : shape as                 :
 :              :                     : `RFFT(fft_length=[17])`. :
 
-| `FftType` | Semantics                                                       |
-| --------- | --------------------------------------------------------------- |
-| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.             |
-| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.             |
-| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is     |
-:           : reduced to `fft_length[-1] // 2 + 1`, omitting the reversed     :
-:           : conjugate part of the transformed signal beyond the Nyquist     :
-:           : frequency.                                                      :
-| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real). |
-:           : Shape of the innermost axis is expanded to `fft_length[-1]`,    :
-:           : inferring the part of the transformed signal beyond the Nyquist :
-:           : frequency from the reverse conjugate of the `1` to              :
-:           : `fft_length[-1] // 2 + 1` entries.                              :
+| `FftType` | Semantics                                                        |
+| --------- | ---------------------------------------------------------------- |
+| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.              |
+| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.              |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is      |
+:           : reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a    :
+:           : non-zero value, omitting the reversed conjugate part of the      :
+:           : transformed signal beyond the Nyquist frequency.                 :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real).  |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]` if   :
+:           : `fft_length[-1]` is a non-zero value, inferring the part of the  :
+:           : transformed signal beyond the Nyquist frequency from the reverse :
+:           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
 
 #### Multidimensional FFT
 
