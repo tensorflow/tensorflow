@@ -282,6 +282,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.profiling().report_directory();
   }
 
+  const IpuOptions::FloatingPointBehaviour& FloatingPointBehaviour() const {
+    return current_config_.floating_point_behaviour();
+  }
+
   bool AlwaysRearrangeCopiesOnTheHost() const {
     return current_config_.speed_size_config()
         .always_rearrange_copies_on_the_host();

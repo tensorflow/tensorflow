@@ -96,8 +96,11 @@ limitations under the License.
 #include <poplin/codelets.hpp>
 #include <popnn/codelets.hpp>
 #include <popops/codelets.hpp>
-#include <poprand/RandomGen.hpp>
 #include <poprand/codelets.hpp>
+#include <popsys/codelets.hpp>
+
+#include <poprand/RandomGen.hpp>
+#include <popsys/CSRFunctions.hpp>
 
 namespace se = ::stream_executor;
 
@@ -289,8 +292,7 @@ HloPrintOptions GetPrintOptions() {
 }
 
 std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
-    poplar::Graph& master_graph, poplar::Graph& graph, int replication_factor,
-    poplar::program::Program& prog) {
+    poplar::Graph& master_graph, poplar::Graph& graph, int replication_factor) {
   const std::string seed_prefix = "__seed";
 
   auto seed =
@@ -311,8 +313,6 @@ std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
 
   poprand::setSeed(graph, seed, 0, seq, seed_prefix + "/set");
 
-  seq.add(prog);
-
   return {seq, data_stream};
 }
 
@@ -330,6 +330,21 @@ void ConnectSeedCallback(poplar::Engine& engine, int replication_factor,
   };
 
   engine.connectStreamToCallback(stream, callback);
+}
+
+void setFpBehaviour(poplar::Graph& graph,
+                    const IpuOptions::FloatingPointBehaviour& fp_control,
+                    poplar::program::Sequence& seq) {
+  if (graph.getTarget().getTargetType() == poplar::TargetType::IPU) {
+    popsys::FloatingPointBehaviour fp_behaviour(
+        fp_control.inv(), fp_control.div0(), fp_control.oflo(),
+        fp_control.esr(), fp_control.nanoo());
+    popsys::setFloatingPointBehaviour(graph, seq, fp_behaviour,
+                                      "setFpBehaviour");
+  } else {
+    LOG(WARNING) << "Setting IPU floating point behaviour is not supported "
+                    "on IPU__MODEL";
+  }
 }
 
 void PrintHelpString() { LOG(INFO) << tensorflow::GetFlagUsageString(); }
@@ -406,6 +421,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   popnn::addCodelets(resources.main_graph);
   popops::addCodelets(resources.main_graph);
   poprand::addCodelets(resources.main_graph);
+  popsys::addCodelets(resources.main_graph);
 
   poplar::Graph* sharding_main_graph = &resources.main_graph;
 
@@ -589,15 +605,28 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
 
+    poplar::program::Sequence main_program;
+
+    // Set up the random seed
     auto seed_setup = InitializeSeed(resources.main_graph, *sharding_main_graph,
-                                     replication_factor, visitor.sequence);
+                                     replication_factor);
+    main_program.add(seed_setup.first);
+
+    // Set up the floating point control register if required
+    const auto& fp_control = poplarExecutor->FloatingPointBehaviour();
+    if (fp_control.flags_set()) {
+      setFpBehaviour(resources.main_graph, fp_control, main_program);
+    }
+
+    // Add the main program sequence
+    main_program.add(visitor.sequence);
 
     // =======================================================================
     // DO NOT CHANGE THE ORDER OF THESE WITHOUT UPDATING PoplarProgramType IN
     // exectutor.h
     // =======================================================================
     progs.push_back(visitor.GetHostToDevice());
-    progs.push_back(seed_setup.first);
+    progs.push_back(main_program);
     progs.push_back(visitor.GetDeviceToHost());
 
     if (!tensorflow::GetPoplarXlaFlags().save_vertex_graph.empty()) {
