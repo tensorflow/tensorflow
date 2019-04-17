@@ -18,7 +18,7 @@
 #include "mlir/FxpMathOps/FxpMathOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/Quantization/QuantOps.h"
+#include "mlir/Quantization/QuantTypes.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"

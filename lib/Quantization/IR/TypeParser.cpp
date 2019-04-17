@@ -19,6 +19,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Quantization/QuantOps.h"
+#include "mlir/Quantization/QuantTypes.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Format.h"

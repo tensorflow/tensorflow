@@ -46,7 +46,7 @@
 #ifndef MLIR_QUANTIZATION_FAKEQUANTSUPPORT_H_
 #define MLIR_QUANTIZATION_FAKEQUANTSUPPORT_H_
 
-#include "mlir/Quantization/QuantOps.h"
+#include "mlir/Quantization/QuantTypes.h"
 
 namespace mlir {
 namespace quant {

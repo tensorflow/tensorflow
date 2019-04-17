@@ -19,6 +19,7 @@
 #include "mlir/FxpMathOps/Passes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Quantization/QuantOps.h"
 #include "mlir/Quantization/UniformSupport.h"
 
 #include <functional>
