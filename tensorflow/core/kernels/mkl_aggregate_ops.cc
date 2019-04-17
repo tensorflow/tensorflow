@@ -83,9 +83,9 @@ class MklAddNOp : public OpKernel {
         mkl_shape_dst.SetMklTensor(false);
         AllocateOutputSetMklShape(ctx, output_idx, &dst_tensor,
                                   src1_tensor.shape(), mkl_shape_dst);
-        float user_i1 = (src1_tensor.scalar<T>()());
-        float user_i2 = (src2_tensor.scalar<T>()());
-        dst_tensor->scalar<T>()() = std::plus<float>{}(user_i1, user_i2);
+        T user_i1 = (src1_tensor.scalar<T>()());
+        T user_i2 = (src2_tensor.scalar<T>()());
+        dst_tensor->scalar<T>()() = std::plus<T>{}(user_i1, user_i2);
         return;
       }
 
@@ -259,6 +259,7 @@ class MklAddNOp : public OpKernel {
                           MklAddNOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 }  // namespace tensorflow
 #endif  // INTEL_MKL
