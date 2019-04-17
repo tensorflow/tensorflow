@@ -803,9 +803,8 @@ class TFLiteConverter(object):
       quantized_stats = None
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
-        raise TypeError(
-            "representative_dataset must be an instance of "
-            "RepresentativeDataset")
+        self.representative_dataset = RepresentativeDataset(
+            self.representative_dataset)
       if self.representative_dataset.input_gen is None:
         raise ValueError(
             "Provide an input generator for representative_dataset")

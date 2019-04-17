@@ -564,8 +564,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -610,8 +609,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     quantized_converter.inference_input_type = lite_constants.INT8
     quantized_converter.inference_output_type = lite_constants.INT8
     quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
