@@ -3398,8 +3398,9 @@ def while_loop(cond,
 
   """
   # Always enable control flow v2 if building a function, regardless of toggle.
+  executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
-      not context.executing_eagerly()):
+      not executing_eagerly):
     return while_v2.while_loop(
         cond,
         body,
@@ -3427,8 +3428,12 @@ def while_loop(cond,
         raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
                          maximum_iterations.shape)
 
-      counter = constant_op.constant(
-          0, dtype=maximum_iterations.dtype, name="iteration_counter")
+      if executing_eagerly:
+        counter = 0
+        maximum_iterations = int(maximum_iterations.numpy())
+      else:
+        counter = constant_op.constant(
+            0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
       orig_body = body
       if len(loop_vars) == 1:
@@ -3442,7 +3447,7 @@ def while_loop(cond,
             math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
-    if context.executing_eagerly():
+    if executing_eagerly:
       try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
