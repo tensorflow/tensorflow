@@ -4207,6 +4207,7 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
+        "//tensorflow/tools/compatibility:all_renames_v2",
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",
         "@protobuf_archive//:protobuf_python",
@@ -4343,6 +4344,7 @@ tf_py_test(
         ":client_testlib",
         ":util",
         "@six_archive//:six",
+        "//tensorflow/tools/compatibility:all_renames_v2",
     ],
 )
 
