@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
+    textual_hdrs = ["cuda_runtime_10_0.inc"],
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [
