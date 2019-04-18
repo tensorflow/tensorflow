@@ -60,10 +60,14 @@ class Member {
   static void Merge(std::vector<Member>* tree, int x_root, int y_root,
                     Member** new_root, Member** old_root, bool dry_run);
 
-  // tree is non-const because we can change some `parent` pointers in some
-  // members for more efficient future lookups. The vector itself is not
-  // changed.
-  static int FindRoot(std::vector<Member>* tree, int node_id);
+  // Returns the root node of the disjoint tree to which the node with the
+  // given id is connected.
+  // FindRoot should be called only for debugging or after the members have
+  // been updated with direct root pointers because it does not update
+  // root pointers and can traverse many links. It exists to have
+  // a const version of FindAndUpdateRoot
+  static int FindRoot(const std::vector<Member>& tree, int node_id);
+  static int FindAndUpdateRoot(std::vector<Member>* tree, int node_id);
 
   Status MergeDeviceNames(const Member& other, bool allow_soft_placement);
 
@@ -231,6 +235,13 @@ class ColocationGraph {
   // for other nodes in the group.
   Status LimitToAssignedDevice(const Node& node);
 
+  // Returns the root node of the disjoint tree to which the node with the
+  // given id is connected.
+  // Updates the internal pointers so that future calls will returns faster.
+  int FindAndUpdateRoot(int node_id) {
+    return Member::FindAndUpdateRoot(&members_, node_id);
+  }
+
   // For the given node, subject to the constraints previously given
   // to this ColocationGraph, set its assigned_device_name. Returns OK
   // if a satisfying device can be found, otherwise an error.
@@ -247,10 +258,10 @@ class ColocationGraph {
 
   Status InitializeMembers();
 
-  string DebugString();
+  string DebugString() const;
 
   // Returns debugging info for the node referred to by 'node_root'.
-  string DebugInfo(const int node_root);
+  string DebugInfo(const int node_root) const;
 
   Status InitializeMemberWithAssignedDevice(const string& assigned_device_name,
                                             const string& node_type,
@@ -260,7 +271,13 @@ class ColocationGraph {
 
   // Returns the root node of the disjoint tree to which the node with the
   // given id is connected.
-  int FindRoot(int node_id) { return Member::FindRoot(&members_, node_id); }
+  // FindRoot should be called only for debugging or after the members have
+  // been updated with direct root pointers because it does not update
+  // root pointers and can traverse many links. It exists to have
+  // a const version of FindAndUpdateRoot
+  int FindRoot(int node_id) const {
+    return Member::FindRoot(members_, node_id);
+  }
 
   const Graph& graph_;
   const FunctionLibraryDefinition& flib_def_;

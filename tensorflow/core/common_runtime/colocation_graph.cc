@@ -330,16 +330,24 @@ void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
 // tree is non-const because we can change some `parent` pointers in some
 // members for more efficient future lookups. The vector itself is not
 // changed.
-int Member::FindRoot(std::vector<Member>* tree, int node_id) {
+int Member::FindAndUpdateRoot(std::vector<Member>* tree, int node_id) {
   Member& member = (*tree)[node_id];
   if (member.parent_ == node_id) {
     // member.parent is the root of this disjoint tree.  Do nothing.
   } else {
-    member.parent_ = FindRoot(tree, member.parent_);
+    member.parent_ = FindAndUpdateRoot(tree, member.parent_);
   }
   // Now it is guaranteed that member.parent is the root of this disjoint
   // tree.
   return member.parent_;
+}
+
+int Member::FindRoot(const std::vector<Member>& tree, int node_id) {
+  const Member& member = tree[node_id];
+  if (member.parent_ == node_id) {
+    return member.parent_;
+  }
+  return FindRoot(tree, member.parent_);
 }
 
 Status Member::MergeDeviceNames(const Member& other,
@@ -615,8 +623,8 @@ Status ColocationGraph::ColocateAllNodes() {
 Status ColocationGraph::ColocateResourceOrRefEdge(Node* src, Node* dst) {
   // Colocate `src` and `dst` to maintain the invariant that nodes
   // connected by reference edges are colocated.
-  int src_root_id = FindRoot(src->id());
-  int dst_root_id = FindRoot(dst->id());
+  int src_root_id = FindAndUpdateRoot(src->id());
+  int dst_root_id = FindAndUpdateRoot(dst->id());
   auto& src_root = members_[src_root_id];
   auto& dst_root = members_[dst_root_id];
 
@@ -698,8 +706,8 @@ Status ColocationGraph::ColocateNodeToGroup(
 // NOTE: If this method returns an error, *this is left in an undefined
 // state.
 Status ColocationGraph::ColocateNodes(const Node& x, const Node& y) {
-  int x_root = FindRoot(x.id());
-  int y_root = FindRoot(y.id());
+  int x_root = FindAndUpdateRoot(x.id());
+  int y_root = FindAndUpdateRoot(y.id());
   return ColocateNodes(x, x_root, y, y_root);
 }
 
@@ -760,7 +768,7 @@ Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
         "got: ",
         node.DebugString());
   }
-  int root = FindRoot(node.id());
+  int root = FindAndUpdateRoot(node.id());
   Member& root_member = members_[root];
   return root_member.AssignDevice(node, allow_soft_placement_);
 }
@@ -818,7 +826,7 @@ void ColocationGraph::GetSoftDeviceCandidates(
 Status ColocationGraph::GetDevicesForNode(
     Node* node, const std::vector<Device*>** possible_devices) {
   *possible_devices = nullptr;
-  const int node_root = FindRoot(node->id());
+  const int node_root = FindAndUpdateRoot(node->id());
   if (!members_[node_root].possible_devices().empty()) {
     *possible_devices = &members_[node_root].possible_devices();
     return Status::OK();
@@ -959,7 +967,7 @@ Status ColocationGraph::InitializeMembers() {
   return Status::OK();
 }
 
-string ColocationGraph::DebugString() {
+string ColocationGraph::DebugString() const {
   std::unordered_set<int> roots;
   std::vector<string> root_strings;
   for (const Node* node : graph_.nodes()) {
@@ -976,7 +984,7 @@ string ColocationGraph::DebugString() {
 }
 
 // Returns debugging info for the node referred to by 'node_root'.
-string ColocationGraph::DebugInfo(const int node_root) {
+string ColocationGraph::DebugInfo(const int node_root) const {
   string text(
       "\nColocation Debug Info:\n"
       "Colocation group had the following types and supported devices: ");
