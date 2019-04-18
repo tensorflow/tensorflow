@@ -26,6 +26,7 @@ import weakref
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -1414,6 +1415,30 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      root.v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
+
+  def test_captured_dataset(self, cycles):
+
+    class HasDataset(module.Module):
+
+      def __init__(self):
+        super(HasDataset, self).__init__()
+        self.dataset = (
+            dataset_ops.Dataset.range(5)
+            .map(lambda x: x ** 2))
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int64)
+        for element in self.dataset:
+          current_sum += x * element
+        return current_sum
+
+    root = HasDataset()
+    self.assertEqual(3 * (1 + 4 + 9 + 16),
+                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    root = self.cycle(root, cycles)
+    self.assertEqual(3 * (1 + 4 + 9 + 16),
+                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),

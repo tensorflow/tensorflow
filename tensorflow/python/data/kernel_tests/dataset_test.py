@@ -39,6 +39,21 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
+# For testing deserialization of Datasets represented as functions
+class _RevivedDataset(dataset_ops.DatasetV2):
+
+  def __init__(self, variant, element_structure):
+    self._structure = element_structure
+    super(_RevivedDataset, self).__init__(variant)
+
+  def _inputs(self):
+    return []
+
+  @property
+  def _element_structure(self):
+    return self._structure
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -47,6 +62,29 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
     self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
+
+  def testAsFunctionWithMap(self):
+    if not context.executing_eagerly():
+      self.skipTest("Only works executing eagerly")
+    original_dataset = dataset_ops.Dataset.range(5).map(lambda x: x * 2)
+    fn = original_dataset._trace_variant_creation()
+    variant = fn()
+
+    revived_dataset = _RevivedDataset(
+        variant, original_dataset._element_structure)
+    self.assertDatasetProduces(revived_dataset, range(0, 10, 2))
+
+  def testAsFunctionWithMapInFlatMap(self):
+    if not context.executing_eagerly():
+      self.skipTest("Only works executing eagerly")
+    original_dataset = dataset_ops.Dataset.range(5).flat_map(
+        lambda x: dataset_ops.Dataset.range(5).map(lambda x: x * 2))
+    fn = original_dataset._trace_variant_creation()
+    variant = fn()
+
+    revived_dataset = _RevivedDataset(
+        variant, original_dataset._element_structure)
+    self.assertDatasetProduces(revived_dataset, list(original_dataset))
 
   @staticmethod
   def make_apply_fn(dataset):
