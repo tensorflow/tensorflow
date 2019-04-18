@@ -561,7 +561,11 @@ class Strategy(object):
           raise ValueError(
               "`axis` = %r out of range for `value` with rank %d" %
               (axis, v.shape.rank))
-        if v.shape[axis] is not None:
+        # TODO(anjalisridhar): Added a second condition to handle the case of
+        # dynamic shapes when using tf.functions. We might want to remove this
+        # static shape case and always calculate the shape of v.
+        if (v.shape[axis] is not None and
+            [x for x in v.get_shape().as_list() if x]):
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
           return numer, v.shape[axis]

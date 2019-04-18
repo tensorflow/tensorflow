@@ -50,6 +50,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
         },
+        "tf.autograph.to_code": {
+            "arg_types": None,
+            "arg_values": None,
+            "indentation": None,
+        },
+        "tf.autograph.to_graph": {
+            "arg_types": None,
+            "arg_values": None,
+        },
         "tf.nn.embedding_lookup": {
             "validate_indices": None,
         },
@@ -94,6 +103,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.crop_and_resize": {
             "box_ind": "box_indices",
         },
+        "tf.extract_image_patches": {
+            "ksizes": "sizes",
+        },
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -102,9 +114,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.image.resize_images": {
             "align_corners": None,
-        },
-        "tf.extract_image_patches": {
-            "ksizes": "sizes",
         },
         "tf.expand_dims": {
             "dim": "axis",
@@ -431,6 +440,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tensor": "data",
             "family": None,
         },
+        "tf.contrib.summary.create_file_writer": {
+            "name": None,
+        },
+        "tf.contrib.summary.generic": {
+            "name": "tag",
+            "tensor": "data",
+            "family": None,
+        },
         "tf.contrib.summary.histogram": {
             "tensor": "data",
             "family": None,
@@ -579,6 +596,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_function_reorders = {
         "tf.contrib.summary.audio": [
             "name", "tensor", "sample_rate", "max_outputs", "family", "step"],
+        "tf.contrib.summary.create_file_writer": [
+            "logdir", "max_queue", "flush_millis", "filename_suffix", "name"],
+        "tf.contrib.summary.generic": [
+            "name", "tensor", "metadata", "family", "step"],
         "tf.contrib.summary.histogram": [
             "name", "tensor", "family", "step"],
         "tf.contrib.summary.image": [
@@ -687,13 +708,62 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
-    # TODO(b/124529441): if possible eliminate need for manual checking.
+    summary_api_comment = (
+        ast_edits.INFO,
+        "The TF 1.x summary API cannot be automatically migrated to TF 2.0, so "
+        "symbols have been converted to tf.compat.v1.summary.* and must be "
+        "migrated manually. Typical usage will only require changes to the "
+        "summary writing logic, not to individual calls like scalar(). "
+        "For examples of the new summary API, see the Effective TF 2.0 "
+        "migration document or check the TF 2.0 TensorBoard tutorials.")
+
     contrib_summary_comment = (
         ast_edits.WARNING,
-        "(Manual check required) tf.contrib.summary.* functions have been "
-        "migrated best-effort to tf.compat.v2.summary.* equivalents where "
-        "possible, but the resulting code may not always work. Please check "
-        "manually; you can report migration failures on b/124529441.")
+        "tf.contrib.summary.* functions have been migrated best-effort to "
+        "tf.compat.v2.summary.* equivalents where possible, but the resulting "
+        "code is not guaranteed to work, so please check carefully. For more "
+        "information about the new summary API, see the Effective TF 2.0 "
+        "migration document or check the updated TensorBoard tutorials.")
+
+    contrib_summary_family_arg_comment = (
+        ast_edits.WARNING,
+        "<function name> replacement does not accept a 'family' argument; "
+        "instead regular name scoping should be used. This call site specifies "
+        "a family argument that has been removed on conversion, so the emitted "
+        "tag names may be incorrect without manual editing.")
+
+    contrib_create_file_writer_comment = (
+        ast_edits.WARNING,
+        "tf.contrib.summary.create_file_writer() has been ported to the new "
+        "tf.compat.v2.summary.create_file_writer(), which no longer re-uses "
+        "existing event files for the same logdir; instead it always opens a "
+        "new writer/file. The python writer objects must be re-used explicitly "
+        "if the reusing behavior is desired.")
+
+    contrib_summary_record_every_n_comment = (
+        ast_edits.ERROR,
+        "(Manual edit required) "
+        "tf.contrib.summary.record_summaries_every_n_global_steps(n, step) "
+        "should be replaced by a call to tf.compat.v2.summary.record_if() with "
+        "the argument `lambda: tf.math.equal(0, global_step % n)` (or in graph "
+        "mode, the lambda body can be used directly). If no global step was "
+        "passed, instead use tf.compat.v1.train.get_or_create_global_step().")
+
+    contrib_summary_graph_comment = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.summary.graph() has no direct "
+        "equivalent in TF 2.0 because manual graph construction has been "
+        "superseded by use of tf.function. To log tf.function execution graphs "
+        "to the summary writer, use the new tf.compat.v2.summary.trace_* "
+        "functions instead.")
+
+    contrib_summary_import_event_comment = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.summary.import_event() has no "
+        "direct equivalent in TF 2.0. For a similar experimental feature, try "
+        "tf.compat.v2.summary.experimental.write_raw_pb() which also accepts "
+        "serialized summary protocol buffer input, but for tf.Summary "
+        "protobufs rather than tf.Events.")
 
     keras_default_save_format_comment = (
         ast_edits.WARNING,
@@ -805,10 +875,20 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.contrib.summary.audio":
             contrib_summary_comment,
+        "tf.contrib.summary.create_file_writer":
+            contrib_create_file_writer_comment,
+        "tf.contrib.summary.generic":
+            contrib_summary_comment,
+        "tf.contrib.summary.graph":
+            contrib_summary_graph_comment,
         "tf.contrib.summary.histogram":
             contrib_summary_comment,
+        "tf.contrib.summary.import_event":
+            contrib_summary_import_event_comment,
         "tf.contrib.summary.image":
             contrib_summary_comment,
+        "tf.contrib.summary.record_summaries_every_n_global_steps":
+            contrib_summary_record_every_n_comment,
         "tf.contrib.summary.scalar":
             contrib_summary_comment,
         "tf.debugging.assert_equal":
@@ -1062,7 +1142,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.distribute.CollectiveAllReduceStrategy":
             contrib_collective_strategy_warning,
         "tf.contrib.distribute.ParameterServerStrategy":
-            contrib_ps_strategy_warning
+            contrib_ps_strategy_warning,
+        "tf.summary.FileWriter": summary_api_comment,
+        "tf.summary.FileWriterCache": summary_api_comment,
+        "tf.summary.Summary": summary_api_comment,
+        "tf.summary.audio": summary_api_comment,
+        "tf.summary.histogram": summary_api_comment,
+        "tf.summary.image": summary_api_comment,
+        "tf.summary.merge": summary_api_comment,
+        "tf.summary.merge_all": summary_api_comment,
+        "tf.summary.scalar": summary_api_comment,
+        "tf.summary.tensor_summary": summary_api_comment,
+        "tf.summary.text": summary_api_comment,
     }
 
     # Warnings that are emitted only if a specific arg is found.
@@ -1119,18 +1210,33 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "if was set to True.")
         },
         "tf.contrib.summary.audio": {
-            ("family", 4): (
+            ("family", 4): contrib_summary_family_arg_comment,
+        },
+        "tf.contrib.summary.create_file_writer": {
+            ("name", 4): (
                 ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+                "tf.contrib.summary.create_file_writer() no longer supports "
+                "implicit writer re-use based on shared logdirs or resource "
+                "names; this call site passed a 'name' argument that has been "
+                "removed. The new tf.compat.v2.summary.create_file_writer() "
+                "replacement has a 'name' parameter but the semantics are "
+                "the usual ones to name the op itself and do not control "
+                "writer re-use; writers must be manually re-used if desired.")
+        },
+        "tf.contrib.summary.generic": {
+            ("name", 0): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.generic() takes a 'name' argument for the "
+                "op name that also determines the emitted tag (prefixed by any "
+                "active name scopes), but tf.compat.v2.summary.write(), which "
+                "replaces it, separates these into 'tag' and 'name' arguments. "
+                "The 'name' argument here has been converted to 'tag' to "
+                "preserve a meaningful tag, but any name scopes will not be "
+                "reflected in the tag without manual editing."),
+            ("family", 3): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.histogram": {
-            ("family", 2): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+            ("family", 2): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.image": {
             ("bad_color", 2): (
@@ -1139,18 +1245,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "argument; caller must now preprocess if needed. This call "
                 "site specifies a bad_color argument so it cannot be converted "
                 "safely."),
-            ("family", 4): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+            ("family", 4): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.scalar": {
-            ("family", 2): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+            ("family", 2): contrib_summary_family_arg_comment,
         },
         "tf.image.resize": {
             ("align_corners",
@@ -1343,9 +1441,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _add_argument_transformer,
             arg_name="data_format",
             arg_value_ast=ast.Str("NHWC")),
+        "tf.contrib.summary.always_record_summaries": functools.partial(
+            _add_summary_recording_cond_transformer, cond="True"),
         "tf.contrib.summary.audio": _add_summary_step_transformer,
+        "tf.contrib.summary.generic": _add_summary_step_transformer,
         "tf.contrib.summary.histogram": _add_summary_step_transformer,
         "tf.contrib.summary.image": _add_summary_step_transformer,
+        "tf.contrib.summary.never_record_summaries": functools.partial(
+            _add_summary_recording_cond_transformer, cond="False"),
         "tf.contrib.summary.scalar": _add_summary_step_transformer,
         "tf.contrib.layers.l1_regularizer":
             _contrib_layers_l1_regularizer_transformer,
@@ -1779,7 +1882,6 @@ def _extract_glimpse_transformer(parent, node, full_name, name, logs):
                  "noise, and recomputing value.\n"))
     return node
 
-
 def _add_summary_step_transformer(parent, node, full_name, name, logs):
   """Adds a step argument to the summary API call if not specified.
 
@@ -1796,6 +1898,21 @@ def _add_summary_step_transformer(parent, node, full_name, name, logs):
       ast_edits.WARNING, node.lineno, node.col_offset,
       "Summary API writing function %s now requires a 'step' argument; "
       "inserting default of %s." % (full_name or name, default_value)))
+  return node
+
+
+def _add_summary_recording_cond_transformer(parent, node, full_name, name, logs,
+                                            cond):
+  """Adds cond argument to tf.contrib.summary.xxx_record_summaries().
+
+  This is in anticipation of them being renamed to tf.summary.record_if(), which
+  requires the cond argument.
+  """
+  node.args.append(pasta.parse(cond))
+  logs.append((
+      ast_edits.INFO, node.lineno, node.col_offset,
+      "Adding `%s` argument to %s in anticipation of it being renamed to "
+      "tf.compat.v2.summary.record_if()" % (cond, full_name or name)))
   return node
 
 

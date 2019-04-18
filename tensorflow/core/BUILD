@@ -4052,12 +4052,12 @@ tf_cc_test(
         "ops/cudnn_rnn_ops_test.cc",
     ],
     deps = [
+        ":core",
         ":framework",
         ":lib",
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/core",
     ],
 )
 
@@ -4825,7 +4825,7 @@ tf_cc_test_gpu(
     name = "gpu_debug_allocator_test",
     size = "medium",
     srcs = ["common_runtime/gpu/gpu_debug_allocator_test.cc"],
-    args = ["\"--gtest_death_test_style=threadsafe\""],
+    args = ["--gtest_death_test_style=threadsafe"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
@@ -5072,6 +5072,7 @@ tf_cc_test_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/internal:profiler_interface",
     ],
 )
 

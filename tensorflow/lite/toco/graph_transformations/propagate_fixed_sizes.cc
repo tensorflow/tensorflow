@@ -1867,9 +1867,7 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
   CHECK_EQ(op->inputs.size(), 4);
 
   const Array& output_shape_array = model->GetArray(op->inputs[1]);
-  // Return if the shape array has unknown shape or has no data.
   if (!output_shape_array.has_shape()) return;
-  if (!output_shape_array.buffer) return;
   CHECK_EQ(output_shape_array.shape().dimensions_count(), 1);
 
   // Output should not go over four dimensions.

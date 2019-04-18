@@ -117,8 +117,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return absl::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Filter")},
-          filter_pred_);
+          Iterator::Params{this, strings::StrCat(prefix, "::Filter")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -155,13 +154,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params,
-                        FilterIteratorPredicate filter_pred)
+      explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
             filtered_elements_(0),
-            dropped_elements_(0),
-            filter_pred_(std::move(filter_pred)) {
-      }
+            dropped_elements_(0) {}
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
@@ -195,7 +191,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          TF_RETURN_IF_ERROR(filter_pred_(
+          TF_RETURN_IF_ERROR(dataset()->filter_pred_(
               ctx, instantiated_captured_func_.get(), *out_tensors, &matched));
           if (!matched) {
             // Clear the output tensor list since it didn't match.
@@ -270,7 +266,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       int64 filtered_elements_ GUARDED_BY(mu_);
       int64 dropped_elements_ GUARDED_BY(mu_);
-      const FilterIteratorPredicate filter_pred_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 

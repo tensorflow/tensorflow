@@ -564,8 +564,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -610,8 +609,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     quantized_converter.inference_input_type = lite_constants.INT8
     quantized_converter.inference_output_type = lite_constants.INT8
     quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
-    quantized_converter.representative_dataset = lite.RepresentativeDataset(
-        calibration_gen)
+    quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -715,48 +713,6 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
-
-  def testRankAndShapeWithResizeInput(self):
-    # This is a regression test to ensure `Rank` and `Shape` ops work well with
-    # the reize input tensor API.
-    input_tensor = array_ops.placeholder(
-        shape=[None, 4, 4, 3], dtype=dtypes.float32)
-    reshaped_tensor = array_ops.reshape(input_tensor, [1, -1])
-    output_rank = array_ops.rank(reshaped_tensor, name='output_rank')
-    output_shape = array_ops.shape(reshaped_tensor, name='output_shape')
-
-    sess = session.Session()
-    converter = lite.TFLiteConverter.from_session(sess, [input_tensor],
-                                                  [output_rank, output_shape])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    interpreter = Interpreter(model_content=tflite_model)
-
-    def verify_rank_and_shape(expected_shape):
-      expected_rank = len(expected_shape)
-      output_details = interpreter.get_output_details()
-      self.assertEqual(2, len(output_details))
-      self.assertEqual('output_rank', output_details[0]['name'])
-      self.assertEqual(np.int32, output_details[0]['dtype'])
-      self.assertEqual('output_shape', output_details[1]['name'])
-      self.assertEqual(np.int32, output_details[1]['dtype'])
-      self.assertEqual(
-          expected_shape,
-          interpreter.get_tensor(output_details[1]['index']).tolist())
-      self.assertEqual(
-          expected_rank,
-          interpreter.get_tensor(output_details[0]['index']).tolist())
-
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-    verify_rank_and_shape([1, 48])
-
-    input_details = interpreter.get_input_details()
-    interpreter.resize_tensor_input(input_details[0]['index'], [1, 4, 4, 4])
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-    verify_rank_and_shape([1, 64])
 
 
 @test_util.run_v1_only('b/120545219')

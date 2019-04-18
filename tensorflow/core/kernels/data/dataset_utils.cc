@@ -29,10 +29,17 @@ Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
                   GraphDef* graph_def) {
   GraphDefBuilder b;
   DatasetBase::DatasetGraphDefBuilder db(&b);
-  Node* input_node = nullptr;
+  Node* output_node = nullptr;
   SerializationContext serialization_ctx({});
   TF_RETURN_IF_ERROR(
-      db.AddInputDataset(&serialization_ctx, dataset, &input_node));
+      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
+  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
+  // represents this Dataset.
+  ops::UnaryOp("_Retval", output_node,
+               b.opts()
+                   .WithName("dataset")
+                   .WithAttr("T", DT_VARIANT)
+                   .WithAttr("index", 0));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
   return Status::OK();
 }

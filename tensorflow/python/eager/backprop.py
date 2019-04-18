@@ -863,6 +863,7 @@ class GradientTape(object):
 
     Equivalent to exiting and reentering the tape context manager with a new
     tape. For example, the two following code blocks are equivalent:
+
     ```
     with tf.GradientTape() as t:
       loss = loss_fn()
@@ -1107,6 +1108,7 @@ class GradientTape(object):
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+
     ```python
     with tf.GradientTape() as g:
       x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)

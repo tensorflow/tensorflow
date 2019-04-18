@@ -71,10 +71,7 @@ def for_stmt(iter_, extra_test, body, init_state):
   Returns:
     Tuple containing the final state.
   """
-  if tensor_util.is_tensor(iter_):
-    return _known_len_tf_for_stmt(iter_, extra_test, body, init_state)
-
-  elif isinstance(iter_, dataset_ops.DatasetV2):
+  def _check_undefined_symbols(init_state):
     # Check for undefined symbols and report an error. This prevents the error
     # from propagating into the TF runtime. We have more information here and
     # can provide a clearer error message.
@@ -85,8 +82,16 @@ def for_stmt(iter_, extra_test, body, init_state):
           ' before the loop: {}'.format(
               tuple(s.symbol_name for s in undefined)))
 
-    return _dataset_for_stmt(iter_, extra_test, body, init_state)
+  if tensor_util.is_tensor(iter_):
+    return _known_len_tf_for_stmt(iter_, extra_test, body, init_state)
 
+  elif isinstance(iter_, dataset_ops.DatasetV2):
+    _check_undefined_symbols(init_state)
+    return _dataset_for_stmt(iter_, extra_test, body, init_state)
+  elif hasattr(iter_, '_autograph_for_loop'):
+    _check_undefined_symbols(init_state)
+    # This is an experimental mechanism and is subject to change.
+    return iter_._autograph_for_loop(extra_test, body, init_state)  # pylint: disable=protected-access
   else:
     return _py_for_stmt(iter_, extra_test, body, init_state)
 

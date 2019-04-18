@@ -22,6 +22,7 @@ import os
 import sys
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -35,6 +36,8 @@ from tensorflow.python.framework import versions
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.module import module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -325,6 +328,31 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir)
     del root.signatures
     save.save(root, save_dir)
+
+  def test_function_with_captured_dataset(self):
+    class HasDataset(module.Module):
+
+      def __init__(self):
+        super(HasDataset, self).__init__()
+        self.dataset = (
+            dataset_ops.Dataset.range(5)
+            .map(lambda x: x ** 2))
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int64)
+        for element in self.dataset:
+          current_sum += x * element
+        return current_sum
+
+    root = HasDataset()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root, save_dir,
+        signatures=root.__call__.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.int64)))
+    self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
+                        _import_and_infer(save_dir, {"x": 3}))
 
 
 class AssetTests(test.TestCase):

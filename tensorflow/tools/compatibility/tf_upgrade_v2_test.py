@@ -1025,6 +1025,18 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testAutograph(self):
+    text = "tf.autograph.to_graph(f, True, arg_values=None, arg_types=None)"
+    expected_text = "tf.autograph.to_graph(f, True)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = ("tf.autograph.to_code"
+            "(f, False, arg_values=None, arg_types=None, indentation=' ')")
+    expected_text = "tf.autograph.to_code(f, False)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testEstimatorInputs(self):
     text = "tf.estimator.inputs.numpy_input_fn(0)"
     expected_text = "tf.compat.v1.estimator.inputs.numpy_input_fn(0)"
@@ -1059,7 +1071,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.extract_image_patches(images, ksizes=ksizes, strides=strides,"
         "rates=rates, padding=padding, name=name)")
     expected_text = (
-        "tf.image.extract_image_patches(images, sizes=ksizes, strides=strides,"
+        "tf.image.extract_patches(images, sizes=ksizes, strides=strides,"
         "rates=rates, padding=padding, name=name)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
@@ -1559,6 +1571,17 @@ def _log_prob(self, x):
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
+  def test_contrib_summary_generic(self):
+    text = "tf.contrib.summary.generic('foo', myval, meta, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.write(tag='foo', data=myval, "
+                "metadata=meta, step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    # Arg errors come in alphabetical order of arguments, not appearance order.
+    self.assertIn("'family' argument", errors[0])
+    self.assertIn("'name' argument", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[2])
+
   def test_contrib_summary_audio(self):
     text = "tf.contrib.summary.audio('foo', myval, 44100, 3, 'fam', 42)"
     expected = ("tf.compat.v2.summary.audio(name='foo', data=myval, "
@@ -1566,7 +1589,7 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'family' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
 
   def test_contrib_summary_histogram(self):
     text = "tf.contrib.summary.histogram('foo', myval, 'fam', 42)"
@@ -1575,7 +1598,7 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'family' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
 
   def test_contrib_summary_image(self):
     text = "tf.contrib.summary.image('foo', myval, red, 3, 'fam', 42)"
@@ -1585,7 +1608,7 @@ def _log_prob(self, x):
     self.assertEqual(expected, new_text)
     self.assertIn("'bad_color' argument", errors[0])
     self.assertIn("'family' argument", errors[1])
-    self.assertIn("Manual check required", errors[2])
+    self.assertIn("tf.compat.v2.summary.*", errors[2])
 
   def test_contrib_summary_scalar(self):
     text = "tf.contrib.summary.scalar('foo', myval, 'fam', 42)"
@@ -1594,7 +1617,17 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'family' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
+
+  def test_contrib_summary_generic_nostep(self):
+    text = "tf.contrib.summary.generic('foo', myval)"
+    expected = ("tf.compat.v2.summary.write(tag='foo', data=myval, "
+                "step=tf.compat.v1.train.get_or_create_global_step())")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'name' argument", errors[0])
+    self.assertIn("'step' argument", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[2])
 
   def test_contrib_summary_audio_nostep(self):
     text = "tf.contrib.summary.audio('foo', myval, 44100)"
@@ -1604,7 +1637,7 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'step' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
 
   def test_contrib_summary_histogram_nostep(self):
     text = "tf.contrib.summary.histogram('foo', myval)"
@@ -1613,7 +1646,7 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'step' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
 
   def test_contrib_summary_image_nostep(self):
     text = "tf.contrib.summary.image('foo', myval)"
@@ -1622,7 +1655,7 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'step' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
 
   def test_contrib_summary_scalar_nostep(self):
     text = "tf.contrib.summary.scalar('foo', myval)"
@@ -1631,7 +1664,84 @@ def _log_prob(self, x):
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'step' argument", errors[0])
-    self.assertIn("Manual check required", errors[1])
+    self.assertIn("tf.compat.v2.summary.*", errors[1])
+
+  def test_contrib_summary_graph(self):
+    text = "tf.contrib.summary.graph(my_graph)"
+    _, _, errors, _ = self._upgrade(text)
+    expected_error = "tf.compat.v2.summary.trace"
+    self.assertIn(expected_error, errors[0])
+
+  def test_contrib_summary_import_event(self):
+    text = "tf.contrib.summary.import_event(my_event)"
+    _, _, errors, _ = self._upgrade(text)
+    expected_error = "tf.compat.v2.summary.experimental.write_raw_pb"
+    self.assertIn(expected_error, errors[0])
+
+  def test_contrib_summary_flush(self):
+    text = "tf.contrib.summary.flush(writer=foo)"
+    expected = "tf.compat.v2.summary.flush(writer=foo)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_summary_create_file_writer(self):
+    text = ("tf.contrib.summary.create_file_writer('my_logdir', 0, 1000, "
+            "'.foo', 'shared-name')")
+    expected = ("tf.compat.v2.summary.create_file_writer(logdir='my_logdir', "
+                "max_queue=0, flush_millis=1000, filename_suffix='.foo')")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'name' argument", errors[0])
+    self.assertIn("no longer re-uses existing event files", errors[1])
+
+  def test_contrib_summary_always_record_summaries(self):
+    text = "tf.contrib.summary.always_record_summaries()"
+    expected = "tf.compat.v2.summary.record_if(True)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_summary_never_record_summaries(self):
+    text = "tf.contrib.summary.never_record_summaries()"
+    expected = "tf.compat.v2.summary.record_if(False)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_summary_record_summaries_every_n_global_steps(self):
+    text = "tf.contrib.summary.record_summaries_every_n_global_steps(10)"
+    _, _, errors, _ = self._upgrade(text)
+    expected_error = "replaced by a call to tf.compat.v2.summary.record_if()"
+    self.assertIn(expected_error, errors[0])
+
+  def test_contrib_summary_full_example(self):
+    deindent = lambda n, s: "\n".join(line[n:] for line in s.split("\n"))
+    text = deindent(4, """
+    import tensorflow as tf
+    tf.enable_eager_execution()
+    writer = tf.contrib.summary.create_file_writer(
+        "/tmp/migration_test", flush_millis=1000)
+    with writer.as_default(), tf.contrib.summary.always_record_summaries():
+      tf.contrib.summary.scalar("loss", 0.42)
+      tf.contrib.summary.histogram("weights", [1.0, 2.0], step=7)
+      tf.contrib.summary.flush()
+    """)
+    expected = deindent(4, """
+    import tensorflow as tf
+    tf.compat.v1.enable_eager_execution()
+    writer = tf.compat.v2.summary.create_file_writer(
+        logdir="/tmp/migration_test", flush_millis=1000)
+    with writer.as_default(), tf.compat.v2.summary.record_if(True):
+      tf.compat.v2.summary.scalar(name="loss", data=0.42, step=tf.compat.v1.train.get_or_create_global_step())
+      tf.compat.v2.summary.histogram(name="weights", data=[1.0, 2.0], step=7)
+      tf.compat.v2.summary.flush()
+    """)
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_summary_api_warning(self):
+    text = "tf.summary.scalar('foo', 42)"
+    _, report, _, _ = self._upgrade(text)
+    expected_info = "TF 1.x summary API cannot be automatically migrated"
+    self.assertIn(expected_info, report)
 
   def test_avg_pool_2d(self):
     text = "tf.nn.avg_pool(value=4)"

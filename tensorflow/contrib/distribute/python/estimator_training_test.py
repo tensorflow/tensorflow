@@ -249,9 +249,21 @@ class DistributeCoordinatorIntegrationTest(
     ])
     self.assertAllEqual((BATCH_SIZE, LABEL_DIMENSION), predicted_proba.shape)
 
+  def _make_cross_device_ops(self, num_gpus_per_worker):
+    return cross_device_ops_lib.MultiWorkerAllReduce(
+        ["/job:worker/task:0", "/job:worker/task:1", "/job:worker/task:2"],
+        num_gpus_per_worker)
+
   def _get_strategy_object(self, strategy_cls):
     if strategy_cls == mirrored_strategy.CoreMirroredStrategy:
-      return strategy_cls()
+      return strategy_cls(
+          cross_device_ops=self._make_cross_device_ops(
+              num_gpus_per_worker=context.num_gpus()))
+    elif strategy_cls == mirrored_strategy.MirroredStrategy:
+      return strategy_cls(
+          num_gpus_per_worker=context.num_gpus(),
+          cross_device_ops=self._make_cross_device_ops(
+              num_gpus_per_worker=context.num_gpus()))
     else:
       return strategy_cls(num_gpus_per_worker=context.num_gpus())
 

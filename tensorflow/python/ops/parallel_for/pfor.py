@@ -1746,6 +1746,14 @@ def _convert_split_v(pfor_input):
   return [wrap(x, True) for x in array_ops.split(t, splits, axis=split_dim)]
 
 
+@RegisterPFor("Squeeze")
+def _convert_squeeze(pfor_input):
+  t = pfor_input.stacked_input(0)
+  squeeze_dims = pfor_input.get_attr("squeeze_dims")
+  squeeze_dims = [i + 1 if i >= 0 else i for i in squeeze_dims]
+  return wrap(array_ops.squeeze(t, axis=squeeze_dims), True)
+
+
 @RegisterPFor("Transpose")
 def _convert_transpose(pfor_input):
   t = pfor_input.stacked_input(0)

@@ -245,7 +245,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
       ('FunctionOptimization', 'function_optimization'),
       ('DebugStripper', 'debug_stripper'),
       ('ScopedAllocatorOptimization', 'scoped_allocator_optimization'),
-      ('ImplementationSelector', 'implementation_selector'))
+      ('ImplementationSelector', 'implementation_selector'),
+      ('AutoMixedPrecision', 'auto_mixed_precision'))
   @reset_eager
   def testOptimizerToggleOption(self, field):
     # TODO(b/128531235): Improve testing of option

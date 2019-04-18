@@ -26,6 +26,7 @@ import weakref
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -35,7 +36,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.engine import training as training_lib
+from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
@@ -1412,6 +1416,30 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
 
+  def test_captured_dataset(self, cycles):
+
+    class HasDataset(module.Module):
+
+      def __init__(self):
+        super(HasDataset, self).__init__()
+        self.dataset = (
+            dataset_ops.Dataset.range(5)
+            .map(lambda x: x ** 2))
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int64)
+        for element in self.dataset:
+          current_sum += x * element
+        return current_sum
+
+    root = HasDataset()
+    self.assertEqual(3 * (1 + 4 + 9 + 16),
+                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+    root = self.cycle(root, cycles)
+    self.assertEqual(3 * (1 + 4 + 9 + 16),
+                     root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
+
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
@@ -1438,6 +1466,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     loaded = self.cycle(model, cycles)
     loaded._default_save_signature(model_input)
     loaded.signatures["serving_default"](**model_input)
+
+  def test_functional_model_with_conv(self, cycles):
+    x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
+    conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)
+    model = training_lib.Model([x], conved)
+    model_input = array_ops.ones((1, 10, 10, 3))
+    initial_output = model.predict([model_input])
+    model = self.cycle(model, cycles)
+    self.assertAllClose(
+        [initial_output],
+        list(model.signatures["serving_default"](model_input).values()))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
