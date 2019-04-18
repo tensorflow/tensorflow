@@ -42,9 +42,9 @@ enum class TargetFunctionID {
   kBlockIdy,
   kBlockIdz,
   kBarrierId,
-  kPow, 
+  kPow,
   kErfcinv,
-  kLog, 
+  kLog,
   kLog1p,
   kSin,
   kCos,
@@ -53,7 +53,7 @@ enum class TargetFunctionID {
   kSqrt,
   kRsqrt,
   kAtan2,
-  kFmod, 
+  kFmod,
   kRound,
 };
 

@@ -34,9 +34,9 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -108,14 +108,9 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       return Unimplemented("Bad type for libdevice math call: %s",
                            PrimitiveType_Name(output_type));
   }
-//  llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
-//                                     converted_input_types, output_type)
-//                            .ValueOrDie();
-  llvm::Value* result =  EmitCallToTargetFunction(
-        callee_id,
-        converted_operands,
-        converted_input_types, output_type, {},{}, 
-        b_);
+  llvm::Value* result =
+      EmitCallToTargetFunction(callee_id, converted_operands,
+                               converted_input_types, output_type, {}, {}, b_);
   if (cast_result_to_fp16) {
     result = FPCast(result, b_->getHalfTy());
   }
@@ -180,10 +175,9 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
 
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
-
-      return EmitLibdeviceMathCall(TargetFunctionID::kFmod, {lhs_value, rhs_value},
-                                   {lhs_input_type, rhs_input_type},
-                                   output_type);
+      return EmitLibdeviceMathCall(
+          TargetFunctionID::kFmod, {lhs_value, rhs_value},
+          {lhs_input_type, rhs_input_type}, output_type);
     }
     case HloOpcode::kPower: {
       return EmitPowerOp(op, lhs_value, rhs_value);
@@ -208,59 +202,68 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kErfcinv, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kErfcinv, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kLog, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kLog, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kLog1p, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kLog1p, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kSin, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kSin, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kCos, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kCos, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kExp, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kExp, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
     PrimitiveType prim_type, llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kExpm1, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kExpm1, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kPow, {lhs, rhs}, {prim_type, prim_type},
-                               prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kPow, {lhs, rhs},
+                               {prim_type, prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
                                                        llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kSqrt, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kSqrt, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
                                                         llvm::Value* value) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kRsqrt, {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kRsqrt, {value}, {prim_type},
+                               prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
-  return EmitLibdeviceMathCall(TargetFunctionID::kAtan2, {lhs, rhs}, {prim_type, prim_type},
-                               prim_type);
+  return EmitLibdeviceMathCall(TargetFunctionID::kAtan2, {lhs, rhs},
+                               {prim_type, prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
@@ -286,7 +289,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
     // When the llvm.round is fixed, we may still want to use __nv_round here as
     // expanding the non-trivial implementation early while inlining allows
     // better optimizations.
-    return EmitLibdeviceMathCall(TargetFunctionID::kRound, {value}, {prim_type}, prim_type);
+    return EmitLibdeviceMathCall(TargetFunctionID::kRound, {value}, {prim_type},
+                                 prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
