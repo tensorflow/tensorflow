@@ -23,20 +23,41 @@ class ReductionV2(object):
 
   Contains the following values:
 
+  * `AUTO`: Indicates that the reduction option will be determined by the usage
+     context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When
+     used with `tf.distribute.Strategy`, outside of built-in training loops such
+     as `tf.keras` `compile` and `fit`, we expect reduction value to be
+     `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
   * `NONE`: Un-reduced weighted losses with the same shape as input.
   * `SUM`: Scalar sum of weighted losses.
   * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-     Note that when using `tf.distribute.Strategy`, this is just the
-     replica-local batch size.
+     This reduction type is not supported when used with
+     `tf.distribute.Strategy` outside of built-in training loops like `tf.keras`
+     `compile`/`fit`.
+
+     You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+     ```
+     with strategy.scope():
+       loss_obj = tf.keras.losses.CategoricalCrossentropy(
+           reduction=tf.keras.losses.Reduction.None)
+       ....
+       loss = tf.reduce_sum(loss_object(labels, predictions)) *
+           (1. / global_batch_size)
+     ```
+
+     Please see
+     https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for
+     more details on this.
   """
 
+  AUTO = 'auto'
   NONE = 'none'
   SUM = 'sum'
   SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
 
   @classmethod
   def all(cls):
-    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+    return (cls.AUTO, cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
 
   @classmethod
   def validate(cls, key):
