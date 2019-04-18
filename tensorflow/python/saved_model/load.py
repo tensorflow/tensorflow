@@ -23,6 +23,7 @@ import os
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import init_ops
@@ -281,8 +282,12 @@ class _Loader(object):
 
   def _recreate_constant(self, proto):
     tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
-    imported_constant = constant_op.constant(
-        tensor_util.MakeNdarray(tensor_proto))
+    ndarray = tensor_util.MakeNdarray(tensor_proto)
+    if dtypes.as_dtype(tensor_proto.dtype) == dtypes.string:
+      with ops.device("CPU"):
+        imported_constant = constant_op.constant(ndarray)
+    else:
+      imported_constant = constant_op.constant(ndarray)
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):
