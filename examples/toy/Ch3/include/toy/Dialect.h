@@ -255,7 +255,7 @@ public:
 /// Reshape operation is transforming its input array into a new array with the
 /// same number of elements but different shapes. For example:
 ///
-///    %0 = "toy.transpose"(%arg1) : (!toy.array<10>) -> !toy.array<5, 2>
+///    %0 = "toy.reshape"(%arg1) : (!toy.array<10>) -> !toy.array<5, 2>
 ///
 class ReshapeOp : public mlir::Op<ReshapeOp, mlir::OpTrait::OneOperand,
                                   mlir::OpTrait::OneResult> {
