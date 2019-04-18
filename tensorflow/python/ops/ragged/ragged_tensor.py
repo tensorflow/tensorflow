@@ -1472,7 +1472,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     return (self.flat_values,) + self.nested_row_splits
 
   @classmethod
-  def _from_components(cls, components):
+  def _from_components(cls, components, metadata):
     return cls.from_nested_row_splits(components[0], components[1:])
 
   def _shape_invariant_to_components(self, shape=None):
@@ -1509,7 +1509,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
 
   @property
   def _is_graph_tensor(self):
-    return hasattr(self._values, 'graph')
+    return hasattr(self._values, "graph")
 
 
 def is_ragged(value):

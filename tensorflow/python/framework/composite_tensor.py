@@ -42,30 +42,40 @@ class CompositeTensor(object):
   ct = ...  # Create a composite tensor.
   flat_list_of_tensors = nest.flatten(ct, expand_composites=True)
   transformed_list_of_tensors = ...  # do something with the flat tensors.
-  result = nest.pack_sequence_as(ct, transformed_list_of_tensors)
+  result = nest.pack_sequence_as(ct, transformed_list_of_tensors,
+                                 expand_composites=True)
   ```
   """
 
   @abc.abstractmethod
   def _to_components(self):
-    """Decomposes this composite tensor into its components.
+    """Decomposes this composite tensor into its component tensors.
 
     Returns:
-      The components that comprise this composite tensor: a nested structure
-      (as defined by `tf.python.util.nest`) whose values are `tf.Tensor`s or
-      `CompositeTensor`s.
+      A nested structure of `tf.Tensor`s and `CompositeTensor`s that can be
+      used to reconstruct this composite tensor (along with metadata returned
+      by `_component_metadata`).
     """
     raise NotImplementedError("CompositeTensor._to_components")
 
+  def _component_metadata(self):
+    """Returns any non-tensor metadata needed to reconstruct a composite tensor.
+
+    Returns:
+      A nested structure of metadata that can be used to reconstruct this
+      composite tensor (along with the tensors returned by `_to_components`).
+    """
+    return ()
+
   @abc.abstractmethod
-  def _from_components(cls, components):  # pylint: disable=no-self-argument
+  def _from_components(cls, components, metadata):  # pylint: disable=no-self-argument
     """Creates a composite tensor of type `cls` from components.
 
     Args:
-      components: The components that should be used to form the
-        composite tensor: a nested structure (as defined by
-        `tf.python.util.nest`) whose values are tf.Tensors or composite
-        tensors.
+      components: A nested structure whose values are `tf.Tensor`s or
+        `tf.CompositeTensor`s (as returned by `_to_components`).
+      metadata: A nested structure containing any additional metadata needed to
+        reconstruct the composite tensor (as returned by `_composite_metadata`).
 
     Returns:
       A `CompositeTensor` of type `cls`.
