@@ -201,7 +201,7 @@ class TrackableAsset(base.Trackable):
     # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
     # serialized function body.
-    with ops.init_scope():
+    with ops.init_scope(), ops.device("CPU"):
       self._path = ops.internal_convert_to_tensor(path, dtype=dtypes.string,
                                                   name="asset_path")
 
