@@ -209,9 +209,6 @@ class MultiDeviceIterator(object):
       In order to prevent deadlocks, if the prefetch_buffer_size is greater
       than the max_buffer_size, we set the max_buffer_size to
       prefetch_buffer_size.
-
-    Raises:
-      RuntimeError: If run in Eager mode.
     """
     self._dataset = dataset._apply_options()  # pylint: disable=protected-access
     self._devices = devices
@@ -286,8 +283,8 @@ class MultiDeviceIterator(object):
     # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
     # non-CPU devices.
     options = dataset_ops.Options()
-    options.experimental_autotune = False
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
     ds = ds.with_options(options)
     return ds
 
@@ -331,8 +328,8 @@ class MultiDeviceIterator(object):
         ds = self._create_device_dataset(i)
         # Reset the device iterator resources with the new dataset.
         ds_variant = ds._variant_tensor
-        gen_dataset_ops.make_iterator(ds_variant,
-                                      self._device_iterators[i]._resource)
+        gen_dataset_ops.make_iterator(
+            ds_variant, self._device_iterators[i]._iterator_resource)
 
   @property
   def _element_structure(self):

@@ -19,17 +19,18 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
@@ -163,7 +164,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)
@@ -289,16 +291,16 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 
 
 strategies_minus_tpu = [
-    combinations.default_strategy,
-    combinations.one_device_strategy,
-    combinations.mirrored_strategy_with_gpu_and_cpu,
-    combinations.mirrored_strategy_with_two_gpus,
-    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-    combinations.core_mirrored_strategy_with_two_gpus]
+    strategy_combinations.default_strategy,
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus,
+]
 
 tpu_strategies = [
-    combinations.tpu_strategy,  # steps_per_run=2
-    combinations.tpu_strategy_one_step]
+    strategy_combinations.tpu_strategy,  # steps_per_run=2
+    strategy_combinations.tpu_strategy_one_step
+]
 
 
 def strategy_minus_tpu_combinations():
@@ -321,14 +323,14 @@ def strategy_and_optimizer_combinations():
   return combinations.times(
       all_strategy_combinations(),
       combinations.combine(optimizer=[
-          combinations.adagrad_optimizer_v1_fn,
-          combinations.adagrad_optimizer_keras_v2_fn,
-          combinations.adam_optimizer_v1_fn,
-          combinations.adam_optimizer_keras_v2_fn,
-          combinations.gradient_descent_optimizer_v1_fn,
-          combinations.gradient_descent_optimizer_keras_v2_fn,
-          combinations.rmsprop_optimizer_v1_fn,
-          combinations.rmsprop_optimizer_keras_v2_fn
+          strategy_combinations.adagrad_optimizer_v1_fn,
+          strategy_combinations.adagrad_optimizer_keras_v2_fn,
+          strategy_combinations.adam_optimizer_v1_fn,
+          strategy_combinations.adam_optimizer_keras_v2_fn,
+          strategy_combinations.gradient_descent_optimizer_v1_fn,
+          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+          strategy_combinations.rmsprop_optimizer_v1_fn,
+          strategy_combinations.rmsprop_optimizer_keras_v2_fn
       ]))
 
 
@@ -355,6 +357,7 @@ def strategy_for_numpy_input_combinations():
       mode=['graph'])
 
 
+@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
@@ -463,6 +466,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[1].shape)
 
 
+@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
 
@@ -529,11 +533,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   # as clone_model's input_tensors argument only seems to accept list and not
   # tuples or dict.
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
   def test_fit_with_tuple_and_dict_dataset_inputs(self, distribution):
     with self.cached_session():
       model = multi_input_output_model()
@@ -614,11 +619,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
   # TODO(b/120943676, b/120957836): Re-enable once the validation code is
   # restored.
   def DISABLED_test_dataset_wrong_input_shape(self, distribution):
@@ -640,9 +646,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                                    'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
   # TODO(b/120943676, b/120957836): Re-enable once the validation code is
   # restored.
   def DISABLED_test_dataset_no_batch_input_validation(self, distribution):
@@ -662,9 +671,10 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.tpu_strategy_one_step],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[strategy_combinations.tpu_strategy_one_step],
+          mode=['graph']))
   def test_dataset_input_shape_fully_defined(self, distribution):
     with self.cached_session():
       model = get_model()
@@ -681,13 +691,13 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_two_gpus],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          mode=['graph', 'eager']))
   def test_learning_phase_value(self, distribution):
     # TODO(anjalisridhar): Modify this test to use Lambdas since we can compare
     # meaningful values. Currently we don't pass the learning phase if the
@@ -746,7 +756,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-      grouped_models = distribution.unwrap(
+      grouped_models = distribution.experimental_local_results(
           distributed_training_utils.get_distributed_model(
               model, ModeKeys.TRAIN))
       with distribution.scope():
@@ -755,13 +765,15 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
               m.optimizer.lr), atol=1e-05, rtol=1e-05)
 
 
+@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
   def test_unsupported_features(self, distribution):
     with self.cached_session():
       model = get_model()
@@ -811,11 +823,12 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
                                    '`steps` argument'):
         model.predict(dataset, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
   def test_calling_with_unsupported_predefined_callbacks(self, distribution):
     with self.cached_session():
       model = get_model()
@@ -842,16 +855,18 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
                   callbacks=[keras.callbacks.ReduceLROnPlateau()])
 
 
+@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithLossMasking(test.TestCase,
                                               parameterized.TestCase):
 
   # TODO(priyag): Enable all strategies for this test. Currently it does not
   # work for TPU due to some invalid datatype.
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=['graph', 'eager']))
   def test_masking(self, distribution):
     with self.cached_session():
       np.random.seed(1337)
@@ -872,6 +887,7 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
       self.assertEqual(hist.history['loss'][0], 0)
 
 
+@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithNormalizationLayer(
     test.TestCase, parameterized.TestCase):
 
@@ -904,6 +920,7 @@ class TestDistributionStrategyWithNormalizationLayer(
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 
+@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyCorrectness(test.TestCase,
                                           parameterized.TestCase):
 

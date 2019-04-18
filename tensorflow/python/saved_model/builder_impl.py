@@ -64,9 +64,9 @@ class _SavedModelBuilder(object):
   Typical usage for the `SavedModelBuilder`:
   ```python
   ...
-  builder = tf.saved_model.Builder(export_dir)
+  builder = tf.compat.v1.saved_model.Builder(export_dir)
 
-  with tf.Session(graph=tf.Graph()) as sess:
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     ...
     builder.add_meta_graph_and_variables(sess,
                                     ["foo-tag"],
@@ -74,7 +74,7 @@ class _SavedModelBuilder(object):
                                     assets_list=foo_assets)
   ...
 
-  with tf.Session(graph=tf.Graph()) as sess:
+  with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     ...
     builder.add_meta_graph(["bar-tag", "baz-tag"])
   ...
@@ -252,8 +252,8 @@ class _SavedModelBuilder(object):
       train_op: Op or group of opts that trains the model when run. This will
         not be run automatically when the graph is loaded, instead saved in
         a SignatureDef accessible through the exported MetaGraph.
-      saver: An instance of tf.train.Saver that will be used to export the
-        metagraph. If None, a sharded Saver that restores all variables will
+      saver: An instance of tf.compat.v1.train.Saver that will be used to export
+        the metagraph. If None, a sharded Saver that restores all variables will
         be used.
 
     Raises:
@@ -332,7 +332,7 @@ class _SavedModelBuilder(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      saver: An instance of tf.train.Saver that will be used to export the
+      saver: An instance of tf.compat.v1.train.Saver that will be used to export the
         metagraph and save variables. If None, a sharded Saver that restores
         all variables will be used.
 
@@ -441,7 +441,7 @@ class SavedModelBuilder(_SavedModelBuilder):
     Args:
       assets_collection_to_add: The collection where the asset paths are setup.
     """
-    # Add assets to the collection with key `constants.ASSETS_KEY`, in the
+    # Add assets to the collection with key `saved_model.ASSETS_KEY`, in the
     # graph.
     asset_filename_map = _maybe_save_assets(_add_asset_to_collection,
                                             assets_collection_to_add)

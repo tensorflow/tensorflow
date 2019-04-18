@@ -33,6 +33,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/feature_column:utils",
     ],
 )
 

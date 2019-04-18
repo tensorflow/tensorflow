@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -158,10 +159,13 @@ def vector_size_to_square_matrix_size(d, validate_args, name=None):
     return int(n)
   else:
     with ops.name_scope(name, "vector_size_to_square_matrix_size", [d]) as name:
-      n = (-1. + math_ops.sqrt(1 + 8. * math_ops.to_float(d))) / 2.
+      n = (-1. + math_ops.sqrt(1 + 8. * math_ops.cast(d, dtypes.float32))) / 2.
       if validate_args:
-        with ops.control_dependencies([check_ops.assert_equal(
-            math_ops.to_float(math_ops.to_int32(n)), n,
-            message="Vector length is not a triangular number")]):
+        with ops.control_dependencies([
+            check_ops.assert_equal(
+                math_ops.cast(math_ops.cast(n, dtypes.int32), dtypes.float32),
+                n,
+                message="Vector length is not a triangular number")
+        ]):
           n = array_ops.identity(n)
       return math_ops.cast(n, d.dtype)

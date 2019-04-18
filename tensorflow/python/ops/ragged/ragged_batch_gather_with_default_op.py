@@ -154,7 +154,7 @@ def _get_pad_shape(params, indices):
   if params.shape.ndims == indices.shape.ndims:
     # When params and indices are the same rank, the shape of the pad tensor is
     # almost identical to params, except the last dimension which has size = 1.
-    if params_shape.num_inner_dimensions is 0:
+    if params_shape.num_inner_dimensions == 0:
       pad_dims = params_shape.partitioned_dim_sizes[:-1] + (
           array_ops.ones_like(params_shape.partitioned_dim_sizes[-1]),)
       return ragged_tensor_shape.RaggedTensorDynamicShape(

@@ -11,20 +11,25 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
-    "tf_custom_op_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_all_protos",
+    "tf_proto_library",
 )
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+
+# Google-internal targets go here (must be at the end).
 
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
@@ -46,19 +51,6 @@ tf_cuda_cc_test(
     ]),
 )
 
-tf_custom_op_library(
-    name = "python/ops/_trt_ops.so",
-    srcs = [
-        "ops/get_serialized_resource_op.cc",
-        "ops/trt_engine_op.cc",
-    ],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
-)
-
 cc_library(
     name = "trt_op_kernels",
     srcs = [
@@ -68,7 +60,6 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":test_utils",
         ":trt_allocator",
         ":trt_conversion",
         ":trt_logging",
@@ -85,6 +76,73 @@ cc_library(
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "trt_engine_resource_op_kernels",
+    srcs = ["kernels/trt_engine_resource_ops.cc"],
+    copts = tf_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":trt_allocator",
+        ":trt_engine_instance_proto_cc",
+        ":trt_logging",
+        ":trt_plugins",
+        ":trt_resources",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:tensorrt",
+    ]) + tf_custom_op_library_additional_deps(),
+    alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "trt_engine_resource_ops_test",
+    size = "small",
+    srcs = ["kernels/trt_engine_resource_ops_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_engine_instance_proto_cc",
+        ":trt_engine_resource_op_kernels",
+        ":trt_engine_resource_ops_op_lib",
+        ":trt_logging",
+        ":trt_resources",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:resource_variable_ops",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_shared_object(
+    name = "python/ops/libtftrt.so",
+    copts = tf_copts(is_external = True),
+    linkopts = ["-lm"],
+    deps = [
+        ":trt_op_kernels",
+        ":trt_engine_resource_op_kernels",
+        ":trt_op_libs",
+        ":trt_engine_resource_ops_op_lib",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:tensorrt",
+    ]) + tf_custom_op_library_additional_deps(),
 )
 
 tf_cuda_cc_test(
@@ -112,10 +170,40 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "trt_engine_op_test",
+    size = "small",
+    srcs = ["kernels/trt_engine_op_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_op_kernels",
+        ":trt_op_libs",
+        ":trt_resources",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
 tf_gen_op_libs(
     op_lib_names = [
         "trt_engine_op",
         "get_serialized_resource_op",
+        "trt_engine_resource_ops",
     ],
 )
 
@@ -142,6 +230,7 @@ tf_cuda_library(
 tf_gen_op_wrapper_py(
     name = "trt_ops",
     deps = [
+        ":trt_engine_resource_ops_op_lib",
         ":trt_op_libs",
     ],
 )
@@ -150,16 +239,20 @@ tf_custom_op_py_library(
     name = "trt_ops_loader",
     srcs = ["python/ops/trt_ops.py"],
     dso = [
-        "python/ops/_trt_ops.so",
+        "python/ops/libtftrt.so",
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]),
     kernels = [
         ":trt_op_kernels",
+        ":trt_engine_resource_op_kernels",
         ":trt_op_libs",
+        ":trt_engine_resource_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":trt_ops",
+        ":wrap_py_utils",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -171,6 +264,7 @@ tf_cuda_library(
     name = "trt_resources",
     srcs = [
         "utils/trt_int8_calibrator.cc",
+        "utils/trt_lru_cache.cc",
         "utils/trt_resources.cc",
     ],
     hdrs = [
@@ -248,7 +342,6 @@ tf_cuda_library(
     ],
     deps = [
         ":segment",
-        ":test_utils",
         ":trt_allocator",
         ":trt_plugins",
         ":trt_logging",
@@ -273,6 +366,7 @@ tf_cuda_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -285,10 +379,13 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
+        ":trt_op_kernels",
+        ":trt_op_libs",
         ":trt_conversion",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -323,6 +420,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/grappler/costs:graph_properties",
@@ -434,12 +532,29 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "trt_engine_instance_proto",
+    srcs = ["utils/trt_engine_instance.proto"],
+    cc_api_version = 2,
+    protodeps = tf_additional_all_protos(),
+)
+
 cc_library(
-    name = "test_utils",
-    srcs = ["utils/test_utils.cc"],
-    hdrs = ["utils/test_utils.h"],
+    name = "py_utils",
+    srcs = ["utils/py_utils.cc"],
+    hdrs = ["utils/py_utils.h"],
+    copts = tf_copts(),
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:tensorrt",
+    ]),
+)
+
+tf_py_wrap_cc(
+    name = "wrap_py_utils",
+    srcs = ["utils/py_utils.i"],
+    copts = tf_copts(),
     deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "@com_googlesource_code_re2//:re2",
+        "//tensorflow/compiler/tf2tensorrt:py_utils",
+        "//third_party/python_runtime:headers",
     ],
 )

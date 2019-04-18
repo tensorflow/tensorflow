@@ -25,7 +25,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+# Need array_grad to register gradient for Identity.
+from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import gradient_checker_v2 as gradient_checker
 from tensorflow.python.ops import math_ops
+# Need sparse_grad to register gradient for SparseToDense.
+from tensorflow.python.ops import sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
 
@@ -95,6 +100,21 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(result_value.indices, st.indices)
     self.assertAllEqual(result_value.values, expected)
     self.assertAllEqual(result_value.dense_shape, st.dense_shape)
+
+  def testSparseToDenseGradient(self):
+
+    def f(sparse_values, default_value):
+      st = sparse_tensor.SparseTensor(
+          indices=[[0, 3, 6], [1, 4, 7], [2, 5, 8]],
+          values=sparse_values,
+          dense_shape=[3, 6, 9])
+      return sparse_ops.sparse_tensor_to_dense(st, default_value)
+
+    grads = gradient_checker.compute_gradient(
+        f, [constant_op.constant([1.0, 2.0, 3.0]),
+            constant_op.constant(0.0)])
+    epsilon = 1e-4
+    self.assertLess(gradient_checker.max_error(*grads), epsilon)
 
 
 if __name__ == '__main__':

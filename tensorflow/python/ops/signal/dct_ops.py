@@ -56,14 +56,13 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
   Currently only Types I, II and III are supported.
   Type I is implemented using a length `2N` padded `tf.spectral.rfft`.
   Type II is implemented using a length `2N` padded `tf.spectral.rfft`, as
-  described here:
-  https://dsp.stackexchange.com/a/10606.
+  described here: [Type 2 DCT using 2N FFT padded (Makhoul)](https://dsp.stackexchange.com/a/10606).
   Type III is a fairly straightforward inverse of Type II
   (i.e. using a length `2N` padded `tf.spectral.irfft`).
 
   @compatibility(scipy)
-  Equivalent to scipy.fftpack.dct for Type-I, Type-II and Type-III DCT.
-  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html
+  Equivalent to [scipy.fftpack.dct](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html)
+   for Type-I, Type-II and Type-III DCT.
   @end_compatibility
 
   Args:
@@ -94,7 +93,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
     axis_dim = (tensor_shape.dimension_value(input.shape[-1])
                 or _array_ops.shape(input)[-1])
-    axis_dim_float = _math_ops.to_float(axis_dim)
+    axis_dim_float = _math_ops.cast(axis_dim, _dtypes.float32)
 
     if type == 1:
       dct1_input = _array_ops.concat([input, input[..., -2:0:-1]], axis=-1)
@@ -163,8 +162,8 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
   `signal == idct(dct(signal, norm='ortho'), norm='ortho')`.
 
   @compatibility(scipy)
-  Equivalent to scipy.fftpack.idct for Type-I, Type-II and Type-III DCT.
-  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.idct.html
+  Equivalent to [scipy.fftpack.idct](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.idct.html)
+   for Type-I, Type-II and Type-III DCT.
   @end_compatibility
 
   Args:

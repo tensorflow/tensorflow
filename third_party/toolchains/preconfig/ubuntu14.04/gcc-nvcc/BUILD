@@ -22,6 +22,12 @@ cc_toolchain_suite(
         "local|compiler": ":cc-compiler-local",
         "darwin|compiler": ":cc-compiler-darwin",
         "x64_windows|msvc-cl": ":cc-compiler-windows",
+        "x64_windows": ":cc-compiler-windows",
+        "arm": ":cc-compiler-local",
+        "k8": ":cc-compiler-local",
+        "piii": ":cc-compiler-local",
+        "ppc": ":cc-compiler-local",
+        "darwin": ":cc-compiler-darwin",
     },
 )
 
@@ -31,10 +37,8 @@ cc_toolchain(
     compiler_files = ":empty",
     cpu = "local",
     dwp_files = ":empty",
-    dynamic_runtime_libs = [":empty"],
     linker_files = ":crosstool_wrapper_driver_is_not_gcc",
     objcopy_files = ":empty",
-    static_runtime_libs = [":empty"],
     strip_files = ":empty",
     # To support linker flags that need to go to the start of command line
     # we need the toolchain to support parameter files. Parameter files are
@@ -49,10 +53,8 @@ cc_toolchain(
     compiler_files = ":empty",
     cpu = "darwin",
     dwp_files = ":empty",
-    dynamic_runtime_libs = [":empty"],
     linker_files = ":crosstool_wrapper_driver_is_not_gcc",
     objcopy_files = ":empty",
-    static_runtime_libs = [":empty"],
     strip_files = ":empty",
     supports_param_files = 0,
 )
@@ -63,10 +65,8 @@ cc_toolchain(
     compiler_files = ":empty",
     cpu = "x64_windows",
     dwp_files = ":empty",
-    dynamic_runtime_libs = [":empty"],
     linker_files = ":windows_msvc_wrapper_files",
     objcopy_files = ":empty",
-    static_runtime_libs = [":empty"],
     strip_files = ":empty",
     supports_param_files = 1,
 )

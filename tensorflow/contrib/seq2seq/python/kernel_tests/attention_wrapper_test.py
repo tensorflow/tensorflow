@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for contrib.seq2seq.python.ops.attention_wrapper."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-# pylint: enable=unused-import
 
 import collections
 import functools
@@ -30,6 +28,7 @@ from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -66,6 +65,7 @@ def get_result_summary(x):
   return x
 
 
+@test_util.run_v1_only('contrib code not supported in TF2.0')
 class AttentionWrapperTest(test.TestCase):
 
   def assertAllCloseOrEqual(self, x, y, **kwargs):
@@ -514,7 +514,7 @@ class AttentionWrapperTest(test.TestCase):
     for axis in [0, 1]:
       for exclusive in [True, False]:
         with self.cached_session():
-          # Compute cumprod with regular tf.cumprod
+          # Compute cumprod with regular tf.math.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
           # Compute cumprod with safe_cumprod

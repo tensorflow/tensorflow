@@ -3,7 +3,7 @@
 Post-training quantization is a general technique to reduce model size while also
 providing up to 3x lower latency with little degradation in model accuracy. Post-training
 quantization quantizes weights from floating point to 8-bits of precision. This technique
-is enabled as an option in the [TensorFlow Lite converter](../convert):
+is enabled as an option in the [TensorFlow Lite converter](../convert/):
 
 ```
 import tensorflow as tf
@@ -31,7 +31,7 @@ Hybrid ops are available for the most compute-intensive operators in a network:
 
 Since weights are quantized post training, there could be an accuracy loss, particularly for
 smaller networks. Pre-trained fully quantized models are provided for specific networks in
-the [TensorFlow Lite model repository](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/models.md#image-classification-quantized-models){:.external}. It is important to check the accuracy of the quantized model to verify that any degradation
+the [TensorFlow Lite model repository](../models/). It is important to check the accuracy of the quantized model to verify that any degradation
 in accuracy is within acceptable limits. There is a tool to evaluate [TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/README.md){:.external}.
 
 If the accuracy drop is too high, consider using [quantization aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}.

@@ -116,6 +116,9 @@ class XlaCompiler {
 
       // Argument is an XLA token.
       kToken,
+
+      // Argument is a TensorList.
+      kTensorList,
     };
 
     Kind kind = kInvalid;
@@ -162,6 +165,9 @@ class XlaCompiler {
     // dynamic dims to arg number map. Empty if no dynamic shapes.
     std::map<int32, int32> dynamic_dim_to_arg_num_map;
     bool is_pad_arg = false;
+
+    // Whether this argument will receive the same data across all replicas.
+    bool is_same_data_across_replicas = false;
 
     bool operator==(const Argument& other) const;
 
@@ -223,6 +229,9 @@ class XlaCompiler {
     // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
     // the index of the input that contains the resource.
     int input_index;
+
+    // Whether this output is a TensorList.
+    bool is_tensor_list = false;
   };
 
   // Describes a variable write side effect of the computation.
@@ -301,6 +310,12 @@ class XlaCompiler {
     // If 'allow_cpu_custom_calls' is true, kernels may make use of CustomCall()
     // for CPU.
     bool allow_cpu_custom_calls = false;
+
+    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
+    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
+    // function accepting the input, min, max, num_bits, and narrow_range values
+    // as runtime arguments.
+    bool custom_fake_quant_op_calls = false;
 
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape

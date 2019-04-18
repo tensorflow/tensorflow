@@ -44,6 +44,7 @@ class BatchMatMulOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
+REGISTER_XLA_OP(Name("BatchMatMulV2"), BatchMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

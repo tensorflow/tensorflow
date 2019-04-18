@@ -37,7 +37,7 @@ struct FrontendOutput FrontendProcessSamples(struct FrontendState* state,
   FftCompute(&state->fft, state->window.output, input_shift);
 
   // We can re-ruse the fft's output buffer to hold the energy.
-  int32_t* energy = (int32_t*) state->fft.output;
+  int32_t* energy = (int32_t*)state->fft.output;
 
   FilterbankConvertFftComplexToEnergy(&state->filterbank, state->fft.output,
                                       energy);

@@ -21,11 +21,9 @@ from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testLatencyStatsOptimization(self):
@@ -44,13 +42,13 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
         expected_output=[1],
         requires_initialization=True,
         num_test_iterations=1)
-    summary_t = aggregator.get_summary()
-    summary_str = self.evaluate(summary_t)
-    self._assertSummaryHasCount(summary_str, "record_latency_TensorDataset/_1",
-                                1)
-    self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4", 1)
-    self._assertSummaryHasCount(summary_str,
-                                "record_latency_PrefetchDataset/_6", 1)
+    handle = self.getHandle(aggregator)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::TensorDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::MapDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::PrefetchDataset"), 1)
 
 
 if __name__ == "__main__":

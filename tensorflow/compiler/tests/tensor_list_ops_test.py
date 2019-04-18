@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import os
 import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
@@ -124,7 +125,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(e0, 2.0)
       l, e1 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.assertAllEqual(e1, 1.0)
-      self.assertAllEqual(list_ops.tensor_list_length(l), 0)
+      self.assertAllEqual(list_ops.tensor_list_length(l), 2)
 
   def testGetSet(self):
     with self.cached_session(), self.test_scope():
@@ -171,7 +172,7 @@ class ListOpsTest(xla_test.XLATestCase):
           element_dtype=dtypes.float32, element_shape=None, max_num_elements=2)
       l = list_ops.tensor_list_push_back(l, [3.0, 4.0])
       # Pushing an element with a different shape should raise an error.
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Shape"):
+      with self.assertRaisesRegexp(errors.InternalError, "shape"):
         l = list_ops.tensor_list_push_back(l, 5.)
         self.evaluate(
             list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))
@@ -210,5 +211,19 @@ class ListOpsTest(xla_test.XLATestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [0., 0., 0.])
 
+  def testZerosLikeForTensorList(self):
+    with self.cached_session(), self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=[],
+          max_num_elements=2)
+      l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
+      z = array_ops.zeros_like(l)
+      z = list_ops.tensor_list_stack(z, element_dtype=dtypes.float32)
+      self.assertAllEqual(z.shape.as_list(), [None])
+      self.assertAllEqual(z, [0.0, 0.0])
+
 if __name__ == "__main__":
+  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=2 ' +
+                                os.environ.get('TF_XLA_FLAGS', ''))
   test.main()

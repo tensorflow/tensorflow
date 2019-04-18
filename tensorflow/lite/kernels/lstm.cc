@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
-#include "tensorflow/lite/kernels/gemm_support.h"
+#include "tensorflow/lite/kernels/gemmlowp_support.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -311,8 +311,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // 20-inputs lstm are deprecated and is only kept here for backward
   // compatibility.
   if (node->inputs->size == 24) {
-    const TfLiteTensor* forget_layer_norm_coefficients =
-        GetInput(context, node, kForgetLayerNormCoefficientsTensor);
+    const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
+        context, node, kForgetLayerNormCoefficientsTensor);
     if (forget_layer_norm_coefficients == nullptr) {
       op_data->is_layer_norm_lstm = false;
     } else {
@@ -381,10 +381,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, output, output_size));
 
   // The weights are of consistent type, so it suffices to check one.
-  // TODO(mirkov): create a utility/macro for this check, so all Ops can use it.
-  const bool is_hybrid_op = ((input_to_output_weights->type == kTfLiteUInt8 ||
-                              input_to_output_weights->type == kTfLiteInt8) &&
-                             input->type == kTfLiteFloat32);
+  const bool is_hybrid_op = IsHybridOp(input, input_to_output_weights);
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
@@ -774,7 +771,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
              activation_out->type == kTfLiteUInt8 &&
              concat_temp->type == kTfLiteUInt8 &&
              activation_temp->type == kTfLiteInt16) {
-    gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+    gemmlowp::GemmContext* gemmlowp_context =
+        gemmlowp_support::GetFromContext(context);
     int state_scale_log2_rounded;
     if (!CheckedLog2(state_out->params.scale, &state_scale_log2_rounded)) {
       context->ReportError(
@@ -813,7 +811,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(activation_out), GetTensorData<uint8_t>(activation_out),
         GetTensorShape(concat_temp), GetTensorData<uint8_t>(concat_temp),
         GetTensorShape(activation_temp),
-        GetTensorData<int16_t>(activation_temp), gemm_context);
+        GetTensorData<int16_t>(activation_temp), gemmlowp_context);
   } else {
     context->ReportError(context,
                          "Unsupported combination of data types for LstmCell");
@@ -832,7 +830,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace basic
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  gemm_support::IncrementUsageCounter(context);
+  gemmlowp_support::IncrementUsageCounter(context);
 
   const auto* params = reinterpret_cast<const TfLiteLSTMParams*>(buffer);
   switch (params->kernel_type) {
@@ -840,10 +838,13 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
       return full::Init(context, buffer, length);
     case kTfLiteLSTMBasicKernel:
       return basic::Init(context, buffer, length);
+    default:
+      return nullptr;
   }
+  return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
-  gemm_support::DecrementUsageCounter(context);
+  gemmlowp_support::DecrementUsageCounter(context);
 
   delete reinterpret_cast<OpData*>(buffer);
 }
@@ -855,7 +856,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       return full::Prepare(context, node);
     case kTfLiteLSTMBasicKernel:
       return basic::Prepare(context, node);
+    default:
+      return kTfLiteError;
   }
+  return kTfLiteError;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -865,7 +869,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return full::Eval(context, node);
     case kTfLiteLSTMBasicKernel:
       return basic::Eval(context, node);
+    default:
+      return kTfLiteError;
   }
+  return kTfLiteError;
 }
 
 }  // namespace lstm

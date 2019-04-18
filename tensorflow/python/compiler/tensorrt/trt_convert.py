@@ -20,15 +20,16 @@ from __future__ import print_function
 
 import six as _six
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -42,6 +43,15 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
+
+# Import TRT library. This is fine since we don't import TF-TRT in
+# tensorflow/python/compiler/__init__.py, and `import tensorflow` won't trigger
+# importing of TF-TRT. Note that TF-TRT is still included in GPU build since
+# tensorflow/python/BUILD depends on it.
+#
+# We need this import so that when users import this module, they can execute a
+# TRT-converted graph without calling any of the methods in this module.
+trt_ops.load_trt_ops()
 
 
 def _to_bytes(s):
@@ -193,6 +203,16 @@ class GraphConverter(object):
         graph_id=b"tf_graph")
     self._converted = True
 
+  def _add_nodes_blacklist(self):
+    if self._nodes_blacklist:
+      collection_def = self._grappler_meta_graph_def.collection_def["train_op"]
+      blacklist = collection_def.node_list.value
+      for i in self._nodes_blacklist:
+        if isinstance(i, ops.Tensor):
+          blacklist.append(_to_bytes(i.name))
+        else:
+          blacklist.append(_to_bytes(i))
+
   def _convert_graph_def(self):
     """Convert the input GraphDef."""
     graph = ops.Graph()
@@ -200,20 +220,21 @@ class GraphConverter(object):
       importer.import_graph_def(self._input_graph_def, name="")
     self._grappler_meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True), graph=graph)
-    if self._nodes_blacklist:
-      output_collection = meta_graph_pb2.CollectionDef()
-      output_list = output_collection.node_list.value
-      for i in self._nodes_blacklist:
-        if isinstance(i, ops.Tensor):
-          output_list.append(_to_bytes(i.name))
-        else:
-          output_list.append(_to_bytes(i))
-      # TODO(laigd): use another key as the self._nodes_blacklist are really
-      # not train_op.
-      self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
-          output_collection)
+    self._add_nodes_blacklist()
 
     self._run_conversion()
+
+  def _collections_to_keep(self, collection_keys):
+    # TODO(laigd): currently we use the collection key to filter out
+    # collections that depend on variable ops, but this may miss some
+    # other user-defined collections. A better way would be to use
+    # CollectionDef::NodeList for the filtering.
+    collections_to_remove = (
+        ops.GraphKeys._VARIABLE_COLLECTIONS + [
+            ops.GraphKeys.TRAIN_OP, ops.GraphKeys.WHILE_CONTEXT,
+            ops.GraphKeys.COND_CONTEXT
+        ])
+    return [key for key in collection_keys if key not in collections_to_remove]
 
   def _convert_saved_model(self):
     """Convert the input SavedModel."""
@@ -232,6 +253,13 @@ class GraphConverter(object):
       output_node_names = _gather_names(input_signature_def.inputs).union(
           _gather_names(input_signature_def.outputs))
 
+      # Preserve nodes in collection
+      for collection_key in self._collections_to_keep(
+          input_meta_graph_def.collection_def):
+        for op in sess.graph.get_collection(collection_key):
+          if isinstance(op, ops.Operation):
+            output_node_names.add(op.name.split(":")[0])
+
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
       frozen_graph_def = graph_util.convert_variables_to_constants(
@@ -241,17 +269,12 @@ class GraphConverter(object):
       self._grappler_meta_graph_def.graph_def.CopyFrom(frozen_graph_def)
 
       # Copy the collections that are not variables.
-      for key in input_meta_graph_def.collection_def:
-        # TODO(laigd): currently we use the collection key to filter out
-        # collections that depend on variable ops, but this may miss some
-        # other user-defined collections. A better way would be to use
-        # CollectionDef::NodeList for the filtering.
-        if key not in [
-            "variables", "local_variables", "model_variables",
-            "trainable_variables", "train_op", "table_initializer"
-        ]:
-          self._grappler_meta_graph_def.collection_def[key].CopyFrom(
-              input_meta_graph_def.collection_def[key])
+      for collection_key in self._collections_to_keep(
+          input_meta_graph_def.collection_def):
+        self._grappler_meta_graph_def.collection_def[collection_key].CopyFrom(
+            input_meta_graph_def.collection_def[collection_key])
+
+      self._add_nodes_blacklist()
 
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
@@ -266,6 +289,8 @@ class GraphConverter(object):
   # use it here (b/124792963).
   def _convert_saved_model_v2(self):
     """Convert the input SavedModel in 2.0 format."""
+    assert context.executing_eagerly()
+
     self._saved_model = load.load(self._input_saved_model_dir,
                                   self._input_saved_model_tags)
     func = self._saved_model.signatures[self._input_saved_model_signature_key]
@@ -275,43 +300,17 @@ class GraphConverter(object):
 
     # Add a collection 'train_op' so that Grappler knows the outputs.
     fetch_collection = meta_graph_pb2.CollectionDef()
-    for array in func.inputs + func.outputs:
+    for array in frozen_func.inputs + frozen_func.outputs:
       fetch_collection.node_list.value.append(array.name)
     self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
         fetch_collection)
 
     # Run TRT optimizer in Grappler to convert the graph.
     self._run_conversion()
-
-    def _get_tensor(graph, tensors):
-      new_tensors = []
-      for tensor in tensors:
-        new_tensor = graph.get_tensor_by_name(tensor.name)
-        new_tensor.set_shape(tensor.shape)
-        new_tensors.append(new_tensor)
-      return new_tensors
-
-    # TODO(laigd): do we need to use different name e.g. "trt_func_graph"?
-    converted_graph = func_graph.FuncGraph(func.graph.name)
-    with converted_graph.as_default():
-      importer.import_graph_def(self._converted_graph_def, name="")
-
-    converted_graph.inputs = _get_tensor(converted_graph, func.graph.inputs)
-    converted_graph.outputs = _get_tensor(converted_graph, func.graph.outputs)
-    converted_graph.structured_outputs = func.graph.structured_outputs
-    converted_graph.structured_input_signature = (
-        func.graph.structured_input_signature)
-
-    # pylint: disable=protected-access
-    # TODO(laigd): should we set up the signature as well?
-    self._converted_func = function.ConcreteFunction(
-        converted_graph, attrs=None, signature=None)
-    self._converted_func.add_to_graph()
-    self._converted_func._arg_keywords = func._arg_keywords
-    self._converted_func._num_positional_args = func._num_positional_args
-    self._converted_func._captured_inputs = func._captured_inputs
-    self._converted_func.graph.variables = func.graph.variables
-    # pylint: enable=protected-access
+    self._converted_func = wrap_function.function_from_graph_def(
+        self._converted_graph_def,
+        [tensor.name for tensor in frozen_func.inputs],
+        [tensor.name for tensor in frozen_func.outputs])
 
   def convert(self):
     """Run the conversion.
@@ -422,10 +421,59 @@ class GraphConverter(object):
         raise ValueError(
             "Not able to save to a SavedModel since input is a GraphDef")
 
+      def _restore_collections(dest_graph, src_meta_graph_def, collections):
+        """Restores collections that we need to keep."""
+        scope = ""
+        for key in collections:
+          collection_def = src_meta_graph_def.collection_def[key]
+          kind = collection_def.WhichOneof("kind")
+          if kind is None:
+            tf_logging.error(
+                "Cannot identify data type for collection %s. Skipping.", key)
+            continue
+          from_proto = ops.get_from_proto_function(key)
+          if from_proto and kind == "bytes_list":
+            proto_type = ops.get_collection_proto_type(key)
+            # It is assumed that there are no Variables Keys in collections
+            for value in collection_def.bytes_list.value:
+              proto = proto_type()
+              proto.ParseFromString(value)
+              try:
+                new_value = from_proto(proto, import_scope=scope)
+              except:
+                continue
+              dest_graph.add_to_collection(key, new_value)
+          else:
+            field = getattr(collection_def, kind)
+            if kind == "node_list":
+              for value in field.value:
+                name = ops.prepend_name_scope(value, scope)
+                # Since the graph has been optimized, the node may no longer
+                # exists
+                try:
+                  col_op = dest_graph.as_graph_element(name)
+                except (TypeError, ValueError, KeyError) as e:
+                  continue
+                dest_graph.add_to_collection(key, col_op)
+            elif kind == "int64_list":
+              # NOTE(opensource): This force conversion is to work around the
+              # fact that Python2 distinguishes between int and long, while
+              # Python3 has only int.
+              for value in field.value:
+                dest_graph.add_to_collection(key, int(value))
+            else:
+              for value in field.value:
+                dest_graph.add_to_collection(
+                    key, ops.prepend_name_scope(value, scope))
+
       # Write the transformed graphdef as SavedModel.
       saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
       with ops.Graph().as_default():
         importer.import_graph_def(self._converted_graph_def, name="")
+        _restore_collections(
+            ops.get_default_graph(), self._grappler_meta_graph_def,
+            self._collections_to_keep(
+                self._grappler_meta_graph_def.collection_def))
         # We don't use any specific converter here.
         with session.Session(config=self._session_config) as sess:
           saved_model_builder.add_meta_graph_and_variables(
@@ -454,7 +502,7 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 class TrtGraphConverter(GraphConverter):
   """A GraphConverter for TRT transformation."""
 
-  _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF_TRT_Calibration"
+  _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF-TRT-Calibration"
 
   @classmethod
   def get_tensorrt_rewriter_config(
@@ -496,12 +544,12 @@ class TrtGraphConverter(GraphConverter):
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
-        graph using calib_graph_to_infer_graph() after running calibration. if
-        set to False, quantization nodes will be expected for every tensor in
-        the graph (exlcuding those which will be fused). If a range is missing,
-        an error will occur. Please note that accuracy may be negatively
-        affected if there is a mismatch between which tensors TRT quantizes and
-        which tensors were trained with fake quantization.
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
       use_function_backup: if set to True, it will create a FunctionDef for each
         subgraph that is converted to TRT op, and if TRT ops fail to execute at
         runtime, it'll invoke that function as a fallback.
@@ -513,14 +561,6 @@ class TrtGraphConverter(GraphConverter):
       TypeError: if any of the parameters are of unexpected type.
       ValueError: if any of the parameters are of unexpected value.
     """
-    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-    # even if it cannot find TensorRT library.
-    trt_ops.load_trt_ops()
-    # pylint: disable=g-import-not-at-top,unused-import,line-too-long,unused-variable
-    # Import a random symbol to trigger loading of TRT library.
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-    # pylint: enable=g-import-not-at-top,unused-import,line-too-long,unused-variable
-
     if rewriter_config_template is not None and not isinstance(
         rewriter_config_template, rewriter_config_pb2.RewriterConfig):
       raise TypeError(
@@ -607,12 +647,12 @@ class TrtGraphConverter(GraphConverter):
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
-        graph using calib_graph_to_infer_graph() after running calibration. if
-        set to False, quantization nodes will be expected for every tensor in
-        the graph (exlcuding those which will be fused). If a range is missing,
-        an error will occur. Please note that accuracy may be negatively
-        affected if there is a mismatch between which tensors TRT quantizes and
-        which tensors were trained with fake quantization.
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
       use_function_backup: if set to True, it will create a FunctionDef for each
         subgraph that is converted to TRT op, and if TRT ops fail to execute at
         runtime, it'll invoke that function as a fallback.
@@ -631,18 +671,11 @@ class TrtGraphConverter(GraphConverter):
 
     # TODO(laigd): move all the validations below to
     # get_tensorrt_rewriter_config().
-
-    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-    # even if it cannot find TensorRT library.
-    trt_ops.load_trt_ops()
-    # pylint: disable=g-import-not-at-top,line-too-long
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
-    # pylint: enable=g-import-not-at-top,line-too-long
-
     # Check compatibility of TensorRT version.
     compiled_version = get_linked_tensorrt_version()
     loaded_version = get_loaded_tensorrt_version()
+    tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
+    tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
     version_mismatch = False
     if loaded_version[0] < compiled_version[0]:
       tf_logging.error(
@@ -666,11 +699,12 @@ class TrtGraphConverter(GraphConverter):
                       ".".join([str(x) for x in loaded_version]))
 
     # Check input arguments.
-    if precision_mode not in TrtPrecisionMode.supported_precision_modes():
-      raise ValueError(("precision mode '{}' is not supported."
-                        "It should be one of {}").format(
-                            precision_mode,
-                            TrtPrecisionMode.supported_precision_modes))
+    supported_precision_modes = TrtPrecisionMode.supported_precision_modes()
+    if precision_mode not in supported_precision_modes:
+      raise ValueError(
+          ("precision mode '{}' is not supported."
+           "It should be one of {}").format(precision_mode,
+                                            supported_precision_modes))
 
     if cached_engine_batches:
       if not isinstance(cached_engine_batches, list):
@@ -785,7 +819,6 @@ def create_inference_graph(
     is_dynamic_op=False,
     maximum_cached_engines=1,
     cached_engine_batches=None,
-    use_calibration=True,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
     input_saved_model_signature_key=None,
@@ -818,15 +851,6 @@ def create_inference_graph(
       determine the batch sizes of the cached engines, instead of making the
       decision on the fly. This is useful when we know the most common batch
       size(s) the application is going to generate.
-    use_calibration: this argument is ignored if precision_mode is not INT8. If
-      set to True, a calibration graph will be created to calibrate the missing
-      ranges. The calibration graph must be converted to an inference graph
-      using calib_graph_to_infer_graph() after running calibration. if set to
-      False, quantization nodes will be expected for every tensor in the graph
-      (exlcuding those which will be fused). If a range is missing, an error
-      will occur. Please note that accuracy may be negatively affected if there
-      is a mismatch between which tensors TRT quantizes and which tensors were
-      trained with fake quantization.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -861,7 +885,6 @@ def create_inference_graph(
 
   Raises:
     ValueError: if the combination of the parameters is invalid.
-    RuntimeError: if the TensorRT library version is incompatible.
   """
   trt_converter = TrtGraphConverter(
       input_saved_model_dir=input_saved_model_dir,
@@ -877,7 +900,7 @@ def create_inference_graph(
       is_dynamic_op=is_dynamic_op,
       maximum_cached_engines=maximum_cached_engines,
       cached_engine_batches=cached_engine_batches,
-      use_calibration=use_calibration)
+      use_calibration=False)
   converted_graph_def = trt_converter.convert()
   if output_saved_model_dir:
     trt_converter.save(output_saved_model_dir)

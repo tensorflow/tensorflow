@@ -74,9 +74,6 @@ tf_custom_op_library(
         "kernels/beam_search_ops_gpu.cu.cc",
         "kernels/beam_search_ops.h",
     ],
-    deps = [
-        "//tensorflow/core/kernels:eigen_helpers",
-    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -96,7 +93,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
 )

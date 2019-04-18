@@ -61,9 +61,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_gpu_only
   def testPushPopGPU(self, max_num_elements):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testPushPop(max_num_elements)
 
@@ -161,9 +160,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
+  @test_util.run_gpu_only
   def testStackGPU(self, max_num_elements):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStack(max_num_elements)
 
@@ -254,9 +252,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testStackWithUninitializedTensors(self):
     self._testStackWithUninitializedTensors()
 
+  @test_util.run_gpu_only
   def testStackWithUninitializedTensorsGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStackWithUninitializedTensors()
 
@@ -270,9 +267,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testStackWithUninitializedTensorsInferShape(self):
     self._testStackWithUninitializedTensorsInferShape()
 
+  @test_util.run_gpu_only
   def testStackWithUninitializedTensorsInferShapeGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testStackWithUninitializedTensorsInferShape()
 
@@ -291,6 +287,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         element_dtype=dtypes.float32, element_shape=None, num_elements=3)
     t = gen_list_ops.tensor_list_stack(
         l, element_dtype=dtypes.float32, element_shape=[])
+    if context.executing_eagerly():
+      self.assertEqual(t.shape.as_list(), [3])
+    else:
+      self.assertEqual(t.shape.as_list(), [None])
     self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
 
   @parameterized.named_parameters(("NoMaxNumElements", None),
@@ -422,9 +422,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGatherWithUninitializedTensors(self):
     self._testGatherWithUninitializedTensors()
 
+  @test_util.run_gpu_only
   def testGatherWithUninitializedTensorsGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testGatherWithUninitializedTensors()
 
@@ -438,9 +437,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGatherWithUninitializedTensorsInferShape(self):
     self._testGatherWithUninitializedTensorsInferShape()
 
+  @test_util.run_gpu_only
   def testGatherWithUninitializedTensorsInferShapeGpu(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self._testGatherWithUninitializedTensorsInferShape()
 
@@ -459,6 +457,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         element_dtype=dtypes.float32, element_shape=None, num_elements=3)
     t = gen_list_ops.tensor_list_gather(
         l, [0, 1, 2], element_dtype=dtypes.float32, element_shape=[])
+    self.assertEqual(t.shape.as_list(), [3])
     self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
 
   def testScatterOutputListSize(self):
@@ -553,9 +552,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(e, 1.0)
     self.assertAllEqual(list_ops.tensor_list_length(l), 0)
 
+  @test_util.run_gpu_only
   def testFromTensorGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testTensorListFromTensor()
 
@@ -568,9 +566,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(t), [3.0, 2.0])
 
+  @test_util.run_gpu_only
   def testGetSetGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testGetSet()
 
@@ -583,9 +580,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(t, [3.0, 0.0])
 
+  @test_util.run_gpu_only
   def testGetSetReservedGPU(self):
-    if not context.num_gpus():
-      return
     with context.device("gpu:0"):
       self.testGetSetReserved()
 
@@ -616,6 +612,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         l, 0, element_shape=[], element_dtype=dtypes.float32)
     e1 = gen_list_ops.tensor_list_get_item(
         l, 1, element_shape=[2, 3], element_dtype=dtypes.float32)
+    self.assertEqual(e0.shape.as_list(), [])
+    self.assertEqual(e1.shape.as_list(), [2, 3])
     self.assertEqual(self.evaluate(e0), 0.)
     self.assertAllEqual(self.evaluate(e1), np.zeros((2, 3)))
 
@@ -637,9 +635,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[None, 2], num_elements=3)
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        r"Incompatible shapes during merge: \[1,3\] vs. \[\?,2\]"):
+
+    # In eager mode the shape mismatch is caught in the TensorListGetItem
+    # kernel which raises an InvalidArgumentError.
+    # In graph mode the shape mismatch is caught in the C++ shape inference
+    # which raises a ValueError.
+    if context.executing_eagerly():
+      error_type = errors.InvalidArgumentError
+    else:
+      error_type = ValueError
+    with self.assertRaisesRegexp(error_type, r"shapes"):
       e0 = gen_list_ops.tensor_list_get_item(
           l, 0, element_dtype=dtypes.float32, element_shape=[1, 3])
       self.evaluate(e0)
@@ -678,9 +683,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 1.0)
 
+  @test_util.run_gpu_only
   def testCPUGPUCopy(self):
-    if not context.num_gpus():
-      return
     t = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     with context.device("gpu:0"):
@@ -695,9 +699,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             list_ops.tensor_list_pop_back(
                 l_cpu, element_dtype=dtypes.float32)[1]), 2.0)
 
+  @test_util.run_gpu_only
   def testCPUGPUCopyNested(self):
-    if not context.num_gpus():
-      return
     t = constant_op.constant([1.0, 2.0])
     child_l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     l = list_ops.empty_tensor_list(
@@ -836,9 +839,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(element_shape), -1)
 
   def testSerializeListWithMaxNumElements(self):
-    if context.num_gpus():
+    if test_util.is_gpu_available():
       # TODO(b/119151861): Enable on GPU.
       return
+
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
       with ops.device("/job:worker"):
@@ -1204,6 +1208,43 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(result_0), [6., 8.])
     self.assertAllEqual(self.evaluate(result_1), [10., 12.])
+
+  def testAddTensorListsFailsIfLeadingDimsMismatch(self):
+    l1 = list_ops.tensor_list_reserve(
+        element_shape=[], element_dtype=dtypes.float32, num_elements=2)
+    l2 = list_ops.tensor_list_reserve(
+        element_shape=[], element_dtype=dtypes.float32, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Trying to add two lists of tensors with different lengths"):
+      l = math_ops.add_n([l1, l2])
+      self.evaluate(list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))
+
+  @test_util.run_v1_only("Uses placeholders")
+  def testSkipEagerAddTensorListsFailsIfElementShapesMismatch(self):
+    with self.cached_session() as sess:
+      # Use placeholders instead of constant values for shapes to prevent TF's
+      # shape inference from catching this early.
+      l1_element_shape = array_ops.placeholder(dtype=dtypes.int32)
+      l2_element_shape = array_ops.placeholder(dtype=dtypes.int32)
+      l1 = list_ops.tensor_list_reserve(
+          element_shape=l1_element_shape,
+          element_dtype=dtypes.float32,
+          num_elements=3)
+      l2 = list_ops.tensor_list_reserve(
+          element_shape=l2_element_shape,
+          element_dtype=dtypes.float32,
+          num_elements=3)
+      l = math_ops.add_n([l1, l2])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to add two lists of tensors with incompatible element shapes"
+      ):
+        sess.run(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32), {
+                l1_element_shape: [],
+                l2_element_shape: [2]
+            })
 
   @test_util.run_deprecated_v1
   def testSkipEagerConcatShapeInference(self):

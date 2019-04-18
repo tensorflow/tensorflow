@@ -161,18 +161,8 @@ class StreamExecutor {
   //    sub-buffer after parent deallocation is expected to be safe. This will
   //    render your code non-platform-portable, however.
   template <typename T>
-  DeviceMemory<T> AllocateSubBuffer(DeviceMemory<T> *parent,
-                                    uint64 element_offset,
-                                    uint64 element_count);
-
-  // As AllocateSubBuffer(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedSubBuffer(DeviceMemory<T> *parent,
-                                               uint64 element_offset,
-                                               uint64 element_count) {
-    return ScopedDeviceMemory<T>(
-        this, AllocateSubBuffer<T>(parent, element_offset, element_count));
-  }
+  DeviceMemory<T> GetSubBuffer(DeviceMemory<T> *parent, uint64 element_offset,
+                               uint64 element_count);
 
   // Finds a symbol and returns device memory allocated to the symbol. The
   // symbol is searched in any kernels that were previously loaded through
@@ -421,7 +411,7 @@ class StreamExecutor {
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int> &seq_lengths,
-                                    dnn::DataType data_type);
+                                    bool time_major, dnn::DataType data_type);
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
@@ -843,9 +833,9 @@ DeviceMemory<T> StreamExecutor::AllocateZeroed() {
 }
 
 template <typename T>
-DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
-                                                  uint64 element_offset,
-                                                  uint64 element_count) {
+DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
+                                             uint64 element_offset,
+                                             uint64 element_count) {
   if (element_offset + element_count > parent->ElementCount()) {
     LOG(ERROR) << "requested sub-buffer allocation (offset + size) is greater "
                << "than parent allocation size: (" << element_offset << " + "
@@ -853,14 +843,12 @@ DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
     return DeviceMemory<T>{};
   }
 
-  void *opaque = implementation_->AllocateSubBuffer(
+  void *opaque = implementation_->GetSubBuffer(
       parent, sizeof(T) * element_offset, sizeof(T) * element_count);
   if (opaque == nullptr) {
     return DeviceMemory<T>{};
   }
-  CreateAllocRecord(opaque, sizeof(T) * element_count);
-  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count,
-                                          true /* = is_sub_buffer */));
+  return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
 }
 
 template <typename... Params, typename... Args>

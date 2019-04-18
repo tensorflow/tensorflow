@@ -19,6 +19,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+struct ProfilerContext {
+  class EagerContext* eager_context = nullptr;
+};
+
 namespace profiler {
 
 // Interface for tensorflow profiler plugins.
@@ -39,11 +43,21 @@ class ProfilerInterface {
   // Stops profiling.
   virtual Status Stop() = 0;
 
-  // Moves collected profile data into run_metadata.
+  // Moves collected profile data into step_stats_collector.
   virtual Status CollectData(RunMetadata* run_metadata) = 0;
 };
 
 }  // namespace profiler
+
+using ProfilerFactory =
+    std::unique_ptr<profiler::ProfilerInterface> (*)(const ProfilerContext*);
+
+void RegisterProfilerFactory(ProfilerFactory factory);
+
+void CreateProfilers(
+    const ProfilerContext* context,
+    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_

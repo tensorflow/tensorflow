@@ -502,6 +502,22 @@ REGISTER_OP("AnonymousIterator")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("AnonymousIteratorV2")
+    .Output("handle: resource")
+    .Output("deleter: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("DeleteIterator")
+    .Input("handle: resource")
+    .Input("deleter: variant")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("MakeIterator")
     .Input("dataset: variant")
     .Input("iterator: resource")
@@ -624,6 +640,7 @@ REGISTER_OP("OptimizeDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("optimization_configs: list(string) = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptionalFromValue")
@@ -658,6 +675,7 @@ REGISTER_OP("IteratorGetNextAsOptional")
 REGISTER_OP("ModelDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
+    .Attr("cpu_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
@@ -673,6 +691,7 @@ REGISTER_OP("MapDefun")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("f: func")
+    .Attr("max_intra_op_parallelism: int = 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));

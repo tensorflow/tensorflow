@@ -16,6 +16,8 @@ limitations under the License.
 // XLA-specific Shape Ops.
 
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
+#include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -223,14 +225,33 @@ class ZerosLikeOp : public XlaOpKernel {
   explicit ZerosLikeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
+    if (IsTensorListInput(ctx, 0)) {
+      // Input is a TensorList.
+      // TODO(b/124707753): support nested TensorList.
+      xla::XlaOp tensor_list = ctx->Input(0);
+      TensorShape shape;
+      OP_REQUIRES_OK(ctx, GetTensorListBufferShape(tensor_list, &shape));
+      xla::PrimitiveType type;
+      OP_REQUIRES_OK(ctx, GetTensorListPrimitiveType(tensor_list, &type));
+      xla::XlaOp buffer;
+      OP_REQUIRES_OK(ctx, CreateZerosList(ctx, shape, type, &buffer));
 
-    auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
-    ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
+      xla::XlaOp push_index;
+      OP_REQUIRES_OK(ctx, GetTensorListPushIndex(tensor_list, &push_index));
+
+      xla::XlaOp output_list;
+      OP_REQUIRES_OK(ctx, BuildTensorList(buffer, push_index, &output_list));
+      ctx->SetTensorListOutput(0, output_list);
+    } else {
+      const TensorShape input_shape = ctx->InputShape(0);
+
+      auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
+      ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
+    }
   }
 };
 
-REGISTER_XLA_OP(Name("ZerosLike"), ZerosLikeOp);
+REGISTER_XLA_OP(Name("ZerosLike").AllowVariantTypes(), ZerosLikeOp);
 
 class OnesLikeOp : public XlaOpKernel {
  public:

@@ -26,8 +26,10 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.testing.model_coverage import model_coverage_lib as model_coverage
 from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -69,6 +71,28 @@ class EvaluateFrozenGraph(test.TestCase):
 
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
+  def testFunctions(self):
+    """Tests functions."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = constant_op.constant(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      _ = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+
+    filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(filename, ['input'], ['output_node'])
 
   def _getQuantizedModel(self):
     np.random.seed(0)

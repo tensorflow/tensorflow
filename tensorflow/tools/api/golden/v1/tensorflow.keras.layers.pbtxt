@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Attention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Average"
     mtype: "<type \'type\'>"
   }
@@ -245,6 +249,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LayerNormalization"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LeakyReLU"
     mtype: "<type \'type\'>"
   }
@@ -403,10 +411,6 @@ tf_module {
   member {
     name: "ZeroPadding3D"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "experimental"
-    mtype: "<type \'module\'>"
   }
   member_method {
     name: "Input"

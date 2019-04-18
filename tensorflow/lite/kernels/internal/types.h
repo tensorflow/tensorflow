@@ -28,6 +28,12 @@ enum class PaddingType : uint8 { kNone, kSame, kValid };
 struct PaddingValues {
   int16 width;
   int16 height;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16 width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16 height_offset;
 };
 
 // This enumeration allows for non-default formats for the weights array
@@ -256,7 +262,7 @@ class RuntimeShape {
   // vector.
   inline int FlatSize() const {
     int buffer_size = 1;
-    const int* dims_data = DimsData();
+    const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
       const int dim = dims_data[i];
       TFLITE_DCHECK_GE(dim, 1);
@@ -372,7 +378,7 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
 
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 4);
-  const int* dims_data = shape.DimsDataUpTo4D();
+  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo4D());
   TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
   TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);

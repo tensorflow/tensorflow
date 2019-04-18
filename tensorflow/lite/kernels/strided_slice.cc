@@ -120,7 +120,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     }
 
     // This is valid for both positive and negative strides
-    int32_t dim_shape = ceil((end - begin) / static_cast<float>(stride));
+    int32_t dim_shape = std::ceil((end - begin) / static_cast<float>(stride));
     dim_shape = dim_shape < 0 ? 0 : dim_shape;
     if (!shrink_axis) {
       output_shape_vector.push_back(dim_shape);

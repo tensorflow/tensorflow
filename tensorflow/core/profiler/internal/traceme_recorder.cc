@@ -49,7 +49,7 @@ namespace {
 
 class ThreadLocalRecorder;
 
-struct Data {
+struct TraceMeContext {
   // Lock for only rare events - start/stop, thread death.
   mutex global_lock;
   // Map of the static container instances (thread_local storage) for each
@@ -58,7 +58,12 @@ struct Data {
       GUARDED_BY(global_lock);
   // Events traced from threads that died during tracing.
   TraceMeRecorder::Events orphaned_events GUARDED_BY(global_lock);
-}* g_data = nullptr;
+};
+
+static TraceMeContext* GetTraceMeContext() {
+  static TraceMeContext* singleton = new TraceMeContext();
+  return singleton;
+}
 
 // A single-producer single-consumer queue of Events.
 // Only the owner thread can write events, writing is lock-free.
@@ -154,23 +159,23 @@ class ThreadLocalRecorder {
     auto* env = Env::Default();
     info_.tid = env->GetCurrentThreadId();
     env->GetCurrentThreadName(&info_.name);
-    mutex_lock lock(g_data->global_lock);
-    g_data->threads.emplace(info_.tid, this);
+    mutex_lock lock(GetTraceMeContext()->global_lock);
+    GetTraceMeContext()->threads.emplace(info_.tid, this);
   }
 
   // The destructor is called when the thread shuts down early.
   // We unregister this thread, and move its events to orphaned_events.
   ~ThreadLocalRecorder() {
-    mutex_lock lock(g_data->global_lock);
-    g_data->threads.erase(info_.tid);
-    g_data->orphaned_events.push_back(Clear());
+    mutex_lock lock(GetTraceMeContext()->global_lock);
+    GetTraceMeContext()->threads.erase(info_.tid);
+    GetTraceMeContext()->orphaned_events.push_back(Clear());
   }
 
   // This is the performance-critical part!
   void Record(TraceMeRecorder::Event&& event) { queue_.Push(std::move(event)); }
 
   TraceMeRecorder::ThreadEvents Clear()
-      EXCLUSIVE_LOCKS_REQUIRED(g_data->global_lock) {
+      EXCLUSIVE_LOCKS_REQUIRED(GetTraceMeContext()->global_lock) {
     return {info_, queue_.Consume()};
   }
 
@@ -184,10 +189,11 @@ class ThreadLocalRecorder {
 // consume the collected trace entries. This will block any new thread and also
 // the starting and stopping of TraceMeRecorder, hence, this is performance
 // critical and should be kept fast.
-TraceMeRecorder::Events Clear() EXCLUSIVE_LOCKS_REQUIRED(g_data->global_lock) {
+TraceMeRecorder::Events Clear()
+    EXCLUSIVE_LOCKS_REQUIRED(GetTraceMeContext()->global_lock) {
   TraceMeRecorder::Events result;
-  std::swap(g_data->orphaned_events, result);
-  for (const auto& entry : g_data->threads) {
+  std::swap(GetTraceMeContext()->orphaned_events, result);
+  for (const auto& entry : GetTraceMeContext()->threads) {
     auto* recorder = entry.second;
     result.push_back(recorder->Clear());
   }
@@ -198,7 +204,7 @@ TraceMeRecorder::Events Clear() EXCLUSIVE_LOCKS_REQUIRED(g_data->global_lock) {
 
 bool TraceMeRecorder::Start(int level) {
   level = std::max(0, level);
-  mutex_lock lock(g_data->global_lock);
+  mutex_lock lock(GetTraceMeContext()->global_lock);
   int expected = kTracingDisabled;
   if (!internal::g_trace_level.compare_exchange_strong(
           expected, level, std::memory_order_acq_rel)) {
@@ -218,7 +224,7 @@ void TraceMeRecorder::Record(Event event) {
 // Only one thread is expected to call Stop() as first instance of XprofSession
 // prevents another XprofSession from doing any profiling.
 TraceMeRecorder::Events TraceMeRecorder::Stop() {
-  mutex_lock lock(g_data->global_lock);
+  mutex_lock lock(GetTraceMeContext()->global_lock);
   if (internal::g_trace_level.exchange(
           kTracingDisabled, std::memory_order_acq_rel) == kTracingDisabled) {
     return {};
@@ -227,7 +233,7 @@ TraceMeRecorder::Events TraceMeRecorder::Stop() {
 }
 
 TraceMeRecorder::Events TraceMeRecorder::Collect() {
-  mutex_lock lock(g_data->global_lock);
+  mutex_lock lock(GetTraceMeContext()->global_lock);
   if (internal::g_trace_level.load(std::memory_order_acquire) ==
       kTracingDisabled) {
     return {};
@@ -237,12 +243,3 @@ TraceMeRecorder::Events TraceMeRecorder::Collect() {
 
 }  // namespace profiler
 }  // namespace tensorflow
-
-REGISTER_MODULE_INITIALIZER(traceme_recorder, {
-  tensorflow::profiler::g_data = new tensorflow::profiler::Data();
-
-  // Workaround for b/35097229, the first block-scoped thread_local can
-  // trigger false positives in the heap checker. Currently triggered by
-  // //perftools/accelerators/xprof/xprofilez/integration_tests:xla_hlo_trace_test
-  static thread_local tensorflow::string fix_deadlock ABSL_ATTRIBUTE_UNUSED;
-});

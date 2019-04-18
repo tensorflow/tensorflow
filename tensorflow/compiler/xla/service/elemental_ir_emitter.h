@@ -159,15 +159,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                   llvm::Value* imag);
 
-  // A helper method for MakeElementGenerator. Given an elementwise op `hlo` and
-  // the target array index, computes the source array index of its
-  // `operand_no`-th operand.
-  //
-  // Precondition: `hlo` is an elementwise op.
-  llvm_ir::IrArray::Index ElementwiseSourceIndex(
-      const llvm_ir::IrArray::Index& target_index, const HloInstruction& hlo,
-      int64 operand_no);
-
   // Identifier of the thread unique among all threads on the device
   virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
 

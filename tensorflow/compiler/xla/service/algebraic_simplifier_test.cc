@@ -853,6 +853,26 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Constant())));
 }
 
+// A / Broadcast(Const) => A * Broadcast(InvertedConst)
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcastedConstant) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[4] parameter(0)
+      c = f32[] constant(256.0)
+      b = f32[4] broadcast(c), dimensions={}
+      ROOT d = f32[4] divide(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(
+                  m::Parameter(0),
+                  m::Broadcast(m::Op().IsConstantScalar(1.0f / 256.0f)))));
+}
+
 // pow(pow(A, X), Y) => pow(A, X*Y)
 TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   auto m = CreateNewVerifiedModule();
@@ -4964,6 +4984,26 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(m::Parameter(1),
                                              m::Sqrt(m::Parameter(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyReshape) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[168,168,48,48]{3,2,1,0} parameter(0)
+      r0 = f32[1,168,168,2304]{3,2,1,0} reshape(p0)
+      ROOT c0 = f32[1,168,168,2304]{3,0,2,1} copy(r0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  Shape result_shape = m->entry_computation()->root_instruction()->shape();
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
+  options.set_is_layout_sensitive(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  LOG(INFO) << "\n" << m->ToString();
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Parameter(0)).WithShapeEqualTo(&result_shape)));
 }
 
 }  // namespace

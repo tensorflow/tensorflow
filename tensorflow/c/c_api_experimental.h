@@ -93,26 +93,6 @@ TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
 TF_CAPI_EXPORT extern char* TF_FunctionDebugString(TF_Function* func,
                                                    size_t* len);
 
-// Creates a stack of data set + iterator nodes, currently hard-coded to return
-// a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
-// returns the IteratorGetNext node, which caller can run or feed into an node.
-//
-// TODO(hongm): Extend the API to allow customization of the nodes created.
-TF_CAPI_EXPORT extern TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(
-    TF_Graph* graph, TF_Status* status);
-
-// Similar to the above API, except that the returned iterator reads the
-// file based dataset from `file_path`.
-// If `is_mnist` is 0, the dataset corresponds to ImageNet.
-// The iterators outputs 2 tensors:
-// - A float tensor of shape `batch_size` X 784 when `is_mnist` is non-zero, or
-// `batch_size` X 224 X 224 X 3 otherwise.
-// - An int32 tensor of shape `batch_size`
-// TODO(hongm): Extend the API to allow customization of the nodes created.
-TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
-    TF_Graph* graph, const char* file_path, int batch_size,
-    unsigned char is_mnist, TF_Status* status);
-
 // On success, dequeues a tensor from a TF-managed FifoQueue given by
 // `tensor_id`, associated with `session`. There must be a graph node named
 // "fifo_queue_dequeue_<tensor_id>", to be executed by this API call.

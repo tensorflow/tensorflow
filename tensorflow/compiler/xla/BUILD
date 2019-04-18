@@ -18,7 +18,6 @@ package_group(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
@@ -54,6 +53,24 @@ xla_proto_library(
     deps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
+    ],
+)
+
+cc_library(
+    name = "comparison_util",
+    srcs = [
+        "comparison_util.cc",
+    ],
+    hdrs = [
+        "comparison_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":statusor",
+        ":types",
+        ":util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -172,6 +189,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -269,6 +287,7 @@ tf_cc_test(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -379,7 +398,6 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":types",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -828,11 +846,20 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
+            ":status",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "@com_google_absl//absl/strings",
         ],
+)
+
+cc_library(
+    name = "cpu_function_runtime",
+    srcs = ["cpu_function_runtime.cc"],
+    hdrs = ["cpu_function_runtime.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core:framework_lite"],
 )
 
 tf_cc_test(

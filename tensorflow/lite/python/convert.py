@@ -26,10 +26,10 @@ import subprocess as _subprocess
 import tempfile as _tempfile
 
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python import util
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -56,17 +56,6 @@ if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
 
 
-# Map of tf.dtypes to TFLite types_flag_pb2.
-_MAP_TF_TO_TFLITE_TYPES = {
-    dtypes.float32: _types_pb2.FLOAT,
-    dtypes.int32: _types_pb2.INT32,
-    dtypes.int64: _types_pb2.INT64,
-    dtypes.string: _types_pb2.STRING,
-    dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
-    dtypes.complex64: _types_pb2.COMPLEX64
-}
-
-
 def _try_convert_to_unicode(output):
   if output is None:
     return u""
@@ -77,24 +66,6 @@ def _try_convert_to_unicode(output):
     except UnicodeDecodeError:
       pass
   return output
-
-
-def convert_dtype_to_tflite_type(tf_dtype):
-  """Converts tf.dtype to TFLite proto type.
-
-  Args:
-    tf_dtype: tf.dtype
-
-  Raises:
-    ValueError: Unsupported tf.dtype.
-
-  Returns:
-    types_flag_pb2.
-  """
-  result = _MAP_TF_TO_TFLITE_TYPES.get(tf_dtype)
-  if result is None:
-    raise ValueError("Unsupported tf.dtype {0}".format(tf_dtype))
-  return result
 
 
 @_tf_export("lite.OpsSet")
@@ -124,13 +95,11 @@ class ConverterError(Exception):
   pass
 
 
-# Don't expose these for now.
-#  @_tf_export("lite.toco_convert_protos")
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   """Convert `input_data_str` according to model and toco parameters.
 
   Unless you know what you are doing consider using
-  the more friendly `tf.lite.toco_convert`.
+  the more friendly `tf.compat.v1.lite.toco_convert`.
 
   Args:
     model_flags_str: Serialized proto describing model properties, see
@@ -213,12 +182,6 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
         pass
 
 
-def tensor_name(x):
-  return x.name.split(":")[0]
-
-
-# Don't expose these for now.
-# @_tf_export("lite.build_toco_convert_protos")
 def build_toco_convert_protos(input_tensors,
                               output_tensors,
                               inference_type=lite_constants.FLOAT,
@@ -244,7 +207,7 @@ def build_toco_convert_protos(input_tensors,
 
   Args:
     input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+      `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of real-number arrays in the output file.
       Must be `{tf.float32, tf.uint8}`.  (default tf.float32)
@@ -311,9 +274,9 @@ def build_toco_convert_protos(input_tensors,
   toco = _toco_flags_pb2.TocoFlags()
   toco.input_format = input_format
   toco.output_format = output_format
-  toco.inference_type = convert_dtype_to_tflite_type(inference_type)
+  toco.inference_type = util.convert_dtype_to_tflite_type(inference_type)
   if inference_input_type:
-    toco.inference_input_type = convert_dtype_to_tflite_type(
+    toco.inference_input_type = util.convert_dtype_to_tflite_type(
         inference_input_type)
   else:
     toco.inference_input_type = toco.inference_type
@@ -338,8 +301,9 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    input_array.name = tensor_name(input_tensor)
-    input_array.data_type = convert_dtype_to_tflite_type(input_tensor.dtype)
+    input_array.name = util.get_tensor_name(input_tensor)
+    input_array.data_type = util.convert_dtype_to_tflite_type(
+        input_tensor.dtype)
 
     if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
       if not quantized_input_stats:
@@ -347,13 +311,13 @@ def build_toco_convert_protos(input_tensors,
                          "inference_input_type is QUANTIZED_UINT8.")
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     if input_shapes is None:
-      shape = input_tensor.get_shape()
+      shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
     input_array.shape.dims.extend(map(int, shape))
 
   for output_tensor in output_tensors:
-    model.output_arrays.append(tensor_name(output_tensor))
+    model.output_arrays.append(util.get_tensor_name(output_tensor))
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
 
@@ -423,7 +387,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),
     input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+      `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
@@ -456,7 +420,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),
     input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+      `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.

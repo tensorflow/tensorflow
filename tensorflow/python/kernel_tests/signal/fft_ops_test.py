@@ -399,6 +399,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 rank, (size,) * rank,
                 use_placeholder=True)
 
+  @test_util.run_deprecated_v1
   def testFftLength(self):
     if test.is_gpu_available(cuda_only=True):
       with spectral_ops_test_util.fft_kernel_label_map():
@@ -467,7 +468,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 gen_complex(complex_dims), rank, (size,) * rank)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("b/123738986")  # More assertions needed.
   def testError(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:

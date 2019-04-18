@@ -43,7 +43,9 @@ namespace {
 // A * H or H * A zeros out trailing part of some row or column of A.
 //
 // [x0, ..., x_{k-1}, xk, x_{k+1}, ..., x_{n-1}] * H
-//       = [x0, ..., x_{k-1}, vnorm, 0, ..., 0]
+//       = [x0, ..., x_{k-1}, xnorm, 0, ..., 0]
+//
+// Here xnorm = norm([x_k, x_{k+1}, ..., x_{n - 1}])
 struct HouseHolderResult {
   XlaOp v;
   XlaOp beta;
@@ -82,7 +84,7 @@ struct FrobeniusNorms {
 //
 // H = I - beta * [1, v]' * [1, v]
 //
-// H * x = [..., sigma, 0, ..., 0]
+// H * x = [..., xnorm, 0, ..., 0]
 //          ..., j, j + 1, ..., n
 //
 // def house(x, j, eps):
@@ -161,20 +163,9 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   HouseHolderResult result;
   result.v = v;
   result.beta = beta;
-  a = Sub(a, Mul(beta, BatchDot(BatchDot(a, TransposeInMinorDims(v), precision),
+  result.a =
+      Sub(a, Mul(beta, BatchDot(BatchDot(a, TransposeInMinorDims(v), precision),
                                 v, precision)));
-
-  auto xnorm =
-      Sqrt(Reduce(Square(Select(Ge(idx, j), x, zeros)), ScalarLike(x, 0.0),
-                  CreateScalarAddComputation(x_shape.element_type(), builder),
-                  {num_dims - 1}));
-
-  xnorm = BroadcastInDim(xnorm, x_shape.dimensions(), broadcast_dims);
-
-  x = Select(Lt(idx, j), x, zeros);
-  x = Select(Eq(idx, j), xnorm, x);
-
-  result.a = DynamicUpdateSliceInMinorDims(a, x, {i, zero});
 
   return result;
 }
@@ -184,7 +175,7 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
 //
 // H = I - beta * [1; v] * [1; v]', then,
 //
-// H * A[i:, j] = [sigma, 0, 0, ..., 0]
+// H * A[i:, j] = [xnorm, 0, 0, ..., 0]
 //
 StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
                                      PrecisionConfig::Precision precision) {
@@ -239,21 +230,9 @@ StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   HouseHolderResult result;
   result.v = v;
   result.beta = beta;
-  a = Sub(a,
-          Mul(beta, BatchDot(v, BatchDot(TransposeInMinorDims(v), a, precision),
-                             precision)));
-
-  auto xnorm =
-      Sqrt(Reduce(Square(Select(Ge(idx, i), x, zeros)), ScalarLike(x, 0.0),
-                  CreateScalarAddComputation(x_shape.element_type(), builder),
-                  {num_dims - 2}));
-
-  xnorm = BroadcastInDim(xnorm, x_shape.dimensions(), broadcast_dims);
-
-  x = Select(Lt(idx, i), x, zeros);
-  x = Select(Eq(idx, i), xnorm, x);
-
-  result.a = DynamicUpdateSliceInMinorDims(a, x, {zero, j});
+  result.a = Sub(
+      a, Mul(beta, BatchDot(v, BatchDot(TransposeInMinorDims(v), a, precision),
+                            precision)));
 
   return result;
 }
@@ -771,19 +750,18 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
   result.v = Mul(result.v, sign, broadcast_dims);
 
   d = BroadcastInDim(d, dimensions, broadcast_dims);
-  auto zero = Zero(builder, S32);
 
   // As m >= n, only first m columns vectors are needed to be permuted, and the
-  // rest of n - m vectors are appended after the sorting is done.
+  // rest of m - n vectors are appended after the sorting is done.
   XlaOp sort_u_result =
-      Sort({-d, DynamicSliceInMinorDims(result.u, {zero, zero}, {m, n})},
+      Sort({-d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
            CreateScalarLtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
 
   // TODO(kuny): using CreateScalarGtComputation after b/124862300 is fixed.
   XlaOp sort_v_result =
-      Sort({DynamicSliceInMinorDims(-d, {zero, zero}, {n, n}), result.v},
+      Sort({SliceInMinorDims(-d, {0, 0}, {n, n}), result.v},
            CreateScalarLtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
@@ -799,13 +777,11 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
                    {num_dims - 2})),
       broadcast_dims);
 
-  // Append the rest of n - m vectors.
-  result.u =
-      ConcatInDim(builder,
-                  {GetTupleElement(sort_u_result, 1),
-                   DynamicSliceInMinorDims(
-                       result.u, {zero, ScalarLike(zero, n)}, {m, m - n})},
-                  num_dims - 1);
+  // Append the rest of m - n vectors.
+  result.u = ConcatInDim(builder,
+                         {GetTupleElement(sort_u_result, 1),
+                          SliceInMinorDims(result.u, {0, n}, {m, m})},
+                         num_dims - 1);
   result.u = Mul(
       result.u,
       Rsqrt(Reduce(Square(result.u), ScalarLike(d, 0.0),

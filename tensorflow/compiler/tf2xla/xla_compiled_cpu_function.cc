@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
 #include <cassert>
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
 namespace tensorflow {
 
@@ -34,7 +35,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   bool allocate_entry_params =
       alloc_mode == AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS;
   // Allocate arg and temp buffers.
-  alloc_buffer_table_ = cpu_function_runtime::MallocContiguousBuffers(
+  alloc_buffer_table_ = xla::cpu_function_runtime::MallocContiguousBuffers(
       static_data.buffer_infos_, static_data.num_buffers_,
       /*allocate_entry_params=*/allocate_entry_params, buffer_table_,
       /*annotate_initialized=*/true);
@@ -55,7 +56,7 @@ bool XlaCompiledCpuFunction::Run() {
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
-  cpu_function_runtime::FreeContiguous(alloc_buffer_table_);
+  xla::cpu_function_runtime::FreeContiguous(alloc_buffer_table_);
   delete[] buffer_table_;
   delete[] profile_counters_;
 }

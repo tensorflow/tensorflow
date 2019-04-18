@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi_delegate.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -55,6 +56,9 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
+  // TODO(b/128420794): Include the TFLite runtime version in the log.
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+
   // There's always at least 1 subgraph which is the primary subgraph.
   AddSubgraphs(1);
   context_ = primary_subgraph().context();
@@ -166,26 +170,17 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
-  if (primary_subgraph().SetTensorParametersReadOnly(
-          tensor_index, type, name, rank, dims, new_quantization, buffer, bytes,
-          allocation) != kTfLiteOk) {
-    TfLiteQuantizationFree(&new_quantization);
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
+  return primary_subgraph().SetTensorParametersReadOnly(
+      tensor_index, type, name, rank, dims, new_quantization, buffer, bytes,
+      allocation);
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
-  if (primary_subgraph().SetTensorParametersReadWrite(
-          tensor_index, type, name, rank, dims, new_quantization,
-          is_variable) != kTfLiteOk) {
-    TfLiteQuantizationFree(&new_quantization);
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
+  return primary_subgraph().SetTensorParametersReadWrite(
+      tensor_index, type, name, rank, dims, new_quantization, is_variable);
 }
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {

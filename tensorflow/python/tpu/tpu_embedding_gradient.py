@@ -115,11 +115,11 @@ def hook_dummy_table_variables_to_activations(tpu_embedding, activations,
   """
   new_activations = collections.OrderedDict()
   for feature in activations:
-    table = tpu_embedding.feature_to_table_dict[feature]
+    table = tpu_embedding.feature_to_config_dict[feature].table_id
     new_activations[feature] = tpu_ops.tpu_embedding_activations(
         dummy_table_variables[table],
         activations[feature],
-        table_id=tpu_embedding.table_to_config_dict.keys().index(table),
+        table_id=list(tpu_embedding.table_to_config_dict).index(table),
         lookup_id=tpu_embedding.table_to_features_dict[table].index(feature))
   return new_activations
 

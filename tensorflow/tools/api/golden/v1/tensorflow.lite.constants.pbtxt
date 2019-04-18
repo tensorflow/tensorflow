@@ -17,6 +17,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "INT8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "QUANTIZED_UINT8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

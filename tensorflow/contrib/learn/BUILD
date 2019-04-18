@@ -387,6 +387,13 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
+    deps = [":head_test_lib"],
+)
+
+py_library(
+    name = "head_test_lib",
+    srcs = ["python/learn/estimators/head_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow/core:protos_all_py",

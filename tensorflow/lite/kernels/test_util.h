@@ -46,7 +46,7 @@ template <typename T>
 inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
                                int32_t zero_point) {
   std::vector<T> q;
-  for (float f : data) {
+  for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
         std::numeric_limits<T>::min(),
         std::min<float>(std::numeric_limits<T>::max(),
@@ -59,7 +59,7 @@ template <typename T>
 inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
                                      int32_t zero_point) {
   std::vector<float> f;
-  for (T q : data) {
+  for (const T& q : data) {
     f.push_back(scale * (q - zero_point));
   }
   return f;
@@ -204,7 +204,7 @@ class SingleOpModel {
     const int channel_index = params->quantized_dimension;
 
     std::vector<int32_t> shape(t->dims->size);
-    for (int i = 0; i < shape.size(); ++i) {
+    for (size_t i = 0; i < shape.size(); ++i) {
       shape[i] = t->dims->data[i];
     }
     const int32_t num_inputs = input_data.size();
@@ -276,7 +276,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -296,7 +296,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -324,6 +324,11 @@ class SingleOpModel {
       result.push_back(t->dims->data[i]);
     }
     return result;
+  }
+
+  void SetNumThreads(int num_threads) {
+    CHECK(interpreter_ != nullptr);
+    interpreter_->SetNumThreads(num_threads);
   }
 
   void SetResolver(std::unique_ptr<OpResolver> resolver) {
@@ -492,7 +497,7 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   static std::vector<string> GetKernelTags(
       const std::map<string, TfLiteRegistration*>& kernel_map) {
     std::vector<string> tags;
-    for (auto it : kernel_map) {
+    for (const auto& it : kernel_map) {
       tags.push_back(it.first);
     }
     return tags;
@@ -518,6 +523,56 @@ TensorType GetTensorType() {
 // Strings have a special implementation that is in test_util.cc
 template <>
 std::vector<string> SingleOpModel::ExtractVector(int index);
+
+// The TypeUnion struct specializations hold a collection of related types.
+// Each struct holds: 1. a primitive type (e.g. float), 2. a TensorType (e.g.
+// TensorType_FLOAT32, and 3. a TfLiteType (e.g. kTfLiteFloat32). The latter
+// two are actually enum values and not raw types, but these specializations
+// make it easy to use gUnit Typed Test Suite:
+// https://github.com/google/googletest/blob/master/googletest/docs/advanced.md#typed-tests
+template <typename T>
+struct TypeUnion;
+
+template <>
+struct TypeUnion<float> {
+ public:
+  static const TensorType tensor_type = TensorType::TensorType_FLOAT32;
+  static const TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
+  typedef float ScalarType;
+};
+
+template <>
+struct TypeUnion<int32_t> {
+ public:
+  static const TensorType tensor_type = TensorType::TensorType_INT32;
+  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt32;
+  typedef int32_t ScalarType;
+};
+
+template <>
+struct TypeUnion<int16_t> {
+ public:
+  static const TensorType tensor_type = TensorType::TensorType_INT16;
+  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
+  typedef int16_t ScalarType;
+};
+
+template <>
+struct TypeUnion<int8_t> {
+ public:
+  static const TensorType tensor_type = TensorType::TensorType_INT8;
+  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt8;
+  typedef int8_t ScalarType;
+};
+
+template <>
+struct TypeUnion<uint8_t> {
+ public:
+  static const TensorType tensor_type = TensorType::TensorType_UINT8;
+  static const TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
+  typedef uint8_t ScalarType;
+};
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

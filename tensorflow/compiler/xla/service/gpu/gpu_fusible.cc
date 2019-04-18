@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
+#include <iterator>
+#include <vector>
+
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -57,8 +64,8 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
   if (instr.IsMultiOutputFusion()) {
     for (const HloInstruction* operand :
          instr.fused_expression_root()->operands()) {
-      if (IsReductionToVector(*operand)) {
-        CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+      if (IsReductionFromOrToContiguousDimensions(*operand)) {
+        CHECK(instr.IsInputFusion())
             << " Multi-output fusion rooted at reduction-to-vector ops must be "
                "of kind kInput: "
             << instr.ToString();
@@ -66,8 +73,9 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
       }
     }
   } else if (instr.opcode() == HloOpcode::kFusion &&
-             IsReductionToVector(*instr.fused_expression_root())) {
-    CHECK(instr.fusion_kind() == HloInstruction::FusionKind::kInput)
+             IsReductionFromOrToContiguousDimensions(
+                 *instr.fused_expression_root())) {
+    CHECK(instr.IsInputFusion())
         << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
         << instr.ToString();
     return true;
@@ -76,7 +84,8 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
-  return IsReduceInputFusion(instr) || IsReductionToVector(instr);
+  return IsReduceInputFusion(instr) ||
+         IsReductionFromOrToContiguousDimensions(instr);
 }
 
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
@@ -91,7 +100,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
         // If possible, we want to pick a reduction-to-vector operand of the
         // fusion root, because it has the most constraints.
         for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionToVector(*inst)) {
+          if (IsReductionFromOrToContiguousDimensions(*inst)) {
             return inst;
           }
         }
@@ -107,7 +116,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
-    if (IsReductionToVector(*element_instr)) {
+    if (IsReductionFromOrToContiguousDimensions(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -120,7 +129,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
   // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-  if (IsReductionToVector(*instr_1) && IsReductionToVector(*instr_2) &&
+  if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
+      IsReductionFromOrToContiguousDimensions(*instr_2) &&
       (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
        instr_1->dimensions() != instr_2->dimensions())) {
     return false;
@@ -129,6 +139,66 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // TODO(tjoerg): Further relax the constraint. The datatype does not matter.
   return ShapeUtil::EqualIgnoringFpPrecision(get_loop_shape(instr_1),
                                              get_loop_shape(instr_2));
+}
+
+bool IsInputFusibleScatter(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kScatter ||
+      (instr.opcode() == HloOpcode::kFusion &&
+       instr.fusion_kind() == HloInstruction::FusionKind::kInput &&
+       instr.fused_expression_root()->opcode() == HloOpcode::kScatter)) {
+    return true;
+  }
+  return false;
+}
+
+bool IsInputFusible(const HloInstruction& instr) {
+  // Input fusion only handles non-elemental reduction and scatter operations.
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr));
+}
+
+bool IsLoopFusible(const HloInstruction& instr) {
+  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
+  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
+  // unfused GTE is an input to a kernel (including a fusion kernel), we
+  // compute the address of the GTE at the top of the kernel.  Often we know the
+  // address of the GTE result statically, so we can do this without chasing any
+  // pointers.
+  return instr.IsFusible() &&
+         ((instr.IsElementwise() && instr.operand_count() > 0) ||
+          instr.opcode() == HloOpcode::kBitcast ||
+          instr.opcode() == HloOpcode::kBroadcast ||
+          instr.opcode() == HloOpcode::kConcatenate ||
+          instr.opcode() == HloOpcode::kDynamicSlice ||
+          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+          instr.opcode() == HloOpcode::kGather ||
+          instr.opcode() == HloOpcode::kIota ||
+          instr.opcode() == HloOpcode::kPad ||
+          (instr.opcode() == HloOpcode::kReduce &&
+           !IsReductionFromOrToContiguousDimensions(instr)) ||
+          instr.opcode() == HloOpcode::kReduceWindow ||
+          instr.opcode() == HloOpcode::kReshape ||
+          instr.opcode() == HloOpcode::kReverse ||
+          instr.opcode() == HloOpcode::kSlice ||
+          instr.opcode() == HloOpcode::kTranspose);
+}
+
+bool IsFusible(const HloInstruction& instr) {
+  return IsInputFusible(instr) || IsLoopFusible(instr);
+}
+
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
+  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
+  // with any other instruction.
+  // Note that scatter cannot be the root of a multi-output fusion because
+  // its emitter doesn't support it.
+
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) ||
+          instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
+          instr.IsElementwise());
 }
 
 }  // namespace gpu

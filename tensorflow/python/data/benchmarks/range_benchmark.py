@@ -28,7 +28,7 @@ class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
     for modeling_enabled in [False, True]:
       num_elements = 10000000 if modeling_enabled else 50000000
       options = dataset_ops.Options()
-      options.experimental_autotune = modeling_enabled
+      options.experimental_optimization.autotune = modeling_enabled
       dataset = dataset_ops.Dataset.range(num_elements)
       dataset = dataset.with_options(options)
 

@@ -294,7 +294,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     predict_dataset_dict = dataset_ops.Dataset.from_tensor_slices(
         input_dict)
     predict_dataset_dict = predict_dataset_dict.repeat(100)
-    predict_dataset_dict = dataset_dict.batch(10)
+    predict_dataset_dict = predict_dataset_dict.batch(10)
     model.predict(predict_dataset_dict, steps=1)
 
   @keras_parameterized.run_with_all_model_types
@@ -357,12 +357,32 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     inputs[20:30, :] = 1
     inputs[30:, :] = 4
     targets = np.zeros((40, 1), dtype=np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.batch(10)
-    history = model.fit(dataset,
-                        epochs=2, steps_per_epoch=2, verbose=1, shuffle=False)
+
+    # Test correctness with `steps_per_epoch`.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(train_dataset,
+                        epochs=2, steps_per_epoch=2, verbose=1,
+                        validation_data=val_dataset, validation_steps=2)
     self.assertListEqual(history.history['loss'],
                          [inputs[:20].sum() / 2, inputs[20:].sum() / 2])
+    # The validation dataset will be reset at the end of each validation run.
+    self.assertListEqual(history.history['val_loss'],
+                         [inputs[:20].sum() / 2, inputs[:20].sum() / 2])
+
+    # Test correctness with dataset reset.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(train_dataset,
+                        epochs=2, verbose=1, validation_data=val_dataset)
+    self.assertListEqual(history.history['loss'],
+                         [inputs.sum() / 4, inputs.sum() / 4])
+    self.assertListEqual(history.history['val_loss'],
+                         [inputs.sum() / 4, inputs.sum() / 4])
 
   @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-static const char kErrMsg[] = "The matrix is not invertible.";
+static const char kNotInvertibleMsg[] = "The matrix is not invertible.";
+
+static const char kNotInvertibleScalarMsg[] =
+    "The matrix is not invertible: it is a scalar with value zero.";
 
 template <class Scalar>
 class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
@@ -79,6 +82,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
                                                   : static_cast<int64>(cost);
   }
 
+  bool EnableInputForwarding() const final { return false; }
+
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
     const auto diagonals = inputs[0];
@@ -89,7 +94,7 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
     const auto& diag = diagonals.row(1);
     // Superdiagonal elements, n-th is ignored.
     const auto& subdiag = diagonals.row(2);
-    // Right-hand sides (transposed - necessary for GPU impl).
+    // Right-hand sides.
     const auto& rhs = inputs[1];
 
     const int n = diag.size();
@@ -100,7 +105,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
       return;
     }
     if (n == 1) {
-      OP_REQUIRES(context, diag(0) != zero, errors::InvalidArgument(kErrMsg));
+      OP_REQUIRES(context, diag(0) != zero,
+                  errors::InvalidArgument(kNotInvertibleScalarMsg));
       x.row(0) = rhs.row(0) / diag(0);
       return;
     }
@@ -119,7 +125,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
     for (int i = 0; i < n - 1; ++i) {
       if (std::abs(u(i)) >= std::abs(subdiag(i + 1))) {
         // No row interchange.
-        OP_REQUIRES(context, u(i) != zero, errors::InvalidArgument(kErrMsg));
+        OP_REQUIRES(context, u(i) != zero,
+                    errors::InvalidArgument(kNotInvertibleMsg));
         const Scalar factor = subdiag(i + 1) / u(i, 0);
         u(i + 1, 0) = diag(i + 1) - factor * u(i, 1);
         x.row(i + 1) = rhs.row(i + 1) - factor * x.row(i);
@@ -141,6 +148,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
         }
       }
     }
+    OP_REQUIRES(context, u(n - 1, 0) != zero,
+                errors::InvalidArgument(kNotInvertibleMsg));
     x.row(n - 1) /= u(n - 1, 0);
     x.row(n - 2) = (x.row(n - 2) - u(n - 2, 1) * x.row(n - 1)) / u(n - 2, 0);
     for (int i = n - 3; i >= 0; --i) {

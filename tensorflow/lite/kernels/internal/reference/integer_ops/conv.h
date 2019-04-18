@@ -100,7 +100,7 @@ inline void ConvPerChannel(
                   // we have seen so far.
                   // TODO(jianlijianli): Add a check to make sure the
                   // accumulator depth is smaller than 2^16.
-                  acc += filter_val * (input_val - input_offset);
+                  acc += filter_val * (input_val + input_offset);
                 }
               }
             }

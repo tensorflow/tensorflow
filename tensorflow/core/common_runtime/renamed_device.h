@@ -94,6 +94,13 @@ class RenamedDevice : public Device {
     return underlying_->MakeTensorFromProto(tensor_proto, alloc_attrs, tensor);
   }
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override {
+    underlying_->CopyTensorInSameDevice(input_tensor, output_tensor,
+                                        device_context, std::move(done));
+  }
+
   // Below are virtual methods defined on Device
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override {

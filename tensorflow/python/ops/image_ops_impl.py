@@ -514,12 +514,7 @@ def _rot90_4D(images, k, name_scope):
   return result
 
 
-@tf_export(v1=['image.transpose', 'image.transpose_image'])
-def transpose_image(image):
-  return transpose(image=image, name=None)
-
-
-@tf_export('image.transpose', v1=[])
+@tf_export('image.transpose', v1=['image.transpose', 'image.transpose_image'])
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
 
@@ -615,15 +610,17 @@ def central_crop(image, central_fraction):
     # bounding boxes depend on the `image` tensor's rank and whether / not the
     # dimensions are statically defined.
     if dynamic_h:
-      img_hd = math_ops.to_double(img_h)
-      bbox_h_start = math_ops.to_int32((img_hd - img_hd * central_fraction) / 2)
+      img_hd = math_ops.cast(img_h, dtypes.float64)
+      bbox_h_start = math_ops.cast(
+          (img_hd - img_hd * central_fraction) / 2, dtypes.int32)
     else:
       img_hd = float(img_h)
       bbox_h_start = int((img_hd - img_hd * central_fraction) / 2)
 
     if dynamic_w:
-      img_wd = math_ops.to_double(img_w)
-      bbox_w_start = math_ops.to_int32((img_wd - img_wd * central_fraction) / 2)
+      img_wd = math_ops.cast(img_w, dtypes.float64)
+      bbox_w_start = math_ops.cast(
+          (img_wd - img_wd * central_fraction) / 2, dtypes.int32)
     else:
       img_wd = float(img_w)
       bbox_w_start = int((img_wd - img_wd * central_fraction) / 2)
@@ -820,7 +817,9 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     return cropped
 
 
-@tf_export('image.resize_image_with_crop_or_pad')
+@tf_export('image.resize_with_crop_or_pad',
+           v1=['image.resize_with_crop_or_pad',
+               'image.resize_image_with_crop_or_pad'])
 def resize_image_with_crop_or_pad(image, target_height, target_width):
   """Crops and/or pads an image to a target width and height.
 
@@ -990,15 +989,21 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
       _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
 
       # do the computation to find the right scale and height/width.
-      scale_factor_height = (math_ops.to_float(new_height_const) /
-                             math_ops.to_float(current_height))
-      scale_factor_width = (math_ops.to_float(new_width_const) /
-                            math_ops.to_float(current_width))
+      scale_factor_height = (
+          math_ops.cast(new_height_const, dtypes.float32) /
+          math_ops.cast(current_height, dtypes.float32))
+      scale_factor_width = (
+          math_ops.cast(new_width_const, dtypes.float32) /
+          math_ops.cast(current_width, dtypes.float32))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_height)))
-      scaled_width_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_width)))
+      scaled_height_const = math_ops.cast(
+          math_ops.round(
+              scale_factor * math_ops.cast(current_height, dtypes.float32)),
+          dtypes.int32)
+      scaled_width_const = math_ops.cast(
+          math_ops.round(
+              scale_factor * math_ops.cast(current_width, dtypes.float32)),
+          dtypes.int32)
 
       # NOTE: Reset the size and other constants used later.
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
@@ -1147,7 +1152,7 @@ def resize_images_v2(images,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
     https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
-    sigma = 1.5 / 3.]
+    sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
     'antialias' has no effect when used with nearest neighbor interpolation.
@@ -1869,8 +1874,15 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   if min_jpeg_quality >= max_jpeg_quality:
     raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
 
-  np.random.seed(seed)
-  jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
+  if compat.forward_compatible(2019, 4, 4):
+    jpeg_quality = random_ops.random_uniform([],
+                                             min_jpeg_quality,
+                                             max_jpeg_quality,
+                                             seed=seed,
+                                             dtype=dtypes.int32)
+  else:
+    np.random.seed(seed)
+    jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
   return adjust_jpeg_quality(image, jpeg_quality)
 
 
@@ -1887,7 +1899,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
-    jpeg_quality: int.  jpeg encoding quality.
+    jpeg_quality: Python int or Tensor of type int32.  jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
@@ -1900,7 +1912,14 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     # Convert to uint8
     image = convert_image_dtype(image, dtypes.uint8)
     # Encode image to jpeg with given jpeg quality
-    image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+    if compat.forward_compatible(2019, 4, 4):
+      if not _is_tensor(jpeg_quality):
+        # If jpeg_quality is a int (not tensor).
+        jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
+      image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
+    else:
+      image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+
     # Decode jpeg image
     image = gen_image_ops.decode_jpeg(image)
     # Convert back to original dtype and return
@@ -2034,8 +2053,7 @@ tf_export('io.extract_jpeg_shape', 'image.extract_jpeg_shape',
 @tf_export('io.decode_image', 'image.decode_image',
            v1=['io.decode_image', 'image.decode_image'])
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
-  """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
-  and `decode_png`.
+  """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
   appropriate operation to convert the input bytes `string` into a `Tensor`
@@ -3333,7 +3351,6 @@ def crop_and_resize_v1(   # pylint: disable=missing-docstring
 
 crop_and_resize_v1.__doc__ = gen_image_ops.crop_and_resize.__doc__
 
-
 @tf_export(v1=['image.extract_glimpse'])
 def extract_glimpse(
     input,  # pylint: disable=redefined-builtin
@@ -3475,6 +3492,7 @@ def combined_non_max_suppression(boxes,
                                  iou_threshold=0.5,
                                  score_threshold=float('-inf'),
                                  pad_per_class=False,
+                                 clip_boxes=True,
                                  name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
@@ -3511,6 +3529,9 @@ def combined_non_max_suppression(boxes,
       scores and classes are padded to be of length
       `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
       which case it is clipped to `max_total_size`. Defaults to false.
+    clip_boxes: If true, the coordinates of output nmsed boxes will be clipped
+      to [0, 1]. If false, output the box coordinates as it is. Defaults to
+      true.
     name: A name for the operation (optional).
 
   Returns:
@@ -3532,4 +3553,66 @@ def combined_non_max_suppression(boxes,
         score_threshold, dtype=dtypes.float32, name='score_threshold')
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
-        score_threshold, pad_per_class)
+        score_threshold, pad_per_class, clip_boxes)
+
+
+@tf_export('image.draw_bounding_boxes', v1=[])
+def draw_bounding_boxes_v2(images, boxes, colors, name=None):
+  """Draw bounding boxes on a batch of images.
+
+  Outputs a copy of `images` but draws on top of the pixels zero or more
+  bounding boxes specified by the locations in `boxes`. The coordinates of the
+  each bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`.
+  The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
+  and height of the underlying image.
+
+  For example, if an image is 100 x 200 pixels (height x width) and the bounding
+  box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+  the bounding box will be `(40, 10)` to `(180, 50)` (in (x,y) coordinates).
+
+  Parts of the bounding box may fall outside the image.
+
+  Args:
+    images: A `Tensor`. Must be one of the following types: `float32`, `half`.
+      4-D with shape `[batch, height, width, depth]`. A batch of images.
+    boxes: A `Tensor` of type `float32`. 3-D with shape `[batch,
+      num_bounding_boxes, 4]` containing bounding boxes.
+    colors: A `Tensor` of type `float32`. 2-D. A list of RGBA colors to cycle
+      through for the boxes.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `images`.
+  """
+  if colors is None and not compat.forward_compatible(2019, 5, 1):
+    return gen_image_ops.draw_bounding_boxes(images, boxes, name)
+  return gen_image_ops.draw_bounding_boxes_v2(images, boxes, colors, name)
+
+
+@tf_export(v1=['image.draw_bounding_boxes'])
+def draw_bounding_boxes(images, boxes, name=None, colors=None):
+  """Draw bounding boxes on a batch of images.
+
+  Outputs a copy of `images` but draws on top of the pixels zero or more
+  bounding boxes specified by the locations in `boxes`. The coordinates of the
+  each bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`.
+  The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
+  and height of the underlying image.
+
+  For example, if an image is 100 x 200 pixels (height x width) and the bounding
+  box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+  the bounding box will be `(40, 10)` to `(180, 50)` (in (x,y) coordinates).
+
+  Parts of the bounding box may fall outside the image.
+
+  Args:
+    images: A `Tensor`. Must be one of the following types: `float32`, `half`.
+      4-D with shape `[batch, height, width, depth]`. A batch of images.
+    boxes: A `Tensor` of type `float32`. 3-D with shape `[batch,
+      num_bounding_boxes, 4]` containing bounding boxes.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `images`.
+  """
+  return draw_bounding_boxes_v2(images, boxes, colors, name)

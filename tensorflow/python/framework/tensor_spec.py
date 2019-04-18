@@ -37,7 +37,7 @@ class TensorSpec(object):
 
   __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
 
-  def __init__(self, shape, dtype, name=None):
+  def __init__(self, shape, dtype=dtypes.float32, name=None):
     """Creates a TensorSpec.
 
     Args:

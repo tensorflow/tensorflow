@@ -16,14 +16,16 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 
 #include <string.h>
+
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/trace_events.pb.h"
+#include "tensorflow/core/protobuf/trace_events.pb.h"
 
 using tensorflow::string;
 
@@ -79,11 +81,15 @@ void ExecuteWithProfiling(bool async) {
        profiler_result->length}));
   string profile_proto_str = profile_proto.DebugString();
   if (!gpu_device_name.empty()) {
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "GPU:0"));
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
+    // TODO(fishx): move following check out from this if statement.
+    // This is collected by TraceMe
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
   }
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "CPU:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:CPU:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "MatMul"));
   TF_DeleteBuffer(profiler_result);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
@@ -123,6 +129,95 @@ TEST(CAPI, MultipleProfilerSession) {
   TFE_DeleteProfiler(profiler1);
   TFE_DeleteProfiler(profiler2);
   TFE_DeleteProfilerContext(profiler_context);
+}
+
+TEST(CAPI, MonitoringSetGauge) {
+  TFE_MonitoringSetGauge("test/gauge", "label", 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/gauge", metrics->point_set_map.at("test/gauge")->metric_name);
+  EXPECT_EQ(1,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+
+  TFE_MonitoringSetGauge("test/gauge", "label", 5);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(5,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+}
+
+TEST(CAPI, MonitoringCounter0) {
+  TF_Status* status = TF_NewStatus();
+  auto* counter =
+      TFE_MonitoringNewCounter0("test/counter", status, "description");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  auto* cell = TFE_MonitoringGetCellCounter0(counter);
+  TFE_MonitoringCounterCellIncrementBy(cell, 1);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell), 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/counter",
+            metrics->point_set_map.at("test/counter")->metric_name);
+  EXPECT_EQ(
+      1, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+
+  TFE_MonitoringCounterCellIncrementBy(cell, 5);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell), 6);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(
+      6, metrics->point_set_map.at("test/counter")->points.at(0)->int64_value);
+
+  TFE_MonitoringDeleteCounter0(counter);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(metrics->point_set_map.end(),
+            metrics->point_set_map.find("test/counter"));
+}
+
+TEST(CAPI, MonitoringCounterMultiple) {
+  TF_Status* status = TF_NewStatus();
+  auto* counter1 = TFE_MonitoringNewCounter1("test/counter1", status,
+                                             "description", "label1");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell1 = TFE_MonitoringGetCellCounter1(counter1, "test");
+  TFE_MonitoringCounterCellIncrementBy(cell1, 1);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell1), 1);
+
+  auto* counter2 = TFE_MonitoringNewCounter2("test/counter2", status,
+                                             "description", "label1", "label2");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  auto* cell2 = TFE_MonitoringGetCellCounter2(counter2, "foo", "bar");
+  TFE_MonitoringCounterCellIncrementBy(cell2, 2);
+  EXPECT_EQ(TFE_MonitoringCounterCellValue(cell2), 2);
+
+  TFE_MonitoringDeleteCounter1(counter1);
+  TFE_MonitoringDeleteCounter2(counter2);
+}
+
+TEST(CAPI, MonitoringAddSampler) {
+  TFE_MonitoringAddSampler("test/sampler", "label", 1.0);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/sampler",
+            metrics->point_set_map.at("test/sampler")->metric_name);
+  EXPECT_EQ(1.0, metrics->point_set_map.at("test/sampler")
+                     ->points.at(0)
+                     ->histogram_value.sum());
+
+  TFE_MonitoringAddSampler("test/sampler", "label", 5.0);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(6.0, metrics->point_set_map.at("test/sampler")
+                     ->points.at(0)
+                     ->histogram_value.sum());
 }
 
 }  // namespace

@@ -54,7 +54,7 @@ void ReduceGeneric(bool keep_dims, const std::vector<int>& axes,
   // Reduction mask will be elementwise multiplied against the input
   // indices to figure out the output index for the element.
   std::vector<int> reduction_mask(input_shape.dimensions_count(), 1);
-  for (int axis : axes) {
+  for (const auto& axis : axes) {
     CHECK_GE(axis, 0);
     CHECK_LT(axis, input_shape.dimensions_count());
     reduction_mask[axis] = 0;

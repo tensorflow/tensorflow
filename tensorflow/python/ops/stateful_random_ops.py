@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -53,20 +54,29 @@ SEED_SIZE = 16  # in units of SEED_TYPE
 STATE_TYPE = SEED_TYPE
 ALGORITHM_TYPE = STATE_TYPE
 RNG_ALG_PHILOX = 1
+RNG_ALG_THREEFRY = 2
 DEFAULT_ALGORITHM = RNG_ALG_PHILOX
 
 
-def non_deterministic_seed():
-  """Makes a non-deterministic seed.
+PHILOX_STATE_SIZE = 3
+THREEFRY_STATE_SIZE = 2
 
-  The implementation will be changed soon from pure Python to an op.
+
+def non_deterministic_ints(shape, dtype=dtypes.int64):
+  """Non-deterministically generates some integers.
+
+  This op may use some OS-provided source of non-determinism (e.g. an RNG), so
+  each execution will give different results.
+
+  Args:
+    shape: the shape of the result.
+    dtype: (optional) the dtype of the result.
 
   Returns:
-    a 1-D tensor.
+    a tensor whose element values are non-deterministically chosen.
   """
-  return np.random.randint(
-      low=SEED_MIN, high=SEED_MAX + 1, size=SEED_SIZE,
-      dtype=SEED_TYPE)
+  return gen_stateful_random_ops.non_deterministic_ints(
+      shape=shape, dtype=dtype)
 
 
 def _uint_to_int(n):
@@ -75,23 +85,21 @@ def _uint_to_int(n):
   return n
 
 
-PHILOX_STATE_SIZE = 3
-
-
-def _make_philox_state(seed):
-  """Makes a RNG state for Philox algorithm.
+def _make_1d_state(state_size, seed):
+  """Makes a 1-D RNG state.
 
   Args:
+    state_size: an integer.
     seed: an integer or 1-D tensor.
 
   Returns:
-    a 1-D tensor.
+    a 1-D tensor of shape [state_size] and dtype STATE_TYPE.
   """
   int_types = (int,) if sys.version_info >= (3, 0) else (int, long)
   if isinstance(seed, int_types):
     # chop the Python integer (infinite precision) into chunks of SEED_TYPE
     ls = []
-    for _ in range(PHILOX_STATE_SIZE):
+    for _ in range(state_size):
       ls.append(seed & SEED_BIT_MASK)
       seed >>= SEED_TYPE_BITS
     seed = ls
@@ -101,26 +109,32 @@ def _make_philox_state(seed):
   if len(seed.shape) != 1:
     raise ValueError(
         "seed should only have one dimension; got shape: %s" % seed.shape)
-  seed = seed[0:PHILOX_STATE_SIZE]
+  seed = seed[0:state_size]
   # Padding with zeros on the right if too short
   seed_size = seed.shape[0]
-  if seed_size < PHILOX_STATE_SIZE:
+  if seed_size < state_size:
     seed = np.pad(
-        seed, [(0, PHILOX_STATE_SIZE - seed_size)],
+        seed, [(0, state_size - seed_size)],
         mode="constant",
         constant_values=0)
-  assert seed.shape == (PHILOX_STATE_SIZE,), "Wrong seed.shape: %s" % seed.shape
+  assert seed.shape == (state_size,), "Wrong seed.shape: %s" % seed.shape
   return seed
 
 
-def _make_state_from_seed(seed, algorithm):
-  if algorithm == RNG_ALG_PHILOX:
-    return _make_philox_state(seed)
+def _get_state_size(alg):
+  if alg == RNG_ALG_PHILOX:
+    return PHILOX_STATE_SIZE
+  elif alg == RNG_ALG_THREEFRY:
+    return THREEFRY_STATE_SIZE
   else:
-    raise ValueError("Unsupported algorithm id: %s" % algorithm)
+    raise ValueError("Unsupported algorithm id: %s" % alg)
 
 
-@tf_export("random.create_rng_state")
+def _make_state_from_seed(seed, alg):
+  return _make_1d_state(_get_state_size(alg), seed)
+
+
+@tf_export("random.experimental.create_rng_state")
 def create_rng_state(seed, algorithm):
   """Creates a RNG state.
 
@@ -147,7 +161,19 @@ def _shape_tensor(shape):
 class Generator(tracking.AutoTrackable):
   """Random-number generator.
 
-  It uses Variable to manage its internal state.
+  It uses Variable to manage its internal state, and allows choosing an
+  Random-Number-Generation (RNG) algorithm.
+
+  CPU and GPU with the same algorithm and seed will generate the same integer
+  random numbers. Float-point results (such as the output of `normal`) may have
+  small numerical discrepancies between CPU and GPU.
+
+  Because of different counter-reservation schemes, TPU's integer random numbers
+  will be different from CPU/GPU even with the same algorithm and seed.
+  Also, TPU uses different sampling algorithms for some distributions
+  (e.g. using reverse CDF for sampling normal distribution instead of
+  Box-Muller used by CPU/GPU). Harmonizing TPU's RNG behavior with CPU/GPU is
+  work in progress.
   """
 
   def __init__(self, copy_from=None, seed=None, algorithm=None):
@@ -161,63 +187,320 @@ class Generator(tracking.AutoTrackable):
                  auto-selected.
     """
     if copy_from is None:
-      if seed is None:
-        seed = non_deterministic_seed()
       if algorithm is None:
         # TODO(wangpeng): more sophisticated algorithm selection
         algorithm = DEFAULT_ALGORITHM
-      state = create_rng_state(seed, algorithm)
+      if seed is None:
+        state = non_deterministic_ints(shape=[_get_state_size(algorithm)],
+                                       dtype=SEED_TYPE)
+      else:
+        state = create_rng_state(seed, algorithm)
       self._state_var = variables.Variable(state, dtype=STATE_TYPE)
-      self._alg_var = variables.Variable(initial_value=algorithm,
-                                         dtype=ALGORITHM_TYPE)
+      self._alg_var = algorithm
     else:
       assert seed is None
       self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
-      self._alg_var = variables.Variable(initial_value=copy_from.algorithm,
-                                         dtype=ALGORITHM_TYPE)
+      self._alg_var = copy_from.algorithm
 
   def reset(self, seed):
     """Resets the generator.
 
-    This function is not thread-safe: if it is run concurrently with a call to
-    sampling, the latter might see the new algorithm but the old state or vice
-    versa.
-
     Args:
       seed: the seed to reset the RNG to.
     """
-    algorithm = int(self.algorithm)
-    state = create_rng_state(seed, algorithm)
+    state = create_rng_state(seed, self.algorithm)
     self._state_var.assign(state)
 
   @property
   def state(self):
+    """The internal state of the RNG."""
     return self._state_var
 
   @property
   def algorithm(self):
+    """The RNG algorithm."""
     return self._alg_var
+
+  def _standard_normal(self, shape, dtype):
+    return gen_stateful_random_ops.stateful_standard_normal_v2(
+        self.state.handle, self.algorithm, shape, dtype=dtype)
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.
-  def standard_normal(self, shape, dtype=dtypes.float32):
-    output = gen_stateful_random_ops.stateful_standard_normal_v2(
-        self.state.handle, self.algorithm, shape, dtype)
-    return output
-
   def normal(self, shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
              name=None):
+    """Outputs random values from a normal distribution.
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      mean: A 0-D Tensor or Python value of type `dtype`. The mean of the normal
+        distribution.
+      stddev: A 0-D Tensor or Python value of type `dtype`. The standard
+        deviation of the normal distribution.
+      dtype: The type of the output.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random normal values.
+    """
     with ops.name_scope(name, "stateful_normal", [shape, mean, stddev]) as name:
       shape = _shape_tensor(shape)
       mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
       stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-      rnd = self.standard_normal(shape, dtype)
+      rnd = self._standard_normal(shape, dtype=dtype)
       return math_ops.add(rnd * stddev, mean, name=name)
 
-  # TODO(wangpeng): implement other distributions (`uniform`,
-  #   `truncated_normal`, etc.)
-  # TODO(wangpeng): implement `make_seeds`
-  # TODO(wangpeng): implement `make_generators`
+  def _truncated_normal(self, shape, dtype):
+    return gen_stateful_random_ops.stateful_truncated_normal(
+        self.state.handle, self.algorithm, shape, dtype=dtype)
+
+  def truncated_normal(self, shape,
+                       mean=0.0,
+                       stddev=1.0,
+                       dtype=dtypes.float32,
+                       name=None):
+    """Outputs random values from a truncated normal distribution.
+
+    The generated values follow a normal distribution with specified mean and
+    standard deviation, except that values whose magnitude is more than
+    2 standard deviations from the mean are dropped and re-picked.
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      mean: A 0-D Tensor or Python value of type `dtype`. The mean of the
+        truncated normal distribution.
+      stddev: A 0-D Tensor or Python value of type `dtype`. The standard
+        deviation of the normal distribution, before truncation.
+      dtype: The type of the output.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random truncated normal
+        values.
+    """
+    with ops.name_scope(
+        name, "truncated_normal", [shape, mean, stddev]) as name:
+      shape_tensor = _shape_tensor(shape)
+      mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
+      stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
+      rnd = self._truncated_normal(shape_tensor, dtype=dtype)
+      mul = rnd * stddev_tensor
+      return math_ops.add(mul, mean_tensor, name=name)
+
+  def _uniform(self, shape, dtype):
+    return gen_stateful_random_ops.stateful_uniform(
+        self.state.handle, self.algorithm, shape=shape, dtype=dtype)
+
+  def uniform(self, shape, minval=0, maxval=None,
+              dtype=dtypes.float32, name=None):
+    """Outputs random values from a uniform distribution.
+
+    The generated values follow a uniform distribution in the range
+    `[minval, maxval)`. The lower bound `minval` is included in the range, while
+    the upper bound `maxval` is excluded. (For float numbers especially
+    low-precision types like bfloat16, because of
+    rounding, the result may sometimes include `maxval`.)
+
+    For floats, the default range is `[0, 1)`.  For ints, at least `maxval` must
+    be specified explicitly.
+
+    In the integer case, the random integers are slightly biased unless
+    `maxval - minval` is an exact power of two.  The bias is small for values of
+    `maxval - minval` significantly smaller than the range of the output (either
+    `2**32` or `2**64`).
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on
+        the range of random values to generate.  Defaults to 0.
+      maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
+        the range of random values to generate.  Defaults to 1 if `dtype` is
+        floating point.
+      dtype: The type of the output.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random uniform values.
+
+    Raises:
+      ValueError: If `dtype` is integral and `maxval` is not specified.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    if maxval is None:
+      if dtype.is_integer:
+        raise ValueError("Must specify maxval for integer dtype %r" % dtype)
+      maxval = 1
+    with ops.name_scope(name, "stateful_uniform",
+                        [shape, minval, maxval]) as name:
+      shape = _shape_tensor(shape)
+      minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
+      maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
+      if dtype.is_integer:
+        return gen_stateful_random_ops.stateful_uniform_int(
+            self.state.handle, self.algorithm, shape=shape,
+            minval=minval, maxval=maxval, name=name)
+      else:
+        rnd = self._uniform(shape=shape, dtype=dtype)
+        return math_ops.add(rnd * (maxval - minval), minval, name=name)
+
+  def uniform_full_int(self, shape, dtype=dtypes.uint64, name=None):
+    """Uniform distribution on an integer type's entire range.
+
+    The other method `uniform` only covers the range [minval, maxval), which
+    cannot be `dtype`'s full range because `maxval` is of type `dtype`.
+
+    Args:
+      shape: the shape of the output.
+      dtype: (optional) the integer type, default to uint64.
+      name: (optional) the name of the node.
+
+    Returns:
+      A tensor of random numbers of the required shape.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    with ops.name_scope(name, "stateful_uniform_full_int",
+                        [shape]) as name:
+      shape = _shape_tensor(shape)
+      return gen_stateful_random_ops.stateful_uniform_full_int(
+          self.state.handle, self.algorithm, shape=shape,
+          dtype=dtype, name=name)
+
+  def binomial(self, shape, counts, probs, dtype=dtypes.int32, name=None):
+    """Outputs random values from a binomial distribution.
+
+    The generated values follow a binomial distribution with specified count and
+    probability of success parameters.
+
+    Example:
+
+    ```python
+    counts = [10., 20.]
+    # Probability of success.
+    probs = [0.8, 0.9]
+
+    rng = tf.random.experimental.Generator(seed=234)
+    binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
+    ```
+
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      counts: A 0/1-D Tensor or Python value`. The counts of the binomial
+        distribution.
+      probs: A 0/1-D Tensor or Python value`. The probability of success for the
+        binomial distribution.
+      dtype: The type of the output. Default: tf.int32
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random binomial values.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    with ops.name_scope(name, "binomial", [shape, counts, probs]) as name:
+      counts = ops.convert_to_tensor(counts, name="counts")
+      probs = ops.convert_to_tensor(probs, name="probs")
+      shape_tensor = _shape_tensor(shape)
+      return gen_stateful_random_ops.stateful_random_binomial(
+          self.state.handle,
+          self.algorithm,
+          shape=shape_tensor,
+          counts=counts,
+          probs=probs,
+          dtype=dtype,
+          name=name)
+
+  # TODO(wangpeng): implement other distributions
+
+  def _make_int64_keys(self, shape=()):
+    # New independent keys are generated via
+    # `new_key[i] = hash(old_key, counter+i)`, which is exactly what
+    # `uniform_full_int(dtype=int64)` does for PhiloxRandom_64_128_128 and
+    # ThreeFry_64_64_64.
+    return self.uniform_full_int(shape=shape, dtype=dtypes.int64)
+
+  def make_seeds(self, count=1):
+    """Generates seeds for stateless random ops.
+
+    For example:
+
+    ```python
+    seeds = get_global_generator().make_seeds(count=10)
+    for i in range(10):
+      seed = seeds[:, i]
+      numbers = stateless_random_normal(shape=[2, 3], seed=seed)
+      ...
+    ```
+
+    Args:
+      count: the number of seed pairs (note that stateless random ops need a
+        pair of seeds to invoke).
+
+    Returns:
+      A tensor of shape [2, count] and dtype int64.
+    """
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      keys = self._make_int64_keys(shape=[count])
+      # The two seeds for stateless random ops don't have individual semantics
+      # and are scrambled together, so setting one to zero is fine.
+      zeros = array_ops.zeros_like(keys)
+      return array_ops.stack([keys, zeros])
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
+
+  def split(self, count=1):
+    """Returns a list of independent `Generator` objects.
+
+    Two generators are independent of each other in the sense that the
+    random-number streams they generate don't have statistically detectable
+    correlations. The new generators are also independent of the old one.
+    The old generator's state will be changed (like other random-number
+    generating methods), so two calls of `split` will return different
+    new generators.
+
+    For example:
+
+    ```python
+    gens = get_global_generator().split(count=10)
+    for gen in gens:
+      numbers = gen.normal(shape=[2, 3])
+      # ...
+    gens2 = get_global_generator().split(count=10)
+    # gens2 will be different from gens
+    ```
+
+    The new generators will be put on the current device (possible different
+    from the old generator's), for example:
+
+    ```python
+    with tf.device("/device:CPU:0"):
+      gen = Generator(seed=1234)  # gen is on CPU
+    with tf.device("/device:GPU:0"):
+      gens = gen.split(count=10)  # gens are on GPU
+    ```
+
+    Args:
+      count: the number of generators to return.
+
+    Returns:
+      A list (length `count`) of `Generator` objects independent of each other.
+      The new generators have the same RNG algorithm as the old one.
+    """
+    def _key_to_state(alg, key):
+      # Padding with zeros on the left. The zeros will be the counter.
+      return [0] * (_get_state_size(alg) - 1) + [key]
+
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      keys = self._make_int64_keys(shape=[count])
+      return [Generator(seed=_key_to_state(alg, key), algorithm=alg)
+              for key in keys.numpy()]
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
 
 
 # It's not safe to create TF ops before `init_google` is called, so this is

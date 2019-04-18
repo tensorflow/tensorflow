@@ -55,6 +55,7 @@ tf_py_test(
     size = "medium",
     srcs = ["stats_ops_test.py"],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow/python:boosted_trees_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",

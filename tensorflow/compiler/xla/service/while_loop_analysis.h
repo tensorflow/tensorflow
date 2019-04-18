@@ -35,6 +35,11 @@ absl::optional<int64> ComputeWhileLoopTripCount(
 // known, nullopt otherwise.
 absl::optional<int64> ComputeWhileLoopTripCountUpperBound(
     HloInstruction *while_op);
+
+// Returns the tuple index of the loop induction variable if there is such an
+// induction variable detected. Otherwise returns nullopt.
+absl::optional<int64> GetLoopInductionVarTupleIdx(
+    const HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_

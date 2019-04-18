@@ -17,10 +17,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
 
 namespace tensorflow {
 namespace data {
+
+// Returns a GraphDef representation of the given dataset.
+Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+                  GraphDef* graph_def);
 
 // This method is used to determine whether we can short-circuit the evaluation
 // of the user-defined function `func`. Short-circuting is possible if every
@@ -33,7 +36,7 @@ namespace data {
 // Returns non-ok status if analysis of the function fails.
 //
 // TODO(jsimsa): Extend this to support constants as well.
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
+Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
                                   const NameAttrList& func,
                                   std::vector<int>* indices);
 
@@ -41,11 +44,6 @@ Status ComputeShortCircuitIndices(OpKernelContext* ctx,
 // that identifies for which output indices can we move the input (assuming
 // output indices are processed left to right).
 std::vector<bool> ComputeMoveVector(const std::vector<int>& indices);
-
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
@@ -105,6 +103,15 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionLibraryDefinition& to_add);
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionDefLibrary& to_add);
+
+// Creates a runner that runs functions with limited parallelism.
+std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
+    std::function<void(std::function<void()>)> runner, int max_parallelism);
+
+Status CreateFunctionLibraryDefinition(
+    const FunctionLibraryDefinition* lib_def, const string& func_name,
+    std::shared_ptr<FunctionLibraryDefinition>* result);
+
 }  // namespace data
 }  // namespace tensorflow
 

@@ -52,6 +52,7 @@ class Location(
     filename: Text
     lineno: int, 1-based
     col_offset: int
+    line_loc: LineLocation
   """
 
   @property
@@ -86,27 +87,24 @@ class OriginInfo(
 
 
 # TODO(mdan): This source map should be a class - easier to refer to.
-def create_source_map(nodes, code, filename, indices_in_code):
+# TODO(mdan): Drop indices_in_code.
+def create_source_map(nodes, code, filename):
   """Creates a source map between an annotated AST and the code it compiles to.
 
   Args:
     nodes: Iterable[ast.AST, ...]
     code: Text
     filename: Optional[Text]
-    indices_in_code: Union[int, Iterable[int, ...]], the positions at which
-        nodes appear in code. The parser always returns a module when parsing
-        code. This argument indicates the position in that module's body at
-        which the corresponding of node should appear.
 
   Returns:
-    Dict[CodeLocation, OriginInfo], mapping locations in code to locations
+    Dict[LineLocation, OriginInfo], mapping locations in code to locations
     indicated by origin annotations in node.
   """
-  reparsed_nodes = parser.parse_str(code)
-  reparsed_nodes = [reparsed_nodes.body[i] for i in indices_in_code]
+  reparsed_nodes = parser.parse_str(code, preamble_len=0, single_node=False)
+  for node in reparsed_nodes:
+    resolve(node, code)
 
-  resolve(reparsed_nodes, code)
-  result = {}
+  source_map = {}
 
   try:
     for before, after in ast_util.parallel_walk(nodes, reparsed_nodes):
@@ -119,7 +117,7 @@ def create_source_map(nodes, code, filename, indices_in_code):
 
       line_loc = LineLocation(filename, final_info.loc.lineno)
 
-      existing_origin = result.get(line_loc)
+      existing_origin = source_map.get(line_loc)
       if existing_origin is not None:
         # Overlaps may exist because of child nodes, but almost never to
         # different line locations. Exception make decorated functions, where
@@ -134,7 +132,7 @@ def create_source_map(nodes, code, filename, indices_in_code):
         if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
           continue
 
-      result[line_loc] = origin_info
+      source_map[line_loc] = origin_info
   except ValueError:
     if logging.has_verbosity(3):
       for n, rn in zip(nodes, reparsed_nodes):
@@ -150,30 +148,27 @@ def create_source_map(nodes, code, filename, indices_in_code):
         logging.log(3, 'AST seems to lack integrity. Diff:\n%s', diff)
     raise
 
-  return result
+  return source_map
 
 
 # TODO(znado): Consider refactoring this into a Visitor.
 # TODO(mdan): Does this work correctly with inner functions?
-def resolve(nodes, source, function=None):
-  """Adds an origin information to all nodes inside the body of function.
+def resolve(node, source, function=None):
+  """Adds an origin information to node and its subnodes.
+
+  This allows us to map the original source code line numbers to generated
+  source code.
 
   Args:
-    nodes: Union[ast.AST, Iterable[ast.AST, ...]]
-    source: Text, the source code string for the function whose body nodes will
-      be annotated.
-    function: Callable, the function that will have all nodes inside of it
-      annotation with an OriginInfo annotation with key anno.Basic.ORIGIN.  If
-      it is None then only the line numbers and column offset will be set in the
-      annotation, with the rest of the information being None.
-
-  Returns:
-    A tuple of the AST node for function and a String containing its source
-    code.
+    node: gast.AST node. Should be a gast.FunctionDef. This is the node we
+        annotate with origin information.
+    source: Text, the source code. Should satisfy relationship
+        `node in iter_tree(gast.parse(source))`; otherwise the lineno will be
+        unreliable.
+    function: The original function. If it is None then only the line numbers
+        and column offset will be set in the annotation, with the rest of the
+        information being None.
   """
-  if not isinstance(nodes, (list, tuple)):
-    nodes = (nodes,)
-
   if function:
     _, function_lineno = tf_inspect.getsourcelines(function)
     function_filepath = tf_inspect.getsourcefile(function)
@@ -191,22 +186,21 @@ def resolve(nodes, source, function=None):
       comment_map[srow] = tok_string.strip()[1:].strip()
 
   source_lines = source.split('\n')
-  for node in nodes:
-    for n in gast.walk(node):
-      if not hasattr(n, 'lineno'):
-        continue
+  for n in gast.walk(node):
+    if not hasattr(n, 'lineno'):
+      continue
 
-      lineno_in_body = n.lineno
+    within_body_offset = n.lineno - node.lineno
 
-      source_code_line = source_lines[lineno_in_body - 1]
-      if function:
-        source_lineno = function_lineno + lineno_in_body
-        function_name = function.__name__
-      else:
-        source_lineno = lineno_in_body
-        function_name = None
+    source_code_line = source_lines[n.lineno - 1]
+    if function:
+      source_lineno = function_lineno + within_body_offset
+      function_name = function.__name__
+    else:
+      source_lineno = n.lineno
+      function_name = None
 
-      location = Location(function_filepath, source_lineno, n.col_offset)
-      origin = OriginInfo(location, function_name,
-                          source_code_line, comment_map.get(source_lineno))
-      anno.setanno(n, anno.Basic.ORIGIN, origin)
+    location = Location(function_filepath, source_lineno, n.col_offset)
+    origin = OriginInfo(location, function_name,
+                        source_code_line, comment_map.get(source_lineno))
+    anno.setanno(n, anno.Basic.ORIGIN, origin)

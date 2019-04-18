@@ -34,6 +34,8 @@ namespace ops {
 namespace builtin {
 namespace bidirectional_sequence_lstm {
 
+// LINT.IfChange
+
 // Input Tensors of size {max_time, n_batch, n_input}
 constexpr int kInputTensor = 0;
 
@@ -124,6 +126,8 @@ constexpr int kBwAuxInputToOutputWeightsTensor = 47;  // Optional
 // Output tensors.
 constexpr int kFwOutputTensor = 0;
 constexpr int kBwOutputTensor = 1;  // Ignored if merge_outputs is set.
+
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/quantize_weights.cc)
 
 // Temporary tensors.
 enum TemporaryTensor {
@@ -509,8 +513,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, fw_output, fw_output_size));
 
   // The weights are of consistent type, so it suffices to check one.
-  const bool is_hybrid_op = (fw_input_to_output_weights->type == kTfLiteUInt8 ||
-                             fw_input_to_output_weights->type == kTfLiteInt8);
+  const bool is_hybrid_op = IsHybridOp(input, fw_input_to_output_weights);
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {

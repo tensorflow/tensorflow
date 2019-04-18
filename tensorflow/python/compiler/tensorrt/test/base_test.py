@@ -21,8 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
-from tensorflow.python.compiler.tensorrt.wrap_conversion import add_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -149,13 +147,7 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
 
 
-class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
-
-  def setUp(self):
-    """Setup method."""
-    super(PartiallyConvertedTestA, self).setUp()
-    # Let it fail to build the second engine.
-    add_test_value("TRTEngineOp_1:CreateTRTNode", "fail")
+class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing two segment."""
@@ -191,8 +183,8 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        # Only the first engine is built.
-        "TRTEngineOp_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
+        "TRTEngineOp_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"],
+        "TRTEngineOp_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
     }
 
   def ShouldRunTest(self, run_params):
@@ -202,23 +194,6 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     return ((run_params.precision_mode != "FP16") and
             not (trt_test.IsQuantizationMode(run_params.precision_mode) and
                  not run_params.use_calibration))
-
-
-class PartiallyConvertedTestB(PartiallyConvertedTestA):
-
-  def setUp(self):
-    """Setup method."""
-    super(PartiallyConvertedTestB, self).setUp()
-    # Let it fail to build the first engine.
-    clear_test_values("")
-    add_test_value("TRTEngineOp_0:CreateTRTNode", "fail")
-
-  def ExpectedEnginesToBuild(self, run_params):
-    """Return the expected engines to build."""
-    return {
-        # Only the second engine is built.
-        "TRTEngineOp_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
-    }
 
 
 class ConstInputTest(trt_test.TfTrtIntegrationTestBase):

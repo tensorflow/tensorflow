@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/lib/prng.h"
+
 #include <cmath>
 
 #include "absl/base/casts.h"
@@ -30,6 +32,7 @@ XlaOp RotateLeftU32(XlaOp v, int distance) {
          ShiftRightLogical(v, ConstantR0<uint32>(v.builder(), 32 - distance));
 }
 
+// The internal state of the Three Fry implementation.
 using ThreeFry2x32State = std::array<XlaOp, 2>;
 
 // Implements the ThreeFry counter-based PRNG algorithm.
@@ -105,43 +108,68 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   return x;
 }
 
-// Returns the inputs with unique counter values for ThreeFry2x32.
-ThreeFry2x32State GetInputs(const int64 size, XlaBuilder* builder) {
-  ThreeFry2x32State inputs;
-  inputs[0] = Iota(builder, U32, size);
-  inputs[1] = inputs[0] + ConstantR0<uint32>(builder, size);
-  return inputs;
+// Converts a uint64 to two uint32s.
+ThreeFry2x32State Uint64ToUint32s(XlaOp u64) {
+  XlaBuilder* builder = u64.builder();
+  XlaOp const32 = ConstantR0WithType(builder, U64, 32);
+  XlaOp fst = ConvertElementType(u64, U32);
+  XlaOp snd = ConvertElementType(ShiftRightLogical(u64, const32), U32);
+  return {fst, snd};
 }
 
-XlaOp StatelessRngUniformU32(std::array<XlaOp, 2> key, const Shape& shape) {
-  XlaBuilder* builder = key[0].builder();
+// Converts two uint32s to a uint64.
+XlaOp Uint32sToUint64(ThreeFry2x32State u32s) {
+  XlaBuilder* builder = u32s[0].builder();
+  return ConvertElementType(u32s[0], U64) |
+         ShiftLeft(ConvertElementType(u32s[1], U64),
+                   ConstantR0WithType(builder, U64, 32));
+}
+
+// Given the initial state and the request number of random numbers to be
+// generated, returns the input for the random number generator and a new state.
+std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
+    XlaOp initial_state, const int64 size) {
+  XlaBuilder* builder = initial_state.builder();
+  XlaOp input_u64 = Iota(builder, U64, size);
+  input_u64 = input_u64 + initial_state;
+  XlaOp new_state = initial_state + ConstantR0<uint64>(builder, size);
+  return std::make_pair(Uint64ToUint32s(input_u64), new_state);
+}
+
+// Generates random 32bits with the given shape using the Three Fry
+// implementation. Returns the random bits and the new state.
+RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
+  XlaBuilder* builder = key.builder();
   const int64 size = ShapeUtil::ElementsIn(shape);
   const int64 half_size = CeilOfRatio<int64>(size, 2);
   const bool size_is_odd = (half_size * 2 != size);
-  ThreeFry2x32State inputs = GetInputs(half_size, builder);
-  ThreeFry2x32State outputs = ThreeFry2x32(inputs, key);
+  std::pair<ThreeFry2x32State, XlaOp> inputs_state =
+      GetThreeFryInputsAndUpdatedState(initial_state, half_size);
+  ThreeFry2x32State inputs = inputs_state.first;
+  ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
   if (size_is_odd) {
     outputs[1] = Slice(outputs[1], {0}, {half_size - 1}, {1});
   }
-  auto result = ConcatInDim(builder, outputs, 0);
-  return Reshape(result, AsInt64Slice(shape.dimensions()));
+  XlaOp result = ConcatInDim(builder, outputs, 0);
+  return {Reshape(result, AsInt64Slice(shape.dimensions())),
+          inputs_state.second};
 }
 
-XlaOp StatelessRngUniformU64(std::array<XlaOp, 2> key, const Shape& shape) {
-  XlaBuilder* builder = key[0].builder();
+// Generates random 64bits with the given shape using the Three Fry
+// implementation. Returns the random bits and the new state.
+RngOutput ThreeFryRngBit64(XlaOp key, XlaOp initial_state, const Shape& shape) {
   const int64 size = ShapeUtil::ElementsIn(shape);
-  ThreeFry2x32State inputs = GetInputs(size, builder);
-  ThreeFry2x32State outputs = ThreeFry2x32(inputs, key);
-  // low 32 bit: outputs[0], high 32 bit: outputs[1]
-  auto result = ConvertElementType(outputs[0], U64) |
-                ShiftLeft(ConvertElementType(outputs[1], U64),
-                          ConstantR0WithType(builder, U64, 32));
-  return Reshape(result, AsInt64Slice(shape.dimensions()));
+  std::pair<ThreeFry2x32State, XlaOp> inputs_state =
+      GetThreeFryInputsAndUpdatedState(initial_state, size);
+  ThreeFry2x32State inputs = inputs_state.first;
+  ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
+  XlaOp result = Uint32sToUint64(outputs);
+  return {Reshape(result, AsInt64Slice(shape.dimensions())),
+          inputs_state.second};
 }
 
-XlaOp StatelessRngUniformF32(XlaOp bits, XlaOp minval, XlaOp maxval) {
+XlaOp ConvertRandomBitsToUniformF32(XlaOp bits, XlaOp minval, XlaOp maxval) {
   XlaBuilder* builder = bits.builder();
-
   // Form 23 random mantissa bits, with a leading 1 bit. The leading 1 bit
   // forces the random bits into the mantissa.
   constexpr int kFloatBits = 32;
@@ -149,56 +177,119 @@ XlaOp StatelessRngUniformF32(XlaOp bits, XlaOp minval, XlaOp maxval) {
   bits = ShiftRightLogical(
              bits, ConstantR0<uint32>(builder, kFloatBits - kMantissaBits)) |
          ConstantR0<uint32>(builder, absl::bit_cast<uint32>(1.0f));
-  auto floats = BitcastConvertType(bits, F32);
+  XlaOp values = BitcastConvertType(bits, F32);
 
   // We have a floating point number in the range [1.0, 2.0).
   // Subtract 1.0f to shift to the range [0.0, 1.0)
-  floats = floats - ConstantR0<float>(builder, 1.0f);
+  values = values - ConstantR0<float>(builder, 1.0f);
   // Multiply and add to shift to the range [minval, maxval).
-  return floats * (maxval - minval) + minval;
+  return values * (maxval - minval) + minval;
 }
 
-XlaOp StatelessRngUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
-                             PrimitiveType type, PrimitiveType unsigned_type) {
+XlaOp ConvertRandomBitsToUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
+                                    PrimitiveType type,
+                                    PrimitiveType unsigned_type) {
   XlaBuilder* builder = bits.builder();
-  // TODO(b/72573764): Generate real uniform integer distribution.
-  // The following algorithm is the same one that TF uses right now, but it's
-  // uniform only when maxval - minval is a divisor of the range that bits is
-  // generated from.
-  auto range = BitcastConvertType(maxval, unsigned_type) -
-               BitcastConvertType(minval, unsigned_type);
-  auto dist = Rem(bits, range);
-  auto dist_div_2 =
+  XlaOp range = BitcastConvertType(maxval, unsigned_type) -
+                BitcastConvertType(minval, unsigned_type);
+  XlaOp dist = Rem(bits, range);
+  XlaOp dist_div_2 =
       ShiftRightLogical(dist, ConstantR0WithType(builder, unsigned_type, 1));
 
   return minval + BitcastConvertType(dist_div_2, type) +
          BitcastConvertType(dist - dist_div_2, type);
 }
 
+// Implements the Box-Muller transform, which converts random floats in the
+// range of [0, 1] from uniform distribution to normal distribution with mean 0
+// and variance 1. For more detail on the Box-Muller transform, see
+// http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform#Basic_form
+std::pair<XlaOp, XlaOp> BoxMullerTransform(XlaOp x0, XlaOp x1) {
+  // Do not send a really small number to log().
+  XlaOp u1 = Max(x0, ScalarLike(x0, 1.0e-7f));
+
+  XlaOp v1 = ScalarLike(x1, 2.0f * M_PI) * x1;
+  XlaOp u2 = Sqrt(ScalarLike(u1, -2.0f) * Log(u1));
+  return {Sin(v1) * u2, Cos(v1) * u2};
+}
+
 }  // namespace
 
-XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
-                          XlaOp minval, XlaOp maxval) {
-  XlaBuilder* builder = seeds[0].builder();
+RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
+                               const Shape& shape) {
   PrimitiveType type = shape.element_type();
   switch (type) {
-    case F32: {
-      auto bits = StatelessRngUniformU32(seeds, shape);
-      return StatelessRngUniformF32(bits, minval, maxval);
-    }
-    case S32: {
-      auto bits = StatelessRngUniformU32(seeds, shape);
-      return StatelessRngUniformInt(bits, minval, maxval, type, U32);
-    }
-    case S64: {
-      auto bits = StatelessRngUniformU64(seeds, shape);
-      return StatelessRngUniformInt(bits, minval, maxval, type, U64);
-    }
+    case F32:
+    case U32:
+    case S32:
+      return ThreeFryRngBit32(key, initial_state, shape);
+    case U64:
+    case S64:
+      return ThreeFryRngBit64(key, initial_state, shape);
     default:
-      return builder->ReportError(Unimplemented(
-          "Types other than F32, S32 and S64 are not implemented by "
-          "StatelessRngUniform."));
+      return {key.builder()->ReportError(Unimplemented(
+                  "Types other than F32, U32, S32, U64 and S64 "
+                  "are not implemented by ThreeFryBitGenerator; got %s",
+                  primitive_util::LowercasePrimitiveTypeName(type))),
+              initial_state};
   }
+}
+
+RngOutput UniformF32Distribution(XlaOp key, XlaOp initial_state,
+                                 BitGeneratorTy bit_generator, XlaOp minval,
+                                 XlaOp maxval, const Shape& shape) {
+  DCHECK_EQ(shape.element_type(), F32);
+  RngOutput bits_state = bit_generator(key, initial_state, shape);
+  XlaOp bits = bits_state.value;
+  XlaOp new_state = bits_state.state;
+  return {ConvertRandomBitsToUniformF32(bits, minval, maxval), new_state};
+}
+
+RngOutput UniformIntDistribution(XlaOp key, XlaOp initial_state,
+                                 BitGeneratorTy bit_generator, XlaOp minval,
+                                 XlaOp maxval, const Shape& shape) {
+  RngOutput bits_state = bit_generator(key, initial_state, shape);
+  XlaOp bits = bits_state.value;
+  XlaOp new_state = bits_state.state;
+  PrimitiveType type = shape.element_type();
+  PrimitiveType unsigned_type;
+  if (type == U32 || type == S32) {
+    unsigned_type = U32;
+  } else {
+    DCHECK(type == U64 || type == S64);
+    unsigned_type = U64;
+  }
+  return {
+      ConvertRandomBitsToUniformInt(bits, minval, maxval, type, unsigned_type),
+      new_state};
+}
+
+RngOutput NormalF32Distribution(XlaOp key, XlaOp initial_state,
+                                BitGeneratorTy bit_generator,
+                                const Shape& shape) {
+  DCHECK_EQ(shape.element_type(), F32);
+  XlaBuilder* builder = key.builder();
+  const int64 num_elems = ShapeUtil::ElementsIn(shape);
+  const int64 num_pairs = CeilOfRatio<int64>(num_elems, 2);
+  RngOutput bits_state = UniformF32Distribution(
+      key, initial_state, bit_generator, ConstantR0<float>(builder, 0.0),
+      ConstantR0<float>(builder, 1.0),
+      ShapeUtil::MakeShape(F32, {num_pairs * 2}));
+
+  // Separate the bits into two groups to perform the Box-Muller transform.
+  XlaOp bits_0 = Slice(bits_state.value, {0}, {num_pairs}, {1});
+  XlaOp bits_1 = Slice(bits_state.value, {num_pairs}, {2 * num_pairs}, {1});
+  std::tie(bits_0, bits_1) = BoxMullerTransform(bits_0, bits_1);
+
+  // Put the numbers in the two groups back to form the requested shape.
+  XlaOp normal = ConcatInDim(builder, {bits_0, bits_1}, /*dimension=*/0);
+  if (num_elems != num_pairs * 2) {
+    normal = Slice(normal, /*start_indices=*/{0}, /*limit_indices=*/{num_elems},
+                   /*strides=*/{1});
+  }
+  normal = Reshape(normal, shape.dimensions());
+
+  return {normal, bits_state.state};
 }
 
 }  // namespace xla

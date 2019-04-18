@@ -11,6 +11,10 @@ tf_class {
     name: "name"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "seekable"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'mode\'], varargs=None, keywords=None, defaults=[\'r\'], "

@@ -27,34 +27,14 @@ from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.losses.Reduction', v1=[])
-class ReductionV2(object):
-  """Types of loss reduction.
-
-  Contains the following values:
-
-  * `NONE`: Un-reduced weighted losses with the same shape as input.
-  * `SUM`: Scalar sum of weighted losses.
-  * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-     Note that when using `tf.distribute.Strategy`, this is the global batch
-     size across all the replicas that are contributing to a single step.
-  """
-
-  NONE = 'none'
-  SUM = 'sum'
-  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
-
-  @classmethod
-  def all(cls):
-    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
-
-  @classmethod
-  def validate(cls, key):
-    if key not in cls.all():
-      raise ValueError('Invalid Reduction Key %s.' % key)
+# TODO(joshl/psv): Update references to ReductionV2 to point to its
+# new location.
+ReductionV2 = keras_export(  # pylint: disable=invalid-name
+    'keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
 
 
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
@@ -80,7 +60,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     the last dimension squeezed,
     `sample_weight` could be extended by one dimension.
   """
-  y_pred_shape = y_pred.get_shape()
+  y_pred_shape = y_pred.shape
   y_pred_rank = y_pred_shape.ndims
   if y_true is not None:
 
@@ -88,7 +68,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     # may be > 1. Eg: y_true = [0, 1, 2] (shape=(3,)),
     # y_pred = [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]] (shape=(3, 3))
     # In this case, we should not try to remove squeezable dimension.
-    y_true_shape = y_true.get_shape()
+    y_true_shape = y_true.shape
     y_true_rank = y_true_shape.ndims
     if (y_true_rank is not None) and (y_pred_rank is not None):
       # Use static rank for `y_true` and `y_pred`.
@@ -110,7 +90,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     return y_pred, y_true, None
 
   sample_weight = ops.convert_to_tensor(sample_weight)
-  weights_shape = sample_weight.get_shape()
+  weights_shape = sample_weight.shape
   weights_rank = weights_shape.ndims
   if weights_rank == 0:  # If weights is scalar, do nothing.
     return y_pred, y_true, sample_weight
@@ -176,9 +156,7 @@ def reduce_weighted_loss(weighted_losses,
   else:
     loss = math_ops.reduce_sum(weighted_losses)
     if reduction == ReductionV2.SUM_OVER_BATCH_SIZE:
-      num_replicas = (  # Used to convert from local to global batch size.
-          distribution_strategy_context.get_strategy().num_replicas_in_sync)
-      loss = _safe_mean(loss, num_replicas * _num_elements(weighted_losses))
+      loss = _safe_mean(loss, _num_elements(weighted_losses))
   return loss
 
 
@@ -207,6 +185,10 @@ def compute_weighted_loss(losses,
   if sample_weight is None:
     sample_weight = 1.0
   with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):
+    # Save the `reduction` argument for loss normalization when distributing
+    # to multiple replicas. Used only for estimator + v1 optimizer flow.
+    ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
+
     # Update dimensions of `sample_weight` to match with `losses` if possible.
     losses, _, sample_weight = squeeze_or_expand_dimensions(
         losses, None, sample_weight)
@@ -225,7 +207,7 @@ def compute_weighted_loss(losses,
       weight_ndim = K.ndim(sample_weight)
       losses = K.mean(losses, axis=list(range(weight_ndim, ndim)))
 
-    sample_weight.get_shape().assert_is_compatible_with(losses.get_shape())
+    sample_weight.shape.assert_is_compatible_with(losses.shape)
     weighted_losses = math_ops.multiply(losses, sample_weight)
     # Apply reduction function to the individual weighted losses.
     loss = reduce_weighted_loss(weighted_losses, reduction)
