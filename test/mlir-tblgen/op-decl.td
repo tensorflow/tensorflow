@@ -48,12 +48,39 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);
 // CHECK: };
 
-def NS__BOp : Op<"_b_op", []>;
+// Check op trait for different number of operands
+// ---
 
-// CHECK-LABEL: NS::_BOp declarations
+def NS_BOp : Op<"op_with_no_operand", []> {
+  let arguments = (ins);
+}
+
+// CHECK-LABEL: NS::BOp declarations
+// CHECK: OpTrait::NOperands<0>::Impl
+
+def NS_COp : Op<"op_with_one_operand", []> {
+  let arguments = (ins I32:$operand);
+}
+
+// CHECK-LABEL: NS::COp declarations
+// CHECK: OpTrait::NOperands<1>::Impl
+
+def NS_DOp : Op<"op_with_two_operands", []> {
+  let arguments = (ins I32:$input1, I32:$input2);
+}
+
+// CHECK-LABEL: NS::DOp declarations
+// CHECK: OpTrait::NOperands<2>::Impl
+
+// Check leading underscore in op name
+// ---
+
+def NS__AOp : Op<"_op_with_leading_underscore", []>;
+
+// CHECK-LABEL: NS::_AOp declarations
+// CHECK: class _AOp : public Op<_AOp
+
+def _BOp : Op<"_op_with_leading_underscore_and_no_namespace", []>;
+
+// CHECK-LABEL: _BOp declarations
 // CHECK: class _BOp : public Op<_BOp
-
-def _COp : Op<"_c_op", []>;
-
-// CHECK-LABEL: _COp declarations
-// CHECK: class _COp : public Op<_COp
