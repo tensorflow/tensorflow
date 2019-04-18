@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -58,12 +59,16 @@ class PyLocalClient {
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
     return &h2d_transfer_pool_;
   }
-  tensorflow::thread::ThreadPool* execute_pool() { return &execute_pool_; }
+  const std::vector<std::unique_ptr<WorkerThread>>& execute_threads() {
+    return execute_threads_;
+  }
 
  private:
   LocalClient* client_;
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
-  tensorflow::thread::ThreadPool execute_pool_;
+  // We use a single worker thread per device, both for simplicity and because
+  // it avoids a deadlock in tensorflow::thread::ThreadPool (b/130761212).
+  std::vector<std::unique_ptr<WorkerThread>> execute_threads_;
 };
 
 // Represents a reference to literals that live in a device-allocated buffer via
