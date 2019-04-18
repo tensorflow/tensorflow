@@ -293,9 +293,9 @@ def get_var(environ_cp,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
-    query_item: string for feature related to the variable, e.g. "Hadoop File
-      System".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
+    query_item: string for feature related to the variable, e.g. "CUDA for
+      Nvidia GPUs".
     enabled_by_default: boolean for default behavior.
     question: optional string for how to ask for user input.
     yes_reply: optional string for reply when feature is enabled.
@@ -376,9 +376,9 @@ def set_build_var(environ_cp,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
-    query_item: string for feature related to the variable, e.g. "Hadoop File
-      System".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
+    query_item: string for feature related to the variable, e.g. "CUDA for
+      Nvidia GPUs".
     option_name: string for option to define in .bazelrc.
     enabled_by_default: boolean for default behavior.
     bazel_config_name: Name for Bazel --config argument to enable build feature.
@@ -411,9 +411,9 @@ def set_action_env_var(environ_cp,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
-    query_item: string for feature related to the variable, e.g. "Hadoop File
-      System".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
+    query_item: string for feature related to the variable, e.g. "CUDA for
+      Nvidia GPUs".
     enabled_by_default: boolean for default behavior.
     question: optional string for how to ask for user input.
     yes_reply: optional string for reply when feature is enabled.
@@ -570,7 +570,7 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
 
   Args:
     environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_HDFS".
+    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
     ask_for_var: string for how to ask for user input.
     var_default: default value string.
 
