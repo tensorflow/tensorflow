@@ -725,7 +725,10 @@ tf_xla_py_test(
         "cpu_ondemand",
     ],
     shard_count = 5,
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

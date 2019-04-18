@@ -2865,7 +2865,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -3386,7 +3386,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
-    flaky = 1,  # test fails on rocm (on rare occasions) 
+    flaky = 1,  # test fails on rocm (on rare occasions)
     tags = [
         "no_windows",
     ],
