@@ -1403,6 +1403,7 @@ cc_library(
         ":framework",
         ":lib",
         ":math_ops_op_lib",
+        ":protos_all_cc",
     ],
     alwayslink = 1,
 )
