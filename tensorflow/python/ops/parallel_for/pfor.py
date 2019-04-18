@@ -1980,6 +1980,8 @@ def _convert_matmul(pfor_input):
     return wrap(prod, True)
 
 
+# TODO(rmlarsen): Use the converter of BatchMatMulV2 once compatibility window
+# is met.
 @RegisterPFor("BatchMatMul")
 def _convert_batch_mat_mul(pfor_input):
   # TODO(agarwal): There may be a more efficient way to do this instead of
@@ -1994,6 +1996,18 @@ def _convert_batch_mat_mul(pfor_input):
   y = _flatten_first_two_dims(y)
   output = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
   output = _unflatten_first_dim(output, pfor_input.pfor.loop_len_vector)
+  return wrap(output, True)
+
+
+@RegisterPFor("BatchMatMulV2")
+def _convert_batch_mat_mul_v2(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  x = pfor_input.input(0)[0]
+  y = pfor_input.input(1)[0]
+  adj_x = pfor_input.get_attr("adj_x")
+  adj_y = pfor_input.get_attr("adj_y")
+
+  output = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
   return wrap(output, True)
 
 
