@@ -57,11 +57,13 @@ struct TargetFunctionInfo {
                      absl::Span<const PrimitiveType> input_types_,
                      const PrimitiveType output_type_, bool use_bitcast_)
       : callee_name(callee_name_),
+        check_signature(true),
         input_types(input_types_),
         result_type(output_type_),
         use_bitcast(use_bitcast_) {}
   // Device function name.
   const string callee_name;
+  absl::optional<bool> check_signature;
   // Inpute types accespted by the device function.
   absl::Span<const PrimitiveType> input_types;
   // Result type of the device function.
@@ -194,6 +196,136 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
         return TargetInfo(amdgpu_intrinsic_info);
       }
     }
+    case TargetFunctionID::kPow:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_pow" );
+      TargetFunctionInfo nvptx_function_info("__nv_pow" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kErfcinv:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_erfcinv" );
+      TargetFunctionInfo nvptx_function_info("__nv_erfcinv" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kLog:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_log" );
+      TargetFunctionInfo nvptx_function_info("__nv_log" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kLog1p:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_log1p" );
+      TargetFunctionInfo nvptx_function_info("__nv_log1p" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kSin:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_sin" );
+      TargetFunctionInfo nvptx_function_info("__nv_sin" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kCos:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_cos" );
+      TargetFunctionInfo nvptx_function_info("__nv_cos" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kExp:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_exp" );
+      TargetFunctionInfo nvptx_function_info("__nv_exp" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kExpm1:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_expm1" );
+      TargetFunctionInfo nvptx_function_info("__nv_expm1" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kSqrt:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_sqrt" );
+      TargetFunctionInfo nvptx_function_info("__nv_sqrt" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kRsqrt:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_rqsrt" );
+      TargetFunctionInfo nvptx_function_info("__nv_rsqrt" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kAtan2:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_atan2" );
+      TargetFunctionInfo nvptx_function_info("__nv_atan2" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kFmod:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_fmod" );
+      TargetFunctionInfo nvptx_function_info("__nv_fmod" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
+    case TargetFunctionID::kRound:{ 
+      TargetFunctionInfo amdgpu_function_info("__ocml_round" );
+      TargetFunctionInfo nvptx_function_info("__nv_round" );
+      if (target_triple.getArch() == llvm::Triple::nvptx ||
+          target_triple.getArch() == llvm::Triple::nvptx64) {
+         return TargetInfo(nvptx_function_info);
+      } else {
+         return TargetInfo(amdgpu_function_info);
+      }
+    }
   }
 }
 }  // namespace
@@ -216,41 +348,53 @@ llvm::Value* EmitCallToTargetFunction(
   } else {
     std::vector<llvm::Value*> converted_operands;
     std::vector<llvm::Type*> ir_input_types;
-    auto indices = gpu_info.target_function_info->input_types.size();
     PrimitiveType from_type, to_type;
-    CHECK_EQ(input_types.size(),
+    PrimitiveType callee_result_type;
+    if (gpu_info.target_function_info->check_signature) {
+      auto indices = gpu_info.target_function_info->input_types.size();
+      CHECK_EQ(input_types.size(),
              gpu_info.target_function_info->input_types.size());
-    CHECK_EQ(input_types.size(), operands.size());
-    for (unsigned int index = 0; index < operands.size(); ++index){
-      to_type = gpu_info.target_function_info->input_types[index];
-      from_type = input_types[index];
-      if (to_type == PRIMITIVE_TYPE_INVALID) continue;
-      if (from_type == to_type) {
-	converted_operands.push_back(const_cast<llvm::Value*>(operands[index]));
-      } else if (gpu_info.target_function_info->use_bitcast) {
-        converted_operands.push_back(b->CreateBitCast(operands[index],
+      CHECK_EQ(input_types.size(), operands.size());
+      for (unsigned int index = 0; index < operands.size(); ++index){
+        to_type = gpu_info.target_function_info->input_types[index];
+        from_type = input_types[index];
+        if (to_type == PRIMITIVE_TYPE_INVALID) continue;
+        if (from_type == to_type) {
+  	  converted_operands.push_back(const_cast<llvm::Value*>(operands[index]));
+        } else if (gpu_info.target_function_info->use_bitcast) {
+          converted_operands.push_back(b->CreateBitCast(operands[index],
                       llvm_ir::PrimitiveTypeToIrType(to_type, module)));
-      } else if (primitive_util::IsFloatingPointType(from_type) &&
+        } else if (primitive_util::IsFloatingPointType(from_type) &&
                  primitive_util::IsSignedIntegralType(to_type)) {
-        converted_operands.push_back(b->CreateFPToSI(
+          converted_operands.push_back(b->CreateFPToSI(
             operands[index], llvm_ir::PrimitiveTypeToIrType(to_type, module)));
-      } else {
-        LOG(FATAL) << "unhandled conversion operation from "
-                   << PrimitiveType_Name(from_type) << "to"
-                   << PrimitiveType_Name(to_type);
+        } else {
+          LOG(FATAL) << "unhandled conversion operation from "
+                     << PrimitiveType_Name(from_type) << "to"
+                     << PrimitiveType_Name(to_type);
+        }
+        ir_input_types.push_back(
+            llvm_ir::PrimitiveTypeToIrType(to_type, module));
       }
-      ir_input_types.push_back(
-          llvm_ir::PrimitiveTypeToIrType(to_type, module));
+      callee_result_type = gpu_info.target_function_info->result_type;
     }
+   else {
+     converted_operands.assign(operands.begin(), operands.end());
+     for (PrimitiveType input_type : input_types) {
+       ir_input_types.push_back(
+          llvm_ir::PrimitiveTypeToIrType(input_type, module));
+     }
+      callee_result_type = output_type;
+   }
     llvm::FunctionType* callee_type =
         llvm::FunctionType::get(llvm_ir::PrimitiveTypeToIrType(
-                                    gpu_info.target_function_info->result_type,
+                                    callee_result_type,
                                     module),     // Return type.
                                 ir_input_types,  // Parameter types.
                                 false);          // No variadic arguments.
 
     string munged_callee = gpu_info.target_function_info->callee_name;
-    switch (gpu_info.target_function_info->result_type) {
+    switch (callee_result_type) {
       case S32:
         StrAppend(&munged_callee, "_i32");
         break;
@@ -264,7 +408,7 @@ llvm::Value* EmitCallToTargetFunction(
         StrAppend(&munged_callee, "_f64");
         break;
       default:
-        LOG(FATAL) << "Bad Type " << PrimitiveType_Name(output_type) << "\n";
+        LOG(FATAL) << "Bad Type " << PrimitiveType_Name(callee_result_type) << "\n";
     }
     // Declares the callee if it is not declared already.
     llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
@@ -275,8 +419,8 @@ llvm::Value* EmitCallToTargetFunction(
     }
     llvm::Value* result =  b->CreateCall(callee, llvm_ir::AsArrayRef(converted_operands));
 
-    from_type = gpu_info.target_function_info->result_type;
-    to_type = output_type;
+    from_type = callee_result_type;
+    to_type =  output_type;
     if (from_type == to_type){
       return result;
     } else if (gpu_info.target_function_info->use_bitcast) {
