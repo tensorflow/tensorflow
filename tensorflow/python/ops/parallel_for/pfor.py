@@ -34,6 +34,7 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import map_fn
@@ -1647,6 +1648,13 @@ def _convert_conv2d_backprop_filter(pfor_input):
     return wrap(output, True)
 
 
+@RegisterPForWithArgs("LogSoftmax", gen_nn_ops.log_softmax)
+@RegisterPForWithArgs("Softmax", gen_nn_ops.softmax)
+def _convert_softmax(pfor_input, op_type, op_func):
+  del op_type
+  return wrap(op_func(pfor_input.stacked_input(0)), True)
+
+
 # array_ops
 
 
@@ -1680,6 +1688,14 @@ def _convert_expanddims(pfor_input):
   dim = pfor_input.unstacked_input(1)
   dim += math_ops.cast(dim >= 0, dtypes.int32)
   return wrap(array_ops.expand_dims(t, axis=dim), True)
+
+
+@RegisterPFor("MatrixSetDiag")
+def _convert_matrix_set_diag(pfor_input):
+  pfor_input.stack_inputs()
+  t = pfor_input.stacked_input(0)
+  diag = pfor_input.stacked_input(1)
+  return wrap(array_ops.matrix_set_diag(t, diag), True)
 
 
 @RegisterPFor("Slice")
@@ -2016,6 +2032,8 @@ def _convert_batch_mat_mul_v2(pfor_input):
 @RegisterPForWithArgs("Max", math_ops.reduce_max)
 @RegisterPForWithArgs("Min", math_ops.reduce_min)
 @RegisterPForWithArgs("Mean", math_ops.reduce_mean)
+@RegisterPForWithArgs("All", math_ops.reduce_all)
+@RegisterPForWithArgs("Any", math_ops.reduce_any)
 def _convert_reduction(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
@@ -2141,6 +2159,7 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Invert", bitwise_ops.invert)
 @RegisterPForWithArgs("IsFinite", math_ops.is_finite)
 @RegisterPForWithArgs("IsInf", math_ops.is_inf)
+@RegisterPForWithArgs("IsNan", math_ops.is_nan)
 @RegisterPForWithArgs("LeftShift", bitwise_ops.left_shift)
 @RegisterPForWithArgs("Less", math_ops.less)
 @RegisterPForWithArgs("LessEqual", math_ops.less_equal)

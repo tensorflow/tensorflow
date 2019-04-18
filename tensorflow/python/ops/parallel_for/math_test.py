@@ -330,6 +330,21 @@ class MathTest(PForTestCase):
 
           self._test_loop_fn(loop_fn, 2)
 
+  def test_boolean_reduction(self):
+    x = random_ops.random_uniform([2, 3, 4, 5]) > 0.5
+    for op in [math_ops.reduce_any, math_ops.reduce_all]:
+      for axis in ([1], None, [0, 2]):
+        for keepdims in (True, False):
+
+          # pylint: disable=cell-var-from-loop
+          def loop_fn(i):
+            a = array_ops.gather(x, i)
+            return op(a, axis=axis, keepdims=keepdims)
+
+          # pylint: enable=cell-var-from-loop
+
+          self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.bool])
+
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
     for axis in (1, -2):

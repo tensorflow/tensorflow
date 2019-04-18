@@ -266,6 +266,19 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
 
+  def test_matrix_set_diag(self):
+    matrices = random_ops.random_uniform([3, 4, 4])
+    diags = random_ops.random_uniform([3, 4])
+
+    def loop_fn(i):
+      matrix_i = array_ops.gather(matrices, i)
+      diag_i = array_ops.gather(diags, i)
+      return (array_ops.matrix_set_diag(matrix_i, diag_i),
+              array_ops.matrix_set_diag(matrices[0, ...], diag_i),
+              array_ops.matrix_set_diag(matrix_i, diags[0, ...]))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
   def test_strided_slice(self):
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])
