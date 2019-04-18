@@ -25,7 +25,8 @@ namespace mlir {
 class MLIRContext;
 
 enum LinalgTypes {
-  Range = Type::FIRST_LINALG_TYPE,
+  Buffer = Type::FIRST_LINALG_TYPE,
+  Range,
   LAST_USED_LINALG_TYPE = Range,
 };
 
@@ -38,6 +39,22 @@ public:
 
   /// Print a type registered to this dialect.
   void printType(Type type, llvm::raw_ostream &os) const override;
+};
+
+/// A BufferType represents a minimal range abstraction (min, max, step).
+class BufferTypeStorage;
+class BufferType : public Type::TypeBase<BufferType, Type, BufferTypeStorage> {
+public:
+  // Used for generic hooks in TypeBase.
+  using Base::Base;
+  /// Construction hook.
+  static BufferType get(MLIRContext *context, Type elementType);
+  /// Used to implement llvm-style cast.
+  static bool kindof(unsigned kind) { return kind == LinalgTypes::Buffer; }
+  //////////////////////////////////////////////////////////////////////////////
+  // Type-specific functionality.
+  //////////////////////////////////////////////////////////////////////////////
+  Type getElementType();
 };
 
 /// A RangeType represents a minimal range abstraction (min, max, step).
