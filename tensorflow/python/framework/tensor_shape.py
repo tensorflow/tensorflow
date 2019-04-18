@@ -477,7 +477,10 @@ class Dimension(object):
     Returns:
       A `Dimension` whose value is the integer quotient of `self` and `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -591,7 +594,10 @@ class Dimension(object):
       other = as_dimension(other)
     except (TypeError, ValueError):
       return NotImplemented
-    return other % self
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(other.value % self._value)
 
   def __lt__(self, other):
     """Returns True if `self` is known to be less than `other`.
@@ -612,7 +618,10 @@ class Dimension(object):
       The value of `self.value < other.value` if both are known, otherwise
       None.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return None
     else:
@@ -637,7 +646,10 @@ class Dimension(object):
       The value of `self.value <= other.value` if both are known, otherwise
       None.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return None
     else:
@@ -662,7 +674,10 @@ class Dimension(object):
       The value of `self.value > other.value` if both are known, otherwise
       None.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return None
     else:
@@ -687,7 +702,10 @@ class Dimension(object):
       The value of `self.value >= other.value` if both are known, otherwise
       None.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return None
     else:
