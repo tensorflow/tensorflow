@@ -31,6 +31,7 @@ cc_library(
     srcs = ["model_utils.cc"],
     hdrs = ["model_utils.h"],
     deps = [
+        ":operator_property",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
