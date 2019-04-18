@@ -1,4 +1,4 @@
-//===- Types.h - Linalg Types forward declarations ------------------------===//
+//===- LinalgRegistration.cpp - Register the linalg dialect statically ----===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,22 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LINALG1_TYPES_H_
-#define LINALG1_TYPES_H_
+#include "mlir/Linalg/LinalgOps.h"
+#include "mlir/Linalg/LinalgTypes.h"
 
-#include "mlir/IR/Types.h"
+using namespace mlir;
 
-namespace linalg {
-
-enum LinalgTypes {
-  Range = mlir::Type::FIRST_PRIVATE_EXPERIMENTAL_0_TYPE,
-  View,
-  FIRST_PRIVATE_EXPERIMENTAL_0_TYPE = View,
-};
-
-} // namespace linalg
-
-#include "linalg1/RangeType.h"
-#include "linalg1/ViewType.h"
-
-#endif // LINALG1_TYPES_H_
+// Static initialization for LinalgOps dialect registration.
+static DialectRegistration<LinalgDialect> LinalgOps;

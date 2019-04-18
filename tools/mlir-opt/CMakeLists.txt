@@ -3,6 +3,7 @@ set(LIBS
   MLIRAnalysis
   MLIREDSC
   MLIRFxpMathOps
+  MLIRLinalg
   MLIRLLVMIR
   MLIRParser
   MLIRPass
