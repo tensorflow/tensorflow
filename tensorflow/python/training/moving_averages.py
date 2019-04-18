@@ -208,9 +208,7 @@ def _zero_debias(unbiased_var, value, decay):
                                               decay]) as scope:
     with ops.colocate_with(unbiased_var):
       with ops.init_scope():
-        biased_initializer = init_ops.zeros_initializer(
-            dtype=unbiased_var.dtype)(
-                unbiased_var.get_shape())
+        biased_initializer = init_ops.zeros_initializer()
         local_step_initializer = init_ops.zeros_initializer()
 
       def _maybe_get_unique(name):
@@ -230,8 +228,8 @@ def _zero_debias(unbiased_var, value, decay):
         return name + ("_%d" % idx)
 
       biased_var = variable_scope.get_variable(
-          _maybe_get_unique("biased"),
-          initializer=biased_initializer,
+          _maybe_get_unique("biased"), initializer=biased_initializer,
+          shape=unbiased_var.get_shape(), dtype=unbiased_var.dtype,
           trainable=False)
       local_step = variable_scope.get_variable(
           _maybe_get_unique("local_step"),
