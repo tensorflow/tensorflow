@@ -18,7 +18,6 @@ package_group(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
@@ -190,6 +189,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
