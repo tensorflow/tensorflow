@@ -24,7 +24,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
-#include <vector>
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -36,9 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
@@ -377,37 +373,29 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output) {
-    auto d = ctx->eigen_cpu_device();
-    output.device(d) = output.constant(InitialValueF()());
+    auto cpu_device = ctx->eigen_cpu_device();
+    output.device(cpu_device) = output.constant(InitialValueF()());
     if (data_size == 0) {
       return;
     }
+
+    // This functor will reduce N rows input to M rows output
+    // N: segment_ids.dimension(0)
+    // M: num_segments
     const int64 N = segment_ids.dimension(0);
+    const int64 inner_dim = data_size / N;
     ReductionF reduction;
-    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
-    //*************************************************************************
-    // Modified for performance tune : begin here
-    //*************************************************************************
+    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, inner_dim);
+    const int num_threads = cpu_device.numThreads();
 
-    //*************************************************************************
-    // Modified for performance tune : init parallel parameters
-    //*************************************************************************
-    // Get thread pool handle
-    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    auto workers = worker_threads.workers;
-    // Get thread number
-    const int num_threads = worker_threads.num_threads;
-
-    //*************************************************************************
-    // Modified for performance tune : distributing workload
-    //*************************************************************************
-    // The max_parallel marks the upper limit of parallelism,
-    // It is equal to the number of rows to write in in output tensor.
-    int max_parallel = 0;
-    // The row_counter records the corresponding inputs number of each output
-    // row
-    int64 row_counter[num_segments] = {0};
-    for (int i = 0; i < N; i++) {
+    // 'num_reductions' counts the number of output rows actually reduced,
+    // the rows only filled with InitialValueF() will be excluded.
+    // It also determines the degree of maximum parallelism.
+    int64 num_reductions = 0;
+    // 'row_counter' records how many input rows will be reduced in each
+    // output row, the row only fills with InitialValueF() will keep 0.
+    std::vector<Index> row_counter(num_segments, 0);
+    for (int64 i = 0; i < N; i++) {
       // Get the corresponding output index j of input i.
       Index j = internal::SubtleMustCopy(segment_ids(i));
       // Check the validity of index j.
@@ -418,60 +406,71 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
                       " = ", j, " is out of range [0, ", num_segments, ")"));
-      if (row_counter[j] == 0) max_parallel++;
+      if (row_counter[j] == 0) {
+        num_reductions++;
+      }
       row_counter[j]++;
     }
+    eigen_assert(num_reductions <= num_segments &&
+                 "reduced rows number can't be greater than num_segments.");
 
-    // Total workload is equal to the row number of input
-    const int total_work_load = N;
-    // Set the minimum block size to ensure each thread get enough workload
+    // Estimate task size and block number for shard function according to the
+    // rules:
+    // 1. each task size is 64 at least, to ensure each thread gets enough
+    //    work to do.
+    // 2. total task block number shouldn't be greater than num_reductions or
+    //    num_threads.
     const int min_block_size = 64;
-    // The max block number comes from min_block_size,
-    // but shouldn't be bigger than max_parallel.
-    const int max_block_num =
-        std::min(total_work_load / min_block_size + 1, max_parallel);
-    // The real block number equal to num_threads, as long as there are enough
-    // blocks.
-    const int block_num = std::min(max_block_num, num_threads);
-    // Bet real block size from block_num.
-    const int block_size = total_work_load / block_num;
+    const int max_block_num = std::min(N / min_block_size + 1, num_reductions);
+    int block_num = std::min(max_block_num, num_threads);
+    const int block_size = N / block_num;
 
-    // Block the workload basing on block_size
-    int64 block_range[block_num + 1] = {0};
-    for (int i = 0, now_id = 1, now_count = 0; i < num_segments; i++) {
-      now_count += row_counter[i];
-      // Keep enlarge corrent block range until until enough.
-      if (now_count < block_size) {
+    // Compute the real task size for each block and record the index.
+    // Keep 'block_range[0]' 0 because need a start index for shard function.
+    int64 next_block_idx = 1;
+    std::vector<Index> block_range(block_num + 1, 0);
+    for (int64 i = 0, cur_count = 0; i < num_segments; i++) {
+      cur_count += row_counter[i];
+      // Add task in current block, til it's greater than estimated size.
+      if (cur_count < block_size) {
         continue;
       } else {
-        block_range[now_id] = i;
-        now_id++;
-        now_count = 0;
+        block_range[next_block_idx] = i + 1;
+        // Exit when all tasks have been filled, otherwise increase block
+        // index and fill in new task.
+        if (block_range[next_block_idx] == num_segments) {
+          break;
+        } else {
+          next_block_idx++;
+          cur_count = 0;
+        }
       }
     }
-    // The last block end at num_segments.
-    block_range[block_num] = num_segments;
+    // Reset 'block_num' to real number. The last block ends at num_segments.
+    block_range[next_block_idx] = num_segments;
+    block_num = next_block_idx;
 
-    //*************************************************************************
-    // Modified for performance tune : computing
-    //*************************************************************************
-    // The worker
-    auto reductionWorker = [&](int64 floor, int64 ceiling) -> void {
+    auto reductionWorker = [&](int64 begin, int64 end) -> void {
       // traversal all inputs.
       for (int64 i = 0; i < N; i++) {
         // Get the corresponding output index j of input i.
         Index j = internal::SubtleMustCopy(segment_ids(i));
         // If j is in work scope of this worker, do the reduction.
-        if (j >= block_range[floor] && j < block_range[ceiling]) {
+        if (j >= block_range[begin] && j < block_range[end]) {
           reduction(data_flat.template chip<0>(i), output.template chip<0>(j));
         }
       }
     };
 
+    // reduction functors includes Sum, Max, Min, etc. Simply consider it
+    // will cost 5 cycles per operation.
+    const int compute_cycles = 5 * (N - num_reductions) * inner_dim;
+    const int output_bytes = num_reductions * inner_dim * sizeof(T);
+    const Eigen::TensorOpCost cost(data_size * sizeof(T), output_bytes,
+                                   compute_cycles);
+
     // Submit jobs to intra thread pool
-    Sharder::Do(block_num, data_size / block_num, reductionWorker,
-                [&workers](Sharder::Closure c) { workers->Schedule(c); },
-                block_num);
+    cpu_device.parallelFor(block_num, cost, reductionWorker);
   }
 };
 
