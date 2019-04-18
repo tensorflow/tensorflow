@@ -620,7 +620,8 @@ Status ColocationGraph::ColocateAllNodes() {
   return Status::OK();
 }
 
-Status ColocationGraph::ColocateResourceOrRefEdge(Node* src, Node* dst) {
+Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
+                                                  const Node* dst) {
   // Colocate `src` and `dst` to maintain the invariant that nodes
   // connected by reference edges are colocated.
   int src_root_id = FindAndUpdateRoot(src->id());

@@ -119,7 +119,7 @@ class Member {
 
   // The merged form of the device requested for this node, with those of all of
   // its children. requested_device_name_ is always kept a specialization (i.e.
-  // DeviceNameUtils::IsSpecialization) of assigned_device_name_. When no device
+  // DeviceNameUtils::IsSpecification) of assigned_device_name_. When no device
   // is requested, this field is set to assigned_device_name_.  As a
   // specialization of assigned_device_name_, requested_device_name_ represents
   // the most specific form of all assigned and requested devices of this node
@@ -128,7 +128,7 @@ class Member {
   // to resource colocation constraints but not assigned devices (unless soft
   // placement is on).
   // INVARIANT: requested_device_name_ is always kept a
-  // DeviceNameUtils::IsSpecialization of assigned_device_name_ and
+  // DeviceNameUtils::IsSpecification of assigned_device_name_ and
   // resource_device_name_. This makes requested_device_name_ the "accumulation
   // of all wishes" about the device.
   DeviceNameUtils::ParsedName requested_device_name_;
@@ -195,38 +195,9 @@ class ColocationGraph {
                   const DeviceSet* device_set, const Device* default_device,
                   bool allow_soft_placement, bool log_device_placement);
 
-  // Adds each node of the Graph to this ColocationGraph as a singleton.
-  //
-  // NOTE: The implementation assumes that the ids of nodes passed to
-  // this method are dense and zero-based; the memory used will be linear in
-  // the largest node ID.
-  // NOTE: If this method returns an error, *this is left in an undefined
-  // state.
-  Status ColocateAllNodes();
-
-  Status ColocateResourceOrRefEdge(Node* src, Node* dst);
-
-  Status ColocateResourceAndRefEdges();
-
   Status Initialize();
 
-  Status ColocateNodeToGroup(
-      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
-          colocation_group_root,
-      const Node* node, StringPiece colocation_group);
-
-  // Merge the (possibly disjoint) sets containing nodes "x" and
-  // "y". Returns OK if the all nodes in the union of these sets can
-  // be placed on the same device type.
-  //
-  // If this method returns an error, *this is unchanged.
-  Status ColocateNodes(const Node& x, const Node& y);
-
-  // This overload of ColocateNodes() allows a caller to provide the root node
-  // ids for the two nodes. For large graphs, this noticeably reduces the
-  // graph load time.
-  // If this method returns an error, *this is unchanged.
-  Status ColocateNodes(const Node& x, int x_root, const Node& y, int y_root);
+  const std::vector<Member>& members() const { return members_; }
 
   // Limits the possible devices of `node`'s colocation group to the device
   // to which `node` is assigned. This makes sure that all nodes in this
@@ -252,16 +223,52 @@ class ColocationGraph {
   Status GetDevicesForNode(Node* node,
                            const std::vector<Device*>** possible_devices);
 
+  // Returns debugging info for the node referred to by 'node_root'.
+  string DebugInfo(const int node_root) const;
+
+  string DebugString() const;
+
+ private:
+  // Adds each node of the Graph to this ColocationGraph as a singleton.
+  //
+  // NOTE: The implementation assumes that the ids of nodes passed to
+  // this method are dense and zero-based; the memory used will be linear in
+  // the largest node ID.
+  // NOTE: If this method returns an error, *this is left in an undefined
+  // state.
+  Status ColocateAllNodes();
+
+  Status ColocateResourceOrRefEdge(const Node* src, const Node* dst);
+
+  // Updates this ColocationGraph by making sure that all nodes
+  // touching resource and/or ref tensors are colocated.
+  // As it iterates over the edges, fills the `deep_nodes` set with
+  // the nodes that DeepOpsPlacer::IsDeepOp deems deep. This is an optimization.
+  Status ColocateResourceAndRefEdges();
+
+  Status ColocateNodeToGroup(
+      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
+          colocation_group_root,
+      const Node* node, StringPiece colocation_group);
+
+  // Merge the (possibly disjoint) sets containing nodes "x" and
+  // "y". Returns OK if the all nodes in the union of these sets can
+  // be placed on the same device type.
+  //
+  // If this method returns an error, *this is unchanged.
+  Status ColocateNodes(const Node& x, const Node& y);
+
+  // This overload of ColocateNodes() allows a caller to provide the root node
+  // ids for the two nodes. For large graphs, this noticeably reduces the
+  // graph load time.
+  // If this method returns an error, *this is unchanged.
+  Status ColocateNodes(const Node& x, int x_root, const Node& y, int y_root);
+
   void GetSoftDeviceCandidates(const Node& node, const Member& root_member,
                                int root_id,
                                std::vector<Device*>* possible_devices);
 
   Status InitializeMembers();
-
-  string DebugString() const;
-
-  // Returns debugging info for the node referred to by 'node_root'.
-  string DebugInfo(const int node_root) const;
 
   Status InitializeMemberWithAssignedDevice(const string& assigned_device_name,
                                             const string& node_type,
