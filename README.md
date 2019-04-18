@@ -92,13 +92,11 @@ has been tested on Linux and macOS, with recent versions of clang and with gcc 7
 
 ```
 git clone https://github.com/llvm/llvm-project.git
-cd llvm-project/llvm/projects/
-git clone https://github.com/tensorflow/mlir
-cd ../..
-mkdir build
-cd build
-cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y
-ninja check-mlir
+git clone https://github.com/tensorflow/mlir llvm-project/llvm/projects/mlir
+mkdir llvm-project/build
+cd llvm-project/build
+cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y -DLLVM_TARGETS_TO_BUILD="host"
+cmake --build . --target check-mlir
 ```
 
 As a starter, you may try [the tutorial](g3doc/Tutorials/Toy/Ch-1.md) on
