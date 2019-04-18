@@ -2896,7 +2896,7 @@ py_test(
 
 py_test(
     name = "loss_scale_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/experimental/loss_scale_test.py"],
     deps = [
         ":loss_scale",
