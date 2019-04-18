@@ -166,4 +166,50 @@ static void BM_SparseSegmentMeanGrad_High(int iters, int size) {
 BENCHMARK(BM_SparseSegmentMeanGrad_Low)->Arg(1000)->Arg(100000);
 BENCHMARK(BM_SparseSegmentMeanGrad_High)->Arg(1000)->Arg(100000);
 
+static void BM_UnsortedSegmentReduction(int iters, const string& reduction,
+                                        int num_rows, int num_cols,
+                                        int segment_size) {
+  testing::StopTiming();
+  Graph* g = new Graph(OpRegistry::Global());
+
+  // Create inputs
+  TensorShape shape1({num_rows, num_cols});
+  Tensor input(DT_FLOAT, shape1);
+  input.flat<float>().setRandom();
+
+  TensorShape shape2({num_rows});
+  Tensor indices(DT_INT32, shape2);
+  test::FillFn<int>(&indices,
+                    [&segment_size](int i) -> int { return i % segment_size; });
+
+  Tensor num_segments(DT_INT32, TensorShape({}));
+  num_segments.scalar<int>()() = segment_size;
+
+  Node* node;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), reduction)
+                  .Input(test::graph::Constant(g, input))
+                  .Input(test::graph::Constant(g, indices))
+                  .Input(test::graph::Constant(g, num_segments))
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &node));
+
+  testing::UseRealTime();
+  testing::BytesProcessed(static_cast<int64>(iters) * (num_rows * num_cols) *
+                          sizeof(float));
+  testing::StartTiming();
+  test::Benchmark("cpu", g).Run(iters);
+}
+
+#define BM_UnsortedReduce(O, R, C, S)                  \
+  static void BM_##O##_##R##_##C##_##S##_(int iters) { \
+    BM_UnsortedSegmentReduction(iters, #O, R, C, S);   \
+  }                                                    \
+  BENCHMARK(BM_##O##_##R##_##C##_##S##_);
+
+#define BM_UnsortedReduce_Arg(R, C, S) \
+  BM_UnsortedReduce(UnsortedSegmentSum, R, C, S);
+
+BM_UnsortedReduce_Arg(4096, 128, 1);
+BM_UnsortedReduce_Arg(4096, 128, 128);
+
 }  // namespace tensorflow
