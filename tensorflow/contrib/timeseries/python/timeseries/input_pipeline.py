@@ -98,8 +98,10 @@ from tensorflow.python.training import training
 from tensorflow.python.util import nest
 
 
-def predict_continuation_input_fn(
-    evaluation, steps=None, times=None, exogenous_features=None):
+def predict_continuation_input_fn(evaluation,
+                                  steps=None,
+                                  times=None,
+                                  exogenous_features=None):
   """An Estimator input_fn for running predict() after evaluate().
 
   If the call to evaluate() we are making predictions based on had a batch_size
@@ -121,6 +123,7 @@ def predict_continuation_input_fn(
       the batch dimension used when creating `evaluation`, and `window_size` is
       either the `steps` argument or the `window_size` of the `times` argument
       (depending on which was specified).
+
   Returns:
     An `input_fn` suitable for passing to the `predict` function of a time
     series `Estimator`.
@@ -138,6 +141,7 @@ def predict_continuation_input_fn(
           predict_times
   }
   features.update(exogenous_features)
+
   def _predict_input_fn():
     """An input_fn for predict()."""
     # Prevents infinite iteration with a constant output in an Estimator's
@@ -148,6 +152,7 @@ def predict_continuation_input_fn(
           lambda value: training.limit_epochs(value, num_epochs=1), values)
       limited_features[key] = limited_values
     return (limited_features, None)
+
   return _predict_input_fn
 
 
@@ -227,18 +232,16 @@ class NumpyReader(TimeSeriesReader):
     Args:
       data: A dictionary mapping feature names to Numpy arrays, with two
         possible shapes (requires keys `TrainEvalFeatures.TIMES` and
-        `TrainEvalFeatures.VALUES`):
-          Univariate; `TIMES` and `VALUES` are both vectors of shape [series
-            length]
-          Multivariate; `TIMES` is a vector of shape [series length], `VALUES`
-            has shape [series length x number of features].
-        In any case, `VALUES` and any exogenous features must have their shapes
-        prefixed by the shape of the value corresponding to the `TIMES` key.
+        `TrainEvalFeatures.VALUES`): Univariate; `TIMES` and `VALUES` are both
+          vectors of shape [series length] Multivariate; `TIMES` is a vector of
+          shape [series length], `VALUES` has shape [series length x number of
+          features]. In any case, `VALUES` and any exogenous features must have
+          their shapes prefixed by the shape of the value corresponding to the
+          `TIMES` key.
       read_num_records_hint: The maximum number of samples to read at one time,
         for efficiency.
     """
-    self._features = _canonicalize_numpy_data(
-        data, require_single_batch=True)
+    self._features = _canonicalize_numpy_data(data, require_single_batch=True)
     self._read_num_records_hint = read_num_records_hint
 
   def check_dataset_size(self, minimum_dataset_size):
@@ -254,8 +257,10 @@ class NumpyReader(TimeSeriesReader):
   def read(self):
     """Returns a large chunk of the Numpy arrays for later re-chunking."""
     # Remove the batch dimension from all features
-    features = {key: numpy.squeeze(value, axis=0)
-                for key, value in self._features.items()}
+    features = {
+        key: numpy.squeeze(value, axis=0)
+        for key, value in self._features.items()
+    }
     return estimator_lib.inputs.numpy_input_fn(
         x=features,
         # The first dimensions of features are the series length, since we have
@@ -275,12 +280,14 @@ class NumpyReader(TimeSeriesReader):
         queue_capacity=2,  # Each queue element is a full copy of the dataset
         shuffle=False)()
     # TimeSeriesInputFn expect just a batch dimension
-    return {feature_name: array_ops.squeeze(feature_value, axis=0)
-            for feature_name, feature_value in features.items()}
+    return {
+        feature_name: array_ops.squeeze(feature_value, axis=0)
+        for feature_name, feature_value in features.items()
+    }
 
 
 class ReaderBaseTimeSeriesParser(TimeSeriesReader):
-  """Base for time series readers which wrap a `tf.ReaderBase`."""
+  """Base for time series readers which wrap a `tf.compat.v1.ReaderBase`."""
 
   def __init__(self, filenames, read_num_records_hint=4096):
     """Configure the time series reader.
@@ -297,7 +304,7 @@ class ReaderBaseTimeSeriesParser(TimeSeriesReader):
 
   @abc.abstractmethod
   def _get_reader(self):
-    """Get an instance of the tf.ReaderBase associated with this class."""
+    """Get an instance of the tf.compat.v1.ReaderBase associated with this class."""
     pass
 
   @abc.abstractmethod
@@ -326,6 +333,7 @@ class ReaderBaseTimeSeriesParser(TimeSeriesReader):
     Args:
       epoch_limit: The maximum number of times to read through the complete list
         of files before throwing an OutOfRangeError.
+
     Returns:
       A tuple of (filename_queue, epoch_limiter):
         filename_queue: A FIFOQueue with filename work items.
@@ -348,8 +356,8 @@ class ReaderBaseTimeSeriesParser(TimeSeriesReader):
     # will start incrementing and checking epoch_limiter, which will interrupt
     # any in-progress loops.
     conditional_count_up_to = control_flow_ops.cond(
-        state_ops.is_variable_initialized(epoch_limiter),
-        lambda: epoch_limiter.count_up_to(epoch_limit),
+        state_ops.is_variable_initialized(
+            epoch_limiter), lambda: epoch_limiter.count_up_to(epoch_limit),
         lambda: constant_op.constant(0, dtype=dtypes.int64))
     with ops.control_dependencies([conditional_count_up_to]):
       filenames_tensor = array_ops.identity(filenames_tensor)
@@ -358,7 +366,7 @@ class ReaderBaseTimeSeriesParser(TimeSeriesReader):
     return filename_queue, epoch_limiter
 
   def read(self):
-    """Reads a chunk of data from the `tf.ReaderBase` for later re-chunking."""
+    """Reads a chunk of data from the `tf.compat.v1.ReaderBase` for later re-chunking."""
     # Assuming there is at least one item to be read among all of the files in
     # self._filenames, we will not need to go through more than
     # self._read_num_records_hint epochs to get a batch of
@@ -370,8 +378,8 @@ class ReaderBaseTimeSeriesParser(TimeSeriesReader):
     reader = self._get_reader()
     epoch_reset_op = state_ops.assign(epoch_limiter, 0)
     with ops.control_dependencies([epoch_reset_op]):
-      _, records = reader.read_up_to(
-          filename_queue, self._read_num_records_hint)
+      _, records = reader.read_up_to(filename_queue,
+                                     self._read_num_records_hint)
     return self._process_records(records)
 
   def read_full(self):
@@ -387,29 +395,34 @@ class ReaderBaseTimeSeriesParser(TimeSeriesReader):
     with ops.control_dependencies([epoch_reset_op]):
       first_key, first_value = reader.read_up_to(filename_queue, 1)
     # Read until we get a duplicate key (one epoch)
-    def _while_condition(
-        current_key, current_value, current_index, collected_records):
+    def _while_condition(current_key, current_value, current_index,
+                         collected_records):
       del current_value, current_index, collected_records  # unused
-      return math_ops.not_equal(array_ops.squeeze(current_key, axis=0),
-                                array_ops.squeeze(first_key, axis=0))
+      return math_ops.not_equal(
+          array_ops.squeeze(current_key, axis=0),
+          array_ops.squeeze(first_key, axis=0))
 
-    def _while_body(
-        current_key, current_value, current_index, collected_records):
+    def _while_body(current_key, current_value, current_index,
+                    collected_records):
       del current_key  # unused
       new_key, new_value = reader.read_up_to(filename_queue, 1)
       new_key.set_shape([1])
       new_value.set_shape([1])
-      return (new_key,
-              new_value,
-              current_index + 1,
+      return (new_key, new_value, current_index + 1,
               collected_records.write(current_index, current_value))
+
     _, _, _, records_ta = control_flow_ops.while_loop(
         _while_condition,
         _while_body,
-        [constant_op.constant([""]), first_value,
-         0,  # current_index starting value
-         tensor_array_ops.TensorArray(  # collected_records
-             dtype=dtypes.string, size=0, dynamic_size=True)])
+        [
+            constant_op.constant([""]),
+            first_value,
+            0,  # current_index starting value
+            tensor_array_ops.TensorArray(  # collected_records
+                dtype=dtypes.string,
+                size=0,
+                dynamic_size=True)
+        ])
     records = records_ta.concat()
     # Reset the reader when we're done so that subsequent requests for data get
     # the dataset in the proper order.
@@ -433,21 +446,21 @@ class CSVReader(ReaderBaseTimeSeriesParser):
     """CSV-parsing reader for a `TimeSeriesInputFn`.
 
     Args:
-      filenames: A filename or list of filenames to read the time series
-          from. Each line must have columns corresponding to `column_names`.
-      column_names: A list indicating names for each
-          feature. `TrainEvalFeatures.TIMES` and `TrainEvalFeatures.VALUES` are
-          required; `VALUES` may be repeated to indicate a multivariate series.
+      filenames: A filename or list of filenames to read the time series from.
+        Each line must have columns corresponding to `column_names`.
+      column_names: A list indicating names for each feature.
+        `TrainEvalFeatures.TIMES` and `TrainEvalFeatures.VALUES` are required;
+        `VALUES` may be repeated to indicate a multivariate series.
       column_dtypes: If provided, must be a list with the same length as
-          `column_names`, indicating dtypes for each column. Defaults to
-          `tf.int64` for `TrainEvalFeatures.TIMES` and `tf.float32` for
-          everything else.
-      skip_header_lines: Passed on to `tf.TextLineReader`; skips this number of
-          lines at the beginning of each file.
+        `column_names`, indicating dtypes for each column. Defaults to
+        `tf.int64` for `TrainEvalFeatures.TIMES` and `tf.float32` for everything
+        else.
+      skip_header_lines: Passed on to `tf.compat.v1.TextLineReader`; skips this
+        number of lines at the beginning of each file.
       read_num_records_hint: When not reading a full dataset, indicates the
-          number of records to parse/transfer in a single chunk (for
-          efficiency). The actual number transferred at one time may be more or
-          less.
+        number of records to parse/transfer in a single chunk (for efficiency).
+        The actual number transferred at one time may be more or less.
+
     Raises:
       ValueError: If required column names are not specified, or if lengths do
         not match.
@@ -465,9 +478,9 @@ class CSVReader(ReaderBaseTimeSeriesParser):
                column_dtypes, column_names))
     if sum(1 for column_name in column_names
            if column_name == feature_keys.TrainEvalFeatures.TIMES) != 1:
-      raise ValueError(
-          "Got more than one times column ('{}'), but exactly "
-          "one is required.".format(feature_keys.TrainEvalFeatures.TIMES))
+      raise ValueError("Got more than one times column ('{}'), but exactly "
+                       "one is required.".format(
+                           feature_keys.TrainEvalFeatures.TIMES))
     self._column_names = column_names
     self._column_dtypes = column_dtypes
     self._skip_header_lines = skip_header_lines
@@ -480,12 +493,13 @@ class CSVReader(ReaderBaseTimeSeriesParser):
   def _process_records(self, lines):
     """Parse `lines` as CSV records."""
     if self._column_dtypes is None:
-      default_values = [(array_ops.zeros([], dtypes.int64),)
-                        if column_name == feature_keys.TrainEvalFeatures.TIMES
-                        else () for column_name in self._column_names]
+      default_values = [(array_ops.zeros([], dtypes.int64),) if
+                        column_name == feature_keys.TrainEvalFeatures.TIMES else
+                        () for column_name in self._column_names]
     else:
-      default_values = [(array_ops.zeros([], dtype),)
-                        for dtype in self._column_dtypes]
+      default_values = [
+          (array_ops.zeros([], dtype),) for dtype in self._column_dtypes
+      ]
     columns = parsing_ops.decode_csv(lines, default_values)
     features_lists = {}
     for column_name, value in zip(self._column_names, columns):
@@ -502,17 +516,17 @@ class CSVReader(ReaderBaseTimeSeriesParser):
 class TFExampleReader(ReaderBaseTimeSeriesParser):
   """Reads and parses `tf.Example`s from a TFRecords file."""
 
-  def __init__(self,
-               filenames,
-               features):
+  def __init__(self, filenames, features):
     """Configure `tf.Example` parsing.
 
     Args:
-      filenames: A filename or list of filenames to read the time series
-          from. Each line must have columns corresponding to `column_names`.
-      features: A dictionary mapping from feature keys to `tf.FixedLenFeature`
-          objects. Must include `TrainEvalFeatures.TIMES` (scalar integer) and
-          `TrainEvalFeatures.VALUES` (floating point vector) features.
+      filenames: A filename or list of filenames to read the time series from.
+        Each line must have columns corresponding to `column_names`.
+      features: A dictionary mapping from feature keys to
+        `tf.io.FixedLenFeature` objects. Must include `TrainEvalFeatures.TIMES`
+        (scalar integer) and `TrainEvalFeatures.VALUES` (floating point vector)
+        features.
+
     Raises:
       ValueError: If required times/values features are not present.
     """
@@ -572,6 +586,7 @@ class WholeDatasetInputFn(TimeSeriesInputFn):
   `RandomWindowInputFn` is better suited to training and quantitative
   evaluation.
   """
+
   # TODO(allenl): A SequentialWindowInputFn for getting model end state without
   # loading the whole dataset into memory (or for quantitative evaluation of
   # sequential models). Note that an Estimator using such a TimeSeriesInputFn
@@ -598,16 +613,17 @@ class WholeDatasetInputFn(TimeSeriesInputFn):
     """
     features = self._reader.read_full()
     # Add a batch dimension of one to each feature.
-    return ({feature_name: feature_value[None, ...]
-             for feature_name, feature_value in features.items()},
-            None)
+    return ({
+        feature_name: feature_value[None, ...]
+        for feature_name, feature_value in features.items()
+    }, None)
 
 
 class RandomWindowInputFn(TimeSeriesInputFn):
   """Wraps a `TimeSeriesReader` to create random batches of windows.
 
   Tensors are first collected into sequential windows (in a windowing queue
-  created by `tf.train.batch`, based on the order returned from
+  created by `tf.compat.v1.train.batch`, based on the order returned from
   `time_series_reader`), then these windows are randomly batched (in a
   `RandomShuffleQueue`), the Tensors returned by `create_batch` having shapes
   prefixed by [`batch_size`, `window_size`].
@@ -619,27 +635,33 @@ class RandomWindowInputFn(TimeSeriesInputFn):
   `WholeDatasetInputFn`.
   """
 
-  def __init__(
-      self, time_series_reader, window_size, batch_size,
-      queue_capacity_multiplier=1000, shuffle_min_after_dequeue_multiplier=2,
-      discard_out_of_order=True, discard_consecutive_batches_limit=1000,
-      jitter=True, num_threads=2, shuffle_seed=None):
+  def __init__(self,
+               time_series_reader,
+               window_size,
+               batch_size,
+               queue_capacity_multiplier=1000,
+               shuffle_min_after_dequeue_multiplier=2,
+               discard_out_of_order=True,
+               discard_consecutive_batches_limit=1000,
+               jitter=True,
+               num_threads=2,
+               shuffle_seed=None):
     """Configure the RandomWindowInputFn.
 
     Args:
       time_series_reader: A TimeSeriesReader object.
       window_size: The number of examples to keep together sequentially. This
         controls the length of truncated backpropagation: smaller values mean
-        less sequential computation, which can lead to faster training, but
-        create a coarser approximation to the gradient (which would ideally be
-        computed by a forward pass over the entire sequence in order).
+          less sequential computation, which can lead to faster training, but
+          create a coarser approximation to the gradient (which would ideally be
+          computed by a forward pass over the entire sequence in order).
       batch_size: The number of windows to place together in a batch. Larger
         values will lead to more stable gradients during training.
       queue_capacity_multiplier: The capacity for the queues used to create
         batches, specified as a multiple of `batch_size` (for
-        RandomShuffleQueue) and `batch_size * window_size` (for the
-        FIFOQueue). Controls the maximum number of windows stored. Should be
-        greater than `shuffle_min_after_dequeue_multiplier`.
+        RandomShuffleQueue) and `batch_size * window_size` (for the FIFOQueue).
+        Controls the maximum number of windows stored. Should be greater than
+        `shuffle_min_after_dequeue_multiplier`.
       shuffle_min_after_dequeue_multiplier: The minimum number of windows in the
         RandomShuffleQueue after a dequeue, which controls the amount of entropy
         introduced during batching. Specified as a multiple of `batch_size`.
@@ -660,8 +682,8 @@ class RandomWindowInputFn(TimeSeriesInputFn):
         removes one source of non-determinism (and in combination with
         shuffle_seed should provide deterministic windowing).
       shuffle_seed: A seed for window shuffling. The default value of None
-        provides random behavior. With `shuffle_seed` set and
-        `num_threads=1`, provides deterministic behavior.
+        provides random behavior. With `shuffle_seed` set and `num_threads=1`,
+        provides deterministic behavior.
     """
     self._reader = time_series_reader
     self._window_size = window_size
@@ -703,22 +725,22 @@ class RandomWindowInputFn(TimeSeriesInputFn):
         features,
         batch_size=self._window_size * internal_passing_size + jitter,
         enqueue_many=True,
-        capacity=(self._queue_capacity_multiplier
-                  * internal_passing_size * self._window_size),
+        capacity=(self._queue_capacity_multiplier * internal_passing_size *
+                  self._window_size),
         num_threads=self._num_threads)
     raw_features_windowed = features_windowed
     if self._jitter:
       features_windowed = {
-          key: value[jitter:]
-          for key, value in features_windowed.items()}
+          key: value[jitter:] for key, value in features_windowed.items()
+      }
     features_windowed = {
         key: array_ops.reshape(
             value,
-            array_ops.concat(
-                [[internal_passing_size, self._window_size],
-                 array_ops.shape(value)[1:]],
-                axis=0))
-        for key, value in features_windowed.items()}
+            array_ops.concat([[internal_passing_size, self._window_size],
+                              array_ops.shape(value)[1:]],
+                             axis=0))
+        for key, value in features_windowed.items()
+    }
     batch_and_window_shape = tensor_shape.TensorShape(
         [internal_passing_size, self._window_size])
     for key in features_windowed.keys():
@@ -746,6 +768,7 @@ class RandomWindowInputFn(TimeSeriesInputFn):
           name="discarded_windows_limiter",
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES])
+
       def _initialized_limit_check():
         return control_flow_ops.cond(
             math_ops.reduce_any(non_decreasing),
@@ -785,19 +808,18 @@ def _canonicalize_numpy_data(data, require_single_batch):
   Args:
     data: A dictionary mapping keys to Numpy arrays, with several possible
       shapes (requires keys `TrainEvalFeatures.TIMES` and
-      `TrainEvalFeatures.VALUES`):
-        Single example; `TIMES` is a scalar and `VALUES` is either a scalar or a
-          vector of length [number of features].
+      `TrainEvalFeatures.VALUES`): Single example; `TIMES` is a scalar and
+        `VALUES` is either a scalar or a vector of length [number of features].
         Sequence; `TIMES` is a vector of shape [series length], `VALUES` either
-          has shape [series length] (univariate) or [series length x number of
-          features] (multivariate).
-        Batch of sequences; `TIMES` is a vector of shape [batch size x series
-          length], `VALUES` has shape [batch size x series length] or [batch
-          size x series length x number of features].
-      In any case, `VALUES` and any exogenous features must have their shapes
-      prefixed by the shape of the value corresponding to the `TIMES` key.
+        has shape [series length] (univariate) or [series length x number of
+        features] (multivariate). Batch of sequences; `TIMES` is a vector of
+        shape [batch size x series length], `VALUES` has shape [batch size x
+        series length] or [batch size x series length x number of features]. In
+        any case, `VALUES` and any exogenous features must have their shapes
+        prefixed by the shape of the value corresponding to the `TIMES` key.
     require_single_batch: If True, raises an error if the provided data has a
       batch dimension > 1.
+
   Returns:
     A dictionary with features normalized to have shapes prefixed with [batch
     size x series length]. The sizes of dimensions which were omitted in the
@@ -837,8 +859,8 @@ def _canonicalize_numpy_data(data, require_single_batch):
     # Add trivial batch and time dimensions for every feature
     features = {key: value[None, None, ...] for key, value in features.items()}
   if len(times.shape) == 1:  # shape [series length]
-    if len(features[feature_keys.TrainEvalFeatures.VALUES]
-           .shape) == 1:  # shape [series length]
+    if len(features[feature_keys.TrainEvalFeatures.VALUES].shape
+          ) == 1:  # shape [series length]
       # Add a feature dimension (with one feature)
       features[feature_keys.TrainEvalFeatures.VALUES] = features[
           feature_keys.TrainEvalFeatures.VALUES][..., None]
@@ -853,8 +875,8 @@ def _canonicalize_numpy_data(data, require_single_batch):
                features[feature_keys.TrainEvalFeatures.VALUES].shape))
     # Add trivial batch dimensions for every feature
     features = {key: value[None, ...] for key, value in features.items()}
-  elif len(features[feature_keys.TrainEvalFeatures.TIMES]
-           .shape) != 2:  # shape [batch size, series length]
+  elif len(features[feature_keys.TrainEvalFeatures.TIMES].shape
+          ) != 2:  # shape [batch size, series length]
     raise ValueError(
         ("Got an unexpected number of dimensions for times. Was expecting at "
          "most two ([batch size, series length]), but got shape {}.").format(

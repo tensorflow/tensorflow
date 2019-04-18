@@ -96,6 +96,31 @@ void MakeTensorWithQuantParam(const string& name,
   (*tensor)->quantization->zero_point.push_back(zero_point);
 }
 
+bool QuantizationParametersExist(const TensorT* tensor) {
+  return tensor->quantization != nullptr &&
+         !tensor->quantization->scale.empty() &&
+         !tensor->quantization->zero_point.empty();
+}
+
+bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
+               int tensor_index) {
+  const int buffer_index = subgraph->tensors[tensor_index]->buffer;
+  BufferT* buffer = model->buffers[buffer_index].get();
+  if (buffer == nullptr || buffer->data.empty()) {
+    return false;
+  }
+  return true;
+}
+
+bool IsQuantized(const SubGraphT* subgraph, int tensor_index) {
+  return subgraph->tensors[tensor_index]->type != TensorType_FLOAT32;
+}
+
+bool HasMinMax(const TensorT* tensor) {
+  return tensor->quantization && !tensor->quantization->min.empty() &&
+         !tensor->quantization->max.empty();
+}
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite

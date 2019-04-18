@@ -136,16 +136,4 @@ tf_module {
     name: "UnknownError"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "raise_exception_on_not_ok_status"
-    mtype: "<type \'type\'>"
-  }
-  member_method {
-    name: "error_code_from_exception_type"
-    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "exception_type_from_error_code"
-    argspec: "args=[\'error_code\'], varargs=None, keywords=None, defaults=None"
-  }
 }

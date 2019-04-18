@@ -1233,7 +1233,7 @@ def batch_normalization(x,
 
   References:
     Batch Normalization - Accelerating Deep Network Training by Reducing Internal Covariate Shift:
-      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):

@@ -28,6 +28,7 @@ from tensorflow.python.ops.gen_tpu_ops import *
 # pylint: enable=wildcard-import,unused-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _create_default_group_assignment():
@@ -89,6 +90,7 @@ def _all_to_all_grad(op, grad):
   ]
 
 
+@tf_export(v1=["tpu.cross_replica_sum"])
 def cross_replica_sum(x, group_assignment=None, name=None):
   """Sum the input tensor across replicas according to group_assignment.
 
@@ -376,6 +378,7 @@ def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
                                               aggregation_weights,
                                               table_ids,
                                               device_ordinal,
+                                              max_sequence_lengths=None,
                                               combiners=None,
                                               mode_override=None,
                                               name=None):
@@ -403,6 +406,11 @@ def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
       sample_indices, embedding_indices and aggregation_weights.
     device_ordinal: The TPU device to use. Should be >= 0 and less than the
       number of TPU cores in the task on which the node is placed.
+    max_sequence_lengths: A list of integers, the size of which is equal to
+      sample_indices. If equal to 0, the corresponding feature is considered to
+      be a non-sequence feature, If greater than 0, the corresponding feature is
+      a sequence feature with the given maximal length. If None, then we assume
+      a list of all zeroes.
     combiners: A list of string scalars, one for each embedding table that
       specify how to normalize the embedding activations after weighted
       summation. Supported combiners are 'mean', 'sum', or 'sqrtn'. It is
@@ -427,6 +435,7 @@ def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
       aggregation_weights=aggregation_weights,
       table_ids=table_ids,
       device_ordinal=device_ordinal,
+      max_sequence_lengths=max_sequence_lengths,
       combiners=combiners,
       mode_override=mode_override,
       name=name)

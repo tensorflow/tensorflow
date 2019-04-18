@@ -316,17 +316,17 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     output_node_names = "save/restore_all"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
-    with self.assertRaises(ValueError):
-      freeze_graph.freeze_graph_with_def_protos(
-          input_graph_def=sess.graph_def,
-          input_saver_def=None,
-          input_checkpoint=checkpoint_path,
-          output_node_names=output_node_names,
-          restore_op_name="save/restore_all",  # default value
-          filename_tensor_name="save/Const:0",  # default value
-          output_graph=output_graph_path,
-          clear_devices=False,
-          initializer_nodes="")
+    return_value = freeze_graph.freeze_graph_with_def_protos(
+        input_graph_def=sess.graph_def,
+        input_saver_def=None,
+        input_checkpoint=checkpoint_path,
+        output_node_names=output_node_names,
+        restore_op_name="save/restore_all",  # default value
+        filename_tensor_name="save/Const:0",  # default value
+        output_graph=output_graph_path,
+        clear_devices=False,
+        initializer_nodes="")
+    self.assertTrue(return_value, -1)
 
 
 if __name__ == "__main__":

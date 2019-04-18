@@ -143,6 +143,7 @@ class CriticalSection(object):
   def __init__(self, name=None, shared_name=None,
                critical_section_def=None, import_scope=None):
     """Creates a critical section."""
+    context.ensure_initialized()
     if critical_section_def and name is not None:
       raise ValueError("critical_section_def and shared_name are "
                        "mutually exclusive.")

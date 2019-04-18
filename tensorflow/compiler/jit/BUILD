@@ -371,6 +371,7 @@ cc_library(
     srcs = ["resource_operation_safety_analysis.cc"],
     hdrs = ["resource_operation_safety_analysis.h"],
     deps = [
+        ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/core:framework",
@@ -521,6 +522,7 @@ cc_library(
         ":device_info_cache",
         ":encapsulate_util",
         ":flags",
+        ":resource_operation_safety_analysis",
         ":shape_inference_helpers",
         ":union_find",
         ":xla_cluster_util",
@@ -565,7 +567,6 @@ cc_library(
     hdrs = ["xla_cluster_util.h"],
     deps = [
         ":flags",
-        ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -729,44 +730,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "xla_fusion_optimizer",
-    srcs = ["xla_fusion_optimizer.cc"],
-    hdrs = ["xla_fusion_optimizer.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":common",
-        ":compilation_passes",
-        ":union_find",
-        ":xla_cluster_util",
-        "//tensorflow/compiler/jit/graphcycles",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "xla_fusion_optimizer_test",
-    srcs = ["xla_fusion_optimizer_test.cc"],
-    deps = [
-        ":common",
-        ":xla_cluster_util",
-        ":xla_fusion_optimizer",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:resource_variable_ops",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 

@@ -287,24 +287,25 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
 
 @keras_export('keras.losses.BinaryCrossentropy')
 class BinaryCrossentropy(LossFunctionWrapper):
-  """Computes the crossentropy loss between the labels and predictions.
+  """Computes the cross-entropy loss between true labels and predicted labels.
 
-  Use this crossentropy loss function when there are only two label classes
-  (assumed to be 0 and 1). There should be a single floating point value per
-  feature.
+  Use this cross-entropy loss when there are only two label classes (assumed to
+  be 0 and 1). For each example, there should be a single floating-point value
+  per prediction.
 
-  In the snippet below, there is a single floating pointing value per example,
-  and the shape of both `y_pred` and `y_true` are `[batch_size]`.
+  In the snippet below, each of the four examples has only a single
+  floating-pointing value, and both `y_pred` and `y_true` have the shape
+  `[batch_size]`.
 
   Usage:
 
   ```python
   bce = tf.keras.losses.BinaryCrossentropy()
   loss = bce([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Loss: ', loss.numpy())  # Loss: 12.007
+  print('Loss: ', loss.numpy())  # Loss: 11.522857
   ```
 
-  Usage with tf.keras API:
+  Usage with the `tf.keras` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -312,12 +313,18 @@ class BinaryCrossentropy(LossFunctionWrapper):
   ```
 
   Args:
-    from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
-      we assume that `y_pred` encodes a probability distribution.
-    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
-    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
-      Default value is `SUM_OVER_BATCH_SIZE`.
-    name: Optional name for the op.
+    from_logits: Whether to interpret `y_pred` as a tensor of
+      [logit](https://en.wikipedia.org/wiki/Logit) values. By default, we assume
+        that `y_pred` contains probabilities (i.e., values in [0, 1]).
+    label_smoothing: Float in [0, 1]. When 0, no smoothing occurs. When > 0, we
+      compute the loss between the predicted labels and a smoothed version of
+      the true labels, where the smoothing squeezes the labels towards 0.5.
+      Larger values of `label_smoothing` correspond to heavier smoothing.
+    reduction: (Optional) The type of `tf.keras.losses.Reduction` to use to
+      combine the computed loss values for the individual examples into a single
+      loss value for the entire batch of examples. Defaults to
+      `SUM_OVER_BATCH_SIZE`.
+    name: (Optional) Name for the op.
   """
 
   def __init__(self,
@@ -419,7 +426,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.SparseCategoricalCrossentropy())
-  ````
+  ```
 
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,

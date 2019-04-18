@@ -875,6 +875,7 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    tags = ["config-cuda-only"],
     use_xla_device = False,
     deps = [
         ":xla_test",
@@ -921,6 +922,7 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    tags = ["config-cuda-only"],
     use_xla_device = False,
     deps = [
         ":xla_test",

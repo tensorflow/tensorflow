@@ -135,11 +135,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "20b47f0cfe6bf8991a28b02589caaa38c41a004f2f25046b42c50cb6210fcf43",
-        strip_prefix = "abseil-cpp-93dfcf74cb5fccae3da07897d8613ae6cab958a0",
+        sha256 = "00d5ad2c5702be911239df287504f9da6985e8bc563ec6a8436552da1ac2938c",
+        strip_prefix = "abseil-cpp-d902eb869bcfacc1bad14933ed9af4bed006d481",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/93dfcf74cb5fccae3da07897d8613ae6cab958a0.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/93dfcf74cb5fccae3da07897d8613ae6cab958a0.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/d902eb869bcfacc1bad14933ed9af4bed006d481.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/d902eb869bcfacc1bad14933ed9af4bed006d481.tar.gz",
         ],
     )
 
@@ -147,11 +147,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "048c7e33df1f1eab470e4b09f14c9ed508b91cb813750b4be2c012991363e735",
-        strip_prefix = "eigen-eigen-48dfc9c91096",
+        sha256 = "8b3e1c0494af6b616ef3f2a107e093be1ea57c6a34f277edb2bdb1dbf3e3870a",
+        strip_prefix = "eigen-eigen-4fe5a1014743",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/48dfc9c91096.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/48dfc9c91096.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/4fe5a1014743.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/4fe5a1014743.tar.gz",
         ],
     )
 
@@ -190,15 +190,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "06bc735a117ec7ea92ea580e7f2ffa4b1cd7539e0e04f847bf500588d7f0fe90",
-        strip_prefix = "google-cloud-cpp-0.7.0",
+        sha256 = "f5600fdf3efd28e3142a60c20574e349511104fc6f658faf7974f6ae2def245a",
+        strip_prefix = "google-cloud-cpp-0.8.1",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
+            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.8.1.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.8.1.tar.gz",
         ],
     )
 
@@ -326,6 +326,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         strip_prefix = "abseil-py-pypi-v0.7.1",
         system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
         system_link_files = {
+            "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
             "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
         },
@@ -368,12 +369,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         },
     )
 
+    # 5902e759108d14ee8e6b0b07653dac2f4e70ac73 is based on 3.7.1 with a fix for BUILD file.
     PROTOBUF_URLS = [
-        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz",
-        "https://github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz",
+        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
+        "https://github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
     ]
-    PROTOBUF_SHA256 = "2244b0308846bb22b4ff0bcc675e99290ff9f1115553ae9671eba1030af31bc0"
-    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1.2"
+    PROTOBUF_SHA256 = "1c020fafc84acd235ec81c6aac22d73f23e85a700871466052ff231d69c1b17a"
+    PROTOBUF_STRIP_PREFIX = "protobuf-5902e759108d14ee8e6b0b07653dac2f4e70ac73"
 
     tf_http_archive(
         name = "protobuf_archive",
@@ -482,12 +484,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "grpc",
-        sha256 = "e1e3a9edbfbe4230bee174d4aa45a15c1ec2b203cedb02d20df3e6345d8fa63e",
-        strip_prefix = "grpc-62688b6a05cc85b47fb77dd408611734253e47e2",
+        sha256 = "67a6c26db56f345f7cee846e681db2c23f919eba46dd639b09462d1b6203d28c",
+        strip_prefix = "grpc-4566c2a29ebec0835643b972eb99f4306c4234a3",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/github.com/grpc/grpc/archive/62688b6a05cc85b47fb77dd408611734253e47e2.tar.gz",
-            "https://github.com/grpc/grpc/archive/62688b6a05cc85b47fb77dd408611734253e47e2.tar.gz",
+            "http://mirror.tensorflow.org/github.com/grpc/grpc/archive/4566c2a29ebec0835643b972eb99f4306c4234a3.tar.gz",
+            "https://github.com/grpc/grpc/archive/4566c2a29ebec0835643b972eb99f4306c4234a3.tar.gz",
         ],
     )
 
@@ -518,11 +520,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "84f9bbbe7184fb124663e0faa61c5775bb8e2d15cd61bfaba959a10febe2278b",
-        strip_prefix = "llvm-8abcd764922816e9234d2bff5b210fa0dd1b7d11",
+        sha256 = "613eca178a5c448a56f3031b2542fd4e7570c1102786262d8aaa6e08ba1f2abe",
+        strip_prefix = "llvm-cd248aacbf298f8a909256d959ca5ca25c97aa4c",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/8abcd764922816e9234d2bff5b210fa0dd1b7d11.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/8abcd764922816e9234d2bff5b210fa0dd1b7d11.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cd248aacbf298f8a909256d959ca5ca25c97aa4c.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/cd248aacbf298f8a909256d959ca5ca25c97aa4c.tar.gz",
         ],
     )
 
@@ -890,6 +892,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "b69e83658513215b8d1443544d0549b7d231b9f201f6fc787a2b2218b408181e",
         strip_prefix = "pybind11-2.2.4",
         build_file = clean_dep("//third_party:pybind11.BUILD"),
+    )
+
+    tf_http_archive(
+        name = "wrapt",
+        build_file = clean_dep("//third_party:wrapt.BUILD"),
+        sha256 = "8a6fb40e8f8b6a66b4ba81a4044c68e6a7b1782f21cfabc06fb765332b4c3e51",
+        strip_prefix = "wrapt-1.11.1/src/wrapt",
+        system_build_file = clean_dep("//third_party/systemlibs:wrapt.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+            "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+        ],
     )
 
     ##############################################################################

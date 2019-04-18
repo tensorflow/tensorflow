@@ -974,8 +974,9 @@ TEST_F(FunctionLibraryRuntimeTest,
   }
 }
 
-TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   using test::function::NDef;
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 
   const FunctionDef func =
       FDH::Create("AddAndMul", {"i: float"}, {"o: float"}, {},
@@ -988,34 +989,67 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
   // Construct a graph:
   //   a = Arg[dtype=DT_FLOAT]
   //   b = FunctionWithControlOutputs(a)
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
-
-  Scope s = Scope::NewRootScope();
-  TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
-  auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
-  auto b = test::function::Call(&s, "b", "AddAndMul", {a});
-  TF_ASSERT_OK(s.ToGraph(g.get()));
-
-  ExpandInlineFunctionsOptions opts;
-  opts.native_options.keep_caller_fetchable = true;
-  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+  auto construct_graph = [this](std::unique_ptr<Graph>* g) -> Status {
+    Scope s = Scope::NewRootScope();
+    TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "AddAndMul", {a});
+    TF_RETURN_IF_ERROR(s.ToGraph(g->get()));
+    return Status::OK();
+  };
 
   const string input_node = "Func/b/input/_0";
   const string output_node = "Func/b/output/_1";
   const string output_control_node = "Func/b/output_control_node/_2";
 
-  ExpandInlineFunctions(flr0_, g.get(), opts);
-  {
-    GraphDef expected = test::function::GDef(
-        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
-         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
-         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
-         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
-         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
-         NDef(output_control_node, "NoOp", {"^b/add"}, {}),
-         NDef("b", "IdentityN", {output_node, "^" + output_control_node},
-              {{"T", DataTypeSlice{DT_FLOAT}}})},
+  // Construct expected graph after function inlining.
+  auto expected_graph = [&](const NodeDef& caller) -> GraphDef {
+    return test::function::GDef(
+        {
+            NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+            NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+            NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+            NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+            NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+            NDef(output_control_node, "NoOp", {"^b/add"}, {}),
+            caller,  // Keep node in a graph with the same name as caller node.
+        },
         {func});
+  };
+
+  ExpandInlineFunctionsOptions opts;
+  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+
+  // Keep inlined function call node fetchable.
+  {
+    opts.native_options.keep_caller_node = KeepCallerNode::kFetchable;
+
+    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected =
+        expected_graph(/*caller=*/
+                       NDef("b", "IdentityN",
+                            {output_node, "^" + output_control_node},
+                            {{"T", DataTypeSlice{DT_FLOAT}}}));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Keep inlined function call node targetable.
+  {
+    opts.native_options.keep_caller_node = KeepCallerNode::kTargetable;
+
+    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected =
+        expected_graph(/*caller=*/
+                       NDef("b", "NoOp", {"^" + output_control_node}, {}));
 
     GraphDef actual;
     g->ToGraphDef(&actual);

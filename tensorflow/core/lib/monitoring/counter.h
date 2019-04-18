@@ -27,6 +27,7 @@ limitations under the License.
 #include <atomic>
 #include <map>
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/logging.h"
@@ -97,6 +98,8 @@ class Counter {
   template <typename... Labels>
   CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
 
+  Status GetStatus() { return status_; }
+
  private:
   explicit Counter(
       const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def)
@@ -109,9 +112,18 @@ class Counter {
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
-            })) {}
+            })) {
+    if (registration_handle_) {
+      status_ = Status::OK();
+    } else {
+      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+                       "Another metric with the same name already exists.");
+    }
+  }
 
   mutable mutex mu_;
+
+  Status status_;
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.

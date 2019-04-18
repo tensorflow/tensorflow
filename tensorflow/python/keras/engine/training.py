@@ -35,9 +35,9 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.distribute import training_distributed
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
+from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
@@ -216,11 +216,6 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     run_eagerly = kwargs.pop('run_eagerly', None)
-    if run_eagerly and getattr(self, '_contains_symbolic_tensors', False):
-      raise ValueError(
-          'We currently do not support enabling `run_eagerly` on compile if '
-          '`model.add_loss(tensor)` or `model.add_metric(tensor)` '
-          'has been called.')
 
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
@@ -262,12 +257,6 @@ class Model(network.Network):
             'We currently do not support enabling `run_eagerly` with '
             'distribution strategy.')
 
-      if getattr(self, '_contains_symbolic_tensors', False):
-        raise ValueError(
-            'We currently do not support compiling the model with distribution '
-            'strategy if `model.add_loss(tensor)` or `model.add_metric(tensor)`'
-            ' has been called.')
-
       if not self.built or not self.inputs or not self.outputs:
         raise ValueError(
             'We currently do not support distribution strategy with a '
@@ -296,7 +285,8 @@ class Model(network.Network):
     # Set DistributionStrategy specific parameters.
     self._distributed_model_cache = {}
 
-    if self._distribution_strategy is not None:
+    if (not context.executing_eagerly() and
+        self._distribution_strategy is not None):
       # Ensures a Session is created and configured correctly for Distribution
       # Strategy.
       K.configure_and_create_distributed_session(self._distribution_strategy)
@@ -1339,13 +1329,8 @@ class Model(network.Network):
     inputs, _, _ = self._standardize_user_data(
         x, extract_tensors_from_dataset=True)
     if self.run_eagerly:
-      if (isinstance(inputs, iterator_ops.EagerIterator) or
-          (isinstance(inputs, dataset_ops.DatasetV2))):
-        inputs = training_utils.cast_if_floating_dtype(inputs)
-      elif isinstance(inputs, collections.Sequence):
-        inputs = [
-            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
-
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      if isinstance(inputs, collections.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1711,6 +1696,10 @@ class Model(network.Network):
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
                 weighted_losses, reduction=current_loss_reduction)
+            if (current_loss_reduction ==
+                losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+              output_loss = losses_utils.scale_loss_for_distribution(
+                  output_loss)
           else:
             # Compute the stateless loss value for a custom loss class.
             # Here we assume that the class takes care of loss reduction
@@ -1718,14 +1707,19 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            # For custom losses we assume reduction was mean.
+            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor and function for the loss.
           # Compute the stateful loss value.
           if weighted_losses is not None:
             # TODO(b/120571621): Directly call metric when the bug is fixed.
-            aggregated_output_loss = self._call_fn_for_each_replica(
-                self._output_loss_metrics[i], weighted_losses)
+            aggregated_output_loss = (
+                distributed_training_utils.call_replica_local_fn(
+                    self._output_loss_metrics[i],
+                    weighted_losses,
+                    strategy=self._distribution_strategy))
           else:
             # Custom loss class.
             aggregated_output_loss = self._call_metric_fn(
@@ -1744,9 +1738,11 @@ class Model(network.Network):
           total_loss = 0.
 
       # Add regularization penalties and other layer-specific losses.
-      if self.losses:
+      custom_losses = self.get_losses_for(None) + self.get_losses_for(
+          self.inputs)
+      if custom_losses:
         total_loss += losses_utils.scale_loss_for_distribution(
-            math_ops.add_n(self.losses))
+            math_ops.add_n(custom_losses))
     return total_loss
 
   def _get_callback_model(self):
@@ -1801,23 +1797,48 @@ class Model(network.Network):
       first_layer = layers[0]
       static_batch_size = training_utils.get_static_batch_size(first_layer)
       if static_batch_size is not None:
+        split_batch_size = self._distribution_strategy and \
+            distributed_training_utils.global_batch_size_supported(
+                self._distribution_strategy)
+        if split_batch_size:
+          num_replicas = self._distribution_strategy.num_replicas_in_sync
 
         # Check `batch_size` argument is consistent with InputLayer.
-        if batch_size is not None and batch_size != static_batch_size:
-          raise ValueError('The `batch_size` argument value {} is incompatible '
-                           'with the specified batch size of your Input Layer: '
-                           '{}'.format(batch_size, static_batch_size))
+        if batch_size is not None:
+          if split_batch_size:
+            if batch_size % num_replicas != 0:
+              raise ValueError('The `batch_size` argument value {} cannot be '
+                               'divisible by number of replicas {}'.format(
+                                   batch_size, num_replicas))
+            per_replica_batch_size = batch_size // num_replicas
+          else:
+            per_replica_batch_size = batch_size
+
+          if per_replica_batch_size != static_batch_size:
+            raise ValueError('The `batch_size` argument value {} is '
+                             'incompatible with the specified batch size of '
+                             'your Input Layer: {}'.format(
+                                 per_replica_batch_size, static_batch_size))
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
-                          iterator_ops.EagerIterator)):
+                          iterator_ops.IteratorV2)):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
-          if ds_batch_size is not None and ds_batch_size != static_batch_size:
-            raise ValueError('The batch output shape of your `Dataset` is {}, '
-                             'which is incompatible with the specified batch '
-                             'size of your Input Layer: {}'.format(
-                                 ds_batch_size, static_batch_size))
+          if ds_batch_size is not None:
+            if split_batch_size:
+              if ds_batch_size % num_replicas != 0:
+                raise ValueError(
+                    'The batch output shape of your `Dataset` {} '
+                    'cannot be divisible by number of replicas {}'.format(
+                        ds_batch_size, num_replicas))
+              ds_batch_size = ds_batch_size // num_replicas
+
+            if ds_batch_size != static_batch_size:
+              raise ValueError('The batch output shape of your `Dataset` is '
+                               '{}, which is incompatible with the specified '
+                               'batch size of your Input Layer: {}'.format(
+                                   ds_batch_size, static_batch_size))
 
         # Set inferred batch size from the InputLayer.
         if steps is None:
@@ -1984,26 +2005,14 @@ class Model(network.Network):
   def _call_metric_fn(self, metric_fn, y_true, y_pred, weights, mask=None):
     # TODO(b/120571621): Remove this function when the bug is fixed.
     """Helper function to call metric function with distribution strategy."""
-    return self._call_fn_for_each_replica(
+    return distributed_training_utils.call_replica_local_fn(
         training_utils.call_metric_function,
         metric_fn,
         y_true,
         y_pred,
         weights=weights,
-        mask=mask)
-
-  def _call_fn_for_each_replica(self, fn, *args, **kwargs):
-    # TODO(b/120571621): We want to avoid metric reductions here since
-    # since TPUStrategy does not implement replica local variables.
-    # Remove this hack once we support TPUReplicaLocalVariables.
-    is_tpu = distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy)
-    if ((not is_tpu) and self._distribution_strategy and
-        distribution_strategy_context.in_cross_replica_context()):
-      with self._distribution_strategy.scope():
-        return self._distribution_strategy.extended.call_for_each_replica(
-            fn, args, kwargs)
-    return fn(*args, **kwargs)
+        mask=mask,
+        strategy=self._distribution_strategy)
 
   def _handle_per_output_metrics(self,
                                  metrics_dict,
@@ -2623,7 +2632,7 @@ class Model(network.Network):
 
   def _unpack_validation_data(self, validation_data):
     if (isinstance(validation_data, (iterator_ops.Iterator,
-                                     iterator_ops.EagerIterator,
+                                     iterator_ops.IteratorV2,
                                      dataset_ops.DatasetV2))):
       val_x = validation_data
       val_y = None

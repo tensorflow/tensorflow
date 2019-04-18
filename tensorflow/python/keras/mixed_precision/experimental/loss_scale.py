@@ -79,7 +79,8 @@ class LossScale(trackable.Trackable):
     Args:
       grads: A list of unscaled gradients, each which is the gradient of the
         loss with respect to a weight. The gradients should have already been
-        divided by the loss scale being before passed to this function.
+        divided by the loss scale being before passed to this function. 'None'
+        gradients are accepted, and are ignored.
 
     Returns:
       update_op: In eager mode, None. In graph mode, an op to update the loss
@@ -148,10 +149,10 @@ class FixedLossScale(LossScale):
 
     Args:
       loss_scale_value: A Python float. Its ideal value varies depending on
-      models to run. Choosing a too small loss_scale might affect model quality;
-      a too big loss_scale might cause inf or nan. There is no single right
-      loss_scale to apply. There is no harm choosing a relatively big number as
-      long as no nan or inf is encountered in training.
+        models to run. Choosing a too small loss_scale might affect model
+        quality; a too big loss_scale might cause inf or nan. There is no single
+        right loss_scale to apply. There is no harm choosing a relatively big
+        number as long as no nan or inf is encountered in training.
 
     Raises:
       ValueError: If loss_scale is less than 1.
@@ -161,25 +162,30 @@ class FixedLossScale(LossScale):
       raise ValueError('loss_scale_value must be a Python int or float.')
     if loss_scale_value < 1:
       raise ValueError('loss_scale_value must be at least 1.')
-    self._python_loss_scale = float(loss_scale_value)
-    self._tensor_loss_scale = ops.convert_to_tensor(self._python_loss_scale,
-                                                    dtype=dtypes.float32)
+    # It's important we do not create tensors in the constructor, as such
+    # tensors might be on a different device or tf.function vs when the tensor
+    # is used. This would hurt performance. Therefore, we do not create a tensor
+    # from loss_scale_value, but instead leave it as a Python float.
+    # TODO(reedwm): Also do not create tensors in the DynamicLossScale
+    # constructor.
+    self._loss_scale_value = float(loss_scale_value)
 
   def __call__(self):
-    return self._tensor_loss_scale
+    return ops.convert_to_tensor(self._loss_scale_value)
 
   def update(self, grads):
     del grads
     return control_flow_ops.no_op(), True
 
   def get_config(self):
-    return {'loss_scale_value': self._python_loss_scale}
+    return {'loss_scale_value': self._loss_scale_value}
 
 
 def _is_all_finite(grads):
   """Returns a scalar boolean tensor indicating if all gradients are finite."""
-  is_finite_per_grad = [math_ops.reduce_all(math_ops.is_finite(g))
-                        for g in grads]
+  is_finite_per_grad = [
+      math_ops.reduce_all(math_ops.is_finite(g)) for g in grads if g is not None
+  ]
   return math_ops.reduce_all(is_finite_per_grad)
 
 
@@ -285,7 +291,7 @@ class DynamicLossScale(LossScale):
       is_finite_float = distribution.extended.call_for_each_replica(
           get_is_finite, args=(grads,))
       reduced_is_finite_float = distribution.reduce(reduce_util.ReduceOp.SUM,
-                                                    is_finite_float)
+                                                    is_finite_float, axis=None)
       is_finite = math_ops.equal(reduced_is_finite_float,
                                  distribution.num_replicas_in_sync)
     else:

@@ -115,7 +115,7 @@ class Independent(distribution_lib.Distribution):
       reinterpreted_batch_ndims: Scalar, integer number of rightmost batch dims
         which will be regarded as event dims. When `None` all but the first
         batch axis (batch axis 0) will be transferred to event dimensions
-        (analogous to `tf.layers.flatten`).
+        (analogous to `tf.compat.v1.layers.flatten`).
       validate_args: Python `bool`.  Whether to validate input with asserts.
         If `validate_args` is `False`, and the inputs are invalid,
         correct behavior is not guaranteed.

@@ -252,6 +252,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
+
+  // Remove zero-sized HLO from the input so that other passes don't have to
+  // handle it.
+  pipeline.AddPass<ZeroSizedHloElimination>();
+
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
@@ -270,6 +275,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // After canonicalization, there may be more batch dots that can be
+  // simplified.
+  pipeline.AddPass<BatchDotSimplification>();
   auto cost_model = [](HloInstruction* conv) {
     // We need a cost model for CPUs. Currently, do nothing.
     return false;

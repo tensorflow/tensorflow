@@ -196,8 +196,8 @@ class StreamExecutorInterface {
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
-  virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
-                                  uint64 size) = 0;
+  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
+                             uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See

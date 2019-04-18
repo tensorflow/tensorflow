@@ -120,13 +120,13 @@ class _ReplicaDeviceChooser(object):
 
       current_job, ps_job = current_device.job, ps_device.job
       if ps_job and (not current_job or current_job == ps_job):
-        ps_device.task = self._ps_strategy(op)
+        ps_device = ps_device.replace(task=self._ps_strategy(op))
 
-      ps_device.merge_from(current_device)
+      ps_device = ps_device.make_merged_spec(current_device)
       return ps_device.to_string()
 
     worker_device = pydev.DeviceSpec.from_string(self._worker_device or "")
-    worker_device.merge_from(current_device)
+    worker_device = worker_device.make_merged_spec(current_device)
     return worker_device.to_string()
 
 

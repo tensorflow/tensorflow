@@ -711,9 +711,24 @@ class FunctionLibraryRuntime {
 
   typedef uint64 LocalHandle;
 
+  // Creates a copy of ProcessFunctionLibraryRuntime (transferring ownership to
+  // the caller), FunctionLibraryRuntime (owned by the returned
+  // ProcessFunctionLibraryRuntime), FunctionLibraryDefinition (transferring
+  // ownership to the caller). Note that both the ProcessFunctionLibraryRuntime
+  // and FunctionLibraryRuntime borrow a pointer to the
+  // FunctionLibraryDefinition and so the FunctionLibraryDefinition should
+  // outlive both.
+  //
+  // The `skip_flib_def` argument controls whether the method should clone the
+  // FunctionLibraryDefinition (default behavior) or return an empty function
+  // library. The latter is used by tf.data, which manages
+  // FunctionLibraryDefinitions for its functions independently (and passes
+  // these into the FunctionLibraryRuntime through an overlay), to avoid linear
+  // runtime w.r.t. to number of functions in the current function library.
   virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                        std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-                       FunctionLibraryRuntime** out_flr) = 0;
+                       FunctionLibraryRuntime** out_flr,
+                       bool skip_flib_def = false) = 0;
 
   // Returns the name of the executor class (in the sense of
   // `ExecutorFactory::GetFactory()`) that will be used based on the given

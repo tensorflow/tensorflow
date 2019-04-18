@@ -707,6 +707,10 @@ class PoolingDescriptor {
     propagate_nans_ = value;
     return *this;
   }
+  PoolingDescriptor& set_name(const string& name) {
+    name_ = name;
+    return *this;
+  }
 
   int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
@@ -728,11 +732,13 @@ class PoolingDescriptor {
   absl::Span<const int64> padding() const { return padding_; }
   absl::Span<const int64> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
+  string name() const { return name_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
   bool propagate_nans_;
+  string name_;  // Name as in Tensorflow NodeDef, for debugging purposes.
 
   // Stored as: ..., y, x.
   std::vector<int64> window_;

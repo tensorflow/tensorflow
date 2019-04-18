@@ -372,14 +372,13 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         y = layer4(y)
         if use_loss_scaling:
           # The gradient of 'y' at this point is 1. With loss scaling, the
-          # gradient is 'loss_scale'. The DistributionStrategy additionally
-          # scales the gradient by 1/num_replicas in_sync. We divide by the
-          # batch size of 2 since the loss is averaged across batch elements.
-          expected_gradient = loss_scale / strategy.num_replicas_in_sync / 2
+          # gradient is 'loss_scale'. We divide by the batch size of 2 since the
+          # loss is averaged across batch elements.
+          expected_gradient = loss_scale / 2
           identity_with_grad_check_fn = (
               mp_test_util.create_identity_with_grad_check_fn(
                   expected_dtype=dtypes.float16,
-                  expected_gradient=[expected_gradient] * 2))
+                  expected_gradient=[expected_gradient]))
           y = core.Lambda(identity_with_grad_check_fn)(y)
         y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
@@ -417,13 +416,12 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
   def test_dynamic_loss_scaling(self, strategy_fn):
     strategy = strategy_fn()
     initial_loss_scale = 2.
-    batch_size = 2
-    expected_gradient = backend.variable(
-        [initial_loss_scale / strategy.num_replicas_in_sync / batch_size] * 2,
-        dtype=dtypes.float16)
+    batch_size = 4
+    expected_gradient = backend.variable([initial_loss_scale / batch_size],
+                                         dtype=dtypes.float16)
     # If this variable is set to True, the model below will have NaN gradients
     have_nan_gradients = backend.variable(False, dtype=dtypes.bool)
-    with strategy_fn().scope():
+    with strategy.scope():
       with policy.policy_scope(policy.Policy('infer_float32_vars')):
         x = layers.Input(shape=(1,), batch_size=batch_size,
                          dtype=dtypes.float16)

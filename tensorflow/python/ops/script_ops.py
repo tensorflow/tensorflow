@@ -64,6 +64,8 @@ class EagerFunc(object):
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
 
+    context.ensure_initialized()
+
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
 
@@ -313,10 +315,10 @@ def eager_py_func(func, inp, Tout, name=None):
   This function allows expressing computations in a TensorFlow graph as
   Python functions. In particular, it wraps a Python function `func`
   in a once-differentiable TensorFlow operation that executes it with eager
-  execution enabled. As a consequence, `tf.contrib.eager.py_func` makes it
+  execution enabled. As a consequence, `tf.py_function` makes it
   possible to express control flow using Python constructs (`if`, `while`,
   `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
-  `tf.while_loop`). For example, you might use `tf.contrib.eager.py_func` to
+  `tf.while_loop`). For example, you might use `tf.py_function` to
   implement the log huber function:
 
   ```python
@@ -329,7 +331,7 @@ def eager_py_func(func, inp, Tout, name=None):
   x = tf.placeholder(tf.float32)
   m = tf.placeholder(tf.float32)
 
-  y = tf.contrib.eager.py_func(func=log_huber, inp=[x, m], Tout=tf.float32)
+  y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
   dy_dx = tf.gradients(y, x)[0]
 
   with tf.Session() as sess:
@@ -339,24 +341,24 @@ def eager_py_func(func, inp, Tout, name=None):
     y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
   ```
 
-  You can also use `tf.contrib.eager.py_func` to debug your models at runtime
+  You can also use `tf.py_function` to debug your models at runtime
   using Python tools, i.e., you can isolate portions of your code that
   you want to debug, wrap them in Python functions and insert `pdb` tracepoints
   or print statements as desired, and wrap those functions in
-  `tf.contrib.eager.py_func`.
+  `tf.py_function`.
 
   For more information on eager execution, see the
   [Eager guide](https://tensorflow.org/guide/eager).
 
-  `tf.contrib.eager.py_func` is similar in spirit to `tf.py_func`, but unlike
+  `tf.py_function` is similar in spirit to `tf.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
   Python function. In particular, while `tf.py_func` only runs on CPUs and
   wraps functions that take NumPy arrays as inputs and return NumPy arrays as
-  outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
+  outputs, `tf.py_function` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
-  Like `tf.py_func`, `tf.contrib.eager.py_func` has the following limitations
+  Like `tf.py_func`, `tf.py_function` has the following limitations
   with respect to serialization and distribution:
 
   * The body of the function (i.e. `func`) will not be serialized in a
@@ -364,9 +366,9 @@ def eager_py_func(func, inp, Tout, name=None):
     serialize your model and restore it in a different environment.
 
   * The operation must run in the same address space as the Python program
-    that calls `tf.contrib.eager.py_func()`. If you are using distributed
+    that calls `tf.py_function()`. If you are using distributed
     TensorFlow, you must run a `tf.train.Server` in the same process as the
-    program that calls `tf.contrib.eager.py_func()` and you must pin the created
+    program that calls `tf.py_function()` and you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
 
 
@@ -479,7 +481,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
 py_func.__doc__ = "%s" % py_func_common.__doc__
 
 
-@tf_export("numpy_function", v1=[])
+@tf_export("numpy_function")
 def numpy_function(func, inp, Tout, name=None):
   return py_func_common(func, inp, Tout, stateful=True, name=name)
 

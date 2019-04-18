@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
@@ -66,6 +67,14 @@ one_device_strategy_gpu = combinations.NamedDistribution(
     "OneDeviceGPU",
     lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
     required_gpus=1)
+one_device_strategy_on_worker_1 = combinations.NamedDistribution(
+    "OneDeviceOnWorker1CPU",
+    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/cpu:0"),  # pylint: disable=line-too-long
+    required_gpus=None)
+one_device_strategy_gpu_on_worker_1 = combinations.NamedDistribution(
+    "OneDeviceOnWorker1GPU",
+    lambda: one_device_lib.OneDeviceStrategy("/job:worker/replica:0/task:1/gpu:0"),  # pylint: disable=line-too-long
+    required_gpus=1)
 tpu_strategy = combinations.NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2), required_tpu=True)
 tpu_strategy_one_step = combinations.NamedDistribution(
@@ -91,6 +100,10 @@ mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
 mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
+    required_gpus=2)
+central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
+    "CentralStorage2GPUs",
+    lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
     required_gpus=2)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(

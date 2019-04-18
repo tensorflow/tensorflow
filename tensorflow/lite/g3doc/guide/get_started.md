@@ -247,10 +247,9 @@ conversion tool. Assuming that the saved model is stored in saved_model_dir, the
 quantized tflite flatbuffer can be generated in command line:
 
 ```
-converter=tf.contrib.lite.TocoConverter.from_saved_model(saved_model_dir)
-converter.post_training_quantize=True
-tflite_quantized_model=converter.convert()
-open(“quantized_model.tflite”, “wb”).write(tflite_quantized_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
+tflite_quant_model = converter.convert()
 ```
 
 Read the full documentation [here](../performance/post_training_quantization.md)

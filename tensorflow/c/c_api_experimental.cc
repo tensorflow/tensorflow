@@ -799,8 +799,8 @@ TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
   const auto& op_type = op->operation.Name();
   auto op_name =
       tensorflow::strings::StrCat(op_type, "_", trace_ctx->node_counter++);
-  auto* desc =
-      TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str());
+  std::unique_ptr<TF_OperationDescription> desc(
+      TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str()));
 
   VLOG(1) << "Adding attrs.";
   tensorflow::AttrValueMap attrs;
@@ -814,30 +814,42 @@ TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
   size_t inputIndex = 0;
   const tensorflow::OpDef& op_def = desc->node_builder.op_def();
   for (const tensorflow::OpDef::ArgDef& input_arg : op_def.input_arg()) {
-    // TODO(bgogul): Add support for number attributes.
-    DCHECK(input_arg.number_attr().empty())
-        << "Number attributes is not implemented yet.";
-    if (input_arg.type_list_attr().empty()) {
+    if (input_arg.type_list_attr().empty() && input_arg.number_attr().empty()) {
       auto symbolic_input =
           getOrCreateSymbolicTensor(trace_ctx, inputs[inputIndex++], status);
       if (!status->status.ok()) return nullptr;
-      TF_AddInput(desc, symbolic_input);
+      TF_AddInput(desc.get(), symbolic_input);
       continue;
     }
-    const std::string& type_list_attr = input_arg.type_list_attr();
-    const auto& attr_value = attrs[type_list_attr];
-    DCHECK(attr_value.value_case() == tensorflow::AttrValue::kList)
-        << "Type list attribute should be a list!";
-    std::vector<TF_Output> list_inputs(attr_value.list().type_size());
+    size_t list_size = 0;
+    if (!input_arg.type_list_attr().empty()) {
+      const std::string& type_list_attr = input_arg.type_list_attr();
+      const auto& attr_value = attrs[type_list_attr];
+      CHECK(attr_value.value_case() == tensorflow::AttrValue::kList)
+          << "Type list attribute should be a list!";
+      list_size = attr_value.list().type_size();
+    } else {
+      CHECK(!input_arg.number_attr().empty());
+      const auto& attr_value = attrs[input_arg.number_attr()];
+      CHECK(attr_value.value_case() == tensorflow::AttrValue::kI)
+          << "Number attribute should be int!";
+      if (attr_value.i() < 0) {
+        status->status = tensorflow::errors::Internal(
+            "Number attribute for length should be >=0!");
+        return nullptr;
+      }
+      list_size = attr_value.i();
+    }
+    std::vector<TF_Output> list_inputs(list_size);
     for (TF_Output& list_input : list_inputs) {
       list_input =
           getOrCreateSymbolicTensor(trace_ctx, inputs[inputIndex++], status);
       if (!status->status.ok()) return nullptr;
     }
-    TF_AddInputList(desc, list_inputs.data(), list_inputs.size());
+    TF_AddInputList(desc.get(), list_inputs.data(), list_inputs.size());
   }
 
-  auto* graph_op = TF_FinishOperation(desc, status);
+  auto* graph_op = TF_FinishOperation(desc.release(), status);
   if (!status->status.ok()) return nullptr;
 
   VLOG(1) << "Op finalized; setting return tensors.";

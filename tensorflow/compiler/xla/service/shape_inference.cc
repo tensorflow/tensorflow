@@ -1864,12 +1864,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      if (ShapeUtil::IsZeroElementArray(in)) {
-        return in;
-      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
-      result.set_dimensions(result.dimensions_size() - 1,
-                            fft_length[fft_rank - 1] / 2 + 1);
+      // Preserve the size of zero-sized dimensions.
+      if (fft_length[fft_rank - 1] != 0) {
+        result.set_dimensions(result.dimensions_size() - 1,
+                              fft_length[fft_rank - 1] / 2 + 1);
+      }
       return result;
     }
     case IRFFT: {
@@ -1890,8 +1890,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      if (in.dimensions(in.dimensions_size() - 1) !=
-          fft_length[fft_rank - 1] / 2 + 1) {
+      // The size of zero-sized dimensions is preserved.
+      if ((in.dimensions(in.dimensions_size() - 1) != 0 ||
+           fft_length[fft_rank - 1] != 0) &&
+          in.dimensions(in.dimensions_size() - 1) !=
+              fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
@@ -2544,7 +2547,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   };
 
   // Check the shapes of computation parameters and return types.
-  if (!ShapeUtil::Equal(condition.result(), ShapeUtil::MakeShape(PRED, {}))) {
+  if (!ShapeUtil::Compatible(condition.result(),
+                             ShapeUtil::MakeShape(PRED, {}))) {
     return InvalidArgument("Condition must return a boolean; got %s.",
                            shape_string());
   }
@@ -2564,8 +2568,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& branch_index,
     absl::Span<const ProgramShape> branch_computations,
     absl::Span<const Shape> branch_operands) {
-  if (!ShapeUtil::Equal(branch_index, ShapeUtil::MakeShape(PRED, {})) &&
-      !ShapeUtil::Equal(branch_index, ShapeUtil::MakeShape(S32, {}))) {
+  if (!ShapeUtil::Compatible(branch_index, ShapeUtil::MakeShape(PRED, {})) &&
+      !ShapeUtil::Compatible(branch_index, ShapeUtil::MakeShape(S32, {}))) {
     return InvalidArgument("branch_index must be bool or int32; got %s.",
                            ShapeUtil::HumanString(branch_index));
   }

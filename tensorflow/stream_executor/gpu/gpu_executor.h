@@ -88,8 +88,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   void* Allocate(uint64 size) override;
 
-  void* AllocateSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  void* GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
+                     uint64 size_bytes) override;
 
   void Deallocate(DeviceMemoryBase* mem) override;
 

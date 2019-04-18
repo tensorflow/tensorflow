@@ -129,7 +129,7 @@ TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
                             std::initializer_list<int> values) {
   TfLiteIntArray* size = TfLiteIntArrayCreate(values.size());
   int index = 0;
-  for (int v : values) {
+  for (const auto& v : values) {
     size->data[index] = v;
     ++index;
   }
@@ -502,7 +502,7 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
         num_detections_per_class));
     // Add selected indices from non-max suppression of boxes in this class
     int output_index = size_of_sorted_indices;
-    for (int selected_index : selected) {
+    for (const auto& selected_index : selected) {
       box_indices_after_regular_non_max_suppression[output_index] =
           (selected_index * num_classes_with_background + col + label_offset);
       scores_after_regular_non_max_suppression[output_index] =

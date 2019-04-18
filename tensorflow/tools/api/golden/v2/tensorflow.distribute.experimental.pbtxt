@@ -1,6 +1,10 @@
 path: "tensorflow.distribute.experimental"
 tf_module {
   member {
+    name: "CentralStorageStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CollectiveCommunication"
     mtype: "<class \'enum.EnumMeta\'>"
   }

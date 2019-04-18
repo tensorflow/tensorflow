@@ -289,11 +289,11 @@ def _default_getter(name, shape, dtype, initializer=None,
 
 
 def add_variable(trackable, name, shape=None, dtype=dtypes.float32,
-                 initializer=None):
+                 initializer=None, trainable=True):
   """Add a variable to a Trackable with no scope influence."""
   return trackable._add_variable_with_custom_getter(  # pylint: disable=protected-access
       name=name, shape=shape, dtype=dtype,
-      initializer=initializer, getter=_default_getter)
+      initializer=initializer, getter=_default_getter, trainable=trainable)
 
 
 def object_metadata(save_path):
@@ -1270,7 +1270,7 @@ class CheckpointV1(tracking.AutoTrackable):
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+                         dtype=dtypes.int64, trainable=False))
 
   def write(self, file_prefix, session=None):
     """Writes a training checkpoint.
@@ -1587,7 +1587,7 @@ class Checkpoint(tracking.AutoTrackable):
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+                         dtype=dtypes.int64, trainable=False))
 
   def write(self, file_prefix):
     """Writes a training checkpoint.

@@ -22,14 +22,13 @@ from __future__ import print_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
-from tensorflow.python.keras.saving import hdf5_format
-from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.util import nest
@@ -39,11 +38,12 @@ from tensorflow.python.util.tf_export import keras_export
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
 Sequential = sequential.Sequential  # pylint: disable=invalid-name
-save_model = hdf5_format.save_model
-load_model = hdf5_format.load_model
-model_from_config = model_config.model_from_config
-model_from_yaml = model_config.model_from_yaml
-model_from_json = model_config.model_from_json
+save_model = saving.save_model
+load_model = saving.load_model
+model_from_config = saving.model_from_config
+model_from_yaml = saving.model_from_yaml
+model_from_json = saving.model_from_json
+
 
 # Callable used to clone a layer with weights preserved.
 def share_weights(layer):
@@ -138,6 +138,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
+  new_nodes = set()
+
   # Iterated over every node in the reference model, in depth order.
   depth_keys = list(model._nodes_by_depth.keys())
   depth_keys.sort(reverse=True)
@@ -169,6 +171,11 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
         kwargs = node.arguments or {}
         output_tensors = layer(computed_tensors, **kwargs)
 
+        # Thread-safe way to keep track of what node was created.
+        first_output_tensor = nest.flatten(output_tensors)[0]
+        new_nodes.add(
+            layer._inbound_nodes[first_output_tensor._keras_history[1]])
+
         for x, y in zip(
             nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
           tensor_map[x] = y
@@ -182,7 +189,18 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   input_tensors = nest.pack_sequence_as(model._nested_inputs, input_tensors)
   output_tensors = nest.pack_sequence_as(model._nested_outputs, output_tensors)
-  return Model(input_tensors, output_tensors, name=model.name)
+  model = Model(input_tensors, output_tensors, name=model.name)
+  # Layers not directly tied to outputs of the Model, such as loss layers
+  # created in `add_loss`.
+  ancillary_layers = [
+      layer for layer in layer_map.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    nodes = set(
+        nest.flatten([layer._inbound_nodes for layer in ancillary_layers]))
+    relevant_nodes = list(nodes.intersection(new_nodes))
+    model._insert_layers(ancillary_layers, relevant_nodes=relevant_nodes)
+  return model
 
 
 def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
@@ -334,6 +352,11 @@ def _in_place_subclassed_model_reset(model):
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):
+    # Skip the check of methods in tf.Module since they basically
+    # recursively query all the other attributes within same module.
+    if name == 'submodules':
+      continue
+
     try:
       value = getattr(model, name)
     except (AttributeError, ValueError, TypeError):

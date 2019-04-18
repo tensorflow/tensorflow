@@ -1092,7 +1092,10 @@ Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
                                                     HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
-  TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
+  // TODO(b/122263061): This function appears to be incorrect, saying that
+  // live-range interference is occurring when it isn't.  We've disabled it for
+  // now while we investigate.
+  // TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
   return Status::OK();
 }
 

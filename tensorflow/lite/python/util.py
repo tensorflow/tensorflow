@@ -36,6 +36,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
+    dtypes.int8: _types_pb2.INT8,
     dtypes.complex64: _types_pb2.COMPLEX64
 }
 
@@ -148,7 +149,7 @@ def set_tensor_shapes(tensors, shapes):
 
 
 def get_grappler_config(enable_layout_optimizer=False, function_only=False):
-  """Creates a tf.ConfigProto for configuring Grappler.
+  """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
 
   Args:
     enable_layout_optimizer: Bool indicating whether to run the layout

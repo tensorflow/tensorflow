@@ -70,5 +70,20 @@ class SavedModelTest(tf.test.TestCase):
     self.assertCommandSucceeded(
         "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
 
+  def test_mnist_cnn_with_mirrored_strategy(self):
+    self.skipTest(
+        "b/129134185 - saved model and distribution strategy integration")
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_mnist_cnn",
+        export_dir=export_dir,
+        fast_test_mode="true")
+    self.assertCommandSucceeded(
+        "use_mnist_cnn",
+        export_dir=export_dir,
+        fast_test_mode="true",
+        use_mirrored_strategy=True,
+    )
+
 if __name__ == "__main__":
   tf.test.main()

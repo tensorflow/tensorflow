@@ -48,7 +48,7 @@ class EagerClient {
 class EagerClientCache {
  public:
   virtual ~EagerClientCache() {}
-  virtual EagerClient* GetClient(const string& target) = 0;
+  virtual Status GetClient(const string& target, EagerClient** client) = 0;
 };
 
 }  // namespace eager

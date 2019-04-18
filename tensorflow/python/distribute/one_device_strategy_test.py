@@ -76,8 +76,8 @@ class OneDeviceStrategyTest(
         iterator, distribution.extended.worker_devices, expected_values,
         test_reinitialize=False)
 
-  def testNumpyIterator(self, distribution):
-    self._test_numpy_iterator(distribution)
+  def testNumpyDataset(self, distribution):
+    self._test_numpy_dataset(distribution)
 
   def testRun(self, distribution):
     self._test_run(distribution)
@@ -99,6 +99,24 @@ class OneDeviceStrategyTest(
 
   def testAllReduceMeanGradientTape(self, distribution):
     self._test_all_reduce_mean_gradient_tape(distribution)
+
+
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.one_device_strategy_on_worker_1,
+            strategy_combinations.one_device_strategy_gpu_on_worker_1
+        ],
+        mode=["eager", "graph"]))
+class OneDeviceStrategyOnRemoteWorkerTest(
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.OneDeviceDistributionTestBase):
+
+  def testDeviceAndInputDeviceAreColocated(self, distribution):
+    self._test_device_and_input_device_are_colocated(distribution)
+
+  def testDeviceAndInputDeviceAreColocatedWithFunction(self, distribution):
+    self._test_device_and_input_device_are_colocated_with_function(distribution)
 
 
 if __name__ == "__main__":

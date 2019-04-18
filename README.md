@@ -25,7 +25,7 @@ networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
 TensorFlow provides stable Python and C APIs as well as non-guaranteed backwards
-compatible API's for C++, Go, Java, JavaScript and Swift.
+compatible API's for C++, Go, Java, JavaScript, and Swift.
 
 Keep up to date with release announcements and security updates by
 subscribing to
@@ -50,10 +50,10 @@ instructions, and how to build from source.*
 
 People who are a little more adventurous can also try our nightly binaries:
 
-**Nightly pip packages**
-* We are pleased to announce that TensorFlow now offers nightly pip packages
-under the [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) project on pypi.
+**Nightly pip packages** * We are pleased to announce that TensorFlow now offers
+nightly pip packages under the
+[tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
+[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) project on PyPi.
 Simply run `pip install tf-nightly` or `pip install tf-nightly-gpu` in a clean
 environment to install the nightly TensorFlow build. We support CPU and GPU
 packages on Linux, Mac, and Windows.

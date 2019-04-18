@@ -109,6 +109,9 @@ tf_pybind_extension(
         ":xrt",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -132,11 +135,13 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
         # Do NOT remove this dependency. The XLA Python extension must not
         # depend on any part of TensorFlow at runtime, **including**
         # libtensorflow_framework.so. The XLA module is deployed self-contained

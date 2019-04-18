@@ -144,6 +144,8 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -235,7 +237,6 @@ py_library(
         ":reduce_util",
         ":shared_variable_creator",
         ":values",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -247,7 +248,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -273,6 +274,18 @@ py_library(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "central_storage_strategy",
+    srcs = ["central_storage_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":parameter_server_strategy",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -531,11 +544,11 @@ py_library(
     srcs = ["strategy_combinations.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":central_storage_strategy",
         ":combinations",
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
-        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
@@ -676,6 +689,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
     ],
+    grpc_enabled = True,
 )
 
 py_library(
@@ -748,6 +762,24 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_test",
+    srcs = ["custom_training_loop_test.py"],
+    main = "custom_training_loop_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -856,6 +888,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",
@@ -866,5 +899,38 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+)
+
+distribute_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    main = "metrics_v1_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "zero_batch_test",
+    srcs = ["zero_batch_test.py"],
+    main = "zero_batch_test.py",
+    deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":strategy_combinations",
+        "//tensorflow/python:layers",
     ],
 )

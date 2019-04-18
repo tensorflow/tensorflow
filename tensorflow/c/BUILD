@@ -104,6 +104,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/strings",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",

@@ -1,7 +1,15 @@
 path: "tensorflow.train.experimental"
 tf_module {
   member {
+    name: "MixedPrecisionLossScaleOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "PythonState"
     mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "enable_mixed_precision_graph_rewrite"
+    argspec: "args=[\'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'dynamic\'], "
   }
 }

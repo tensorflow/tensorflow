@@ -55,6 +55,7 @@ def register_extension_info(**kwargs):
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
 VERSION = "1.13.1"
+VERSION_MAJOR = VERSION.split(".")[0]
 
 def if_v2(a):
     return select({
@@ -310,7 +311,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:macos"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
-            clean_dep("//tensorflow:ios"): ["-std=c++11"],
+            clean_dep("//tensorflow:ios"): [],
             clean_dep("//tensorflow:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"],
         })
@@ -395,7 +396,7 @@ def tf_binary_additional_srcs(fullversion = False):
     if fullversion:
         suffix = "." + VERSION
     else:
-        suffix = "." + VERSION.split(".")[0]
+        suffix = "." + VERSION_MAJOR
 
     return if_static(
         extra_deps = [],
@@ -407,25 +408,38 @@ def tf_binary_additional_srcs(fullversion = False):
         ],
     )
 
+def tf_binary_additional_data_deps():
+    return if_static(
+        extra_deps = [],
+        macos = [
+            clean_dep("//tensorflow:libtensorflow_framework.dylib"),
+            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION),
+        ],
+        otherwise = [
+            clean_dep("//tensorflow:libtensorflow_framework.so"),
+            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
+        ],
+    )
+
 # Helper function for the per-OS tensorflow libraries and their version symlinks
 def tf_shared_library_deps():
-    longsuffix = "." + VERSION
-    suffix = "." + VERSION.split(".")[0]
-
     return select({
         clean_dep("//tensorflow:macos_with_framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow.dylib"),
-            clean_dep("//tensorflow:libtensorflow%s.dylib" % suffix),
-            clean_dep("//tensorflow:libtensorflow%s.dylib" % longsuffix),
+            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION),
         ],
         clean_dep("//tensorflow:macos"): [],
         clean_dep("//tensorflow:windows"): [
             clean_dep("//tensorflow:tensorflow.dll"),
+            clean_dep("//tensorflow:tensorflow_dll_import_lib"),
         ],
         clean_dep("//tensorflow:framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow.so"),
-            clean_dep("//tensorflow:libtensorflow.so%s" % suffix),
-            clean_dep("//tensorflow:libtensorflow.so%s" % longsuffix),
+            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION_MAJOR),
+            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION),
         ],
         "//conditions:default": [],
     }) + tf_binary_additional_srcs()
@@ -519,12 +533,16 @@ def tf_cc_shared_object(
 
         soname = name_os_major.split("/")[-1]
 
+        data_extra = []
+        if framework_so != []:
+            data_extra = tf_binary_additional_data_deps()
+
         native.cc_binary(
             name = name_os_full,
             srcs = srcs + framework_so,
             deps = deps,
             linkshared = 1,
-            data = data,
+            data = data + data_extra,
             linkopts = linkopts + _rpath_linkopts(name_os_full) + select({
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
@@ -1281,7 +1299,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda_is_configured_compat([
-            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             clean_dep("//tensorflow/core:gpu_lib"),
         ]) + if_rocm_is_configured([
             clean_dep("//tensorflow/core:gpu_lib"),
@@ -1923,7 +1941,6 @@ def tf_py_wrap_cc(
         linkopts = extra_linkopts,
         linkstatic = 1,
         deps = deps + extra_deps,
-        data = tf_binary_additional_srcs() + tf_binary_additional_srcs(fullversion = True),
         **kwargs
     )
     native.genrule(

@@ -126,7 +126,7 @@ py_library(
 
 py_test(
     name = "loss_scale_test",
-    size = "small",
+    size = "medium",
     srcs = ["loss_scale_test.py"],
     deps = [
         ":loss_scale",

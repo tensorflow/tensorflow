@@ -468,6 +468,12 @@ message ConfigProto {
     // TODO(b/129330037): Add a single API that consistently treats
     // isolate_session_state and ClusterSpec propagation.
     bool share_session_state_in_clusterspec_propagation = 8;
+
+    // If using a direct session, disable spinning while waiting for work in
+    // the thread pool. This may result in higher latency for completing ops,
+    // but in the case where there is a lot of spinning may result in lower
+    // CPU usage.
+    bool disable_thread_spinning = 9;
   };
 
   Experimental experimental = 16;

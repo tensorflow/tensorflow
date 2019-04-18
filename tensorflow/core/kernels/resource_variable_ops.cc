@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
+#include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
@@ -749,6 +750,62 @@ REGISTER_KERNEL_BUILDER(Name("ResourceGather")
 #undef REGISTER_GATHER_GPU
 #undef REGISTER_GATHER_ALL_INDICES
 #undef REGISTER_GATHER_FULL
+
+template <typename Device, typename T, typename Index>
+class ResourceGatherNdOp : public OpKernel {
+ public:
+  explicit ResourceGatherNdOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    Var* v = nullptr;
+    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    core::ScopedUnref su(v);
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+    // NOTE: We hold the lock for the whole gather operation instead
+    // of increasing the reference count of v->tensor() to avoid a
+    // situation where a write to the same variable will see a
+    // reference count greater than one and make a copy of the
+    // (potentially very large) tensor buffer.
+    tf_shared_lock ml(*v->mu());
+    const Tensor& params = *v->tensor();
+    const Tensor& indices = c->input(1);
+
+    Tensor out;
+    OP_REQUIRES_OK(
+        c, functor::DoGatherNd<Device, T, Index>(c, params, indices, &out));
+    c->set_output(0, out);
+  }
+};
+
+#define REGISTER_GATHER_ND_FULL(dev, type, index_type)                 \
+  REGISTER_KERNEL_BUILDER(Name("ResourceGatherNd")                     \
+                              .Device(DEVICE_##dev)                    \
+                              .HostMemory("resource")                  \
+                              .TypeConstraint<type>("dtype")           \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          ResourceGatherNdOp<dev##Device, type, index_type>)
+
+#define REGISTER_GATHER_ND_ALL_INDICES(dev, type) \
+  REGISTER_GATHER_ND_FULL(dev, type, int32);      \
+  REGISTER_GATHER_ND_FULL(dev, type, int64)
+
+#define REGISTER_GATHER_ND_CPU(type) REGISTER_GATHER_ND_ALL_INDICES(CPU, type)
+
+// Registration of the CPU implementations.
+TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
+
+// Registers GPU kernels.
+#if GOOGLE_CUDA
+#define REGISTER_GATHER_ND_GPU(type) REGISTER_GATHER_ND_ALL_INDICES(GPU, type)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
+
+#endif  // GOOGLE_CUDA
+
+#undef REGISTER_GATHER_ND_CPU
+#undef REGISTER_GATHER_ND_GPU
+#undef REGISTER_GATHER_ND_ALL_INDICES
+#undef REGISTER_GATHER_ND_FULL
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ResourceScatterUpdateOp : public OpKernel {

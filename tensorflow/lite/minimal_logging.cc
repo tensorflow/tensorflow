@@ -35,9 +35,8 @@ const char* MinimalLogger::GetSeverityName(LogSeverity severity) {
       return "WARNING";
     case TFLITE_LOG_ERROR:
       return "ERROR";
-    default:
-      return "<Unknown severity>";
   }
+  return "<Unknown severity>";
 }
 
 }  // namespace logging_internal

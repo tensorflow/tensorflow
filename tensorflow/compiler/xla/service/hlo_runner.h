@@ -80,7 +80,13 @@ class HloRunner {
     bool run_hlo_passes = false;
   };
 
-  explicit HloRunner(se::Platform* platform);
+  // intra_op_parallelism_threads: For the CPU backend only. It is the thread
+  // pool size for parallel execution of an individual operator. The default
+  // value of -1 will result in initializing the thread pool with the number of
+  // threads equal to the number of
+  // cores in the system.
+  explicit HloRunner(se::Platform* platform,
+                     int intra_op_parallelism_threads = -1);
 
   ~HloRunner();
 

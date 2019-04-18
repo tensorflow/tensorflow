@@ -21,12 +21,14 @@ import abc
 import functools
 import threading
 import warnings
+import weakref
 
 import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -59,18 +61,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+# Loaded lazily due to a circular dependency (roughly
+# tf.function->wrap_function->dataset->autograph->tf.function).
+wrap_function = LazyLoader(
+    "wrap_function", globals(),
+    "tensorflow.python.eager.wrap_function")
 
 ops.NotDifferentiable("ReduceDataset")
 
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(object):
+class DatasetV2(tracking_base.Trackable):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -89,6 +98,16 @@ class DatasetV2(object):
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
     self._variant_tensor_attr = variant_tensor
+    weak_self = weakref.proxy(self)
+    self._variant_tracker = self._track_trackable(
+        _VariantTracker(
+            self._variant_tensor,
+            # _trace_variant_creation only works when executing eagerly, so we
+            # don't want to run it immediately. We also want the _VariantTracker
+            # to have a weak reference to the Dataset to avoid creating
+            # reference cycles and making work for the garbage collector.
+            lambda: weak_self._trace_variant_creation()()),  # pylint: disable=unnecessary-lambda,protected-access
+        name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
 
   @property
@@ -107,6 +126,42 @@ class DatasetV2(object):
       serialized graph.
     """
     return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
+
+  def _trace_variant_creation(self):
+    """Traces a function which outputs a variant `tf.Tensor` for this dataset.
+
+    Note that creating this function involves evaluating an op, and is currently
+    only supported when executing eagerly.
+
+    Returns:
+      A zero-argument `ConcreteFunction` which outputs a variant `tf.Tensor`.
+    """
+    variant = self._variant_tensor
+    if not isinstance(variant, ops.EagerTensor):
+      raise NotImplementedError(
+          "Can only export Datasets which were created executing eagerly. "
+          "Please file a feature request if this is important to you.")
+    with context.eager_mode():
+      graph_def = graph_pb2.GraphDef().FromString(
+          self._as_serialized_graph().numpy())  # pylint: disable=protected-access
+    output_node_name = None
+    for node in graph_def.node:
+      if node.op == "_Retval":
+        if output_node_name is not None:
+          raise AssertionError(
+              "Found multiple return values from the dataset's graph, expected "
+              "only one.")
+        output_node_name, = node.input
+    if output_node_name is None:
+      raise AssertionError("Could not find the dataset's output node.")
+    # Add functions used in this Dataset to the function's graph, since they
+    # need to follow it around (and for example be added to a SavedModel which
+    # references the dataset).
+    variant_function = wrap_function.function_from_graph_def(
+        graph_def, inputs=[], outputs=output_node_name + ":0")
+    for used_function in self._functions():
+      used_function.function.add_to_graph(variant_function.graph)
+    return variant_function
 
   @abc.abstractmethod
   def _inputs(self):
@@ -224,11 +279,7 @@ class DatasetV2(object):
     Raises:
       RuntimeError: If eager execution is not enabled.
     """
-    if context.executing_eagerly():
-      return iterator_ops.EagerIterator(self)
-    else:
-      raise RuntimeError("dataset.__iter__() is only supported when eager "
-                         "execution is enabled.")
+    return iterator_ops.IteratorV2(self)
 
   @abc.abstractproperty
   def _element_structure(self):
@@ -629,6 +680,9 @@ class DatasetV2(object):
 
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
+
+    Note that if the dataset was batched using `Dataset.batch`, each element is
+    a batch and this operation will prefetch `buffer_size` batches.
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
@@ -1423,7 +1477,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      return iterator_ops.EagerIterator(self)
+      return iterator_ops.IteratorV2(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -1782,6 +1836,9 @@ class DatasetV1Adapter(DatasetV1):
   def _inputs(self):
     return self._dataset._inputs()  # pylint: disable=protected-access
 
+  def _functions(self):
+    return self._dataset._functions()  # pylint: disable=protected-access
+
   def options(self):
     return self._dataset.options()
 
@@ -1874,14 +1931,13 @@ def make_initializable_iterator(dataset, shared_name=None):
     return DatasetV1Adapter(dataset)._make_initializable_iterator(shared_name)  # pylint: disable=protected-access
 
 
-# TODO(b/110122868): Replace this method with a public API for reflecting on
-# dataset structure.
+@tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
   """Returns the `tf.data.experimental.Structure` of a `Dataset` or `Iterator`.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A `tf.data.experimental.Structure` representing the structure of the
@@ -1909,7 +1965,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A nested structure of `tf.TensorShape` objects corresponding to each
@@ -1927,7 +1983,7 @@ def get_legacy_output_types(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A nested structure of `tf.DType` objects corresponding to each component
@@ -1945,7 +2001,7 @@ def get_legacy_output_classes(dataset_or_iterator):
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset`, `tf.data.Iterator`, or
-    `EagerIterator`.
+    `IteratorV2`.
 
   Returns:
     A nested structure of Python `type` or `tf.data.experimental.Structure`
@@ -2075,13 +2131,7 @@ class TensorDataset(DatasetSource):
 
   def __init__(self, tensors):
     """See `Dataset.from_tensors()` for details."""
-    with ops.name_scope("tensors"):
-      tensors = nest.pack_sequence_as(tensors, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(tensors))
-      ])
+    tensors = structure_lib.normalize_tensors(tensors)
     self._structure = structure_lib.Structure.from_value(tensors)
     self._tensors = self._structure._to_tensor_list(tensors)  # pylint: disable=protected-access
 
@@ -2170,6 +2220,34 @@ class _VariantDataset(DatasetV2):
   @property
   def _element_structure(self):
     return self._structure
+
+
+@tf_export("data.experimental.from_variant")
+def from_variant(variant, structure):
+  """Constructs a dataset from the given variant and structure.
+
+  Args:
+    variant: A scalar `tf.variant` tensor representing a dataset.
+    structure: A `tf.data.experimental.Structure` object representing the
+      structure of each element in the dataset.
+
+  Returns:
+    A `tf.data.Dataset` instance.
+  """
+  return _VariantDataset(variant, structure)  # pylint: disable=protected-access
+
+
+@tf_export("data.experimental.to_variant")
+def to_variant(dataset):
+  """Returns a variant representing the given dataset.
+
+  Args:
+    dataset: A `tf.data.Dataset`.
+
+  Returns:
+    A scalar `tf.variant` tensor representing the given dataset.
+  """
+  return dataset._variant_tensor  # pylint: disable=protected-access
 
 
 @tf_export("data.experimental.DatasetStructure")
@@ -2796,6 +2874,31 @@ class BatchDataset(UnaryDataset):
   @property
   def _element_structure(self):
     return self._structure
+
+
+class _VariantTracker(tracking.TrackableResource):
+  """Allows export of functions capturing a Dataset in SavedModels.
+
+  When saving a SavedModel, `tf.saved_model.save` traverses the object
+  graph. Since Datasets reference _VariantTracker objects, that traversal will
+  find a _VariantTracker for each Dataset and so know how to save and restore
+  functions which reference the Dataset's variant Tensor.
+  """
+
+  def __init__(self, variant_tensor, resource_creator):
+    """Record that `variant_tensor` is associated with `resource_creator`.
+
+    Args:
+      variant_tensor: The variant-dtype Tensor associated with the Dataset. This
+        Tensor will be a captured input to functions which use the Dataset, and
+        is used by saving code to identify the corresponding _VariantTracker.
+      resource_creator: A zero-argument function which creates a new
+        variant-dtype Tensor. This function will be included in SavedModels and
+        run to re-create the Dataset's variant Tensor on restore.
+    """
+    super(_VariantTracker, self).__init__()
+    self._resource_handle = variant_tensor
+    self._create_resource = resource_creator
 
 
 def _is_padded_shape_compatible_with(padded_shape, input_component_shape):

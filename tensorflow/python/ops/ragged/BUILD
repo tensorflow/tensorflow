@@ -999,3 +999,16 @@ py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_test(
+    name = "ragged_placeholder_op_test",
+    srcs = ["ragged_placeholder_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_math_ops",
+        ":ragged_test_util",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
