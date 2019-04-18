@@ -461,6 +461,13 @@ def _ragged_reduce_aggregate(reduce_op,
       elif len(axis) == 1:
         axis = axis[0]
       else:
+        # When reducing multiple axes, as we reduce one at a time (see below),
+        # the negative axis has to be converted to positive at the first run
+        # as the sort with negative axis will have different orders.
+        # See GitHub issue 27497.
+        axis = [
+            ragged_util.get_positive_axis(a, rt_input.shape.ndims) for a in axis
+        ]
         # When reducing multiple axes, just reduce one at a time.  This is less
         # efficient, and only works for associative ops.  (In particular, it
         # does not work for reduce_mean.)  However, reducing multiple axes at
