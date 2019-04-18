@@ -32,21 +32,21 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
+namespace xla {
+
 namespace {
 tensorflow::mutex timer_stats_lock(tensorflow::LINKER_INITIALIZED);
 
 struct TimerStats {
   double cumulative_secs = 0;
   double max_secs = 0;
-  int64 times_called = 0;
+  uint64 times_called = 0;
 };
 
 // Global mapping from timer IDs to timer statistics.
 auto& timers_stats GUARDED_BY(timer_stats_lock) =
     *new absl::flat_hash_map<uint64, TimerStats>();
 }  // namespace
-
-namespace xla {
 
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
