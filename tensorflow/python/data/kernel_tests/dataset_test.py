@@ -29,12 +29,14 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -346,6 +348,33 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual(val, foo.numpy())
         val += 1
 
+  def testDatasetAsFunctionArgument(self):
+
+    @def_function.function
+    def _uses_dataset(d):
+      accumulator = array_ops.zeros([], dtype=dtypes.int64)
+      for value in d:
+        accumulator += value
+      return accumulator
+
+    first_dataset = dataset_ops.Dataset.range(10)
+    self.assertEqual(45, self.evaluate(_uses_dataset(first_dataset)))
+    second_dataset = dataset_ops.Dataset.range(11)
+    self.assertEqual(55, self.evaluate(_uses_dataset(second_dataset)))
+    first_concrete = _uses_dataset.get_concrete_function(first_dataset)
+    self.skipTest(
+        ("Not currently working: functions treat Datasets as opaque Python "
+         "objects"))
+    # The dataset should not be a captured input
+    self.assertEmpty(first_concrete.graph.captures)
+    # The two datasets have the same structure and so should re-use a trace.
+    self.assertIs(first_concrete,
+                  _uses_dataset.get_concrete_function(second_dataset))
+    # With a different structure we should use a different trace.
+    self.assertIsNot(
+        first_concrete,
+        _uses_dataset.get_concrete_function(
+            dataset_ops.Dataset.zip((first_dataset, second_dataset))))
 
 if __name__ == "__main__":
   test.main()
