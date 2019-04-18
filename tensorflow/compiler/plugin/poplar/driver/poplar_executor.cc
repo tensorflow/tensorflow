@@ -260,7 +260,7 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
           GetInfeedCopyHandle(infeed_info.stream_prefix, j),
           [&queue, length](void* dest) {
             tensorflow::TensorBuffer* buffer;
-            queue->Pop(buffer);
+            queue->BlockPop(buffer);
             std::memcpy(dest, buffer->data(), length);
           });
     }
