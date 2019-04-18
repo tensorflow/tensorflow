@@ -175,19 +175,6 @@ def validate_callbacks(input_callbacks, optimizer):
   """
   if input_callbacks:
     for callback in input_callbacks:
-      if not isinstance(callback,
-                        (callbacks.TensorBoard, callbacks.ReduceLROnPlateau,
-                         callbacks.LearningRateScheduler, callbacks.CSVLogger,
-                         callbacks.EarlyStopping, callbacks.ModelCheckpoint,
-                         callbacks.TerminateOnNaN, callbacks.ProgbarLogger,
-                         callbacks.History, callbacks.RemoteMonitor)):
-        logging.warning('Your input callback is not one of the predefined '
-                        'Callbacks that supports DistributionStrategy. You '
-                        'might encounter an error if you access one of the '
-                        'model\'s attributes as part of the callback since '
-                        'these attributes are not set. You can access each of '
-                        'the individual distributed models using the '
-                        '`_grouped_model` attribute of your original model.')
       if isinstance(callback, (callbacks.LearningRateScheduler,
                                callbacks.ReduceLROnPlateau)):
 
