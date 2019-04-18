@@ -30,6 +30,7 @@ message PoplibsOp {
     StatelessRandomUniformInt = 18;
     StatelessRandomNormal = 19;
     StatelessTruncatedNormal = 20;
+    IpuInterCopy = 21;
   }
   required Op op = 2;
 }

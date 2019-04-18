@@ -310,8 +310,6 @@ StatusOr<poplar::program::Program> CreateCustomCallOp(
     VLOG(1) << "Processing " << inst->custom_call_target()
             << " as Poplibs call";
     return CreatePoplibsOp(graph, res, inst, output, tensor_map);
-  } else if (IsInterIpuCopy(inst)) {
-    return CreateInterIpuCopy(res, inst, output, tensor_map);
   } else {
     return xla::FailedPrecondition("Unrecognised kCustomCall %s.",
                                    inst->ToString().c_str());
