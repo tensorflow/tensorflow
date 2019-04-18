@@ -609,6 +609,12 @@ def tf_additional_device_tracer_deps():
 def tf_additional_device_tracer_test_flags():
     return []
 
+def tf_additional_profiler_lib_deps():
+    return [
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+    ]
+
 def tf_additional_libdevice_data():
     return []
 
