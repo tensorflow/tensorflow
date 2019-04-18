@@ -128,3 +128,6 @@ COPY install/.bazelrc /etc/bazel.bazelrc
 # Configure the build for our CUDA configuration.
 ENV TF_NEED_ROCM 1
 
+# This is a temporary workaround to fix Out-Of-Memory errors we are running into with XLA perf tests
+# By default, HIP runtime "hides" 200MB from the TF Runtime, we need to up that to 500MB
+ENV HIP_HIDDEN_FREE_MEM=500
