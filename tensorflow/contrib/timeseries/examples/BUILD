@@ -156,7 +156,10 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["lstm_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "manual",  # TODO(b/130760310): re-enable.
+        "notsan",
+    ],
     deps = [
         ":lstm_main_lib",
         "//tensorflow/python:client_testlib",

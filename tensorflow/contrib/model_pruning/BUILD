@@ -139,6 +139,7 @@ py_test(
     size = "small",
     srcs = ["python/layers/rnn_cells_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # TODO(b/130760310): re-enable.
     deps = [
         ":pruning",
         ":rnn_cells",
