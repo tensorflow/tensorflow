@@ -10,6 +10,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
 )
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library",
+    "tf_additional_all_protos",
+)
 
 tf_kernel_library(
     name = "assert_next_dataset_op",
@@ -471,4 +476,12 @@ tf_kernel_library(
         ":unbatch_dataset_op",
         ":unique_dataset_op",
     ],
+)
+
+tf_proto_library(
+    name = "snapshot_proto",
+    srcs = ["snapshot.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    protodeps = tf_additional_all_protos(),
 )
