@@ -206,6 +206,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::function<void(std::function<void()>)> runner_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
+  std::unique_ptr<ResourceMgr> resource_mgr_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<checkpoint::TensorSliceReaderCacheWrapper>
       slice_reader_cache_;

@@ -190,6 +190,7 @@ Status DatasetOpsTestBase::CreateIteratorContext(
     OpKernelContext* const op_context,
     std::unique_ptr<IteratorContext>* iterator_context) {
   IteratorContext::Params params(op_context);
+  params.resource_mgr = op_context->resource_manager();
   function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
   *iterator_context = absl::make_unique<IteratorContext>(params);
@@ -228,6 +229,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+  resource_mgr_ = absl::make_unique<ResourceMgr>("default_container");
 
   FunctionDefLibrary proto;
   for (const auto& fdef : flib) *(proto.add_function()) = fdef;
@@ -269,6 +271,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   step_container_ =
       absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
   params_->step_container = step_container_.get();
+  params_->resource_manager = resource_mgr_.get();
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
