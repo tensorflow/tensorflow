@@ -83,7 +83,9 @@ def has_deprecation_decorator(symbol):
 class DeprecationWrapper(types.ModuleType):
   """Wrapper for TensorFlow modules to support deprecation messages."""
 
-  def __init__(self, wrapped, module_name):  # pylint: disable=super-on-old-class
+  # TODO(annarev): remove unused_depr_to_canonical once estimator stops
+  # passing it in the next nightly build.
+  def __init__(self, wrapped, module_name, unused_depr_to_canonical=None):  # pylint: disable=super-on-old-class
     # Prefix all local attributes with _dw_ so that we can
     # handle them differently in attribute access methods.
     self._dw_wrapped_module = wrapped
