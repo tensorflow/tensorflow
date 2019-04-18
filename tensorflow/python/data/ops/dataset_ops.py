@@ -621,27 +621,25 @@ class DatasetV2(tracking_base.Trackable):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6 }
-    c = { (7, 8), (9, 10), (11, 12) }
-    d = { 13, 14 }
+    a = Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
+    b = Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
+    c = Dataset.range(7, 13).batch(2)  # ==> [ [7, 8], [9, 10], [11, 12] ]
+    d = Dataset.range(13, 15)  # ==> [ 13, 14 ]
 
     # The nested structure of the `datasets` argument determines the
     # structure of elements in the resulting dataset.
-    Dataset.zip((a, b)) == { (1, 4), (2, 5), (3, 6) }
-    Dataset.zip((b, a)) == { (4, 1), (5, 2), (6, 3) }
+    Dataset.zip((a, b))  # ==> [ (1, 4), (2, 5), (3, 6) ]
+    Dataset.zip((b, a))  # ==> [ (4, 1), (5, 2), (6, 3) ]
 
     # The `datasets` argument may contain an arbitrary number of
     # datasets.
-    Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
-                                (2, 5, (9, 10)),
-                                (3, 6, (11, 12)) }
+    Dataset.zip((a, b, c))  # ==> [ (1, 4, [7, 8]),
+                            #       (2, 5, [9, 10]),
+                            #       (3, 6, [11, 12]) ]
 
     # The number of elements in the resulting dataset is the same as
     # the size of the smallest dataset in `datasets`.
-    Dataset.zip((a, d)) == { (1, 13), (2, 14) }
+    Dataset.zip((a, d))  # ==> [ (1, 13), (2, 14) ]
     ```
 
     Args:
@@ -656,18 +654,16 @@ class DatasetV2(tracking_base.Trackable):
     """Creates a `Dataset` by concatenating given dataset with this dataset.
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6, 7 }
+    a = Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
+    b = Dataset.range(4, 8)  # ==> [ 4, 5, 6, 7 ]
 
     # Input dataset and dataset to be concatenated should have same
     # nested structures and output types.
-    # c = { (8, 9), (10, 11), (12, 13) }
-    # d = { 14.0, 15.0, 16.0 }
+    # c = Dataset.range(8, 14).batch(2)  # ==> [ [8, 9], [10, 11], [12, 13] ]
+    # d = Dataset.from_tensor_slices([14.0, 15.0, 16.0])
     # a.concatenate(c) and a.concatenate(d) would result in error.
 
-    a.concatenate(b) == { 1, 2, 3, 4, 5, 6, 7 }
+    a.concatenate(b)  # ==> [ 1, 2, 3, 4, 5, 6, 7 ]
     ```
 
     Args:
@@ -991,17 +987,17 @@ class DatasetV2(tracking_base.Trackable):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3, 4, 5 }
+    a = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
 
-    a.map(lambda x: x + 1) = { 2, 3, 4, 5, 6 }
+    a.map(lambda x: x + 1)  # ==> [ 2, 3, 4, 5, 6 ]
     ```
 
     The input signature of `map_func` is determined by the structure of each
     element in this dataset. For example:
 
     ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
     # Each element is a `tf.Tensor` object.
     a = { 1, 2, 3, 4, 5 }
     # `map_func` takes a single argument of type `tf.Tensor` with the same
@@ -1087,12 +1083,10 @@ class DatasetV2(tracking_base.Trackable):
     dataset of their elements:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset. '[...]' represents a tensor.
-    a = {[1,2,3,4,5], [6,7,8,9], [10]}
+    a = Dataset.from_tensor_slices([ [1, 2, 3], [4, 5, 6], [7, 8, 9] ])
 
-    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) ==
-      {[1,2,3,4,5,6,7,8,9,10]}
+    a.flat_map(lambda x: Dataset.from_tensor_slices(x + 1)) # ==>
+    #  [ 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
     ```
 
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
@@ -1143,24 +1137,20 @@ class DatasetV2(tracking_base.Trackable):
     For example:
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3, 4, 5 }
+    a = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
 
     # NOTE: New lines indicate "block" boundaries.
     a.interleave(lambda x: Dataset.from_tensors(x).repeat(6),
-                 cycle_length=2, block_length=4) == {
-        1, 1, 1, 1,
-        2, 2, 2, 2,
-        1, 1,
-        2, 2,
-        3, 3, 3, 3,
-        4, 4, 4, 4,
-        3, 3,
-        4, 4,
-        5, 5, 5, 5,
-        5, 5,
-    }
+                cycle_length=2, block_length=4)  # ==> [1, 1, 1, 1,
+                                                 #      2, 2, 2, 2,
+                                                 #      1, 1,
+                                                 #      2, 2,
+                                                 #      3, 3, 3, 3,
+                                                 #      4, 4, 4, 4,
+                                                 #      3, 3,
+                                                 #      4, 4,
+                                                 #      5, 5, 5, 5,
+                                                 #      5, 5]
     ```
 
     NOTE: The order of elements yielded by this transformation is
@@ -1198,13 +1188,13 @@ class DatasetV2(tracking_base.Trackable):
     ```python
     d = tf.data.Dataset.from_tensor_slices([1, 2, 3])
 
-    d = d.filter(lambda x: x < 3) # [1, 2]
+    d = d.filter(lambda x: x < 3)  # ==> [1, 2]
 
     # `tf.math.equal(x, y)` is required for equality comparison
     def filter_fn(x):
       return tf.math.equal(x, 1)
 
-    d = d.filter(filter_fn) # [1]
+    d = d.filter(filter_fn)  # ==> [1]
     ```
 
     Args:
