@@ -667,6 +667,24 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "shuffle_dataset_op_test",
+    size = "small",
+    srcs = ["shuffle_dataset_op_test.cc"],
+    deps = [
+        "shuffle_dataset_op",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ptr_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "sparse_tensor_slice_dataset_op",
     srcs = ["sparse_tensor_slice_dataset_op.cc"],
