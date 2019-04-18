@@ -520,6 +520,14 @@ def tf_additional_lib_srcs(exclude = []):
         ], exclude = exclude),
     })
 
+def tf_additional_monitoring_hdrs():
+    return []
+
+def tf_additional_monitoring_srcs():
+    return [
+        "platform/default/monitoring.cc",
+    ]
+
 def tf_additional_minimal_lib_srcs():
     return [
         "platform/default/integral_types.h",
