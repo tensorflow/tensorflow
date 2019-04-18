@@ -1019,8 +1019,7 @@ def _call(sig, *inputs, **kwargs):
       output_types,
       name=name,
       attrs=attrs,
-      op_def=sig,
-      compute_shapes=False)
+      op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]

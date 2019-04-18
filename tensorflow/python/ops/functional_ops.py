@@ -853,7 +853,6 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
       op_name,
       args,
       tout,
-      compute_shapes=False,
       name="PartitionedFunctionCall",
       attrs={
           "Tin": tin_attr,

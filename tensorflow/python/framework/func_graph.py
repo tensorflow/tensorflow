@@ -370,7 +370,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     # When capturing by value, do the read outside
     reverse_captures = dict((v, k) for k, v in self.captures.items())
@@ -384,7 +383,7 @@ class FuncGraph(ops.Graph):
       else:
         op = ops.get_default_graph().create_op(
             op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
-            op_def, compute_shapes, compute_device)
+            op_def, compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
@@ -432,11 +431,12 @@ class FuncGraph(ops.Graph):
     Returns:
       An `Operation` object.
     """
+    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
       return self._capture_by_value(
           op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
+          compute_device)
 
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead
