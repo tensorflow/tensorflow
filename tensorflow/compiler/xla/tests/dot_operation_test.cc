@@ -1403,6 +1403,7 @@ ENTRY MatrixVectorComplex {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
+<<<<<<< HEAD
 XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {
   Array3D<float> input_arr(2, 3, 2);
   Array2D<float> const_arr(2, 6);
