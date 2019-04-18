@@ -219,6 +219,16 @@ class BackendUtilsTest(test.TestCase):
     x = keras.backend.variable(1)
     self.assertEqual(keras.backend.is_placeholder(x), False)
 
+  def test_print_tensor(self):
+    # Unfortunately it seems impossible to use `mock` (or any other method)
+    # to capture stdout when used inside a graph or graph function, thus
+    # we cannot test correctness.
+    # The message gets correctly printed in practice.
+    x = keras.backend.placeholder(shape=())
+    y = keras.backend.print_tensor(x, 'eager=%s' % context.executing_eagerly())
+    f = keras.backend.function(x, y)
+    f(0)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendVariableTest(test.TestCase):

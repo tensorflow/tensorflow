@@ -25,6 +25,7 @@ import collections
 import itertools
 import json
 import os
+import sys
 import threading
 import weakref
 
@@ -2949,7 +2950,15 @@ def print_tensor(x, message=''):
   Returns:
       The same tensor `x`, unchanged.
   """
-  return logging_ops.Print(x, [x], message)
+  if isinstance(x, ops.Tensor) and hasattr(x, 'graph'):
+    with get_graph().as_default():
+      op = logging_ops.print_v2(message, x, output_stream=sys.stdout)
+      with ops.control_dependencies([op]):
+        return array_ops.identity(x)
+  else:
+    logging_ops.print_v2(message, x, output_stream=sys.stdout)
+    return x
+
 
 
 # GRAPH MANIPULATION
