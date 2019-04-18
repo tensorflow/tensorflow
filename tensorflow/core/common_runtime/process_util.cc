@@ -72,8 +72,10 @@ static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   if (inter_op_parallelism_threads == 0) {
     inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
-  return new thread::ThreadPool(Env::Default(), "Compute",
-                                inter_op_parallelism_threads);
+  return new thread::ThreadPool(
+      Env::Default(), ThreadOptions(), "Compute", inter_op_parallelism_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      /*allocator=*/nullptr);
 }
 
 }  // namespace
@@ -124,7 +126,10 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
     const SessionOptions& options) {
   const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
   VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
-  return new thread::ThreadPool(options.env, "Compute", num_threads);
+  return new thread::ThreadPool(
+      options.env, ThreadOptions(), "Compute", num_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      /*allocator=*/nullptr);
 }
 
 void SchedClosure(std::function<void()> closure) {

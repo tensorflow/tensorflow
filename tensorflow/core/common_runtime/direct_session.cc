@@ -93,7 +93,9 @@ Status NewThreadPoolFromThreadPoolOptions(
     VLOG(1) << "Direct session inter op parallelism threads for pool "
             << pool_number << ": " << num_threads;
     *pool = new thread::ThreadPool(
-        options.env, strings::StrCat("Compute", pool_number), num_threads);
+        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        num_threads, !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
     *owned = true;
     return Status::OK();
   }
@@ -108,7 +110,9 @@ Status NewThreadPoolFromThreadPoolOptions(
   if (mvalue->second == nullptr) {
     mvalue->first = thread_pool_options.num_threads();
     mvalue->second = new thread::ThreadPool(
-        options.env, strings::StrCat("Compute", pool_number), num_threads);
+        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        num_threads, !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
   } else {
     if (mvalue->first != thread_pool_options.num_threads()) {
       return errors::InvalidArgument(
