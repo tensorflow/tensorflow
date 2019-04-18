@@ -35,6 +35,9 @@ class IPUInfeedQueue:
   `contrib.ipu.loops`. These loops will then handle the dequeuing of the data to
   the device automatically.
 
+  The feed_name allows individual feeds to be named.  When including more than
+  one feed in the same graph, each should be independently named.
+
   The following skeleton shows how to use this method when building a training
   loop - note how the body signature contains variables which correspond to the
   nested structure of `tf.Tensor`s representing the next element in the infeed
@@ -82,7 +85,11 @@ class IPUInfeedQueue:
   ```
   """
 
-  def __init__(self, dataset, device_ordinal=0, replication_factor=1):
+  def __init__(self,
+               dataset,
+               device_ordinal=0,
+               replication_factor=1,
+               feed_name="default_infeed"):
     """Creates an IPUInfeedQueue object.
 
     Args:
@@ -92,6 +99,10 @@ class IPUInfeedQueue:
        device_ordinal: ordinal of the device on which this queue will be used.
        replication_factor: the number of replicated graphs this infeed will be
          used in.
+       feed_name: the name of the infeed queue.  This must be unique between
+                  all IPUInfeedQueue and IPUOutfeedQueue nodes within the
+                  Tensorflow graph.
+
 
     Raises:
       ValueError: if all dimensions of shapes of dataset.output_shapes are not
@@ -119,7 +130,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       except TypeError:
         ds_variant = self._dataset._as_variant_tensor
       # ID used for differentiating between datasets.
-      self._id = str(id(ds_variant))
+      self._id = str(feed_name)
 
       # Dataset iterator creator.
       self._initializer = gen_pop_datastream_ops.ipu_consume_dataset(

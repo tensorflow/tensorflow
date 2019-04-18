@@ -317,6 +317,35 @@ def set_recomputation_options(opts, recompute_norm_inputs=True):
   return opts
 
 
+def set_floating_point_behaviour_options(opts,
+                                         inv=True,
+                                         div0=True,
+                                         oflo=True,
+                                         esr=True,
+                                         nanoo=True):
+  """Set the IPU floating point control behaviour bits
+
+  See the Poplar API documentation for poplar::FloatingPointBehaviour.
+
+  Args:
+    :param inv: If true a floating point invalid operation (defined by IEEE 754)
+                will cause an exception.
+    :param div0: If true a floating point divide by zero operation will cause an
+                 exception.
+    :param oflo: If true a floating point overflow will cause an exception.
+    :param esr: Enable stochastic rounding.
+    :param nanoo: Enable Not-a-Number on overflow mode.
+  """
+  opts.floating_point_behaviour.flags_set = True
+  opts.floating_point_behaviour.inv = inv
+  opts.floating_point_behaviour.div0 = div0
+  opts.floating_point_behaviour.oflo = oflo
+  opts.floating_point_behaviour.esr = esr
+  opts.floating_point_behaviour.nanoo = nanoo
+
+  return opts
+
+
 def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
   """Configure the IPUs to be used by the session.
 

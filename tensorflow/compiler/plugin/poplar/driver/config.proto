@@ -97,4 +97,19 @@ message IpuOptions {
 
   // The maximum number of bytes to wait before scheduling an all-reduce
   int64 max_cross_replica_sum_buffer_size = 9;
+
+  message FloatingPointBehaviour {
+    // When set, the flags below will be used to configure the hardware at the
+    // start of program execution.
+    bool flags_set = 1;
+
+    // These flags match the ones provided by the poplar::FloatingPointBehaviour
+    // structure
+    bool inv = 2;
+    bool div0 = 3;
+    bool oflo = 4;
+    bool esr = 5;
+    bool nanoo = 6;
+  }
+  FloatingPointBehaviour floating_point_behaviour = 10;
 };

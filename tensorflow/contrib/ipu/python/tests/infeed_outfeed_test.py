@@ -305,8 +305,10 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     dataset1 = tu.create_single_increasing_dataset(20, shape=[4, 4])
     dataset2 = tu.create_single_increasing_dataset(3, shape=[4, 4])
 
-    infeed_queue1 = ipu_infeed_queue.IPUInfeedQueue(dataset1)
-    infeed_queue2 = ipu_infeed_queue.IPUInfeedQueue(dataset2)
+    infeed_queue1 = ipu_infeed_queue.IPUInfeedQueue(
+        dataset1, feed_name="feed1")
+    infeed_queue2 = ipu_infeed_queue.IPUInfeedQueue(
+        dataset2, feed_name="feed2")
 
     def program(iters, infeed_queue):
       def body(v, x):
