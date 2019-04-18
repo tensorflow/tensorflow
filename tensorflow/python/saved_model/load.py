@@ -186,7 +186,8 @@ class _Loader(object):
     # TODO(andresp): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
-    saver._file_prefix_placeholder = constant_op.constant(variables_path)
+    with ops.device("CPU"):
+      saver._file_prefix_placeholder = constant_op.constant(variables_path)
     load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
