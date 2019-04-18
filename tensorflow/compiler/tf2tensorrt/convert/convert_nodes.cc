@@ -2804,7 +2804,8 @@ Status ConvertBiasAdd(OpConverterParams* params) {
 
   // Bias is normally 1D.
   nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
-  // If the input is NCHW, then we need to permute the bias such that its last 3 dimensions are (C, 1, 1)
+  // If the input is NCHW, then we need to permute the bias such that its last 3
+  // dimensions are (C, 1, 1)
   if (data_format == "NCHW") {
     bias_shape.nbDims = 3;
     std::fill(bias_shape.d + 1, bias_shape.d + nbDims, 1);
@@ -2812,14 +2813,19 @@ Status ConvertBiasAdd(OpConverterParams* params) {
 
   // Next, broadcast the bias across the input.
   nvinfer1::Dims input_shape = input_tensor->getDimensions();
-  TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(inputs.at(0), inputs.at(1), &input_shape, &bias_shape));
+  TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(
+      inputs.at(0), inputs.at(1), &input_shape, &bias_shape));
 
-  // Finally, reshape bias. Since the bias is usually a constant, this will normally happen at conversion-time.
+  // Finally, reshape bias. Since the bias is usually a constant, this will
+  // normally happen at conversion-time.
   nvinfer1::ITensor* bias_tensor{nullptr};
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(inputs.at(1), bias_shape, params->validation_only, &bias_tensor));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), bias_shape, params->validation_only, &bias_tensor));
   VLOG(2) << "Bias shape adjusted to " << DebugString(bias_shape);
 
-  nvinfer1::IElementWiseLayer* layer = params->converter->network()->addElementWise(*input_tensor, *bias_tensor, nvinfer1::ElementWiseOperation::kSUM);
+  nvinfer1::IElementWiseLayer* layer =
+      params->converter->network()->addElementWise(
+          *input_tensor, *bias_tensor, nvinfer1::ElementWiseOperation::kSUM);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
