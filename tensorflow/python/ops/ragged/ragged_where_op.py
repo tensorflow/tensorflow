@@ -77,23 +77,23 @@ def where(condition, x=None, y=None, name=None):
   #### Examples:
     ```python
     >>> # Coordinates where condition is true.
-    >>> condition = tf.ragged.constant_value(
+    >>> condition = tf.compat.v1.ragged.constant_value(
     ...     [[True, False, True], [False, True]])
     >>> ragged.where(condition)
     [[0, 0], [0, 2], [1, 1]]
 
     >>> # Elementwise selection between x and y, based on condition.
-    >>> condition = tf.ragged.constant_value(
+    >>> condition = tf.compat.v1.ragged.constant_value(
     ...     [[True, False, True], [False, True]])
-    >>> x = tf.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y = tf.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
+    >>> x = tf.compat.v1.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
+    >>> y = tf.compat.v1.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
     >>> ragged.where(condition, x, y)
     [['A', 'b', 'C'], ['d', 'E']]
 
     >>> # Row selection between x and y, based on condition.
     >>> condition = [True, False]
-    >>> x = tf.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y = tf.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
+    >>> x = tf.compat.v1.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
+    >>> y = tf.compat.v1.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
     >>> ragged.where(condition, x, y)
     [['A', 'B', 'C'], ['d', 'e']]
     ```

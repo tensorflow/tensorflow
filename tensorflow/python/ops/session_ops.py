@@ -162,10 +162,10 @@ def get_session_handle(data, name=None):
 
   ```python
   c = tf.multiply(a, b)
-  h = tf.get_session_handle(c)
+  h = tf.compat.v1.get_session_handle(c)
   h = sess.run(h)
 
-  p, a = tf.get_session_tensor(h.handle, tf.float32)
+  p, a = tf.compat.v1.get_session_tensor(h.handle, tf.float32)
   b = tf.multiply(a, 10)
   c = sess.run(b, feed_dict={p: h.handle})
   ```
@@ -203,10 +203,10 @@ def get_session_tensor(handle, dtype, name=None):
 
   ```python
   c = tf.multiply(a, b)
-  h = tf.get_session_handle(c)
+  h = tf.compat.v1.get_session_handle(c)
   h = sess.run(h)
 
-  p, a = tf.get_session_tensor(h.handle, tf.float32)
+  p, a = tf.compat.v1.get_session_tensor(h.handle, tf.float32)
   b = tf.multiply(a, 10)
   c = sess.run(b, feed_dict={p: h.handle})
   ```

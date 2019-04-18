@@ -277,7 +277,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     ```
 
     Warning: currently, this needs to cast value_rowids to int64 before
-    converting, since `tf.bincount` only supports `int32`.
+    converting, since `tf.math.bincount` only supports `int32`.
 
     Args:
       values: A potentially ragged tensor with shape `[nvals, ...]`.

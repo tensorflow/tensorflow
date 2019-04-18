@@ -306,7 +306,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   ```python
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the variable initializer.
       sess.run(w.initializer)
       # ...you now can run ops that use the value of 'w'...
@@ -318,10 +318,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variables_initializer()
+  init_op = tf.compat.v1.global_variables_initializer()
 
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
@@ -372,8 +372,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
   not have these issues:
 
   * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
-    `tf.variable_scope` before the `tf.get_variable()` call.
+  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
+    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,
@@ -512,14 +512,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         print(v.eval(sess))
@@ -549,7 +549,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     ```python
     # Initialize 'v' with a random tensor.
-    v = tf.Variable(tf.truncated_normal([10, 40]))
+    v = tf.Variable(tf.random.truncated_normal([10, 40]))
     # Use `initialized_value` to guarantee that `v` has been
     # initialized before its value is used to initialize `w`.
     # The random values are picked only once.
@@ -767,7 +767,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = v.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -818,7 +818,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = v.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -869,7 +869,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = v.scatter_nd_assign(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -958,14 +958,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         v.load([2, 3], sess)
@@ -1280,7 +1280,7 @@ class VariableV1(Variable):
 
   ```python
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the variable initializer.
       sess.run(w.initializer)
       # ...you now can run ops that use the value of 'w'...
@@ -1292,10 +1292,10 @@ class VariableV1(Variable):
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variables_initializer()
+  init_op = tf.compat.v1.global_variables_initializer()
 
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
@@ -1345,8 +1345,8 @@ class VariableV1(Variable):
   not have these issues:
 
   * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
-    `tf.variable_scope` before the `tf.get_variable()` call.
+  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
+    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,  # pylint: disable=super-init-not-called
@@ -1844,14 +1844,14 @@ class RefVariable(VariableV1):
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         print(v.eval(sess))
@@ -2106,7 +2106,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -2158,7 +2158,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = ref.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -2210,7 +2210,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_update(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -2822,7 +2822,7 @@ def global_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to global variables are local variables. See
-  `tf.local_variables`
+  `tf.compat.v1.local_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2840,7 +2840,7 @@ def global_variables(scope=None):
 @tf_export(v1=["all_variables"])
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
 def all_variables():
-  """Use `tf.global_variables` instead."""
+  """Use `tf.compat.v1.global_variables` instead."""
   return global_variables()
 
 
@@ -2875,7 +2875,7 @@ def local_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to local variables are global variables. See
-  `tf.global_variables`
+  `tf.compat.v1.global_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2981,7 +2981,7 @@ def variables_initializer(var_list, name="init"):
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
 def initialize_variables(var_list, name="init"):
-  """See `tf.variables_initializer`."""
+  """See `tf.compat.v1.variables_initializer`."""
   return variables_initializer(var_list, name=name)
 
 
@@ -3003,7 +3003,7 @@ def global_variables_initializer():
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
 def initialize_all_variables():
-  """See `tf.global_variables_initializer`."""
+  """See `tf.compat.v1.global_variables_initializer`."""
   return global_variables_initializer()
 
 
@@ -3025,7 +3025,7 @@ def local_variables_initializer():
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
 def initialize_local_variables():
-  """See `tf.local_variables_initializer`."""
+  """See `tf.compat.v1.local_variables_initializer`."""
   return local_variables_initializer()
 
 
