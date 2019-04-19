@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/parse_ops.cc.
-
 #include <algorithm>
+#include <cmath>
+
+#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
 template <typename T>
-class DecodeRawOp : public OpKernel {
+class DecodePaddedRawOp : public OpKernel {
  public:
-  explicit DecodeRawOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit DecodePaddedRawOp(OpKernelConstruction* context)
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("out_type", &out_type_));
 
     const bool host_is_little_endian = port::kLittleEndian;
@@ -40,49 +39,58 @@ class DecodeRawOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const auto& input = context->input(0);
-    int64 str_size = -1;
     auto flat_in = input.flat<string>();
-    for (int64 i = 0; i < flat_in.size(); ++i) {
-      const string& in_str = flat_in(i);
-      if (str_size == -1) {
-        str_size = in_str.size();
-      } else {
-        OP_REQUIRES(context, str_size == in_str.size(),
-                    errors::InvalidArgument(
-                        "DecodeRaw requires input strings to all be the same "
-                        "size, but element ",
-                        i, " has size ", str_size, " != ", in_str.size()));
-      }
-    }
-    TensorShape out_shape = input.shape();
-    if (str_size == -1 || str_size == 0) {  // Empty input
-      out_shape.AddDim(0);
-      Tensor* output_tensor = nullptr;
-      OP_REQUIRES_OK(context, context->allocate_output("output", out_shape,
-                                                       &output_tensor));
-      return;
-    }
+
+    int fixed_length;
+    const auto& length_input = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(length_input.shape()),
+                errors::InvalidArgument("k must be scalar, got shape ",
+                                        length_input.shape().DebugString()));
+    fixed_length = length_input.scalar<int32>()();
+
     OP_REQUIRES(
-        context, str_size % sizeof(T) == 0,
-        errors::InvalidArgument("Input to DecodeRaw has length ", str_size,
-                                " that is not a multiple of ", sizeof(T),
-                                ", the size of ", DataTypeString(out_type_)));
-    const int64 added_dim = str_size / sizeof(T);
-    out_shape.AddDim(added_dim);
+        context, fixed_length % sizeof(T) == 0,
+        errors::InvalidArgument(
+            "fixed_length (", fixed_length,
+            ") must be a multiple of the size of out_type (", sizeof(T), ")"));
+
+    OP_REQUIRES(context, fixed_length > 0,
+                errors::InvalidArgument("fixed_length (", fixed_length,
+                                        ") must be greater than zero."));
+
+    int width = fixed_length / sizeof(T);
+
+    TensorShape out_shape = input.shape();
+    out_shape.AddDim(width);
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output("output", out_shape, &output_tensor));
+
+    if (flat_in.size() == 0) {  // Empty input
+      return;
+    }
+
     auto out = output_tensor->flat_inner_dims<T>();
-    DCHECK_EQ(flat_in.size(), out.dimensions()[0]);
     T* out_data = out.data();
 
+    // Forcibly clear memory - we're going to copy variable length strings in,
+    // and need to ensure that if we don't write to byte N when we copy, that
+    // we're not getting random data.
+    memset(out_data, 0, fixed_length * flat_in.size());
+
     // If the data is already in the host's byte order, or if the width of the
-    // output type is a single byte, we can copy the memory directly.
+    // output type is a single byte (meaning the ordering doesn't matter), we
+    // can copy the memory directly.
     if (!convert_data_endianness_ || sizeof(T) == 1) {
       for (int64 i = 0; i < flat_in.size(); ++i) {
         const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
-        memcpy(out_data, in_data, str_size);
-        out_data += added_dim;
+
+        if (flat_in(i).size() > fixed_length) {
+          memcpy(out_data, in_data, fixed_length);
+        } else {
+          memcpy(out_data, in_data, flat_in(i).size());
+        }
+        out_data += fixed_length;
       }
     } else {
       // Otherwise, the data is not in the host's byte order, and rather than a
@@ -91,12 +99,13 @@ class DecodeRawOp : public OpKernel {
         const char* in_data_bytes =
             reinterpret_cast<const char*>(flat_in(i).data());
         char* out_data_bytes = reinterpret_cast<char*>(out_data);
-        const char* p = in_data_bytes;
-        char* q = out_data_bytes;
-        for (; p < in_data_bytes + str_size; p += sizeof(T), q += sizeof(T)) {
-          std::reverse_copy(p, p + sizeof(T), q);
+        const char* p_in = in_data_bytes;
+        char* p_out = out_data_bytes;
+        for (; p_in < in_data_bytes + fixed_length;
+             p_in += sizeof(T), p_out += sizeof(T)) {
+          std::reverse_copy(p_in, p_in + sizeof(T), p_out);
         }
-        out_data += added_dim;
+        out_data += fixed_length;
       }
     }
   }
@@ -106,17 +115,16 @@ class DecodeRawOp : public OpKernel {
   // different, and the data needs conversion.
   bool convert_data_endianness_;
 
-  // True if the input data is in little endian format.
-  bool data_is_little_endian_;
+  // Data type of the output tensor.
   DataType out_type_;
 };
 
-#define REGISTER(type)                                                       \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("DecodeRaw").Device(DEVICE_CPU).TypeConstraint<type>("out_type"), \
-      DecodeRawOp<type>)
+#define REGISTER(type)                                           \
+  REGISTER_KERNEL_BUILDER(Name("DecodePaddedRaw")                \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("out_type"), \
+                          DecodePaddedRawOp<type>)
 
-REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);
@@ -125,9 +133,6 @@ REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
 REGISTER(int64);
-REGISTER(bool);
-REGISTER(complex64);
-REGISTER(complex128);
 
 #undef REGISTER
 
