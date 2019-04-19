@@ -1131,7 +1131,7 @@ class ParseSequenceExampleTest(test.TestCase):
                 expected_context_values=None,
                 expected_feat_list_values=None,
                 expected_err=None):
-    # Test using tf.parse_single_sequence_example
+    # Test using tf.io.parse_single_sequence_example
     self._test(
         kwargs,
         expected_context_values=expected_context_values,
