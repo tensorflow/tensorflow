@@ -25,7 +25,7 @@
   * Update sklearn imports for deprecated packages.
   * Deprecate `Variable.count_up_to` and `tf.count_up_to` in favor of `Dataset.range`.
   * Export `confusion_matrix` op as `tf.math.confusion_matrix` instead of `tf.train.confusion_matrix`.
-  * Add `tf.dtypes.` endpoint for every constant in dtypes.py; moving endpoints in versions.py to corresponding endpoints in `tf.sysconfig.` and `tf.version.`; moving all constants under `tf.saved_model` submodules to `tf.saved_model` module. New endpoints are added in V1 and V2 but existing endpoint removals are only applied in V2.
+  * Add `tf.dtypes.` endpoint for every constant in dtypes.py. Moving endpoints in versions.py to corresponding endpoints in `tf.sysconfig.` and `tf.version.`. Moving all constants under `tf.saved_model` submodules to `tf.saved_model` module. New endpoints are added in V1 and V2 but existing endpoint removals are only applied in V2.
   * Deprecates behavior where device assignment overrides collocation constraints inside a collocation context manager.
 * Keras & Python API
   * Add to Keras functionality analogous to `tf.register_tensor_conversion_function`.
