@@ -2427,6 +2427,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
        ConvertSimpleOperator<TensorFlowAssertOperator, kAnyNumInputs, 1>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},
+      {"BatchMatMulV2", ConvertBatchMatMulOperator},
       {"BatchNormWithGlobalNormalization",
        ConvertBatchNormWithGlobalNormalizationOperator},
       {"BatchToSpaceND", ConvertBatchToSpaceNDOperator},
