@@ -177,6 +177,7 @@ class ControlFlowTransformer(converter.Base):
     orelse_scope = anno.getanno(node, annos.NodeAnno.ORELSE_SCOPE)
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
+    origin_info = anno.getanno(node, anno.Basic.ORIGIN, default=None)
 
     # Note: this information needs to be extracted before the body conversion
     # that happens in the call to generic_visit below, because the conversion
@@ -291,18 +292,22 @@ class ControlFlowTransformer(converter.Base):
                                        orelse_name, state_getter_name,
                                        state_setter_name)
 
-    return (undefined_assigns + cond_assign + composite_defs + body_def +
-            orelse_def + cond_expr)
+    # TODO(b/129493607): investigate how to generalize copying origin
+    # information to all cases where we make new nodes.
+    if_ast = (undefined_assigns + cond_assign + composite_defs + body_def +
+              orelse_def + cond_expr)
+    for node in if_ast:
+      anno.setanno(node, anno.Basic.ORIGIN, origin_info)
+    return if_ast
 
-  def _get_loop_state(self, node):
+  def _get_loop_state(self, node, modified_symbols):
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
     reserved_symbols = body_scope.referenced
-
     loop_state = []
-    for s in body_scope.modified:
+    for s in modified_symbols:
 
       # Variables not live into or out of the loop are considered local to the
       # loop.
@@ -355,7 +360,8 @@ class ControlFlowTransformer(converter.Base):
   def visit_While(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols, possibly_undefs = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undefs = self._get_loop_state(
+        node, anno.getanno(node, annos.NodeAnno.BODY_SCOPE).modified)
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
@@ -400,13 +406,14 @@ class ControlFlowTransformer(converter.Base):
 
   def _for_loop_with_extra_test(self, loop_state, state_ssf, state_ast_tuple,
                                 original_node, extra_test_name, extra_test,
-                                body_name, loop_body):
+                                body_name, loop_body, ssf_map):
+    target_nodes = ast_util.rename_symbols(original_node.target, ssf_map)
     template = """
       def extra_test_name(state_ssf):
         return extra_test_expr
       def body_name(loop_vars, state_ssf):
         # Workaround for PEP-3113
-        iterate = loop_vars
+        target = loop_vars
         body
         return state_ssf,
       state_ast_tuple = ag__.for_stmt(
@@ -418,18 +425,19 @@ class ControlFlowTransformer(converter.Base):
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
         iter_=original_node.iter,
-        iterate=original_node.target,
+        target=target_nodes,
         extra_test_name=extra_test_name,
         extra_test_expr=extra_test,
         body_name=body_name,
         body=loop_body)
 
   def _for_loop_with_state(self, loop_state, state_ssf, state_ast_tuple,
-                           original_node, body_name, loop_body):
+                           original_node, body_name, loop_body, ssf_map):
+    target_nodes = ast_util.rename_symbols(original_node.target, ssf_map)
     template = """
       def body_name(loop_vars, state_ssf):
         # Workaround for PEP-3113
-        iterate = loop_vars
+        target = loop_vars
         body
         return state_ssf,
       state_ast_tuple = ag__.for_stmt(
@@ -441,7 +449,7 @@ class ControlFlowTransformer(converter.Base):
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
         iter_=original_node.iter,
-        iterate=original_node.target,
+        target=target_nodes,
         body_name=body_name,
         body=loop_body)
 
@@ -464,7 +472,10 @@ class ControlFlowTransformer(converter.Base):
   def visit_For(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols, possibly_undefs = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undefs = self._get_loop_state(
+        node,
+        (anno.getanno(node, annos.NodeAnno.BODY_SCOPE).modified |
+         anno.getanno(node, annos.NodeAnno.ITERATE_SCOPE).modified))
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
@@ -480,13 +491,12 @@ class ControlFlowTransformer(converter.Base):
                                                     reserved_symbols)
         loop_nodes = self._for_loop_with_extra_test(
             loop_state, state_ssf, state_ast_tuple, node, extra_test_name,
-            extra_test, body_name, node_body)
-
+            extra_test, body_name, node_body, ssf_map)
       else:
         # Loop with loop-carried state and no early stopping
         loop_nodes = self._for_loop_with_state(
-            loop_state, state_ssf, state_ast_tuple, node, body_name, node_body)
-
+            loop_state, state_ssf, state_ast_tuple, node, body_name, node_body,
+            ssf_map)
     else:
       # Loop with no loop-carried state and no early stopping
       assert not has_extra_test, ('Early stoppiong (e.g. break and/or return) '

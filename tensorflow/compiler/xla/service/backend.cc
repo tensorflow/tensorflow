@@ -66,38 +66,16 @@ const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
-namespace {
-
-class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
- public:
-  explicit EigenThreadPoolWrapper(tensorflow::thread::ThreadPool* pool)
-      : pool_(pool) {}
-  ~EigenThreadPoolWrapper() override {}
-
-  void Schedule(std::function<void()> fn) override {
-    pool_->Schedule(std::move(fn));
-  }
-  int NumThreads() const override { return pool_->NumThreads(); }
-  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
-
- private:
-  tensorflow::thread::ThreadPool* pool_ = nullptr;
-};
-
-}  // namespace
-
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
 struct Backend::IntraOpThreadPool {
   explicit IntraOpThreadPool(const int num_threads)
       : pool(new tensorflow::thread::ThreadPool(tensorflow::Env::Default(),
                                                 "XLAEigen", num_threads)),
-        wrapper(new EigenThreadPoolWrapper(pool.get())),
-        device(new Eigen::ThreadPoolDevice(wrapper.get(),
-                                           wrapper->NumThreads())) {}
+        device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
+                                           pool->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 

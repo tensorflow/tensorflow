@@ -46,6 +46,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
     OP_REQUIRES_OK(
         ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
@@ -64,8 +68,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<CapturedFunction> captured_func;
     CapturedFunction::Params params;
     params.use_inter_op_parallelism = use_inter_op_parallelism_;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 params, &captured_func));
+    params.lib_def = lib_def_;
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            std::move(params), &captured_func));
 
     if (num_parallel_calls == model::kAutoTune) {
       metrics::RecordTFDataAutotune(kDatasetName);
@@ -278,6 +284,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   bool preserve_cardinality_;
   NameAttrList func_;
   std::vector<int> short_circuit_indices_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParallelMapDataset").Device(DEVICE_CPU),

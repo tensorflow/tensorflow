@@ -58,9 +58,11 @@ class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const string& cond_fn_name,
                     const string& body_fn_name, int parallel_iterations,
-                    Graph* graph, const FunctionLibraryDefinition& flib) {
+                    Graph* graph, const FunctionLibraryDefinition& flib,
+                    bool keep_node_fetchable) {
     LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name,
-                            parallel_iterations, graph, flib);
+                            parallel_iterations, graph, flib,
+                            keep_node_fetchable);
     return helper.RunInternal();
   }
 
@@ -70,7 +72,8 @@ class LowerWhileHelper {
   // the given graph.
   LowerWhileHelper(Node* while_op, const string& cond_fn_name,
                    const string& body_fn_name, int parallel_iterations,
-                   Graph* graph, const FunctionLibraryDefinition& flib);
+                   Graph* graph, const FunctionLibraryDefinition& flib,
+                   bool keep_node_fetchable);
 
   Status RunInternal();
 
@@ -126,7 +129,9 @@ class LowerWhileHelper {
   Node* loop_cond_node_;
   // The call node for the body branch.
   Node* body_call_node_;
-  // The IdentityN node with the same outputs as the original While op.
+  // The node with the same name as the original While op:
+  //   (a) IdentityN node with same outputs if 'keep_node_fetchable_ == true'.
+  //   (b) NoOp node with control edge from 'lowered_while_executed_' otherwise.
   Node* lowered_while_output_;
   // The NoOp node with control edges from all Exit nodes. This node will be
   // used as a source of outgoing control edges from lowered While node.
@@ -137,6 +142,7 @@ class LowerWhileHelper {
   string name_;
   // Max number of parallel_iterations for the while loop.
   const int parallel_iterations_;
+  bool keep_node_fetchable_;
 
   NodeDebugInfo debug_info_;
   NodeBuilder cond_call_builder_;
@@ -154,12 +160,14 @@ class LowerWhileHelper {
 LowerWhileHelper::LowerWhileHelper(Node* while_op, const string& cond_fn_name,
                                    const string& body_fn_name,
                                    int parallel_iterations, Graph* graph,
-                                   const FunctionLibraryDefinition& flib)
+                                   const FunctionLibraryDefinition& flib,
+                                   bool keep_node_fetchable)
     : while_op_(while_op),
       graph_(graph),
       flib_(flib),
       name_(while_op->name()),
       parallel_iterations_(parallel_iterations),
+      keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*while_op_),
       cond_call_builder_(NewName("cond"), cond_fn_name, graph->op_registry(),
                          &debug_info_),
@@ -330,15 +338,6 @@ Status LowerWhileHelper::CreateExitNodes() {
   // after lowering of multi-device loop body we might end up with DT_RESOURCE
   // inputs from multiple devices coming into IdentityN.
 
-  // Add an IdentityN node that has the same outputs and same name as the
-  // original functional While op. This is used for fetching the output of the
-  // While node by name in calls to sess.run.
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(name_, "IdentityN", OpRegistry::Global(), &debug_info_)
-          .Input(outputs)
-          .Device(while_op_->requested_device())
-          .Finalize(graph_, &lowered_while_output_));
-
   // Add a NoOp node that has control edges from all Exit nodes. This node is
   // used for rewriting control edges with the original while op as src.
   TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopExecuted"), "NoOp",
@@ -346,6 +345,26 @@ Status LowerWhileHelper::CreateExitNodes() {
                          .ControlInputs(exit_nodes_)
                          .Device(while_op_->requested_device())
                          .Finalize(graph_, &lowered_while_executed_));
+
+  if (keep_node_fetchable_) {
+    // Add an IdentityN node that has the same outputs and same name as the
+    // original functional While op. This is used for fetching the output of the
+    // While node by name in calls to sess.run.
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(name_, "IdentityN", OpRegistry::Global(), &debug_info_)
+            .Input(outputs)
+            .Device(while_op_->requested_device())
+            .Finalize(graph_, &lowered_while_output_));
+  } else {
+    // Even if we don't plan to fetch tensors from the lowered While op, we must
+    // keep it a valid source of control edges, because it might be a part of
+    // function control output set.
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(name_, "NoOp", OpRegistry::Global(), &debug_info_)
+            .ControlInput(lowered_while_executed_)
+            .Device(while_op_->requested_device())
+            .Finalize(graph_, &lowered_while_output_));
+  }
 
   return Status::OK();
 }
@@ -392,8 +411,10 @@ string LowerWhileHelper::NewName(const string& infix) {
 }  // namespace
 
 Status RewriteWhileNode(Node* n, Graph* g,
-                        const FunctionLibraryDefinition& flib) {
-  VLOG(2) << "Lower While node: " << SummarizeNode(*n);
+                        const FunctionLibraryDefinition& flib,
+                        bool keep_node_fetchable) {
+  VLOG(2) << "Lower While node (keep_node_fetchable=" << keep_node_fetchable
+          << "): " << SummarizeNode(*n);
 
   const AttrValue* cond_attr = n->attrs().Find("cond");
   if (cond_attr == nullptr) {
@@ -411,7 +432,7 @@ Status RewriteWhileNode(Node* n, Graph* g,
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
       n, cond_attr->func().name(), body_attr->func().name(),
-      parallel_iterations_attr->i(), g, flib));
+      parallel_iterations_attr->i(), g, flib, keep_node_fetchable));
   g->RemoveNode(n);
 
   return Status::OK();

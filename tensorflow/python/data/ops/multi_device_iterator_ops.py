@@ -209,9 +209,6 @@ class MultiDeviceIterator(object):
       In order to prevent deadlocks, if the prefetch_buffer_size is greater
       than the max_buffer_size, we set the max_buffer_size to
       prefetch_buffer_size.
-
-    Raises:
-      RuntimeError: If run in Eager mode.
     """
     self._dataset = dataset._apply_options()  # pylint: disable=protected-access
     self._devices = devices

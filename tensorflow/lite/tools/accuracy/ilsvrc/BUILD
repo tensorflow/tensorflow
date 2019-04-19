@@ -126,58 +126,34 @@ cc_library(
     hdrs = ["imagenet_model_evaluator.h"],
     copts = tflite_copts(),
     deps = [
-        ":imagenet_topk_eval",
-        ":inception_preprocessing",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools/accuracy:android_required_build_flags",
-        "//tensorflow/lite/tools/accuracy:eval_pipeline",
-        "//tensorflow/lite/tools/accuracy:eval_pipeline_builder",
-        "//tensorflow/lite/tools/accuracy:file_reader_stage",
-        "//tensorflow/lite/tools/accuracy:run_tflite_model_stage",
-        "//tensorflow/lite/tools/accuracy:utils",
+        "//tensorflow/lite/tools/evaluation:utils",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "//tensorflow/lite/tools/evaluation/stages:image_classification_stage",
         "@com_google_absl//absl/memory",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-                "//tensorflow/core/kernels:android_whole_file_read_ops",
-                "//tensorflow/core/kernels:android_tensorflow_image_op",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:tensorflow",
-                "//tensorflow/core:lib_internal",
-                "//tensorflow/core:framework_internal",
-                "//tensorflow/core:framework",
-                "//tensorflow/core:lib",
-                "//tensorflow/core:core_cpu",
-            ],
-        },
-    ),
+    ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "imagenet_accuracy_eval",
     srcs = ["imagenet_accuracy_eval.cc"],
     copts = tflite_copts(),
     linkopts = common_linkopts,
     deps = [
         ":imagenet_model_evaluator",
-        ":imagenet_topk_eval",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools/accuracy:android_required_build_flags",
         "//tensorflow/lite/tools/accuracy:csv_writer",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:lib",
-                "//tensorflow/core:framework_internal",
-            ],
-        },
-    ),
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 tflite_portable_test_suite()

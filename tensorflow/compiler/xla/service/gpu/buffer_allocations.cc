@@ -164,7 +164,7 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
   return se::DeviceMemoryBase(
       static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size(), /*is_sub_buffer=*/true);
+      buffer_slice.size());
 }
 
 void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,

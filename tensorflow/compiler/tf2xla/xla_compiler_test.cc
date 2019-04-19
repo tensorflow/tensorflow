@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+
 #include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/list_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -35,7 +40,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -1496,6 +1503,77 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
     EXPECT_TRUE(xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 1)
                     .IsToken());
   }
+}
+
+TEST_F(XlaCompilerTest, OpsWithTensorListInput) {
+  FunctionDefLibrary fdef_lib;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+  // Build cond fn for While.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+    auto result = ops::Const<bool>(scope, {true}, {});
+    ops::_Retval(scope.WithOpName("ret"), result, 0);
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+    FunctionDef fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(*graph, "cond", &fdef));
+    TF_ASSERT_OK(flib_def.AddFunctionDef(fdef));
+  }
+  // Build body fn for While.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    auto arg = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+    ops::_Retval(scope.WithOpName("ret"), arg, 0);
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+    FunctionDef fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(*graph, "body", &fdef));
+    TF_ASSERT_OK(flib_def.AddFunctionDef(fdef));
+  }
+
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto element_shape = ops::Const<int32>(scope, {1}, {1});
+  auto max_elements = ops::Const<int32>(scope, {10}, {});
+  auto arg = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+  std::initializer_list<Output> out = {arg, arg};
+  auto add_n = ops::AddN(scope, out);
+  NameAttrList cond_fn, body_fn;
+  cond_fn.set_name("cond");
+  body_fn.set_name("body");
+  auto while_op =
+      ops::While(scope, std::initializer_list<Input>{arg}, cond_fn, body_fn);
+  auto ret0 = ops::_Retval(scope.WithOpName("ret0"), add_n, 0);
+  auto ret1 = ops::_Retval(scope.WithOpName("ret1"), while_op.output[0], 1);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kTensorList;
+  xla::Shape tensor_list_element_shape;
+  TF_ASSERT_OK(TensorShapeToXLAShape(DT_INT32, TensorShape{1},
+                                     &tensor_list_element_shape));
+  xla::Shape index_shape;
+  TF_ASSERT_OK(TensorShapeToXLAShape(DT_INT32, TensorShape{}, &index_shape));
+  std::vector<xla::Shape> shapes{tensor_list_element_shape, index_shape};
+  xla::Shape arg_shape = xla::ShapeUtil::MakeTupleShape(shapes);
+  args[0].shape = arg_shape;
+
+  // Compiles the graph.
+  XlaCompiler::Options options = DefaultOptions();
+  options.flib_def = &flib_def;
+  XlaCompiler compiler(options);
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
+  ASSERT_EQ(result.outputs.size(), 2);
+  const XlaCompiler::OutputDescription& output0 = result.outputs[0];
+  ASSERT_TRUE(output0.is_tensor_list);
+  const XlaCompiler::OutputDescription& output1 = result.outputs[1];
+  ASSERT_TRUE(output1.is_tensor_list);
 }
 
 }  // namespace

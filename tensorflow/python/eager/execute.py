@@ -55,6 +55,7 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   device_name = ctx.device_name
   # pylint: disable=protected-access
   try:
+    ctx.ensure_initialized()
     tensors = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
                                                op_name, inputs, attrs,
                                                num_outputs)

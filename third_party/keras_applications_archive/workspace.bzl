@@ -8,7 +8,7 @@ def repo():
         strip_prefix = "keras-applications-1.0.6",
         sha256 = "2cb412c97153160ec267b238e958d281ac3532b139cab42045c2d7086a157c21",
         urls = [
-            "http://mirror.bazel.build/github.com/keras-team/keras-applications/archive/1.0.6.tar.gz",
+            "http://mirror.tensorflow.org/github.com/keras-team/keras-applications/archive/1.0.6.tar.gz",
             "https://github.com/keras-team/keras-applications/archive/1.0.6.tar.gz",
         ],
         build_file = "//third_party/keras_applications_archive:BUILD.bazel",

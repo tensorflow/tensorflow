@@ -22,7 +22,6 @@ import time
 
 import tensorflow as tf
 
-import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.gan import mnist
 
 NOISE_DIM = 100
@@ -37,14 +36,14 @@ def data_format():
 
 
 def device():
-  return '/gpu:0' if tfe.num_gpus() else '/cpu:0'
+  return '/gpu:0' if tf.test.is_gpu_available() else '/cpu:0'
 
 
 class MnistEagerGanBenchmark(tf.test.Benchmark):
 
   def _report(self, test_name, start, num_iters, batch_size):
     avg_time = (time.time() - start) / num_iters
-    dev = 'gpu' if tfe.num_gpus() else 'cpu'
+    dev = 'gpu' if tf.test.is_gpu_available() else 'cpu'
     name = 'eager_%s_%s_batch_%d_%s' % (test_name, dev, batch_size,
                                         data_format())
     extras = {'examples_per_sec': batch_size / avg_time}

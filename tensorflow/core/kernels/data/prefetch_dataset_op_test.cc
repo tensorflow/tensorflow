@@ -586,7 +586,6 @@ TEST_P(ParameterizedPrefetchDatasetOpTest, Roundtrip) {
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   int cur_iteration = 0;
@@ -598,7 +597,8 @@ TEST_P(ParameterizedPrefetchDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *prefetch_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,

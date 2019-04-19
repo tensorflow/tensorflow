@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -37,7 +38,7 @@ class _XlaScope(object):
 
 
 @contextlib.contextmanager
-@tf_export(v1=["xla.experimental.jit_scope"])
+@tf_export("xla.experimental.jit_scope")
 def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
   """Enable or disable JIT compilation of operators within the scope.
 
@@ -75,10 +76,15 @@ def experimental_jit_scope(compile_ops=True, separate_compiled_gradients=False):
       as the name of the gradients. As a result, the gradients will be compiled
       in a scope that is separate from both the forward computation, and from
       other gradients.
+  Raises:
+    RuntimeError: if called when eager execution is enabled.
   Yields:
     The current scope, enabling or disabling compilation.
-
   """
+  if context.executing_eagerly():
+    raise RuntimeError("xla.experimental.jit_scope is not supported when eager "
+                       "execution is enabled. Try use it inside tf.function.")
+
   if callable(compile_ops):
     def xla_compile(node_def):
       return attr_value_pb2.AttrValue(b=compile_ops(node_def))

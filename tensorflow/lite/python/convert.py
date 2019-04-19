@@ -95,13 +95,11 @@ class ConverterError(Exception):
   pass
 
 
-# Don't expose these for now.
-#  @_tf_export("lite.toco_convert_protos")
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   """Convert `input_data_str` according to model and toco parameters.
 
   Unless you know what you are doing consider using
-  the more friendly `tf.lite.toco_convert`.
+  the more friendly `tf.compat.v1.lite.toco_convert`.
 
   Args:
     model_flags_str: Serialized proto describing model properties, see
@@ -184,8 +182,6 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
         pass
 
 
-# Don't expose these for now.
-# @_tf_export("lite.build_toco_convert_protos")
 def build_toco_convert_protos(input_tensors,
                               output_tensors,
                               inference_type=lite_constants.FLOAT,

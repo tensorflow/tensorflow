@@ -16,9 +16,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/experimental/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/c/c_api_types.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"

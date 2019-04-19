@@ -5,6 +5,10 @@ tf_module {
     argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
   }
   member_method {
+    name: "bytes_split"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "format"
     argspec: "args=[\'template\', \'inputs\', \'placeholder\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'{}\', \'3\', \'None\'], "
   }
@@ -30,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "split"
-    argspec: "args=[\'source\', \'sep\', \'maxsplit\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\'], "
+    argspec: "args=[\'input\', \'sep\', \'maxsplit\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\', \'None\'], "
   }
   member_method {
     name: "strip"

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
+import collections
 
 import numpy as np
 import six
@@ -58,7 +58,7 @@ class HDF5Matrix(object):
   Returns:
       An array-like HDF5 dataset.
   """
-  refs = defaultdict(int)
+  refs = collections.defaultdict(int)
 
   def __init__(self, datapath, dataset, start=0, end=None, normalizer=None):
     if h5py is None:

@@ -263,7 +263,9 @@ class VirtualScheduler {
   // Does not take ownership of cluster or ready_nodes.
   VirtualScheduler(const bool use_static_shapes,
                    const bool use_aggressive_shape_inference, Cluster* cluster,
-                   ReadyNodeManager* ready_nodes);
+                   ReadyNodeManager* ready_nodes,
+                   std::unique_ptr<VirtualPlacer> placer);
+
   // Initializes the scheduler for the specific grappler item.
   // Should be called immediately after the c'tor or when the scheduler will be
   // reused for a new grappler item. All internal states of the scheduler
@@ -356,7 +358,7 @@ class VirtualScheduler {
   bool track_mem_usage_snapshot_;
   const bool use_aggressive_shape_inference_;
 
-  VirtualPlacer placer_;  // owned.
+  std::unique_ptr<VirtualPlacer> placer_;
 };
 
 }  // namespace grappler

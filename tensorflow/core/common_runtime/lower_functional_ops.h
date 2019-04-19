@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTIONAL_OPS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTIONAL_OPS_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -31,8 +32,10 @@ namespace tensorflow {
 class LowerFunctionalOpsPass : public GraphOptimizationPass {
  public:
   LowerFunctionalOpsPass() = default;
-  explicit LowerFunctionalOpsPass(bool lower_function_calls)
-      : lower_function_calls_(lower_function_calls) {}
+  LowerFunctionalOpsPass(bool lower_function_calls,
+                         bool keep_lowered_nodes_fetchable)
+      : lower_function_calls_(lower_function_calls),
+        keep_lowered_nodes_fetchable_(keep_lowered_nodes_fetchable) {}
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
@@ -45,6 +48,12 @@ class LowerFunctionalOpsPass : public GraphOptimizationPass {
   // TODO(ezhulenev): This is only required until Grappler function optimizer is
   // not migrated to use function inlining from common_runtime.
   bool lower_function_calls_ = true;
+
+  // If defined use the value to control if functional ops must be fetchable
+  // after lowering (we add IdentityN in place of all lowered nodes). If not
+  // defined, this option will be inferred automatically from the graph (in
+  // presence of _Retval or _Arg nodes we do not need to keep nodes fetchable).
+  absl::optional<bool> keep_lowered_nodes_fetchable_;
 };
 
 }  // namespace tensorflow

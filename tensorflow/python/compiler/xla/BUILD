@@ -15,6 +15,7 @@ py_library(
         ":xla",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -49,6 +50,8 @@ py_library(
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",
+        # Do not remove: required to run xla ops on Cloud.
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
@@ -56,6 +59,8 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:summary_op_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -66,7 +71,7 @@ cuda_py_test(
         ":xla",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

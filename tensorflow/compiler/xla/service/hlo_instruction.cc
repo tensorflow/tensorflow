@@ -303,6 +303,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_ASSIGN_OR_RETURN(auto literal,
                             Literal::CreateFromProto(proto.literal()));
         instruction = CreateConstant(std::move(literal));
+        // Literal's shape may have no/different tiling info.
+        TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+            instruction->shape(), shape));
+        *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);
       }
@@ -595,6 +599,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction->AppendOperand(instruction_map.at(operand_id));
       }
       if (instruction->opcode() != HloOpcode::kFusion) {
+        if (instruction->opcode() == HloOpcode::kCall) {
+          TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+              << "Call should have 1 called computation but has "
+              << proto.called_computation_ids_size();
+        }
         for (const int64 computation_id : proto.called_computation_ids()) {
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));
@@ -2209,9 +2218,15 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintName(name(), options), " = ");
   }
 
-  // Print opcode, operand(s) and shape.
-  StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ",
-            HloOpcodeString(opcode()), "(",
+  // Print shape.
+  if (options.include_layout_in_shapes()) {
+    StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
+  } else {
+    StrAppend(&result, ShapeUtil::HumanString(shape()));
+  }
+
+  // Print opcode, operand(s).
+  StrAppend(&result, " ", HloOpcodeString(opcode()), "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2255,7 +2270,11 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     }
     std::vector<string> str;
     if (options.print_operand_shape()) {
-      str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      if (options.include_layout_in_shapes()) {
+        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      } else {
+        str.push_back(ShapeUtil::HumanString(operand->shape()));
+      }
     }
 
     // In a top-level HloInstruction::ToString() call, the operand name is not
@@ -2452,6 +2471,22 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 }
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
+
+bool HloInstruction::IsInputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
+}
+
+bool HloInstruction::IsLoopFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kLoop;
+}
+
+bool HloInstruction::IsOutputFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kOutput;
+}
+
+bool HloInstruction::IsCustomFusion() const {
+  return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kCustom;
+}
 
 bool HloInstruction::IsFusible() const {
   // Instructions which are traced should not be fused.
@@ -2716,7 +2751,12 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  visitor->ReserveVisitStates(root->GetModule()->instruction_count());
+  // Calculating the instruction count within a module can be expensive on large
+  // models so only do it if the visit state is empty. This will help when the
+  // same visitor is reused across many computations of a single module.
+  if (visitor->VisitStateSize() == 0) {
+    visitor->ReserveVisitStates(root->GetModule()->instruction_count());
+  }
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
@@ -3185,7 +3225,12 @@ Status HloInstruction::set_backend_config(
 /* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
     const tensorflow::protobuf::Message& proto) {
   string ret;
-  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  // Pass ignore_accuracy_loss = true because estimated_cycles field can be
+  // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
+  // INT64_MAX, JsonFormat will return an error status, although there is no
+  // accuracy loss for int64.
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
+      proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
 }
 
@@ -3386,6 +3431,13 @@ int64 HloInstruction::parameter_number() const {
 
 void HloInstruction::set_parameter_replicated_at_leaf_buffers(
     absl::Span<const bool> parameter_replicated_at_leaf_buffers) {
+  return Cast<HloParameterInstruction>(this)
+      ->set_parameter_replicated_at_leaf_buffers(
+          parameter_replicated_at_leaf_buffers);
+}
+
+void HloInstruction::set_parameter_replicated_at_leaf_buffers(
+    const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
   return Cast<HloParameterInstruction>(this)
       ->set_parameter_replicated_at_leaf_buffers(
           parameter_replicated_at_leaf_buffers);

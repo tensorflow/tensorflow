@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
@@ -108,12 +107,10 @@ struct LocalClientTestBase::EigenThreadPoolWrapper {
   explicit EigenThreadPoolWrapper()
       : pool(new tensorflow::thread::ThreadPool(
             tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
-        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
-        device(new Eigen::ThreadPoolDevice(wrapper.get(),
-                                           wrapper->NumThreads())) {}
+        device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
+                                           pool->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 

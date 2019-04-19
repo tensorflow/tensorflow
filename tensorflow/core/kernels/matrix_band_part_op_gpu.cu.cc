@@ -18,11 +18,12 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <complex>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -58,10 +59,11 @@ struct MatrixBandPartFunctor<GPUDevice, Scalar> {
     const int m = input.dimension(1);
     const int n = input.dimension(2);
     CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-    MatrixBandPartKernel<<<config.block_count, config.thread_per_block, 0,
-                           device.stream()>>>(
-        config.virtual_thread_count, batch_size, m, n, num_lower_diags,
-        num_upper_diags, input.data(), output.data());
+    TF_CHECK_OK(CudaLaunchKernel(MatrixBandPartKernel<Scalar>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 device.stream(), config.virtual_thread_count,
+                                 batch_size, m, n, num_lower_diags,
+                                 num_upper_diags, input.data(), output.data()));
   }
 };
 

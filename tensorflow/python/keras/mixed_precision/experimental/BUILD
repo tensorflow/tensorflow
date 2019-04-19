@@ -23,6 +23,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "mixed_precision_experimental",
@@ -93,22 +94,47 @@ py_library(
     srcs = ["loss_scale_optimizer.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":loss_scale",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "loss_scale_optimizer_test",
-    size = "medium",
+    size = "small",
     srcs = ["loss_scale_optimizer_test.py"],
-    deps = [
+    additional_deps = [
         ":loss_scale_optimizer",
         ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "loss_scale",
+    srcs = ["loss_scale.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "loss_scale_test",
+    size = "medium",
+    srcs = ["loss_scale_test.py"],
+    deps = [
+        ":loss_scale",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -121,16 +147,16 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "keras_test",
     size = "medium",
     srcs = ["keras_test.py"],
-    deps = [
+    additional_deps = [
         ":test_util",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

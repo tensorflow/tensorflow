@@ -15,16 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 
 namespace tensorflow {
-
-struct ProfilerContext {
-  EagerContext* eager_context = nullptr;
-};
 
 // A profiler which will start profiling when creating the object and will stop
 // when either the object is destroyed or SerializedToString is called. It will
@@ -44,6 +40,7 @@ class ProfilerSession {
 
   tensorflow::Status Status() LOCKS_EXCLUDED(mutex_);
 
+  tensorflow::Status CollectData(RunMetadata* run_metadata);
   tensorflow::Status SerializeToString(string* content) LOCKS_EXCLUDED(mutex_);
 
  private:
@@ -54,8 +51,8 @@ class ProfilerSession {
   ProfilerSession(const ProfilerSession&) = delete;
   ProfilerSession& operator=(const ProfilerSession&) = delete;
 
-  std::vector<std::unique_ptr<tensorflow::profiler::ProfilerInterface>>
-      profilers_ GUARDED_BY(mutex_);
+  std::vector<std::unique_ptr<profiler::ProfilerInterface>> profilers_
+      GUARDED_BY(mutex_);
 
   // True if the session is active.
   bool active_ GUARDED_BY(mutex_);

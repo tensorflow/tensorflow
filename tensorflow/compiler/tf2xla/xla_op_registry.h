@@ -88,8 +88,33 @@ class XlaOpRegistry {
     // When should we autocluster operators assigned to this device?
     AutoclusteringPolicy autoclustering_policy;
 
-    // Enable compilation of operators that use DT_RESOURCE types?
-    bool compile_all_resource_ops = false;
+    // If we should ignore the resource variable memory model when clustering
+    // resource variable reads and writes placed on this device.
+    bool cluster_resource_variable_ops_unsafely = false;
+
+    // If we should auto-cluster Stack operations placed on this device.
+    bool cluster_stack_ops = false;
+
+    // If we should auto-cluster TensorArray operations placed on this device.
+    bool cluster_tensor_array_ops = false;
+
+    // If we should auto-cluster stateful RNG operations placed on this device.
+    // Stateful RNG semantics are not properly supported by XLA so it is not
+    // necessarily correct to auto-cluster stateful RNG ops in general.
+    bool cluster_stateful_rng_ops = false;
+
+    // If we should auto-cluster ControlTrigger operations placed on this
+    // device.  ControlTrigger operations are not necessarily safe to cluster
+    // since they affect deadness (a dead ControlTrigger produces a live
+    // output).
+    bool cluster_control_trigger = false;
+
+    // If we should cluster Assert and CheckNumerics by eliding them (XLA does
+    // not natively support Assert or CheckNumerics).
+    bool elide_assert_and_checknumerics = false;
+
+    // If we should cluster operations returning DT_VARIANT.
+    bool cluster_variant_ops = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the

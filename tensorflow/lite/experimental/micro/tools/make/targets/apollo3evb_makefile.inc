@@ -10,6 +10,18 @@ ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
   # with the hard interfaces.
   GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
+  $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
+  $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
+  $(eval $(call add_third_party_download,$(AM_SDK_URL),$(AM_SDK_MD5),AmbiqSuite-Rel2.0.0,patch_am_sdk))
+  $(eval $(call add_third_party_download,$(AP3_URL),$(AP3_MD5),apollo3_ext,))
+  $(eval $(call add_third_party_download,$(CUST_CMSIS_URL),$(CUST_CMSIS_MD5),CMSIS_ext,))
+
+  ifeq ($(TARGET), sparkfun_edge)
+    $(eval $(call add_third_party_download,$(SPARKFUN_EDGE_BSP_URL),$(SPARKFUN_EDGE_BSP_MD5),AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP,))
+    # Make sure that we download the full Ambiq SDK before the SparkFun one.
+$(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP: $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0
+  endif
+
   # Use the faster depthwise conv implementation.
   ALL_TAGS += portable_optimized
 

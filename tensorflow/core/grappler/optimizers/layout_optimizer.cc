@@ -2207,7 +2207,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
-  virtual_placer_.reset(new VirtualPlacer(cluster));
+  virtual_placer_.reset(new VirtualPlacer(cluster->GetDevices()));
   nodes_to_preserve_ = item.NodesToPreserve();
   GraphProperties graph_properties(item);
   auto status = graph_properties.InferStatically(false);

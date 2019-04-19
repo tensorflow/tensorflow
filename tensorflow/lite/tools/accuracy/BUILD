@@ -316,16 +316,10 @@ cc_library(
     name = "csv_writer",
     hdrs = ["csv_writer.h"],
     copts = tflite_copts(),
-    deps = select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:lib",
-            ],
-        },
-    ),
+    deps = [
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
 )
 
 tflite_portable_test_suite()

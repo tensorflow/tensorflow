@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
 namespace optimize {
@@ -72,7 +75,7 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
   op->reset(op_raw);
 }
 
-// Create a new TensorT object.
+// Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
                 const TensorType& type, std::unique_ptr<TensorT>* tensor) {
   TensorT* tensor_raw = new TensorT;
@@ -81,6 +84,55 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
   tensor_raw->type = type;
 
   tensor->reset(tensor_raw);
+}
+
+// Create a new TensorT object with quantization parameters.
+void MakeTensorWithQuantParam(const string& name,
+                              const std::vector<int32_t>& shape,
+                              const TensorType& type, float scale,
+                              int64_t zero_point,
+                              std::unique_ptr<TensorT>* tensor) {
+  MakeTensor(name, shape, type, tensor);
+  (*tensor)->quantization = absl::make_unique<QuantizationParametersT>();
+  (*tensor)->quantization->scale.push_back(scale);
+  (*tensor)->quantization->zero_point.push_back(zero_point);
+}
+
+bool QuantizationParametersExist(const TensorT* tensor) {
+  return tensor->quantization != nullptr &&
+         !tensor->quantization->scale.empty() &&
+         !tensor->quantization->zero_point.empty();
+}
+
+bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
+               int tensor_index) {
+  const int buffer_index = subgraph->tensors[tensor_index]->buffer;
+  BufferT* buffer = model->buffers[buffer_index].get();
+  if (buffer == nullptr || buffer->data.empty()) {
+    return false;
+  }
+  return true;
+}
+
+bool IsQuantized(const SubGraphT* subgraph, int tensor_index) {
+  return subgraph->tensors[tensor_index]->type != TensorType_FLOAT32;
+}
+
+bool HasMinMax(const TensorT* tensor) {
+  return tensor->quantization && !tensor->quantization->min.empty() &&
+         !tensor->quantization->max.empty();
+}
+
+TfLiteStatus SetOperatorCodeVersion(ModelT* model) {
+  for (int i = 0; i < model->operator_codes.size(); ++i) {
+    OperatorCodeT* op_code = model->operator_codes[i].get();
+    const BuiltinOperator op_buildin_code = op_code->builtin_code;
+    operator_property::OperatorProperty property;
+    TF_LITE_ENSURE_STATUS(
+        operator_property::GetOperatorProperty(op_buildin_code, &property));
+    op_code->version = property.version;
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace utils

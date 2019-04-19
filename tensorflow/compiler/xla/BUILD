@@ -18,7 +18,8 @@ package_group(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+# Required for open-source build.
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")  # @unused
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
@@ -85,8 +86,8 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":debug_options_flags",
         ":xla_proto",
-        "//tensorflow/compiler/xla:debug_options_flags",
     ],
 )
 
@@ -190,6 +191,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -287,6 +289,7 @@ tf_cc_test(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -397,7 +400,6 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":types",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -812,7 +814,7 @@ cc_library(
     hdrs = ["parse_flags_from_env.h"],
     deps =
         [
-            "//tensorflow/compiler/xla:types",
+            ":types",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "@com_google_absl//absl/strings",
@@ -827,7 +829,7 @@ tf_cc_test(
     deps =
         [
             ":parse_flags_from_env",
-            "//tensorflow/compiler/xla:types",
+            ":types",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:test",
@@ -847,11 +849,19 @@ cc_library(
         [
             ":parse_flags_from_env",
             ":status",
-            "//tensorflow/compiler/xla:xla_proto",
+            ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "@com_google_absl//absl/strings",
         ],
+)
+
+cc_library(
+    name = "cpu_function_runtime",
+    srcs = ["cpu_function_runtime.cc"],
+    hdrs = ["cpu_function_runtime.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core:framework_lite"],
 )
 
 tf_cc_test(
@@ -863,7 +873,7 @@ tf_cc_test(
     ],
     deps =
         [
-            "//tensorflow/compiler/xla:xla_proto",
+            ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",

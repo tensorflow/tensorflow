@@ -169,6 +169,11 @@ class Shape {
       ignore_element_size_in_layout_ = true;
       return *this;
     }
+    Equal& MinorToMajorOnlyInLayout() {
+      ignore_tiles_in_layout_ = true;
+      ignore_element_size_in_layout_ = true;
+      return *this;
+    }
     Equal& IgnoreElementType() {
       ignore_element_type_ = true;
       return *this;
@@ -194,6 +199,12 @@ class Shape {
   // Test that all fields of the shape are the same, equivalent to Equal().
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Shape& s) {
+    return H::combine(std::move(h), s.element_type_, s.dimensions_,
+                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+  }
 
  private:
   // The element type of this shape (tuple, array, etc).

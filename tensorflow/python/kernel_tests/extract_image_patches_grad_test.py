@@ -118,7 +118,8 @@ class ExtractImagePatchesGradTest(test.TestCase):
                                               rates=[1, 1, 1, 1],
                                               padding='SAME')
     # Github issue: #20146
-    # tf.extract_image_patches() gradient very slow at graph construction time
+    # tf.image.extract_image_patches() gradient very slow at graph construction
+    # time
     gradients = gradients_impl.gradients(patches, images)
     # Won't time out.
     self.assertIsNotNone(gradients)

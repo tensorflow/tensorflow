@@ -104,7 +104,7 @@ def create_source_map(nodes, code, filename):
   for node in reparsed_nodes:
     resolve(node, code)
 
-  result = {}
+  source_map = {}
 
   try:
     for before, after in ast_util.parallel_walk(nodes, reparsed_nodes):
@@ -117,7 +117,7 @@ def create_source_map(nodes, code, filename):
 
       line_loc = LineLocation(filename, final_info.loc.lineno)
 
-      existing_origin = result.get(line_loc)
+      existing_origin = source_map.get(line_loc)
       if existing_origin is not None:
         # Overlaps may exist because of child nodes, but almost never to
         # different line locations. Exception make decorated functions, where
@@ -132,7 +132,7 @@ def create_source_map(nodes, code, filename):
         if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
           continue
 
-      result[line_loc] = origin_info
+      source_map[line_loc] = origin_info
   except ValueError:
     if logging.has_verbosity(3):
       for n, rn in zip(nodes, reparsed_nodes):
@@ -148,7 +148,7 @@ def create_source_map(nodes, code, filename):
         logging.log(3, 'AST seems to lack integrity. Diff:\n%s', diff)
     raise
 
-  return result
+  return source_map
 
 
 # TODO(znado): Consider refactoring this into a Visitor.

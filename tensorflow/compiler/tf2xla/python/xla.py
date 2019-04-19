@@ -392,6 +392,9 @@ def reduce_window(operand,
       name=name)
 
 
+replica_id = gen_xla_ops.xla_replica_id
+
+
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:
     x = array_ops.transpose(x, dimensions)

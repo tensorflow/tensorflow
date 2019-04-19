@@ -53,6 +53,7 @@ REGISTER_SYSTEM_OP("_Arg")
           shape_inference::ShapeHandle shape_handle;
           TF_RETURN_IF_ERROR(
               context->MakeShapeFromShapeProto(shape_proto, &shape_handle));
+          context->set_output(0, shape_handle);
           context->set_output_handle_shapes_and_types(
               0, std::vector<shape_inference::ShapeAndType>{
                      {shape_handle, dtype}});
@@ -85,10 +86,11 @@ output: The argument.
 index: This argument is the index-th argument of the function.
 
 Attributes for shape inference:
-1. _shapes: this attribute can be set on an _Arg node producing non-resource
-   output(s). If set, its value should contain a list of TensorShapeProto
-   describing the shape(s) of the tensor(s) this _Arg node will produce. If set,
-   _Arg node's shape inference function will use it as the node's output shapes.
+1. _output_shapes: this attribute can be set on an _Arg node producing
+   non-resource output(s). If set, its value should contain a list of
+   TensorShapeProto describing the shape(s) of the tensor(s) this _Arg node will
+   produce. If set, _Arg node's shape inference function will use it as the
+   node's output shapes.
 2. _handle_dtypes and _handle_shapes: these attributes can be set on an _Arg
    node producing resource output(s). If set, value of _handle_dtypes should
    contain the dtype(s) of the resource(s) and value of _handle_shapes should

@@ -157,7 +157,8 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
 
 bool DeleteArrayIfUnused(const string& array_name, Model* model) {
   if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 0) {
+      CountOpsWithInput(*model, array_name) == 0 &&
+      GetOpWithOutput(*model, array_name) == nullptr) {
     model->EraseArray(array_name);
     return true;
   }
@@ -166,7 +167,8 @@ bool DeleteArrayIfUnused(const string& array_name, Model* model) {
 
 bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
   if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 1) {
+      CountOpsWithInput(*model, array_name) == 1 &&
+      GetOpWithOutput(*model, array_name) == nullptr) {
     model->EraseArray(array_name);
     return true;
   }
@@ -1333,7 +1335,9 @@ namespace {
 void CopyArrayAttribs(const Array& source_array, Array* target_array) {
   target_array->data_type = source_array.data_type;
   target_array->final_data_type = source_array.final_data_type;
-  target_array->copy_shape(source_array.shape());
+  if (source_array.has_shape()) {
+    target_array->copy_shape(source_array.shape());
+  }
 
   if (source_array.minmax) {
     target_array->GetOrCreateMinMax() = source_array.GetMinMax();
@@ -1383,23 +1387,9 @@ void CloneArray(Model* model, const string& source_array_name,
   Array& target_array = model->GetOrCreateArray(target_array_name);
   CopyArrayAttribs(source_array, &target_array);
 
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
+  if (!source_array.buffer) {
+    return;
   }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:
@@ -1895,6 +1885,26 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
         // There is a bias vector. One more op per output value.
         *result += RequiredBufferSizeForShape(output_array.shape());
       }
+      break;
+    }
+    case OperatorType::kTransposeConv: {
+      const auto& input_array = model.GetArray(op.inputs[2]);
+      const auto& weights_array = model.GetArray(op.inputs[1]);
+      if (!input_array.has_shape() || !weights_array.has_shape()) {
+        return false;
+      }
+      const Shape& input = input_array.shape();
+      const Shape& weights = weights_array.shape();
+      // Compute op count from the seven nested loops of
+      // tflite::reference_ops::TransposeConv():
+      *result = 2 * input.dims(0) * input.dims(1) * input.dims(2) *
+                input.dims(3) * weights.dims(1) * weights.dims(2) *
+                weights.dims(0);
+      // Note that tflite::optimized_ops::TransposeConv() uses an im2col matrix
+      // and has a higher op count, by a factor of (output_height*output_width)
+      // vs. (input_height*input_width). Yet it generally performs better
+      // because of coherent memory access. (At least for 2x2 striding. But not
+      // likely for all cases.)
       break;
     }
     case OperatorType::kAdd:

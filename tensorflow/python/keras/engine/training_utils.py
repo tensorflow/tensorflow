@@ -30,6 +30,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -41,7 +42,7 @@ from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -115,6 +116,10 @@ class MetricsAggregator(Aggregator):
 class OutputsAggregator(Aggregator):
   """Aggregator that concatenates outputs."""
 
+  # Used to indicate that the aggregator cannot allocate an object for the
+  # output at this location.
+  _DEFER_OUTPUT_ALLOCATION = '__defer_output_allocation__'
+
   def create(self, batch_outs):
     if self.use_steps:
       # Cannot pre-allocate the returned NumPy arrays bc
@@ -124,8 +129,21 @@ class OutputsAggregator(Aggregator):
     else:
       # Pre-allocate NumPy arrays.
       for batch_out in batch_outs:
-        shape = (self.num_samples_or_steps,) + batch_out.shape[1:]
-        self.results.append(np.zeros(shape, dtype=batch_out.dtype))
+        if composite_tensor_utils.is_composite_or_composite_value(batch_out):
+          # If the output is not a ndarray, it will be either a composite tensor
+          # or a composite tensor's Value object. In either case, we can't
+          # allocate an array to hold the object - we'll handle it later.
+          self.results.append(self._DEFER_OUTPUT_ALLOCATION)
+        elif isinstance(batch_out, np.ndarray):
+          # If the output is a ndarray, append an output array pre-allocated
+          # to the expected shape of the output.
+          shape = (self.num_samples_or_steps,) + batch_out.shape[1:]
+          self.results.append(np.zeros(shape, dtype=batch_out.dtype))
+        else:
+          # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
+          # Fail fast rather than trying to concatenate it.
+          raise RuntimeError('Attempted to aggregate unsupported object %s.' %
+                             batch_out)
 
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
     if self.use_steps:
@@ -133,7 +151,28 @@ class OutputsAggregator(Aggregator):
         self.results[i].append(batch_out)
     else:
       for i, batch_out in enumerate(batch_outs):
-        self.results[i][batch_start:batch_end] = batch_out
+        if composite_tensor_utils.is_composite_or_composite_value(batch_out):
+          # This is the case where we're outputting some object (a
+          # CompositeTensor or CompositeTensor's value) and so cannot simply
+          # convert to a numpy array.
+          if self.results[i] == self._DEFER_OUTPUT_ALLOCATION:
+            # If there is not yet an element in this output slot, assign the
+            # currently-examined batch object.
+            self.results[i] = batch_out
+          else:
+            # If there will be multiple calls to aggregate(), create an array
+            # of objects - we cannot assume we know how to combine them.
+            self.results[i] = composite_tensor_utils.append_composite_tensor(
+                self.results[i], batch_out)
+        elif isinstance(batch_out, np.ndarray):
+          # In this case, 'results' is an ndarray - we know it's been fully
+          # allocated and we can just
+          self.results[i][batch_start:batch_end] = batch_out
+        else:
+          # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
+          # Fail fast rather than trying to concatenate it.
+          raise RuntimeError('Attempted to aggregate unsupported object %s.' %
+                             batch_out)
 
   def finalize(self):
     if self.use_steps:
@@ -380,7 +419,8 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, dict):
+  if isinstance(x_weight, collections.Mapping):
+    generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
       x_weights.append(x_weight.get(name))
@@ -813,24 +853,31 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
     return metrics_module.categorical_crossentropy
 
 
-def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
+def call_metric_function(metric_fn,
+                         y_true,
+                         y_pred=None,
+                         weights=None,
+                         mask=None):
   """Invokes metric function and returns the metric result tensor."""
-  if mask is None:
+  if mask is not None:
+    mask = math_ops.cast(mask, y_pred.dtype)
+    if weights is None:
+      # Use mask as sample weight.
+      weights = mask
+    else:
+      # Update dimensions of weights to match with mask.
+      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
+          mask, None, weights)
+      weights *= mask
+
+  if y_pred is not None:
     return metric_fn(y_true, y_pred, sample_weight=weights)
-
-  mask = math_ops.cast(mask, y_pred.dtype)
-  if weights is None:
-    # Use mask as sample weight.
-    return metric_fn(y_true, y_pred, sample_weight=mask)
-
-  # Update dimensions of weights to match with mask.
-  mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-  weights *= mask
-  return metric_fn(y_true, y_pred, sample_weight=weights)
+  # `Mean` metric only takes a single value.
+  return metric_fn(y_true, sample_weight=weights)
 
 
 def get_loss_function(loss):
-  """Returns the loss function corresponding to the given loss input."""
+  """Returns the loss corresponding to the loss input in `compile` API."""
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
@@ -845,7 +892,14 @@ def get_loss_function(loss):
   # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
   # in `LossFunctionWrapper` class.
   loss_fn = losses.get(loss)
-  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+  # For losses which are given as strings/functions in the compile API,
+  # we always set the loss reduction type to be `SUM_OVER_BATCH_SIZE`
+  # (both in distribution strategy context and otherwise).
+  return losses.LossFunctionWrapper(
+      loss_fn,
+      name=loss_fn.__name__,
+      reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -927,7 +981,7 @@ def check_steps_argument(input_data, steps, steps_name):
   """
   # TODO(fchollet): allow datasets with steps=None if cardinality is known.
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.EagerIterator))
+      input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -940,7 +994,8 @@ def check_steps_argument(input_data, steps, steps_name):
 
 
 def cast_single_tensor(x):
-  if tensor_util.is_tensor(x) and x.dtype.is_floating:
+  x = ops.convert_to_tensor(x)
+  if x.dtype.is_floating:
     return math_ops.cast(x, dtype=K.floatx())
   return x
 
@@ -954,14 +1009,7 @@ def cast_if_floating_dtype(x):
 
   Returns:
     Converted input.
-
-  Raises:
-    RuntimeError: if data isn't tensors.
   """
-  if not has_tensors(x):
-    raise RuntimeError(
-        'Please provide tensors for casting, got: {x}'.format(x=x))
-
   return nest.map_structure(cast_single_tensor, x)
 
 
@@ -1133,8 +1181,8 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-             iterator_ops.EagerIterator))
+      data,
+      (dataset_ops.DatasetV1, dataset_ops.DatasetV2, iterator_ops.IteratorV2))
 
 
 # pylint: disable=protected-access
@@ -1271,7 +1319,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.EagerIterator, iterator_ops.Iterator))
+                           iterator_ops.Iterator, iterator_ops.IteratorV2))
 
 
 def get_iterator(dataset):

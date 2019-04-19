@@ -1037,7 +1037,7 @@ class HierarchicalController(Controller):
     Args:
       loss: scalar tf tensor
       tf_variables: list of training variables, typically
-        tf.trainable_variables()
+        tf.compat.v1.trainable_variables()
       global_step: global_step
       grad_bound: max gradient norm
       lr_init: initial learning rate

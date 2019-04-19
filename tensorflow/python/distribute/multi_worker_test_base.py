@@ -38,7 +38,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -394,10 +396,18 @@ class IndependentWorkerTestBase(test.TestCase):
     self._mock_context.__exit__(None, None, None)
     super(IndependentWorkerTestBase, self).tearDown()
 
-  def _task_thread(self, task_fn, tf_config, *args, **kwargs):
+  def _task_thread(self, task_fn, tf_config, executing_eagerly, *args,
+                   **kwargs):
     with self._coord.stop_on_exception():
       os.environ['TF_CONFIG'] = json.dumps(tf_config)
-      task_fn(*args, **kwargs)
+      # Force the new thread simulating a worker to run in the same context
+      # mode as the parent thread does.
+      if executing_eagerly:
+        with context.eager_mode():
+          task_fn(*args, **kwargs)
+      else:
+        with ops.Graph().as_default(), context.graph_mode():
+          task_fn(*args, **kwargs)
 
   def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
                           *args, **kwargs):
@@ -415,7 +425,7 @@ class IndependentWorkerTestBase(test.TestCase):
       }
     t = threading.Thread(
         target=self._task_thread,
-        args=(task_fn, tf_config) + args,
+        args=(task_fn, tf_config, context.executing_eagerly()) + args,
         kwargs=kwargs)
     t.start()
     return t

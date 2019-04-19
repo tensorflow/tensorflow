@@ -10,6 +10,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
 )
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library",
+    "tf_additional_all_protos",
+)
 
 tf_kernel_library(
     name = "assert_next_dataset_op",
@@ -93,6 +98,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/data:captured_function",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ],
 )
 
@@ -106,6 +112,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/data:captured_function",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:window_dataset",
     ],
 )
@@ -209,6 +216,7 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -278,6 +286,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "sampling_dataset_op",
+    srcs = ["sampling_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "scan_dataset_op",
     srcs = ["scan_dataset_op.cc"],
     deps = [
@@ -287,6 +306,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/data:captured_function",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ],
 )
 
@@ -373,18 +393,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "to_tf_record_op",
-    srcs = ["to_tf_record_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels/data:dataset_utils",
-    ],
-)
-
-tf_kernel_library(
     name = "threadpool_dataset_op",
     srcs = ["threadpool_dataset_op.cc"],
     deps = [
@@ -393,6 +401,18 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "to_tf_record_op",
+    srcs = ["to_tf_record_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ],
 )
 
@@ -442,6 +462,7 @@ tf_kernel_library(
         ":prefetching_kernels",
         ":random_dataset_op",
         ":rebatch_dataset_op",
+        ":sampling_dataset_op",
         ":scan_dataset_op",
         ":set_stats_aggregator_dataset_op",
         ":sleep_dataset_op",
@@ -455,4 +476,12 @@ tf_kernel_library(
         ":unbatch_dataset_op",
         ":unique_dataset_op",
     ],
+)
+
+tf_proto_library(
+    name = "snapshot_proto",
+    srcs = ["snapshot.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    protodeps = tf_additional_all_protos(),
 )

@@ -2007,6 +2007,9 @@ tensorflow::Status ConvertOperatorSpecialCasedAsRNNBackEdge(
   rnn_state->set_discardable(true);
   rnn_state->set_state_array(node.name());
   rnn_state->set_back_edge_source_array(node.input(0));
+  // TODO(tianjuny): Temporary set the size to 1 to avoid transient array
+  // allocation crash. The real value should depend on the hidden_size of RNN.
+  rnn_state->set_size(1);
   return tensorflow::Status::OK();
 }
 

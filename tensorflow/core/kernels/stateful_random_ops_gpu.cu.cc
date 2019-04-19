@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -87,11 +87,27 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct UpdateVariableAndFill_Philox<
-    GPUDevice, random::NormalDistribution<random::PhiloxRandom, bfloat16> >;
-template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
+                 double> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
 template struct UpdateVariableAndFill_Philox<

@@ -152,6 +152,12 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       if not isinstance(input_shape, tensor_shape_pb2.TensorShapeProto):
         input_shape = input_shape.as_proto()
       node_def.attr["shape"].shape.CopyFrom(input_shape)
+    arg_attrs = fdef.arg_attr[i].attr
+    for k in arg_attrs:
+      # Only copy internal attributes. Normal attributes for nodes cannot be
+      # applied to these Placeholder nodes.
+      if k.startswith("_"):
+        node_def.attr[k].CopyFrom(arg_attrs[k])
 
   # 2. Copy all body NodeDefs to the GraphDef.
   graph_def.node.extend(fdef.node_def)

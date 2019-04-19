@@ -172,14 +172,6 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(network.get_losses_for(x4)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
 
-    network.add_loss(math_ops.reduce_sum(layer.a))
-    self.assertEqual(len(network.losses), 4)
-    self.assertEqual(len(network.get_losses_for(None)), 2)
-
-    network.add_loss(math_ops.reduce_sum(x4), inputs=True)
-    self.assertEqual(len(network.losses), 5)
-    self.assertEqual(len(network.get_losses_for(x4)), 2)
-
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.
@@ -927,6 +919,14 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
       MyNetwork()
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_int_input_shape(self):
+    inputs = keras.Input(10)
+    self.assertEqual([None, 10], inputs.shape.as_list())
+
+    inputs_with_batch = keras.Input(batch_size=20, shape=5)
+    self.assertEqual([20, 5], inputs_with_batch.shape.as_list())
+
 
 class DeferredModeTest(test.TestCase):
 
@@ -1326,6 +1326,118 @@ class NestedNetworkTest(test.TestCase):
 
     self.assertLen(model.get_updates_for(ph), 2)
     self.assertLen(model.get_updates_for(None), 0)
+
+
+@keras_parameterized.run_all_keras_modes
+class AddLossTest(keras_parameterized.TestCase):
+
+  def test_add_loss_outside_call_only_loss(self):
+    inputs = keras.Input((10,))
+    mid = keras.layers.Dense(10)(inputs)
+    outputs = keras.layers.Dense(1)(mid)
+    model = keras.Model(inputs, outputs)
+    model.add_loss(math_ops.reduce_mean(outputs))
+    self.assertLen(model.losses, 1)
+
+    initial_weights = model.get_weights()
+
+    x = np.ones((10, 10))
+    model.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, batch_size=2, epochs=1)
+
+    model2 = model.from_config(model.get_config())
+    model2.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    model2.set_weights(initial_weights)
+    model2.fit(x, batch_size=2, epochs=1)
+
+    # The TFOpLayer and the AddLoss layer are serialized.
+    self.assertLen(model2.layers, 5)
+    self.assertAllClose(model.get_weights(), model2.get_weights())
+
+  def test_add_loss_outside_call_multiple_losses(self):
+    inputs = keras.Input((10,))
+    x1 = keras.layers.Dense(10)(inputs)
+    x2 = keras.layers.Dense(10)(x1)
+    outputs = keras.layers.Dense(1)(x2)
+    model = keras.Model(inputs, outputs)
+    model.add_loss(math_ops.reduce_sum(x1 * x2))
+    model.add_loss(math_ops.reduce_mean(outputs))
+    self.assertLen(model.losses, 2)
+
+    initial_weights = model.get_weights()
+
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=2, epochs=1)
+
+    model2 = model.from_config(model.get_config())
+    model2.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model2.set_weights(initial_weights)
+    model2.fit(x, y, batch_size=2, epochs=1)
+
+    self.assertAllClose(model.get_weights(), model2.get_weights())
+
+
+@keras_parameterized.run_all_keras_modes
+class WeightAccessTest(keras_parameterized.TestCase):
+
+  def test_functional_model(self):
+    inputs = keras.Input((10,))
+    x1 = keras.layers.Dense(10)(inputs)
+    x2 = keras.layers.Dense(10)(x1)
+    outputs = keras.layers.Dense(1)(x2)
+    model = keras.Model(inputs, outputs)
+
+    self.assertEqual(len(model.weights), 6)
+
+  def test_sequential_model_with_input_shape(self):
+    x1 = keras.layers.Dense(10, input_shape=(10,))
+    x2 = keras.layers.Dense(10)
+    x3 = keras.layers.Dense(1)
+    model = keras.models.Sequential([x1, x2, x3])
+
+    self.assertEqual(len(model.weights), 6)
+
+  def test_sequential_model_without_input_shape(self):
+    x1 = keras.layers.Dense(10)
+    x2 = keras.layers.Dense(10)
+    x3 = keras.layers.Dense(1)
+    model = keras.models.Sequential([x1, x2, x3])
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      _ = model.weights
+
+  def test_subclass_model_with_build_method(self):
+    class SubclassModel(keras.models.Model):
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=input_shape[-1], initializer='ones')
+
+      def call(self, inputs):
+        return inputs * self.w
+
+    model = SubclassModel()
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      _ = model.weights
+
+    model(keras.Input((10,)))
+    self.assertEqual(len(model.weights), 1)
+
+  def test_subclass_model_without_build_method(self):
+    class SubclassModel(keras.models.Model):
+
+      def __init__(self):
+        super(SubclassModel, self).__init__()
+        self.w = self.add_weight(shape=(), initializer='ones')
+
+      def call(self, inputs):
+        return inputs * self.w
+
+    model = SubclassModel()
+    self.assertEqual(len(model.weights), 1)
 
 
 if __name__ == '__main__':

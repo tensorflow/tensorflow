@@ -297,6 +297,34 @@ TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
   EXPECT_EQ("BAZ", tag_ro.Get(2));
 }
 
+TEST(GetFeatureTest, WritesAVectorToFeature) {
+  Example example;
+
+  Feature* feature = GetFeature("tag", &example);
+  AppendFeatureValues<float>({1.1, 2.2, 3.3}, feature);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(GetFeatureTest, ReadsAVectorFromFeature) {
+  Example example;
+
+  AppendFeatureValues<float>({1.1, 2.2, 3.3}, "tag", &example);
+
+  const Feature& feature = GetFeature("tag", example);
+  auto tag_ro = GetFeatureValues<float>(feature);
+
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
 TEST(SequenceExampleTest, ReadsASingleValueFromContext) {
   SequenceExample se;
   (*se.mutable_context()->mutable_feature())["tag"]
