@@ -1,6 +1,10 @@
 path: "tensorflow.keras.layers"
 tf_module {
   member {
+    name: "AbstractRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Activation"
     mtype: "<type \'type\'>"
   }
@@ -14,6 +18,10 @@ tf_module {
   }
   member {
     name: "AlphaDropout"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Attention"
     mtype: "<type \'type\'>"
   }
   member {
@@ -233,11 +241,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LeakyReLU"
+    name: "LayerNormalization"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LinearModel"
+    name: "LeakyReLU"
     mtype: "<type \'type\'>"
   }
   member {
@@ -395,10 +403,6 @@ tf_module {
   member {
     name: "ZeroPadding3D"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "experimental"
-    mtype: "<type \'module\'>"
   }
   member_method {
     name: "Input"

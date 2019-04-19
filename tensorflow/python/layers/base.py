@@ -26,7 +26,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -64,8 +64,8 @@ def keras_style_scope():
 
     def __init__(self, name):
       super(RNNModel, self.).__init__(name=name)
-      self.rnn = tf.nn.rnn_cell.MultiRNNCell(
-        [tf.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
+      self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
+        [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 
     def call(self, input, state):
       return self.rnn(input, state)
@@ -307,7 +307,8 @@ class Layer(base_layer.Layer):
                  use_resource=None,
                  synchronization=vs.VariableSynchronization.AUTO,
                  aggregation=vs.VariableAggregation.NONE,
-                 partitioner=None):
+                 partitioner=None,
+                 **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -338,10 +339,11 @@ class Layer(base_layer.Layer):
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
         an instance of `PartitionedVariable` is returned.  Available
-        partitioners include `tf.fixed_size_partitioner` and
-        `tf.variable_axis_size_partitioner`.  For more details, see the
-        documentation of `tf.get_variable` and the  "Variable Partitioners
-        and Sharding" section of the API guide.
+        partitioners include `tf.compat.v1.fixed_size_partitioner` and
+        `tf.compat.v1.variable_axis_size_partitioner`.  For more details, see
+        the documentation of `tf.compat.v1.get_variable` and the  "Variable
+        Partitioners and Sharding" section of the API guide.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       The created variable.  Usually either a `Variable` or `ResourceVariable`
@@ -354,6 +356,9 @@ class Layer(base_layer.Layer):
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
+    for kwarg in kwargs:
+      if kwarg != 'experimental_autocast':
+        raise TypeError('Unknown keyword argument:', kwarg)
     if self._keras_style:
       return super(Layer, self).add_weight(
           name=name,
@@ -366,7 +371,8 @@ class Layer(base_layer.Layer):
           use_resource=use_resource,
           synchronization=vs.VariableSynchronization.AUTO,
           aggregation=vs.VariableAggregation.NONE,
-          partitioner=partitioner)
+          partitioner=partitioner,
+          **kwargs)
 
     if synchronization == vs.VariableSynchronization.ON_READ:
       if trainable:
@@ -433,11 +439,12 @@ class Layer(base_layer.Layer):
             use_resource=use_resource,
             synchronization=synchronization,
             aggregation=aggregation,
-            getter=vs.get_variable)
+            getter=vs.get_variable,
+            **kwargs)
 
         if regularizer:
-          if context.executing_eagerly() or _should_add_regularizer(
-              variable, existing_variables):
+          if (ops.executing_eagerly_outside_functions()
+              or _should_add_regularizer(variable, existing_variables)):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
@@ -554,7 +561,7 @@ class Layer(base_layer.Layer):
 
   def __setattr__(self, value, name):
     # By-pass the automatic dependency tracking performed by the parent Layer.
-    super(checkpointable.Checkpointable, self).__setattr__(value, name)
+    super(trackable.Trackable, self).__setattr__(value, name)
 
 
 def _add_elements_to_collection(elements, collection_list):

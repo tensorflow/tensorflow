@@ -102,9 +102,6 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/add.*dtype=tf\.int64)", "119126484"},
     {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
     {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
-
-    // Strided Slice chooses the wrong dimension.
-    {R"(^\/strided_slice_buggy)", "119786029"},
 };
 
 // Additional list of tests that are expected to fail when

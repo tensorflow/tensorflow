@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -84,9 +84,11 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
   return ParseHloString(hlo_string, config);
 }
 
-HloRunner::HloRunner(se::Platform* platform) {
+HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
+  backend_options.set_intra_op_parallelism_threads(
+      intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
@@ -269,14 +271,11 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::unique_ptr<HloModule> module,
-    const ReplicatedExecuteOptions& options) {
+    std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment, bool use_threads) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(
-      DeviceAssignment device_assignment,
-      backend().computation_placer()->AssignDevices(options.num_replicas, 1));
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
 
@@ -293,13 +292,13 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   std::vector<absl::Span<const ShapedBuffer* const>> argument_buffer_slices;
   int64 index = 0;
   for (int64 i = 0; i < options.num_replicas; ++i) {
-    int64 device = device_assignment(i, 0);
+    int64 device = (*device_assignment)(i, 0);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
     streams.push_back(absl::make_unique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
-        device, streams.back().get(), &device_assignment));
+        device, streams.back().get(), device_assignment));
 
     // Copy arguments to device.
     for (const Literal* argument : options.arguments) {
@@ -329,7 +328,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   }
   if (options.infeed != nullptr) {
     for (int64 i = 0; i < options.num_replicas; ++i) {
-      int64 device = device_assignment(i, 0);
+      int64 device = (*device_assignment)(i, 0);
       pool->Schedule([this, device, &options]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
@@ -347,7 +346,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   }
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
     for (int64 i = 0; i < options.num_replicas; ++i) {
-      int64 device = device_assignment(i, 0);
+      int64 device = (*device_assignment)(i, 0);
       pool->Schedule([this, device, &options]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
@@ -369,9 +368,39 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   }
 
   LOG(INFO) << "Replicated execution started";
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> results,
-                      executable->ExecuteOnStreams(service_run_options,
-                                                   argument_buffer_slices));
+  std::vector<ScopedShapedBuffer> results;
+  if (!use_threads) {
+    TF_ASSIGN_OR_RETURN(results,
+                        executable->ExecuteOnStreams(service_run_options,
+                                                     argument_buffer_slices));
+  } else {
+    tensorflow::mutex mutex;
+    std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
+        options.num_replicas);
+    {
+      LOG(INFO) << "Creating thread pool for " << options.num_replicas
+                << " replicas";
+      tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(),
+                                          "replicas", options.num_replicas);
+      for (int64 i = 0; i < options.num_replicas; ++i) {
+        pool.Schedule([&, i] {
+          auto result = executable->ExecuteOnStream(
+              &service_run_options[i], argument_buffer_slices[i], nullptr);
+          tensorflow::mutex_lock lock(mutex);
+          thread_results[i] = std::move(result);
+        });
+      }
+
+      // Note: the thread pool destructor guarantees it completes all work
+      // before we leave this scope.
+    }
+    for (auto& thread_result : thread_results) {
+      if (!thread_result.ok()) {
+        return thread_result.status();
+      }
+      results.push_back(std::move(thread_result).ValueOrDie());
+    }
+  }
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<Literal> exec_results;
@@ -383,6 +412,16 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     exec_results.push_back(std::move(literal));
   }
   return std::move(exec_results);
+}
+
+StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
+    bool use_threads) {
+  TF_ASSIGN_OR_RETURN(
+      DeviceAssignment device_assignment,
+      backend().computation_placer()->AssignDevices(options.num_replicas, 1));
+  return ExecuteReplicated(std::move(module), options, &device_assignment,
+                           use_threads);
 }
 
 StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(

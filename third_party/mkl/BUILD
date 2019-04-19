@@ -48,7 +48,7 @@ filegroup(
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "@mkl_linux//:LICENSE",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "@mkl_darwin//:LICENSE",
         ],
         "@org_tensorflow//tensorflow:windows": [
@@ -67,7 +67,7 @@ cc_library(
             "@mkl_linux//:mkl_headers",
             "@mkl_linux//:mkl_libs_linux",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "@mkl_darwin//:mkl_headers",
             "@mkl_darwin//:mkl_libs_darwin",
         ],

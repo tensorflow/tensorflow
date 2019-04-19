@@ -39,22 +39,28 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES(
+        ctx, short_circuit_indices_.size() <= 1,
+        errors::InvalidArgument("`predicate` has more than one return value."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
-
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-    OP_REQUIRES(
-        ctx, indices.size() <= 1,
-        errors::InvalidArgument("`predicate` has more than one return value."));
+    data::CapturedFunction::Params params;
+    params.lib_def = lib_def_;
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            std::move(params), &captured_func));
 
     LoopIteratorPredicate loop_pred;
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       loop_pred = [](IteratorContext* ctx,
                      InstantiatedCapturedFunction* inst_captured_func,
                      const std::vector<Tensor>& args, bool* end_of_sequence) {
@@ -71,11 +77,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       };
     } else {
-      loop_pred = [indices](IteratorContext* ctx,
-                            InstantiatedCapturedFunction* inst_captured_func,
-                            const std::vector<Tensor>& args,
-                            bool* end_of_sequence) {
-        const Tensor& predicate = args[indices[0]];
+      int predicate_index = short_circuit_indices_[0];
+      loop_pred = [predicate_index](
+                      IteratorContext* ctx,
+                      InstantiatedCapturedFunction* inst_captured_func,
+                      const std::vector<Tensor>& args, bool* end_of_sequence) {
+        const Tensor& predicate = args[predicate_index];
         if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
           return errors::InvalidArgument(
               "`predicate` must returns a scalar bool tensor.");
@@ -130,26 +137,13 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
 
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
       DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f_attr;
       b->BuildAttrValue(func_, &f_attr);
 
@@ -195,8 +189,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           return Status::OK();
         }
-        return loop_pred_(ctx, instantiated_captured_func_.get(), *out_tensors,
-                          end_of_sequence);
+        TF_RETURN_IF_ERROR(loop_pred_(ctx, instantiated_captured_func_.get(),
+                                      *out_tensors, end_of_sequence));
+        if (*end_of_sequence) {
+          out_tensors->clear();
+        }
+        return Status::OK();
       }
 
      protected:
@@ -240,6 +238,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   };
 
   NameAttrList func_;
+  std::vector<int> short_circuit_indices_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalTakeWhileDataset").Device(DEVICE_CPU),

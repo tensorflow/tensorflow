@@ -79,7 +79,6 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
 
       // Add all the inplace_updates.
       std::vector<Node*> control_nodes;
-      int64 i = 0;
       for (const Edge* input_edge : n->in_edges()) {
         if (input_edge->IsControlEdge()) {
           g->AddControlEdge(input_edge->src(), start);
@@ -89,13 +88,11 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
         Node* update;
         TF_RETURN_IF_ERROR(
             make_node("_ParallelConcatUpdate")
-                .Attr("loc", i)
+                .Attr("loc", input_edge->dst_input())
                 .Input(start)
                 .Input(input_edge->src(), input_edge->src_output())
                 .Finalize(g, &update));
         control_nodes.push_back(update);
-
-        ++i;
       }
 
       // Add the final identity.

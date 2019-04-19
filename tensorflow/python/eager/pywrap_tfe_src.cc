@@ -16,15 +16,13 @@ limitations under the License.
 #include <cstring>
 #include <thread>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/python/eager/pywrap_tfe.h"
-
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -35,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/util/util.h"
 
@@ -51,7 +50,9 @@ struct InputInfo {
 };
 
 // Takes in output gradients, returns input gradients.
-typedef std::function<PyObject*(PyObject*)> PyBackwardFunction;
+typedef std::function<PyObject*(PyObject*,
+                                const std::vector<tensorflow::int64>&)>
+    PyBackwardFunction;
 
 using AttrToInputsMap =
     tensorflow::gtl::FlatMap<string,
@@ -1048,8 +1049,18 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   void MarkAsResult(PyObject* gradient) const final { Py_INCREF(gradient); }
 
   PyObject* Zeros(const PyTapeTensor& tensor) const final {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_shape = tensor.GetShape();
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_dtype = tensor.GetDType();
+    if (PyErr_Occurred()) {
+      Py_DECREF(py_shape);
+      return nullptr;
+    }
     PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
     PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
     Py_DECREF(arg_list);
@@ -1059,6 +1070,9 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   PyObject* Ones(const PyTapeTensor& tensor) const final {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_shape = tensor.GetShape();
     PyObject* py_dtype = tensor.GetDType();
     PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
@@ -1078,6 +1092,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
 
   tensorflow::Status CallBackwardFunction(
       PyBackwardFunction* backward_function,
+      const std::vector<tensorflow::int64>& unneeded_gradients,
       tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
       std::vector<PyObject*>* result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
@@ -1090,7 +1105,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
                          reinterpret_cast<PyObject*>(output_gradients[i]));
       }
     }
-    PyObject* py_result = (*backward_function)(grads);
+    PyObject* py_result = (*backward_function)(grads, unneeded_gradients);
     Py_DECREF(grads);
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
@@ -1622,8 +1637,9 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
       op_type, output_tensors, input_ids, input_dtypes,
       [backward_function]() {
         Py_INCREF(backward_function);
-        PyBackwardFunction* function =
-            new PyBackwardFunction([backward_function](PyObject* out_grads) {
+        PyBackwardFunction* function = new PyBackwardFunction(
+            [backward_function](PyObject* out_grads,
+                                const std::vector<tensorflow::int64>& unused) {
               return PyObject_CallObject(backward_function, out_grads);
             });
         return function;
@@ -1635,7 +1651,7 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
-  for (TFE_Py_Tape* tape : SafeTapeSet()) {
+  for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }
@@ -1657,6 +1673,7 @@ std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
 
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status) {
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
@@ -1688,7 +1705,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   tensorflow::Safe_PyObjectPtr seq =
       tensorflow::make_safe(PySequence_Fast(target, "expected a sequence"));
   int len = PySequence_Fast_GET_SIZE(seq.get());
-  tensorflow::gtl::FlatMap<tensorflow::int64, PyTapeTensor>
+  std::unordered_map<tensorflow::int64, PyTapeTensor>
       source_tensors_that_are_targets;
   for (int i = 0; i < len; ++i) {
     tensorflow::int64 target_id = target_vec[i];
@@ -1734,7 +1751,9 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
       strcmp(TFE_GetPythonString(unconnected_gradients), "zero") == 0;
   std::vector<PyObject*> sources_obj;
   if (unconnected_gradients_zero) {
-    sources_obj = MakeTensorList(sources);
+    // Uses the "raw" sources here so it can properly make a zeros tensor even
+    // if there are resource variables as sources.
+    sources_obj = MakeTensorList(sources_raw);
   }
 
   if (!result.empty()) {
@@ -1821,8 +1840,14 @@ bool CheckInputsOk(PyObject* seq, int start_index,
                 << item->ob_type->tp_name;
         return false;
       }
-      for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(item); j++) {
-        PyObject* inner_item = PySequence_Fast_GET_ITEM(item, j);
+      tensorflow::Safe_PyObjectPtr fast_item(
+          PySequence_Fast(item, "Could not parse sequence."));
+      if (fast_item.get() == nullptr) {
+        return false;
+      }
+      for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(fast_item.get());
+           j++) {
+        PyObject* inner_item = PySequence_Fast_GET_ITEM(fast_item.get(), j);
         if (!CheckOneInput(inner_item)) {
           VLOG(1) << "Falling back to slow path for Op \"" << op_def.name()
                   << "\", Input \"" << op_def.input_arg(i).name()
@@ -1846,50 +1871,45 @@ bool CheckInputsOk(PyObject* seq, int start_index,
   return true;
 }
 
-PyObject* MaybeGetDType(PyObject* item) {
-  if (EagerTensor_CheckExact(item)) {
-    tensorflow::Safe_PyObjectPtr py_dtype(
-        PyObject_GetAttrString(item, "dtype"));
-    return PyObject_GetAttrString(py_dtype.get(), "_type_enum");
+tensorflow::DataType MaybeGetDType(PyObject* item) {
+  if (EagerTensor_CheckExact(item) || CheckResourceVariable(item)) {
+    return FastTensorDtype(item);
   }
 
-  if (CheckResourceVariable(item)) {
-    tensorflow::Safe_PyObjectPtr py_dtype(
-        PyObject_GetAttrString(item, "_dtype"));
-    return PyObject_GetAttrString(py_dtype.get(), "_type_enum");
-  }
-
-  return nullptr;
+  return tensorflow::DT_INVALID;
 }
 
-PyObject* MaybeGetDTypeForAttr(const string& attr,
-                               FastPathOpExecInfo* op_exec_info) {
+tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
+                                          FastPathOpExecInfo* op_exec_info) {
   auto cached_it = op_exec_info->cached_dtypes.find(attr);
   if (cached_it != op_exec_info->cached_dtypes.end()) {
-    return GetPythonObjectFromInt(cached_it->second);
+    return cached_it->second;
   }
 
   auto it = op_exec_info->attr_to_inputs_map->find(attr);
   if (it == op_exec_info->attr_to_inputs_map->end()) {
     // No other inputs - this should never happen.
-    Py_RETURN_NONE;
+    return tensorflow::DT_INVALID;
   }
 
   for (const auto& input_info : it->second) {
     PyObject* item = PyTuple_GET_ITEM(
         op_exec_info->args, kFastPathExecuteInputStartIndex + input_info.i);
     if (input_info.is_list) {
-      for (int i = 0; i < PySequence_Fast_GET_SIZE(item); i++) {
-        auto* dtype = MaybeGetDType(PySequence_Fast_GET_ITEM(item, i));
-        if (dtype != nullptr) return dtype;
+      tensorflow::Safe_PyObjectPtr fast_item(
+          PySequence_Fast(item, "Unable to allocate"));
+      for (int i = 0; i < PySequence_Fast_GET_SIZE(fast_item.get()); i++) {
+        auto dtype =
+            MaybeGetDType(PySequence_Fast_GET_ITEM(fast_item.get(), i));
+        if (dtype != tensorflow::DT_INVALID) return dtype;
       }
     } else {
-      auto* dtype = MaybeGetDType(item);
-      if (dtype != nullptr) return dtype;
+      auto dtype = MaybeGetDType(item);
+      if (dtype != tensorflow::DT_INVALID) return dtype;
     }
   }
 
-  Py_RETURN_NONE;
+  return tensorflow::DT_INVALID;
 }
 
 // TODO(agarwal): use an automatic mechanism for handling None arguments to
@@ -1940,8 +1960,6 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SparseSegmentSum", {true, {}}},
           {"SparseSegmentMean", {true, {}}},
           {"SparseSegmentSqrtN", {true, {}}},
-          {"SegmentMin", {true, {}}},
-          {"SegmentMax", {true, {}}},
           {"UnsortedSegmentSum", {true, {}}},
           {"UnsortedSegmentMax", {true, {}}},
           {"Abs", {true, {}}},
@@ -2120,12 +2138,29 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         Py_INCREF(num_inputs);
         Py_INCREF(op_inputs);
         Py_INCREF(op_outputs);
-        PyBackwardFunction* function =
-            new PyBackwardFunction([op_name, attrs, num_inputs, op_inputs,
-                                    op_outputs](PyObject* output_grads) {
-              tensorflow::Safe_PyObjectPtr callback_args(
-                  Py_BuildValue("OOOOOO", op_name, attrs, num_inputs, op_inputs,
-                                op_outputs, output_grads));
+        PyBackwardFunction* function = new PyBackwardFunction(
+            [op_name, attrs, num_inputs, op_inputs, op_outputs](
+                PyObject* output_grads,
+                const std::vector<tensorflow::int64>& unneeded_gradients) {
+              if (PyErr_Occurred()) {
+                return static_cast<PyObject*>(nullptr);
+              }
+              tensorflow::Safe_PyObjectPtr skip_input_indices;
+              if (!unneeded_gradients.empty()) {
+                skip_input_indices.reset(
+                    PyTuple_New(unneeded_gradients.size()));
+                for (int i = 0; i < unneeded_gradients.size(); i++) {
+                  PyTuple_SET_ITEM(
+                      skip_input_indices.get(), i,
+                      GetPythonObjectFromInt(unneeded_gradients[i]));
+                }
+              } else {
+                Py_INCREF(Py_None);
+                skip_input_indices.reset(Py_None);
+              }
+              tensorflow::Safe_PyObjectPtr callback_args(Py_BuildValue(
+                  "OOOOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs,
+                  output_grads, skip_input_indices.get()));
 
               tensorflow::Safe_PyObjectPtr result(
                   PyObject_CallObject(gradient_function, callback_args.get()));
@@ -2225,31 +2260,9 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
   TFE_Execute(op, &output_handle, &num_retvals, status);
   if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
 
-  if (!PyObject_HasAttrString(input, "_read_dtype")) {
-    // Always create the py object (and correctly DECREF it) from the returned
-    // value, else the data will leak.
-    output->reset(EagerTensorFromHandle(output_handle));
-  } else {
-    // This is a _MixedPrecisionVariable which potentially does casting when
-    // being read.
-    tensorflow::Safe_PyObjectPtr read_dtype(
-        PyObject_GetAttrString(input, "_read_dtype"));
-    int desired_dtype = -1;
-    if (!ParseTypeValue("_read_dtype", read_dtype.get(), status,
-                        &desired_dtype)) {
-      return false;
-    }
-
-    auto safe_output_handle = tensorflow::make_safe(output_handle);
-    // Retires output_handle in the future.
-    output_handle = nullptr;
-    if (!CastTensor(parent_op_exec_info,
-                    static_cast<TF_DataType>(desired_dtype),
-                    &safe_output_handle, status)) {
-      return false;
-    }
-    output->reset(EagerTensorFromHandle(safe_output_handle.release()));
-  }
+  // Always create the py object (and correctly DECREF it) from the returned
+  // value, else the data will leak.
+  output->reset(EagerTensorFromHandle(output_handle));
 
   // TODO(nareshmodi): Should we run post exec callbacks here?
   if (parent_op_exec_info.run_gradient_callback) {
@@ -2288,9 +2301,9 @@ bool ConvertToTensor(
     const FastPathOpExecInfo& op_exec_info, PyObject* input,
     tensorflow::Safe_PyObjectPtr* output_handle,
     // This gets a hint for this particular input.
-    const std::function<PyObject*()>& dtype_hint_getter,
+    const std::function<tensorflow::DataType()>& dtype_hint_getter,
     // This sets the dtype after conversion is complete.
-    const std::function<void(const TF_DataType& dtype)>& dtype_setter,
+    const std::function<void(const tensorflow::DataType dtype)>& dtype_setter,
     TF_Status* status) {
   if (EagerTensor_CheckExact(input)) {
     Py_INCREF(input);
@@ -2301,28 +2314,18 @@ bool ConvertToTensor(
   }
 
   // The hint comes from a supposedly similarly typed tensor.
-  tensorflow::Safe_PyObjectPtr dtype_hint(dtype_hint_getter());
-  if (PyErr_Occurred()) {
-    return false;
-  }
+  tensorflow::DataType dtype_hint = dtype_hint_getter();
 
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(input, dtype_hint.get())));
+          tensorflow::ConvertToEagerTensor(input, dtype_hint)));
   if (handle == nullptr) {
     return MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
   int desired_dtype = -1;
-  if (dtype_hint.get() != Py_None) {
-    if (!ParseTypeValue("", dtype_hint.get(), status, &desired_dtype)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting a DataType value for dtype. Got ",
-                          Py_TYPE(dtype_hint.get())->tp_name)
-                          .c_str());
-      return false;
-    }
+  if (dtype_hint != tensorflow::DT_INVALID) {
+    desired_dtype = static_cast<int>(dtype_hint);
   }
 
   // Maybe cast to the desired type. This is intended to match python
@@ -2350,7 +2353,7 @@ bool ConvertToTensor(
   }
 
   output_handle->reset(EagerTensorFromHandle(handle.release()));
-  dtype_setter(output_dtype);
+  dtype_setter(static_cast<tensorflow::DataType>(output_dtype));
 
   return true;
 }
@@ -2372,13 +2375,12 @@ bool AddInputToOp(FastPathOpExecInfo* op_exec_info, PyObject* input,
           *op_exec_info, input, &py_eager_tensor,
           [&]() {
             if (input_arg.type() != tensorflow::DataType::DT_INVALID) {
-              return GetPythonObjectFromInt(input_arg.type());
+              return input_arg.type();
             }
             return MaybeGetDTypeForAttr(input_arg.type_attr(), op_exec_info);
           },
-          [&](const TF_DataType dtype) {
-            op_exec_info->cached_dtypes[input_arg.type_attr()] =
-                static_cast<tensorflow::DataType>(dtype);
+          [&](const tensorflow::DataType dtype) {
+            op_exec_info->cached_dtypes[input_arg.type_attr()] = dtype;
           },
           status)) {
     return false;
@@ -2448,14 +2450,14 @@ bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
 
 bool RunCallbacks(
     const FastPathOpExecInfo& op_exec_info, PyObject* args,
-    const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_inputs,
-    const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_attrs,
+    const std::vector<tensorflow::Safe_PyObjectPtr>* const flattened_inputs,
+    const std::vector<tensorflow::Safe_PyObjectPtr>* const flattened_attrs,
     PyObject* flattened_result) {
   if (!op_exec_info.run_callbacks) return true;
 
-  tensorflow::Safe_PyObjectPtr inputs(PyTuple_New(flattened_inputs.size()));
-  for (int i = 0; i < flattened_inputs.size(); i++) {
-    PyObject* input = flattened_inputs[i].get();
+  tensorflow::Safe_PyObjectPtr inputs(PyTuple_New(flattened_inputs->size()));
+  for (int i = 0; i < flattened_inputs->size(); i++) {
+    PyObject* input = (*flattened_inputs)[i].get();
     Py_INCREF(input);
     PyTuple_SET_ITEM(inputs.get(), i, input);
   }
@@ -2463,7 +2465,7 @@ bool RunCallbacks(
   int num_non_inferred_attrs = PyTuple_GET_SIZE(args) -
                                op_exec_info.op_def->input_arg_size() -
                                kFastPathExecuteInputStartIndex;
-  int num_attrs = flattened_attrs.size() + num_non_inferred_attrs;
+  int num_attrs = flattened_attrs->size() + num_non_inferred_attrs;
   tensorflow::Safe_PyObjectPtr attrs(PyTuple_New(num_attrs));
 
   for (int i = 0; i < num_non_inferred_attrs; i++) {
@@ -2475,7 +2477,7 @@ bool RunCallbacks(
   }
   for (int i = num_non_inferred_attrs; i < num_attrs; i++) {
     PyObject* attr_or_name =
-        flattened_attrs.at(i - num_non_inferred_attrs).get();
+        flattened_attrs->at(i - num_non_inferred_attrs).get();
     Py_INCREF(attr_or_name);
     PyTuple_SET_ITEM(attrs.get(), i, attr_or_name);
   }
@@ -2715,8 +2717,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
         if (!ConvertToTensor(
                 op_exec_info, py_input, &py_eager_tensor,
-                []() { Py_RETURN_NONE; }, [](const TF_DataType& dtype) {},
-                status)) {
+                []() { return tensorflow::DT_INVALID; },
+                [](const tensorflow::DataType dtype) {}, status)) {
           return nullptr;
         }
 
@@ -2795,8 +2797,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     PyList_SET_ITEM(flat_result.get(), i, EagerTensorFromHandle(retvals[i]));
   }
 
-  if (!RunCallbacks(op_exec_info, args, *flattened_inputs, *flattened_attrs,
-                    flat_result.get())) {
+  if (!RunCallbacks(op_exec_info, args, flattened_inputs.get(),
+                    flattened_attrs.get(), flat_result.get())) {
     return nullptr;
   }
 
@@ -2897,7 +2899,9 @@ struct EncodeResult {
   }
 };
 
-tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
+tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
+                                       bool include_tensor_ranks_only,
+                                       EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
     TFE_TensorHandle* t = EagerTensor_Handle(arg);
     tensorflow::TensorShape tensor_shape;
@@ -2906,10 +2910,13 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
     absl::StrAppend(&result->str, kDType, t->handle->dtype);
 
     absl::StrAppend(&result->str, kShape);
-    for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
-      absl::StrAppend(&result->str, dim_size, kShapeDelim);
+    if (include_tensor_ranks_only) {
+      absl::StrAppend(&result->str, tensor_shape.dim_sizes().size());
+    } else {
+      for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
+        absl::StrAppend(&result->str, dim_size, kShapeDelim);
+      }
     }
-
     return tensorflow::Status::OK();
   }
 
@@ -2933,6 +2940,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
       static_cast<tensorflow::DataType>(MakeInt(dtype_enum.get()));
 
   absl::StrAppend(&result->str, kDType, dtype);
+
   static char _shape_tuple[] = "_shape_tuple";
   tensorflow::Safe_PyObjectPtr shape_tuple(
       PyObject_CallMethod(arg, _shape_tuple, nullptr));
@@ -2953,23 +2961,30 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
       shape_tuple.get(), "shape_tuple didn't return a sequence"));
 
   int len = PySequence_Fast_GET_SIZE(shape_seq.get());
-  for (int i = 0; i < len; ++i) {
-    PyObject* item = PySequence_Fast_GET_ITEM(shape_seq.get(), i);
-    if (item == Py_None) {
-      absl::StrAppend(&result->str, kNone);
-    } else {
-      absl::StrAppend(&result->str, MakeInt(item));
+
+  if (include_tensor_ranks_only) {
+    absl::StrAppend(&result->str, len);
+  } else {
+    for (int i = 0; i < len; ++i) {
+      PyObject* item = PySequence_Fast_GET_ITEM(shape_seq.get(), i);
+      if (item == Py_None) {
+        absl::StrAppend(&result->str, kNone);
+      } else {
+        absl::StrAppend(&result->str, MakeInt(item));
+      }
     }
   }
-
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result);
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
+                                          bool include_tensor_ranks_only,
+                                          EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
                                          const char* end_type,
+                                         bool include_tensor_ranks_only,
                                          EncodeResult* result) {
   tensorflow::Safe_PyObjectPtr arg_seq(
       PySequence_Fast(arg, "unable to create seq from list/tuple"));
@@ -2981,7 +2996,8 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
     if (item == Py_None) {
       absl::StrAppend(&result->str, kNone);
     } else {
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(item, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelper(item, include_tensor_ranks_only, result));
     }
   }
   absl::StrAppend(&result->str, end_type);
@@ -2989,10 +3005,13 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
+                                          bool include_tensor_ranks_only,
+                                          EncodeResult* result) {
   if (tensorflow::swig::IsTensor(arg)) {
     absl::StrAppend(&result->str, kTensor);
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(arg, result));
+    TF_RETURN_IF_ERROR(
+        TFE_Py_EncodeTensor(arg, include_tensor_ranks_only, result));
   } else if (tensorflow::swig::IsIndexedSlices(arg)) {
     absl::StrAppend(&result->str, kIndexedSlices);
     tensorflow::Safe_PyObjectPtr values(PyObject_GetAttrString(arg, "values"));
@@ -3001,7 +3020,8 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
       return tensorflow::errors::InvalidArgument(
           "IndexedSlices does not have a values attr");
     }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(values.get(), result));
+    TF_RETURN_IF_ERROR(
+        TFE_Py_EncodeTensor(values.get(), include_tensor_ranks_only, result));
 
     tensorflow::Safe_PyObjectPtr indices(
         PyObject_GetAttrString(arg, "indices"));
@@ -3010,7 +3030,8 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
       return tensorflow::errors::InvalidArgument(
           "IndexedSlices does not have a indices attr");
     }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(indices.get(), result));
+    TF_RETURN_IF_ERROR(
+        TFE_Py_EncodeTensor(indices.get(), include_tensor_ranks_only, result));
 
     tensorflow::Safe_PyObjectPtr dense_shape(
         PyObject_GetAttrString(arg, "dense_shape"));
@@ -3020,14 +3041,17 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
           "IndexedSlices does not have a dense_shape attr");
     }
     if (dense_shape.get() != Py_None) {
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(dense_shape.get(), result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(
+          dense_shape.get(), include_tensor_ranks_only, result));
     }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
+        arg, kList, kListEnd, include_tensor_ranks_only, result));
   } else if (PyTuple_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd, result));
-  } else if (PyDict_Check(arg)) {
-    tensorflow::Safe_PyObjectPtr keys(PyDict_Keys(arg));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
+        arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
+  } else if (tensorflow::swig::IsMapping(arg)) {
+    tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(arg));
     if (PyList_Sort(keys.get()) == -1) {
       return tensorflow::errors::Internal("Unable to sort keys");
     }
@@ -3037,9 +3061,11 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
 
     for (int i = 0; i < len; i++) {
       PyObject* key = PyList_GetItem(keys.get(), i);
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(key, result));
-      PyObject* value = PyDict_GetItem(arg, key);
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(value, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelper(key, include_tensor_ranks_only, result));
+      tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(arg, key));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
+          value.get(), include_tensor_ranks_only, result));
     }
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
@@ -3066,10 +3092,15 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
 // on known shapes to produce slimmer graphs, and correctness, as some
 // high-level APIs require shapes to be fully-known.
 //
+// `include_tensor_ranks_only` allows caching on arguments excluding shape info,
+// so that a slow path using relaxed shape can rely on a cache key that excludes
+// shapes.
+//
 // TODO(nareshmodi): Add support for sparse tensors.
-PyObject* TFE_Py_EncodeArg(PyObject* arg) {
+PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
   EncodeResult result;
-  const auto status = TFE_Py_EncodeArgHelper(arg, &result);
+  const auto status =
+      TFE_Py_EncodeArgHelper(arg, include_tensor_ranks_only, &result);
   if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
     return nullptr;
   }
@@ -3095,6 +3126,10 @@ void PrintToPythonStdout(const char* msg) {
       PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).c_str());
     }
     PySys_WriteStdout("\n");
+
+    // Force flushing to make sure print newlines aren't interleaved in
+    // some colab environments
+    PyRun_SimpleString("import sys; sys.stdout.flush()");
 
     PyGILState_Release(py_threadstate);
   }

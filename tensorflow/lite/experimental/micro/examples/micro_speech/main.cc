@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
@@ -31,7 +32,8 @@ int main(int argc, char* argv[]) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_tiny_conv_model_data);
+  const tflite::Model* model =
+      ::tflite::GetModel(g_tiny_conv_micro_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
@@ -102,13 +104,11 @@ int main(int argc, char* argv[]) {
     // kind of prediction, so figure out what the highest scoring category was.
     TfLiteTensor* output = interpreter.output(0);
     uint8_t top_category_score = 0;
-    int top_category_index = 0;
     for (int category_index = 0; category_index < kCategoryCount;
          ++category_index) {
       const uint8_t category_score = output->data.uint8[category_index];
       if (category_score > top_category_score) {
         top_category_score = category_score;
-        top_category_index = category_index;
       }
     }
 
@@ -122,9 +122,11 @@ int main(int argc, char* argv[]) {
           "RecognizeCommands::ProcessLatestResults() failed");
       return 1;
     }
-    if (is_new_command) {
-      error_reporter->Report("Heard %s (%d)", found_command, score);
-    }
+    // Do something based on the recognized command. The default implementation
+    // just prints to the error console, but you should replace this with your
+    // own function for a real application.
+    RespondToCommand(error_reporter, current_time, found_command, score,
+                     is_new_command);
   }
 
   return 0;

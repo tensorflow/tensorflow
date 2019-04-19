@@ -50,7 +50,7 @@ def build_tensor_info(tensor):
   Args:
     tensor: Tensor or SparseTensor whose name, dtype and shape are used to
         build the TensorInfo. For SparseTensors, the names of the three
-        constitutent Tensors are used.
+        constituent Tensors are used.
 
   Returns:
     A TensorInfo protocol buffer constructed based on the supplied argument.

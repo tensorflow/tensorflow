@@ -18,8 +18,10 @@ limitations under the License.
 
 #if defined(__CUDACC__)
 
+#include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -31,15 +33,15 @@ struct FillPhiloxRandomKernel;
 template <class Distribution>
 struct FillPhiloxRandomKernel<Distribution, false> {
   typedef typename Distribution::ResultElementType T;
-  PHILOX_DEVICE_FUNC void Run(random::PhiloxRandom gen, T* data, int64 size,
-                              Distribution dist);
+  PHILOX_DEVICE_INLINE void Run(random::PhiloxRandom gen, T* data, int64 size,
+                                Distribution dist);
 };
 
 template <class Distribution>
 struct FillPhiloxRandomKernel<Distribution, true> {
   typedef typename Distribution::ResultElementType T;
-  PHILOX_DEVICE_FUNC void Run(const random::PhiloxRandom& base_gen, T* data,
-                              int64 size, Distribution dist);
+  PHILOX_DEVICE_INLINE void Run(const random::PhiloxRandom& base_gen, T* data,
+                                int64 size, Distribution dist);
 };
 
 template <typename T, int ElementCount>
@@ -128,7 +130,7 @@ class SampleCopier<int64, 2> {
 // A cuda kernel to fill the data with random numbers from the specified
 // distribution. Each output takes a fixed number of samples.
 template <class Distribution>
-PHILOX_DEVICE_FUNC void FillPhiloxRandomKernel<Distribution, false>::Run(
+PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, false>::Run(
     random::PhiloxRandom gen, T* data, int64 size, Distribution dist) {
   const int kGroupSize = Distribution::kResultElementCount;
 
@@ -159,7 +161,7 @@ PHILOX_DEVICE_FUNC void FillPhiloxRandomKernel<Distribution, false>::Run(
 // A cuda kernel to fill the data with random numbers from the specified
 // distribution. Each output takes a variable number of samples.
 template <class Distribution>
-PHILOX_DEVICE_FUNC void FillPhiloxRandomKernel<Distribution, true>::Run(
+PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, true>::Run(
     const random::PhiloxRandom& base_gen, T* data, int64 size,
     Distribution dist) {
   using random::PhiloxRandom;
@@ -196,6 +198,33 @@ PHILOX_DEVICE_FUNC void FillPhiloxRandomKernel<Distribution, true>::Run(
     offset += (total_thread_count - 1) * kGroupSize;
     group_index += total_thread_count;
   }
+}
+
+// A simple launch pad to call the correct function templates to fill the data
+template <class Distribution>
+__global__ void __launch_bounds__(1024)
+    FillPhiloxRandomKernelLaunch(random::PhiloxRandom base_gen,
+                                 typename Distribution::ResultElementType* data,
+                                 int64 size, Distribution dist) {
+  FillPhiloxRandomKernel<Distribution,
+                         Distribution::kVariableSamplesPerOutput>()
+      .Run(base_gen, data, size, dist);
+}
+
+// Partial specialization for GPU
+template <class Distribution>
+void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
+    OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
+    typename Distribution::ResultElementType* data, int64 size,
+    Distribution dist) {
+  const int32 block_size = d.maxGpuThreadsPerBlock();
+  const int32 num_blocks =
+      (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
+      block_size;
+
+  TF_CHECK_OK(CudaLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
+                               num_blocks, block_size, 0, d.stream(), gen, data,
+                               size, dist));
 }
 
 }  // namespace functor

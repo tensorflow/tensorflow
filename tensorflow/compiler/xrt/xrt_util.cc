@@ -55,21 +55,14 @@ xla::DebugOptions BuildXlaDebugOptions(const xla::DebugOptions& ref_options) {
     return ref_options;
   }
   xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
-  options.set_xla_generate_hlo_text_to(
-      SafeDebugPath(ref_options.xla_generate_hlo_text_to()));
-  options.set_xla_dump_optimized_hlo_proto_to(
-      SafeDebugPath(ref_options.xla_dump_optimized_hlo_proto_to()));
-  options.set_xla_dump_computations_to(
-      SafeDebugPath(ref_options.xla_dump_computations_to()));
-  options.set_xla_dump_executions_to(
-      SafeDebugPath(ref_options.xla_dump_executions_to()));
+  options.set_xla_dump_to(SafeDebugPath(ref_options.xla_dump_to()));
+  options.set_xla_dump_hlo_as_proto(ref_options.xla_dump_hlo_as_proto());
+  options.set_xla_dump_hlo_as_text(ref_options.xla_dump_hlo_as_text());
+  options.set_xla_dump_hlo_snapshots(ref_options.xla_dump_hlo_snapshots());
+  options.set_xla_dump_hlo_pass_re(ref_options.xla_dump_hlo_pass_re());
   for (auto& pass : ref_options.xla_disable_hlo_passes()) {
     options.add_xla_disable_hlo_passes(pass);
   }
-  options.set_xla_dump_unoptimized_hlo_proto_to(
-      SafeDebugPath(ref_options.xla_dump_unoptimized_hlo_proto_to()));
-  options.set_xla_dump_per_pass_hlo_proto_to(
-      SafeDebugPath(ref_options.xla_dump_per_pass_hlo_proto_to()));
   return options;
 }
 

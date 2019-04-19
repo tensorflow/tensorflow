@@ -563,6 +563,10 @@ class ConvolutionDescriptor {
                                      : ConvolutionMode::CROSS_CORRELATION);
     return *this;
   }
+  ConvolutionDescriptor& set_name(const string& name) {
+    proto_.set_name(name);
+    return *this;
+  }
   int64 zero_padding_height() const { return GetDim(padding(), DimIndex::Y); }
   int64 zero_padding_width() const { return GetDim(padding(), DimIndex::X); }
   int64 vertical_filter_stride() const {
@@ -601,6 +605,8 @@ class ConvolutionDescriptor {
   absl::Span<const int64> padding() const {
     return AsInt64Slice(proto_.paddings());
   }
+
+  string name() const { return proto_.name(); }
 
  private:
   absl::Span<int64> strides() { return AsInt64Slice(proto_.mutable_strides()); }
@@ -701,6 +707,10 @@ class PoolingDescriptor {
     propagate_nans_ = value;
     return *this;
   }
+  PoolingDescriptor& set_name(const string& name) {
+    name_ = name;
+    return *this;
+  }
 
   int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
@@ -722,11 +732,13 @@ class PoolingDescriptor {
   absl::Span<const int64> padding() const { return padding_; }
   absl::Span<const int64> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
+  string name() const { return name_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
   bool propagate_nans_;
+  string name_;  // Name as in Tensorflow NodeDef, for debugging purposes.
 
   // Stored as: ..., y, x.
   std::vector<int64> window_;
@@ -2070,7 +2082,7 @@ class DnnSupport {
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
-                                    dnn::DataType data_type) {
+                                    bool time_major, dnn::DataType data_type) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "createRnnSequenceTensorDescriptor is unimplemented");
   }
@@ -2319,6 +2331,220 @@ class DnnSupport {
                                  const dnn::BatchDescriptor& output_desc,
                                  dnn::DataType output_type, float scale,
                                  DeviceMemoryBase* output_data) {
+    return false;
+  }
+
+  // Enqueues a fused convolution+bias+activation operation onto the stream.
+  //
+  // Arguments (all borrowed):
+  //
+  //  stream: borrowed pointer to the stream that the 'fusion' operation should
+  //  be enqueued onto.
+  //
+  //  conv_input_descriptor: dimensions of the convolution input layer.
+  //  conv_input_data: device memory which contains the convolution input.
+  //
+  //  filter_descriptor: dimensions of the convolution filter.
+  //  filter_data: device memory which contains the convolution filter weights.
+  //
+  //  convolution_descriptor: stride of the convolution filter.
+  //
+  //  bias_descriptor: dimensions of the bias layer
+  //  biases: device memory region containing biases to add to the convolution
+  //  output
+  //
+  //  activation_mode: Type of activation to perform.
+  //
+  //  output_descriptor: dimensions of the output layer.
+  //  output_data: device memory region in which to place the fusion result.
+  //
+  //  output_profile_result: the output profile result for this call.
+  //         The profiling is only enabled when this is not nullptr.
+  //
+  virtual bool DoFusedConvolutionBiasActivation(
+      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<float>& conv_input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<float>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<float>& bias_data, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a fused batchnorm+activation (inference) operation onto the
+  // stream.
+  //
+  // Arguments (all borrowed):
+  //
+  //  stream: borrowed pointer to the stream that the 'fusion' operation should
+  //  be enqueued onto.
+  //
+  //  x_descriptor: dimensions of the batchnorm input layer.
+  //  x_data: device memory which contains the batchnorm input.
+  //
+  //  scale_offset_mean_variance_descriptor:
+  //      dimensions of the scale/offset/mean/variance tensor.
+  //  scale_data: device memory which contains the scale input.
+  //  offset_data: device memory which contains the offset input.
+  //  mean_data: device memory which contains the mean input.
+  //  variance_data: device memory which contains the variance input.
+  //  epsilon : the epsilon value to use in batchnorm calculation
+  //
+  //  activation_mode: Type of activation to perform.
+  //
+  //  y_data: device memory region in which to place the fusion result.
+  //
+  //  output_profile_result: the output profile result for this call.
+  //         The profiling is only enabled when this is not nullptr.
+  //
+  virtual bool DoFusedBatchNormActivationInference(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& mean_data,
+      const DeviceMemory<float>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  virtual bool DoFusedBatchNormActivationInference(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<Eigen::half>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& mean_data,
+      const DeviceMemory<float>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a fused batchnorm+activation (training-fwd) operation onto the
+  // stream.
+  //
+  // Arguments (all borrowed):
+  //
+  //  stream: borrowed pointer to the stream that the 'fusion' operation should
+  //  be enqueued onto.
+  //
+  //  x_descriptor: dimensions of the batchnorm input layer.
+  //  x_data: device memory which contains the batchnorm input.
+  //
+  //  scale_offset_mean_variance_descriptor:
+  //      dimensions of the scale/offset/mean/variance tensor.
+  //  scale_data: device memory which contains the scale input.
+  //  offset_data: device memory which contains the offset input.
+  //  epsilon : the epsilon value to use in batchnorm calculation
+  //
+  //  activation_mode: Type of activation to perform.
+  //
+  //  y_data: device memory region in which to place the fusion result.
+  //  batch_mean_data: device memory in which to place the batch mean output.
+  //  batch_var_data: device memory in which to place the batch variance output.
+  //  saved_mean_data: device memory in which to save the mean for bwd pass.
+  //  saved_var_data: device memory in which to save the variance for bwd pass.
+  //
+  //  output_profile_result: the output profile result for this call.
+  //         The profiling is only enabled when this is not nullptr.
+  //
+  virtual bool DoFusedBatchNormActivationForward(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+      DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  virtual bool DoFusedBatchNormActivationForward(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<Eigen::half>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+      DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a fused batchnorm+activation (training-bwd) operation onto the
+  // stream.
+  //
+  // Arguments (all borrowed):
+  //
+  //  stream: borrowed pointer to the stream that the 'fusion' operation should
+  //  be enqueued onto.
+  //
+  //  y_act_backprop_descriptor: dimensions of the backprop input from the
+  //  previous layer. y_act_backprop_data: device memory which contains the
+  //  backprop input.
+  //
+  //  y_act_data: device memory which contains the actv-fwd output data.
+  //
+  //  activation_mode: actv-fwd type.
+  //
+  //  scale_offset_mean_variance_descriptor:
+  //      dimensions of the scale/offset/mean/variance tensor.
+  //  scale_data: device memory which contains the scale input.
+  //  offset_data: device memory which contains the offset input.
+  //  saved_mean_data: device memory which contains the saved mean from fwd
+  //  pass. saved_var_data: device memory which contains the saved variance from
+  //  fwd pass.
+  //
+  //  x_bn_backprop_data: device memory region in which to place the backprop
+  //  data from this layer scale_backprop_data: device memory in which to place
+  //  the scale backprop output. offset_backprop_data: device memory in which to
+  //  place the offset backprop output.
+  //
+  //  output_profile_result: the output profile result for this call.
+  //         The profiling is only enabled when this is not nullptr.
+  //
+  virtual bool DoFusedBatchNormActivationBackward(
+      Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<float>& y_act_backprop_data,
+      const DeviceMemory<float>& y_act_data,
+      dnn::ActivationMode activation_mode, const DeviceMemory<float>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& saved_mean_data,
+      const DeviceMemory<float>& saved_var_data,
+      DeviceMemory<float>* x_bn_backprop_data,
+      DeviceMemory<float>* scale_backprop_data,
+      DeviceMemory<float>* offset_backprop_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  virtual bool DoFusedBatchNormActivationBackward(
+      Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<Eigen::half>& y_act_backprop_data,
+      const DeviceMemory<Eigen::half>& y_act_data,
+      dnn::ActivationMode activation_mode,
+      const DeviceMemory<Eigen::half>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& saved_mean_data,
+      const DeviceMemory<float>& saved_var_data,
+      DeviceMemory<Eigen::half>* x_bn_backprop_data,
+      DeviceMemory<float>* scale_backprop_data,
+      DeviceMemory<float>* offset_backprop_data,
+      dnn::ProfileResult* output_profile_result) {
     return false;
   }
 

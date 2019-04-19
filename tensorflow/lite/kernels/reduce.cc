@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
+
 #include <limits>
 #include <vector>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/gemmlowp_support.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/mean.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -35,6 +40,13 @@ enum KernelType {
   kReference,
 };
 
+struct OpData {
+  int32_t multiplier;
+  int shift;
+  // The index of the temporary tensor where the quantized inputs are cached.
+  int scratch_tensor_index;
+};
+
 struct OpContext {
   OpContext(TfLiteContext* context, TfLiteNode* node) {
     params = reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
@@ -49,15 +61,17 @@ struct OpContext {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  gemmlowp_support::IncrementUsageCounter(context);
   // Creates two temp tensors to store index and axis for internal
   // implementation only.
-  auto* scratch_tensor_index = new int;
-  context->AddTensors(context, 3, scratch_tensor_index);
-  return scratch_tensor_index;
+  auto* op_data = new OpData();
+  context->AddTensors(context, 3, &op_data->scratch_tensor_index);
+  return op_data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<int*>(buffer);
+  gemmlowp_support::DecrementUsageCounter(context);
+  delete reinterpret_cast<OpData*>(buffer);
 }
 
 // Resizes the temp tensor that stores resolved axis.
@@ -148,10 +162,10 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
 TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
                                    OpContext* op_context) {
   // Creates a temp index to iterate through input data.
-  int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(3);
-  node->temporaries->data[0] = *scratch_tensor_index;
+  node->temporaries->data[0] = op_data->scratch_tensor_index;
   TfLiteTensor* scratch_tensor = GetTemporary(context, node, /*index=*/0);
   scratch_tensor->type = kTfLiteInt32;
   scratch_tensor->allocation_type = kTfLiteArenaRw;
@@ -161,11 +175,11 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
                     context->ResizeTensor(context, scratch_tensor, index_size));
 
   // Creates a temp tensor to store resolved axis given input data.
-  node->temporaries->data[1] = *scratch_tensor_index + 1;
+  node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
   TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
   resolved_axis->type = kTfLiteInt32;
   // Creates a temp tensor to store temp sums when calculating mean.
-  node->temporaries->data[2] = *scratch_tensor_index + 2;
+  node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
   TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
   switch (op_context->input->type) {
     case kTfLiteFloat32:
@@ -222,9 +236,18 @@ TfLiteStatus PrepareAny(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // reduce_mean requires a buffer to store intermediate sum result.
   OpContext op_context(context, node);
+  if (op_context.input->type == kTfLiteInt8) {
+    const double real_multiplier =
+        static_cast<double>(op_context.input->params.scale) /
+        static_cast<double>(op_context.output->params.scale);
+    int exponent;
+    QuantizeMultiplier(real_multiplier, &data->multiplier, &exponent);
+    data->shift = exponent;
+  }
   TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
   if (!IsConstantTensor(op_context.axis)) {
     SetTensorToDynamic(temp_sum);
@@ -248,6 +271,8 @@ void ResolveAxis(const int* axis_data, int axis_count,
 template <KernelType kernel_type>
 TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   int num_axis = static_cast<int>(NumElements(op_context.axis));
   TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
   TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
@@ -272,13 +297,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
          (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
       if (op_context.input->type == kTfLiteUInt8) {
-        reference_ops::Mean(
+        gemmlowp::GemmContext* gemmlowp_context =
+            gemmlowp_support::GetFromContext(context);
+        optimized_ops::Mean(
             op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             op_context.input->params.zero_point, op_context.input->params.scale,
             GetTensorShape(op_context.output),
             GetTensorData<uint8_t>(op_context.output),
             op_context.output->params.zero_point,
-            op_context.output->params.scale);
+            op_context.output->params.scale, gemmlowp_context);
       } else {
         reference_ops::Mean(op_params, GetTensorShape(input),
                             GetTensorData<float>(input),
@@ -287,6 +314,20 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
       return kTfLiteOk;
     }
+  }
+
+  if (op_context.input->type == kTfLiteInt8) {
+    tflite::MeanParams op_params;
+    op_params.axis_count = num_axis;
+    ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+    const TfLiteTensor* input = op_context.input;
+    reference_integer_ops::Mean(
+        op_params, data->multiplier, data->shift, GetTensorShape(input),
+        GetTensorData<int8_t>(input), op_context.input->params.zero_point,
+        GetTensorShape(op_context.output),
+        GetTensorData<int8_t>(op_context.output),
+        op_context.output->params.zero_point);
+    return kTfLiteOk;
   }
 
 #define TF_LITE_MEAN(kernel_type, data_type, temp_data_type)        \

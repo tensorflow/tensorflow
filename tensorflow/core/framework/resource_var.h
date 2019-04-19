@@ -95,6 +95,31 @@ class Var : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(Var);
 };
 
+// Does unlock and unref automatically when going out of scope, and also
+// supports early manual release.
+class ScopedUnlockUnrefVar {
+ public:
+  explicit ScopedUnlockUnrefVar(Var* var) : var_(var) {
+    if (var_) {
+      var_->mu()->lock();
+    }
+  }
+  void Release() {
+    if (var_) {
+      var_->mu()->unlock();
+      var_->Unref();
+      var_ = nullptr;
+    }
+  }
+  ~ScopedUnlockUnrefVar() { Release(); }
+
+ private:
+  Var* var_;
+
+  ScopedUnlockUnrefVar(const ScopedUnlockUnrefVar&) = delete;
+  void operator=(const ScopedUnlockUnrefVar&) = delete;
+};
+
 }  //  end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_

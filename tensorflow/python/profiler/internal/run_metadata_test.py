@@ -90,7 +90,11 @@ def _run_model():
 
 
 def _run_loop_model():
-  with session.Session() as sess:
+  config = config_pb2.ConfigProto()
+  # Grappler might fuse MatMul with BiasAdd in remapper optimizer.
+  config.graph_options.rewrite_options.remapping = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  with session.Session(config=config) as sess:
     x = lib.BuildFullModel()
 
     sess.run(variables.global_variables_initializer())
@@ -111,6 +115,7 @@ def _run_loop_model():
 
 class RunMetadataTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGPU(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -126,6 +131,7 @@ class RunMetadataTest(test.TestCase):
     self.assertEqual(len(ret['gpu:0']), 1)
     self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
 
+  @test_util.run_deprecated_v1
   def testAllocationHistory(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -199,7 +205,7 @@ class RunMetadataTest(test.TestCase):
     graph = ops.get_default_graph()
     forward_op = set()
     backward_op = set()
-    back_to_forward = dict()
+    back_to_forward = {}
     for op in graph.get_operations():
       if op.name.find('gradients/') > 0 and op.name.find('_grad/') > 0:
         backward_op.add(op.name)

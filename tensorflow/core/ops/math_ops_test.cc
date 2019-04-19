@@ -205,7 +205,6 @@ TEST(MathOpsTest, Select_ShapeFn) {
   typedef std::vector<std::pair<TensorShapeProto, DataType>> ShapeDtypeV;
   std::vector<std::unique_ptr<ShapeDtypeV>> handle_data;
   std::unique_ptr<shape_inference::InferenceContext> c;
-  Status run_status;
   auto run_inference_for_handles = [&]() -> Status {
     CHECK(op_reg_data->shape_inference_fn != nullptr);
     c.reset(new shape_inference::InferenceContext(

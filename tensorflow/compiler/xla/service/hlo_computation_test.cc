@@ -509,8 +509,9 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
       HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
   auto param2 =
       builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
-  auto lt = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param0, param1));
+  auto lt = builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                    param1, ComparisonDirection::kLt));
   auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));

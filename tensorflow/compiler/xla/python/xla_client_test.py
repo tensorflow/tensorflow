@@ -38,7 +38,7 @@ class ComputationTest(unittest.TestCase):
     return xla_client.ComputationBuilder(name)
 
   def _Execute(self, c, arguments):
-    compiled_c = c.Build().CompileWithExampleArguments(arguments)
+    compiled_c = c.Build().Compile()
     return compiled_c.ExecuteWithPythonValues(arguments)
 
   def _ExecuteAndAssertWith(self, assert_func, c, arguments, expected):
@@ -53,11 +53,15 @@ class ComputationTest(unittest.TestCase):
   def _ExecuteAndCompareExact(self, c, arguments=(), expected=None):
     self._ExecuteAndAssertWith(np.testing.assert_equal, c, arguments, expected)
 
-  def _ExecuteAndCompareClose(self, c, arguments=(), expected=None, rtol=1e-7,
+  def _ExecuteAndCompareClose(self,
+                              c,
+                              arguments=(),
+                              expected=None,
+                              rtol=1e-7,
                               atol=0):
     self._ExecuteAndAssertWith(
-        functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol),
-        c, arguments, expected)
+        functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol), c,
+        arguments, expected)
 
 
 def NumpyArrayF32(*args, **kwargs):
@@ -85,19 +89,37 @@ def NumpyArrayBool(*args, **kwargs):
   return np.array(*args, dtype=np.bool, **kwargs)
 
 
+class ComputationPrinting(unittest.TestCase):
+
+  def ExampleComputation(self):
+    builder = xla_client.ComputationBuilder("acomputation")
+    p0 = builder.ParameterFromNumpy(np.float32(0))
+    p1 = builder.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder.Mul(p0, p1)
+    return builder.Build()
+
+  def testComputationToHloText(self):
+    computation = self.ExampleComputation()
+    hlo_text = computation.GetHloText()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+
+  def testComputationToHloGraph(self):
+    computation = self.ExampleComputation()
+    hlo_dot_graph = computation.GetHloDotGraph()
+    self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+
 class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
 
   def testConstantScalarSumS8(self):
     c = self._NewComputation()
-    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
-    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
     self._ExecuteAndCompareExact(c, expected=np.int8(3))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
-    root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
-    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
     self._ExecuteAndCompareClose(c, expected=4.25)
 
   def testConstantScalarSumF64(self):
@@ -114,6 +136,14 @@ class ComputationsWithConstantsTest(ComputationTest):
     c = self._NewComputation()
     c.Add(c.ConstantS64Scalar(1), c.ConstantS64Scalar(2))
     self._ExecuteAndCompareClose(c, expected=3)
+
+  def testConstantVectorMulF16(self):
+    c = self._NewComputation()
+    c.Mul(
+        c.Constant(np.array([2.5, 3.3, -1.2, 0.7], np.float16)),
+        c.Constant(np.array([-1.2, 2, -2, -3], np.float16)))
+    self._ExecuteAndCompareClose(
+        c, expected=np.array([-3, 6.6, 2.4, -2.1], np.float16), rtol=2e-3)
 
   def testConstantVectorMulF32(self):
     c = self._NewComputation()
@@ -194,31 +224,20 @@ class ComputationsWithConstantsTest(ComputationTest):
 
   def testShiftLeft(self):
     c = self._NewComputation()
-    c.ShiftLeft(c.Constant(NumpyArrayS32([3])),
-                c.Constant(NumpyArrayS32([2])))
+    c.ShiftLeft(c.Constant(NumpyArrayS32([3])), c.Constant(NumpyArrayS32([2])))
     self._ExecuteAndCompareClose(c, expected=[12])
 
   def testShiftRightArithmetic(self):
     c = self._NewComputation()
-    c.ShiftRightArithmetic(c.Constant(NumpyArrayS32([-2])),
-                           c.Constant(NumpyArrayS32([1])))
+    c.ShiftRightArithmetic(
+        c.Constant(NumpyArrayS32([-2])), c.Constant(NumpyArrayS32([1])))
     self._ExecuteAndCompareClose(c, expected=[-1])
 
   def testShiftRightLogical(self):
     c = self._NewComputation()
-    c.ShiftRightLogical(c.Constant(NumpyArrayS32([-1])),
-                        c.Constant(NumpyArrayS32([1])))
+    c.ShiftRightLogical(
+        c.Constant(NumpyArrayS32([-1])), c.Constant(NumpyArrayS32([1])))
     self._ExecuteAndCompareClose(c, expected=[2**31 - 1])
-
-  def testGetProto(self):
-    c = self._NewComputation()
-    c.Add(
-        c.Constant(NumpyArrayF32([[1, 2, 3], [4, 5, 6]])),
-        c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
-    built = c.Build()
-    proto = built.GetProto()  # HloModuleProto
-    self.assertTrue(len(proto.computations) == 1)
-    self.assertTrue(len(proto.computations[0].instructions) == 3)
 
   def testSum2DF64(self):
     c = self._NewComputation()
@@ -388,7 +407,7 @@ class LocalBufferTest(ComputationTest):
   """Tests focusing on execution with LocalBuffers."""
 
   def _Execute(self, c, arguments):
-    compiled_c = c.Build().CompileWithExampleArguments(arguments)
+    compiled_c = c.Build().Compile()
     arg_buffers = [xla_client.LocalBuffer.from_pyval(arg) for arg in arguments]
     result_buffer = compiled_c.Execute(arg_buffers)
     return result_buffer.to_py()
@@ -402,24 +421,22 @@ class LocalBufferTest(ComputationTest):
     c = self._NewComputation()
     c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
     self._ExecuteAndCompareClose(
-        c,
-        arguments=[NumpyArrayF32(1.11)],
-        expected=4.25)
+        c, arguments=[NumpyArrayF32(1.11)], expected=4.25)
 
   def testTwoParameterSum(self):
     c = self._NewComputation()
-    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)),
-          c.ParameterFromNumpy(NumpyArrayF32(0.)))
+    c.Add(
+        c.ParameterFromNumpy(NumpyArrayF32(0.)),
+        c.ParameterFromNumpy(NumpyArrayF32(0.)))
     self._ExecuteAndCompareClose(
-        c,
-        arguments=[NumpyArrayF32(1.11), NumpyArrayF32(3.14)],
-        expected=4.25)
+        c, arguments=[NumpyArrayF32(1.11),
+                      NumpyArrayF32(3.14)], expected=4.25)
 
   def testCannotCallWithDeletedBuffers(self):
     c = self._NewComputation()
     c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
     arg = NumpyArrayF32(1.11)
-    compiled_c = c.Build().CompileWithExampleArguments([arg])
+    compiled_c = c.Build().Compile()
     arg_buffer = xla_client.LocalBuffer.from_pyval(arg)
     arg_buffer.delete()
     with self.assertRaises(ValueError):
@@ -444,8 +461,8 @@ class LocalBufferTest(ComputationTest):
     np.testing.assert_equal(want, got)
 
   def testDestructureTupleTwoArrayElementDifferentType(self):
-    t = (np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
-         np.array([2, 3, 4, 5], dtype=np.int32))
+    t = (np.array([1.0, 2.0, 3.0, 4.0],
+                  dtype=np.float32), np.array([2, 3, 4, 5], dtype=np.int32))
     local_buffer = xla_client.LocalBuffer.from_pyval(t)
     pieces = local_buffer.destructure()
     self.assertTrue(local_buffer.is_deleted())
@@ -478,7 +495,7 @@ class LocalBufferTest(ComputationTest):
     pyval = np.array([[1., 2.]], np.float32)
     local_buffer = xla_client.LocalBuffer.from_pyval(pyval)
     xla_shape = local_buffer.shape()
-    self.assertEqual(xla_shape.dimensions(), (1, 2,))
+    self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
 
@@ -492,27 +509,29 @@ class SingleOpTest(ComputationTest):
 
   def testConcatenateF32(self):
     c = self._NewComputation()
-    c.Concatenate(
-        (c.Constant(NumpyArrayF32([1.0, 2.0, 3.0])),
-         c.Constant(NumpyArrayF32([4.0, 5.0, 6.0]))),
-        dimension=0)
+    args = (
+        c.Constant(NumpyArrayF32([1.0, 2.0, 3.0])),
+        c.Constant(NumpyArrayF32([4.0, 5.0, 6.0])),
+    )
+    c.Concatenate(args, dimension=0)
     self._ExecuteAndCompareClose(c, expected=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 
   def testConcatenateF64(self):
     c = self._NewComputation()
-    c.Concatenate(
-        (c.Constant(NumpyArrayF64([1.0, 2.0, 3.0])),
-         c.Constant(NumpyArrayF64([4.0, 5.0, 6.0]))),
-        dimension=0)
+    args = (
+        c.Constant(NumpyArrayF64([1.0, 2.0, 3.0])),
+        c.Constant(NumpyArrayF64([4.0, 5.0, 6.0])),
+    )
+    c.Concatenate(args, dimension=0)
     self._ExecuteAndCompareClose(c, expected=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 
   def testConvertElementType(self):
     xla_types = {
-        np.bool: xla_client.xla_data_pb2.PRED,
-        np.int32: xla_client.xla_data_pb2.S32,
-        np.int64: xla_client.xla_data_pb2.S64,
-        np.float32: xla_client.xla_data_pb2.F32,
-        np.float64: xla_client.xla_data_pb2.F64,
+        np.bool: xla_client.PrimitiveType.PRED,
+        np.int32: xla_client.PrimitiveType.S32,
+        np.int64: xla_client.PrimitiveType.S64,
+        np.float32: xla_client.PrimitiveType.F32,
+        np.float64: xla_client.PrimitiveType.F64,
     }
 
     def _ConvertAndTest(template, src_dtype, dst_dtype):
@@ -533,13 +552,13 @@ class SingleOpTest(ComputationTest):
 
   def testBitcastConvertType(self):
     xla_x32_types = {
-        np.int32: xla_client.xla_data_pb2.S32,
-        np.float32: xla_client.xla_data_pb2.F32,
+        np.int32: xla_client.PrimitiveType.S32,
+        np.float32: xla_client.PrimitiveType.F32,
     }
 
     xla_x64_types = {
-        np.int64: xla_client.xla_data_pb2.S64,
-        np.float64: xla_client.xla_data_pb2.F64,
+        np.int64: xla_client.PrimitiveType.S64,
+        np.float64: xla_client.PrimitiveType.F64,
     }
 
     def _ConvertAndTest(template, src_dtype, dst_dtype, dst_etype):
@@ -559,7 +578,7 @@ class SingleOpTest(ComputationTest):
       for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
         _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
 
-  # TODO(b/123523486): re-enable when shape check is resolved
+  # TODO(b/123523486) implement AllToAll on CPU
   def DISABLED_testAllToAllOneReplica(self):
     samples = [
         NumpyArrayF32([97.0]),
@@ -582,6 +601,11 @@ class SingleOpTest(ComputationTest):
       c = self._NewComputation()
       c.CrossReplicaSum(c.Constant(lhs))
       self._ExecuteAndCompareExact(c, expected=lhs)
+
+  def testReplicaId(self):
+    c = self._NewComputation()
+    _ = c.ReplicaId()
+    self._ExecuteAndCompareExact(c, expected=0)
 
   def testCrossReplicaSumOneReplicaWithSingletonGroup(self):
     samples = [
@@ -638,7 +662,7 @@ class SingleOpTest(ComputationTest):
     lhs = NumpyArrayF32(rng.randn(10, 3, 4))
     rhs = NumpyArrayF32(rng.randn(10, 4, 5))
 
-    dimension_numbers = xla_client.xla_data_pb2.DotDimensionNumbers()
+    dimension_numbers = xla_client.DotDimensionNumbers()
     dimension_numbers.lhs_contracting_dimensions.append(2)
     dimension_numbers.rhs_contracting_dimensions.append(1)
     dimension_numbers.lhs_batch_dimensions.append(0)
@@ -652,11 +676,13 @@ class SingleOpTest(ComputationTest):
     a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
     lhs = a(1, 2, 3, 4)
     rhs = a(1, 2, 1, 2) * 10
-    c.Conv(c.Constant(lhs), c.Constant(rhs),
-           [1, 1], xla_client.PaddingType.SAME)
-    result = np.array([[[[640., 700., 760., 300.],
-                         [880., 940., 1000., 380.],
-                         [1120., 1180., 1240., 460.]]]])
+    c.Conv(
+        c.Constant(lhs), c.Constant(rhs), [1, 1], xla_client.PaddingType.SAME)
+    result = np.array([[[
+        [640., 700., 760., 300.],
+        [880., 940., 1000., 380.],
+        [1120., 1180., 1240., 460.],
+    ]]])
     self._ExecuteAndCompareClose(c, expected=result)
 
   def testConvF32Valid(self):
@@ -664,10 +690,12 @@ class SingleOpTest(ComputationTest):
     a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
     lhs = a(1, 2, 3, 4)
     rhs = a(1, 2, 1, 2) * 10
-    c.Conv(c.Constant(lhs), c.Constant(rhs),
-           [2, 1], xla_client.PaddingType.VALID)
-    result = np.array([[[[640., 700., 760.],
-                         [1120., 1180., 1240.]]]])
+    c.Conv(
+        c.Constant(lhs), c.Constant(rhs), [2, 1], xla_client.PaddingType.VALID)
+    result = np.array([[[
+        [640., 700., 760.],
+        [1120., 1180., 1240.],
+    ]]])
     self._ExecuteAndCompareClose(c, expected=result)
 
   def testConvWithGeneralPaddingF32(self):
@@ -679,12 +707,15 @@ class SingleOpTest(ComputationTest):
     pads = [(1, 0), (0, 1)]
     lhs_dilation = (2, 1)
     rhs_dilation = (1, 1)
-    c.ConvWithGeneralPadding(c.Constant(lhs), c.Constant(rhs),
-                             strides, pads, lhs_dilation, rhs_dilation)
-    result = np.array([[[[0., 0., 0.],
-                         [10., 20., 0.],
-                         [0., 0., 0.],
-                         [40., 50., 0.]]]])
+    c.ConvWithGeneralPadding(
+        c.Constant(lhs), c.Constant(rhs), strides, pads, lhs_dilation,
+        rhs_dilation)
+    result = np.array([[[
+        [0., 0., 0.],
+        [10., 20., 0.],
+        [0., 0., 0.],
+        [40., 50., 0.],
+    ]]])
     self._ExecuteAndCompareClose(c, expected=result)
 
   def testConvGeneralDilatedF32(self):
@@ -697,13 +728,15 @@ class SingleOpTest(ComputationTest):
     lhs_dilation = (2, 1)
     rhs_dilation = (1, 1)
     dimension_numbers = ("NCHW", "OIHW", "NCHW")
-    c.ConvGeneralDilated(c.Constant(lhs), c.Constant(rhs),
-                         strides, pads, lhs_dilation, rhs_dilation,
-                         dimension_numbers)
-    result = np.array([[[[0., 0., 0.],
-                         [10., 20., 0.],
-                         [0., 0., 0.],
-                         [40., 50., 0.]]]])
+    c.ConvGeneralDilated(
+        c.Constant(lhs), c.Constant(rhs), strides, pads, lhs_dilation,
+        rhs_dilation, dimension_numbers)
+    result = np.array([[[
+        [0., 0., 0.],
+        [10., 20., 0.],
+        [0., 0., 0.],
+        [40., 50., 0.],
+    ]]])
     self._ExecuteAndCompareClose(c, expected=result)
 
   def testConvGeneralDilatedPermutedF32(self):
@@ -717,13 +750,10 @@ class SingleOpTest(ComputationTest):
     rhs_dilation = (1, 1)
 
     dimension_numbers = ("NHWC", "OIHW", "CWNH")
-    c.ConvGeneralDilated(c.Constant(np.transpose(lhs, (0, 2, 3, 1))),
-                         c.Constant(rhs),
-                         strides, pads, lhs_dilation, rhs_dilation,
-                         dimension_numbers)
-    result = np.array([[[[0., 0., 0.],
-                         [10., 20., 0.],
-                         [0., 0., 0.],
+    c.ConvGeneralDilated(
+        c.Constant(np.transpose(lhs, (0, 2, 3, 1))), c.Constant(rhs), strides,
+        pads, lhs_dilation, rhs_dilation, dimension_numbers)
+    result = np.array([[[[0., 0., 0.], [10., 20., 0.], [0., 0., 0.],
                          [40., 50., 0.]]]])
     self._ExecuteAndCompareClose(c, expected=np.transpose(result, (1, 3, 0, 2)))
 
@@ -738,17 +768,20 @@ class SingleOpTest(ComputationTest):
     rhs_dilation = (1, 1)
     dimension_numbers = ("NCHW", "OIHW", "NCHW")
     feature_group_count = 2
-    c.ConvGeneralDilated(c.Constant(lhs), c.Constant(rhs),
-                         strides, pads, lhs_dilation, rhs_dilation,
-                         dimension_numbers, feature_group_count)
-    result = np.array([[[[0., 0., 0.],
-                         [10., 20., 0.],
-                         [0., 0., 0.],
-                         [40., 50., 0.]],
-                        [[0., 0., 0.],
-                         [330., 380., 160.],
-                         [0., 0., 0.],
-                         [480., 530., 220.]]]])
+    c.ConvGeneralDilated(
+        c.Constant(lhs), c.Constant(rhs), strides, pads, lhs_dilation,
+        rhs_dilation, dimension_numbers, feature_group_count)
+    result = np.array([[[
+        [0., 0., 0.],
+        [10., 20., 0.],
+        [0., 0., 0.],
+        [40., 50., 0.],
+    ], [
+        [0., 0., 0.],
+        [330., 380., 160.],
+        [0., 0., 0.],
+        [480., 530., 220.],
+    ]]])
     self._ExecuteAndCompareClose(c, expected=result)
 
   def testBooleanNot(self):
@@ -756,6 +789,12 @@ class SingleOpTest(ComputationTest):
     arr = NumpyArrayBool([True, False, True])
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
+
+  def testCountLeadingZeros(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([0x7FFF, 0x12345678])
+    c.Clz(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=[17, 3])
 
   def testExp(self):
     c = self._NewComputation()
@@ -933,33 +972,28 @@ class SingleOpTest(ComputationTest):
     c = self._NewComputation()
     c.Pad(
         c.Constant(NumpyArrayF32([[1.0, 2.0], [3.0, 4.0]])),
-        c.Constant(NumpyArrayF32(0.0)),
-        [(1, 2, 1), (0, 1, 0)])
-    self._ExecuteAndCompareClose(c, expected=[[0.0, 0.0, 0.0],
-                                              [1.0, 2.0, 0.0],
-                                              [0.0, 0.0, 0.0],
-                                              [3.0, 4.0, 0.0],
-                                              [0.0, 0.0, 0.0],
-                                              [0.0, 0.0, 0.0]])
+        c.Constant(NumpyArrayF32(0.0)), [(1, 2, 1), (0, 1, 0)])
+    self._ExecuteAndCompareClose(
+        c,
+        expected=[[0.0, 0.0, 0.0], [1.0, 2.0, 0.0], [0.0, 0.0, 0.0],
+                  [3.0, 4.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
 
   def testPadWithPaddingConfig(self):
     c = self._NewComputation()
-    padding_config = xla_client.xla_data_pb2.PaddingConfig()
+    padding_config = xla_client.PaddingConfig()
     for lo, hi, interior in [(1, 2, 1), (0, 1, 0)]:
-      dimension = padding_config.dimensions.add()
+      dimension = xla_client.PaddingConfigDimension()
       dimension.edge_padding_low = lo
       dimension.edge_padding_high = hi
       dimension.interior_padding = interior
+      padding_config.dimensions.append(dimension)
     c.Pad(
         c.Constant(NumpyArrayF32([[1.0, 2.0], [3.0, 4.0]])),
-        c.Constant(NumpyArrayF32(0.0)),
-        padding_config)
-    self._ExecuteAndCompareClose(c, expected=[[0.0, 0.0, 0.0],
-                                              [1.0, 2.0, 0.0],
-                                              [0.0, 0.0, 0.0],
-                                              [3.0, 4.0, 0.0],
-                                              [0.0, 0.0, 0.0],
-                                              [0.0, 0.0, 0.0]])
+        c.Constant(NumpyArrayF32(0.0)), padding_config)
+    self._ExecuteAndCompareClose(
+        c,
+        expected=[[0.0, 0.0, 0.0], [1.0, 2.0, 0.0], [0.0, 0.0, 0.0],
+                  [3.0, 4.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
 
   def testReshape(self):
     c = self._NewComputation()
@@ -992,14 +1026,13 @@ class SingleOpTest(ComputationTest):
         c.Constant(NumpyArrayF32(2)))
     self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
 
-  # TODO(b/72689392): re-enable when bug S32 resolved
-  def DISABLED_testClampS32(self):
+  def testClampS32(self):
     c = self._NewComputation()
     c.Clamp(
         c.Constant(NumpyArrayS32(-1)),
         c.Constant(NumpyArrayS32([-2, -1, 0, 1, 2, 3])),
         c.Constant(NumpyArrayS32(2)))
-    self._ExecuteAndCompareExact(c, expected=[-1, 0, 1, 2, 2])
+    self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
 
   def testSelect(self):
     c = self._NewComputation()
@@ -1083,8 +1116,10 @@ class SingleOpTest(ComputationTest):
   def testRngNormal(self):
     shape = (2, 3)
     c = self._NewComputation()
-    c.RngNormal(c.Constant(NumpyArrayF32(0.)), c.Constant(NumpyArrayF32(1.)),
-                dims=shape)
+    c.RngNormal(
+        c.Constant(NumpyArrayF32(0.)),
+        c.Constant(NumpyArrayF32(1.)),
+        dims=shape)
     result = c.Build().Compile().ExecuteWithPythonValues()
     # since the result is random, we just check shape and uniqueness
     self.assertEqual(result.shape, shape)
@@ -1094,8 +1129,10 @@ class SingleOpTest(ComputationTest):
     lo, hi = 2., 4.
     shape = (2, 3)
     c = self._NewComputation()
-    c.RngUniform(c.Constant(NumpyArrayF32(lo)), c.Constant(NumpyArrayF32(hi)),
-                 dims=shape)
+    c.RngUniform(
+        c.Constant(NumpyArrayF32(lo)),
+        c.Constant(NumpyArrayF32(hi)),
+        dims=shape)
     result = c.Build().Compile().ExecuteWithPythonValues()
     # since the result is random, we just check shape, uniqueness, and range
     self.assertEqual(result.shape, shape)
@@ -1107,8 +1144,10 @@ class SingleOpTest(ComputationTest):
     lo, hi = 2, 4
     shape = (2, 3)
     c = self._NewComputation()
-    c.RngUniform(c.Constant(NumpyArrayS32(lo)), c.Constant(NumpyArrayS32(hi)),
-                 dims=shape)
+    c.RngUniform(
+        c.Constant(NumpyArrayS32(lo)),
+        c.Constant(NumpyArrayS32(hi)),
+        dims=shape)
     result = c.Build().Compile().ExecuteWithPythonValues()
     # since the result is random, we just check shape, integrality, and range
     self.assertEqual(result.shape, shape)
@@ -1132,6 +1171,27 @@ class SingleOpTest(ComputationTest):
     q, r = self._Execute(c, ())
     np.testing.assert_allclose(np.dot(q, r), a, rtol=1e-4)
 
+  def testEigh(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    a = (a + a.T) / 2
+
+    c = self._NewComputation()
+    c.Eigh(c.Constant(a), full_matrices=True)
+    # TODO(b/129396575): Turn this test back on when it passes without fastmath.
+    # v, w = self._Execute(c, ())
+    # self.assertLess(np.linalg.norm(np.dot(a, v) - w * v), 1e-3)
+
+  def testSVD(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    c = self._NewComputation()
+    c.SVD(c.Constant(a))
+    u, d, v = self._Execute(c, ())
+    self.assertLess(np.linalg.norm(a - np.matmul(u * d, v.T)), 1e-3)
+
   def testTriangularSolve(self):
     a_vals = np.array(
         [[2, 0, 0, 0], [3, 6, 0, 0], [4, 7, 9, 0], [5, 8, 10, 11]],
@@ -1140,13 +1200,21 @@ class SingleOpTest(ComputationTest):
                       dtype=np.float32)
 
     c = self._NewComputation()
-    c.TriangularSolve(c.Constant(a_vals), c.Constant(b_vals), left_side=False,
-                      lower=True, transpose_a=True)
-    self._ExecuteAndCompareClose(c, expected=np.array([
-        [0.5, 0.08333334, 0.04629629, 0.03367003],
-        [2.5, -0.25, -0.1388889, -0.1010101],
-        [4.5, -0.58333331, -0.32407406, -0.23569024],
-    ], dtype=np.float32), rtol=1e-4)
+    c.TriangularSolve(
+        c.Constant(a_vals),
+        c.Constant(b_vals),
+        left_side=False,
+        lower=True,
+        transpose_a=True)
+    self._ExecuteAndCompareClose(
+        c,
+        expected=np.array([
+            [0.5, 0.08333334, 0.04629629, 0.03367003],
+            [2.5, -0.25, -0.1388889, -0.1010101],
+            [4.5, -0.58333331, -0.32407406, -0.23569024],
+        ],
+                          dtype=np.float32),
+        rtol=1e-4)
 
   def testIsConstant(self):
     c = self._NewComputation()
@@ -1162,7 +1230,7 @@ class SingleOpTest(ComputationTest):
   def testGather(self):
     a = np.arange(9).astype(np.int32).reshape((3, 3))
     indices = np.array([[[0, 2], [2, 1]], [[1, 2], [2, 0]]], dtype=np.int32)
-    dnums = xla_client.xla_data_pb2.GatherDimensionNumbers()
+    dnums = xla_client.GatherDimensionNumbers()
     dnums.offset_dims.append(1)
     dnums.offset_dims.append(2)
     dnums.start_index_map.append(0)
@@ -1221,8 +1289,9 @@ class EmbeddedComputationsTest(ComputationTest):
   def _CreateMulF32ByParamComputation(self):
     """Computation (f32) -> f32 that multiplies one parameter by the other."""
     c = self._NewComputation("mul_f32_by_param")
-    c.Mul(c.ParameterFromNumpy(NumpyArrayF32(0)),
-          c.ParameterFromNumpy(NumpyArrayF32(0)))
+    c.Mul(
+        c.ParameterFromNumpy(NumpyArrayF32(0)),
+        c.ParameterFromNumpy(NumpyArrayF32(0)))
     return c.Build()
 
   def _CreateMulF64By2Computation(self):
@@ -1286,15 +1355,17 @@ class EmbeddedComputationsTest(ComputationTest):
   def _CreateBinaryGeF32Computation(self):
     """Computation (f32, f32) -> bool that tests first_param >= second_param."""
     c = self._NewComputation("param0_lt_param1")
-    c.Ge(c.ParameterFromNumpy(NumpyArrayF32(0)),
-         c.ParameterFromNumpy(NumpyArrayF32(0)))
+    c.Ge(
+        c.ParameterFromNumpy(NumpyArrayF32(0)),
+        c.ParameterFromNumpy(NumpyArrayF32(0)))
     return c.Build()
 
   def _CreateBinaryGeF64Computation(self):
     """Computation (f64, f64) -> bool that tests first_param >= second_param."""
     c = self._NewComputation("param0_lt_param1")
-    c.Ge(c.ParameterFromNumpy(NumpyArrayF64(0)),
-         c.ParameterFromNumpy(NumpyArrayF64(0)))
+    c.Ge(
+        c.ParameterFromNumpy(NumpyArrayF64(0)),
+        c.ParameterFromNumpy(NumpyArrayF64(0)))
     return c.Build()
 
   def _MakeSample3DArrayF32(self):
@@ -1375,26 +1446,28 @@ class EmbeddedComputationsTest(ComputationTest):
 
   def testSelectAndScatterF32(self):
     c = self._NewComputation()
-    c.SelectAndScatter(c.Constant(NumpyArrayF32([[1., 2., 6.], [4., 5., 3.]])),
-                       select=self._CreateBinaryGeF32Computation(),
-                       window_dimensions=(2, 1),
-                       window_strides=(1, 2),
-                       padding=xla_client.PaddingType.VALID,
-                       source=c.Constant(NumpyArrayF32([[0.1, 0.2]])),
-                       init_value=c.Constant(NumpyArrayF32(1)),
-                       scatter=self._CreateBinaryAddF32Computation())
+    c.SelectAndScatter(
+        c.Constant(NumpyArrayF32([[1., 2., 6.], [4., 5., 3.]])),
+        select=self._CreateBinaryGeF32Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 2),
+        padding=xla_client.PaddingType.VALID,
+        source=c.Constant(NumpyArrayF32([[0.1, 0.2]])),
+        init_value=c.Constant(NumpyArrayF32(1)),
+        scatter=self._CreateBinaryAddF32Computation())
     self._ExecuteAndCompareClose(c, expected=[[1., 1., 1.2], [1.1, 1., 1.]])
 
   def testSelectAndScatterF64(self):
     c = self._NewComputation()
-    c.SelectAndScatter(c.Constant(NumpyArrayF64([[1., 2., 6.], [4., 5., 3.]])),
-                       select=self._CreateBinaryGeF64Computation(),
-                       window_dimensions=(2, 1),
-                       window_strides=(1, 2),
-                       padding=xla_client.PaddingType.VALID,
-                       source=c.Constant(NumpyArrayF64([[0.1, 0.2]])),
-                       init_value=c.Constant(NumpyArrayF64(1)),
-                       scatter=self._CreateBinaryAddF64Computation())
+    c.SelectAndScatter(
+        c.Constant(NumpyArrayF64([[1., 2., 6.], [4., 5., 3.]])),
+        select=self._CreateBinaryGeF64Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 2),
+        padding=xla_client.PaddingType.VALID,
+        source=c.Constant(NumpyArrayF64([[0.1, 0.2]])),
+        init_value=c.Constant(NumpyArrayF64(1)),
+        scatter=self._CreateBinaryAddF64Computation())
     self._ExecuteAndCompareClose(c, expected=[[1., 1., 1.2], [1.1, 1., 1.]])
 
   def testReduce1DtoScalarF32(self):
@@ -1497,61 +1570,73 @@ class EmbeddedComputationsTest(ComputationTest):
   def testReduceWindowValidUnitStridesF32(self):
     input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     c = self._NewComputation()
-    c.ReduceWindow(operand=c.Constant(input_array),
-                   init_value=c.ConstantF32Scalar(0),
-                   computation_to_apply=self._CreateBinaryAddF32Computation(),
-                   window_dimensions=(2, 1), window_strides=(1, 1),
-                   padding=xla_client.PaddingType.VALID)
+    c.ReduceWindow(
+        operand=c.Constant(input_array),
+        init_value=c.ConstantF32Scalar(0),
+        computation_to_apply=self._CreateBinaryAddF32Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 1),
+        padding=xla_client.PaddingType.VALID)
     self._ExecuteAndCompareClose(c, expected=[[5., 7., 9.]])
 
   def testReduceWindowSameUnitStridesF32(self):
     input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     c = self._NewComputation()
-    c.ReduceWindow(operand=c.Constant(input_array),
-                   init_value=c.ConstantF32Scalar(0),
-                   computation_to_apply=self._CreateBinaryAddF32Computation(),
-                   window_dimensions=(2, 1), window_strides=(1, 1),
-                   padding=xla_client.PaddingType.SAME)
+    c.ReduceWindow(
+        operand=c.Constant(input_array),
+        init_value=c.ConstantF32Scalar(0),
+        computation_to_apply=self._CreateBinaryAddF32Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 1),
+        padding=xla_client.PaddingType.SAME)
     self._ExecuteAndCompareClose(c, expected=[[5., 7., 9.], [4., 5., 6.]])
 
   def testReduceWindowValidGeneralStridesF32(self):
     input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     c = self._NewComputation()
-    c.ReduceWindow(operand=c.Constant(input_array),
-                   init_value=c.ConstantF32Scalar(0),
-                   computation_to_apply=self._CreateBinaryAddF32Computation(),
-                   window_dimensions=(2, 1), window_strides=(1, 2),
-                   padding=xla_client.PaddingType.VALID)
+    c.ReduceWindow(
+        operand=c.Constant(input_array),
+        init_value=c.ConstantF32Scalar(0),
+        computation_to_apply=self._CreateBinaryAddF32Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 2),
+        padding=xla_client.PaddingType.VALID)
     self._ExecuteAndCompareClose(c, expected=[[5., 9.]])
 
   def testReduceWindowValidUnitStridesF64(self):
     input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     c = self._NewComputation()
-    c.ReduceWindow(operand=c.Constant(input_array),
-                   init_value=c.ConstantF64Scalar(0),
-                   computation_to_apply=self._CreateBinaryAddF64Computation(),
-                   window_dimensions=(2, 1), window_strides=(1, 1),
-                   padding=xla_client.PaddingType.VALID)
+    c.ReduceWindow(
+        operand=c.Constant(input_array),
+        init_value=c.ConstantF64Scalar(0),
+        computation_to_apply=self._CreateBinaryAddF64Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 1),
+        padding=xla_client.PaddingType.VALID)
     self._ExecuteAndCompareClose(c, expected=[[5., 7., 9.]])
 
   def testReduceWindowSameUnitStridesF64(self):
     input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     c = self._NewComputation()
-    c.ReduceWindow(operand=c.Constant(input_array),
-                   init_value=c.ConstantF64Scalar(0),
-                   computation_to_apply=self._CreateBinaryAddF64Computation(),
-                   window_dimensions=(2, 1), window_strides=(1, 1),
-                   padding=xla_client.PaddingType.SAME)
+    c.ReduceWindow(
+        operand=c.Constant(input_array),
+        init_value=c.ConstantF64Scalar(0),
+        computation_to_apply=self._CreateBinaryAddF64Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 1),
+        padding=xla_client.PaddingType.SAME)
     self._ExecuteAndCompareClose(c, expected=[[5., 7., 9.], [4., 5., 6.]])
 
   def testReduceWindowValidGeneralStridesF64(self):
     input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     c = self._NewComputation()
-    c.ReduceWindow(operand=c.Constant(input_array),
-                   init_value=c.ConstantF64Scalar(0),
-                   computation_to_apply=self._CreateBinaryAddF64Computation(),
-                   window_dimensions=(2, 1), window_strides=(1, 2),
-                   padding=xla_client.PaddingType.VALID)
+    c.ReduceWindow(
+        operand=c.Constant(input_array),
+        init_value=c.ConstantF64Scalar(0),
+        computation_to_apply=self._CreateBinaryAddF64Computation(),
+        window_dimensions=(2, 1),
+        window_strides=(1, 2),
+        padding=xla_client.PaddingType.VALID)
     self._ExecuteAndCompareClose(c, expected=[[5., 9.]])
 
   def testWhileF32(self):
@@ -1596,7 +1681,7 @@ class EmbeddedComputationsTest(ComputationTest):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
     c.Infeed(xla_client.Shape.from_pyval(to_infeed[0]))
-    compiled_c = c.Build().CompileWithExampleArguments()
+    compiled_c = c.Build().Compile()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
 
@@ -1610,7 +1695,7 @@ class EmbeddedComputationsTest(ComputationTest):
     x = c.Infeed(xla_client.Shape.from_pyval(to_round_trip[0]))
     c.Outfeed(x)
 
-    compiled_c = c.Build().CompileWithExampleArguments()
+    compiled_c = c.Build().Compile()
 
     for want in to_round_trip:
       execution = threading.Thread(target=compiled_c.Execute)
@@ -1626,15 +1711,16 @@ class EmbeddedComputationsTest(ComputationTest):
     scatter_indices = np.array([0, 2], dtype=np.int32)
     updates = np.array([[10, 20, 30], [70, 80, 90]], dtype=np.int32)
 
-    dnums = xla_client.xla_data_pb2.ScatterDimensionNumbers()
+    dnums = xla_client.ScatterDimensionNumbers()
     dnums.update_window_dims.append(1)
     dnums.inserted_window_dims.append(0)
     dnums.scatter_dims_to_operand_dims.append(0)
     dnums.index_vector_dim = 1
 
     c = self._NewComputation()
-    c.Scatter(c.Constant(a), c.Constant(scatter_indices), c.Constant(updates),
-              self._CreateBinaryAddS32Computation(), dnums)
+    c.Scatter(
+        c.Constant(a), c.Constant(scatter_indices), c.Constant(updates),
+        self._CreateBinaryAddS32Computation(), dnums)
     expected = np.array([[10, 21, 32], [3, 4, 5], [76, 87, 98]], dtype=np.int32)
     self._ExecuteAndCompareClose(c, expected=expected)
 
@@ -1645,15 +1731,34 @@ class ErrorTest(ComputationTest):
     self.f32_scalar_2 = NumpyArrayF32(2.0)
     self.s32_scalar_2 = NumpyArrayS32(2)
 
+  def testCompileWithWrongElementTypeInLayout(self):
+    c = self._NewComputation()
+    c.SetOpMetadata(xla_client.CurrentSourceInfoMetadata())
+    c.ParameterFromNumpy(self.s32_scalar_2)
+    c.ClearOpMetadata()
+
+    options = xla_client.CompileOptions()
+    options.argument_layouts = [xla_client.Shape.array_shape(np.float32, [])]
+
+    def TestFun():
+      return c.Build().Compile(compile_options=options)
+
+    self.assertRaisesRegexp(
+        RuntimeError, r".*Invalid argument shape.*"
+        r"expected s32\[\], got f32\[\].*", TestFun)
+
   def testInvokeWithWrongElementType(self):
     c = self._NewComputation()
     c.SetOpMetadata(xla_client.CurrentSourceInfoMetadata())
     c.ParameterFromNumpy(self.s32_scalar_2)
     c.ClearOpMetadata()
+
+    def TestFun():
+      return c.Build().Compile().ExecuteWithPythonValues([self.f32_scalar_2])
+
     self.assertRaisesRegexp(
-        RuntimeError, r"Invalid argument shape.*xla_client_test.py.*"
-        r"expected s32\[\], got f32\[\]",
-        lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
+        RuntimeError, r"Invalid argument: Argument does not match.*"
+        r"want s32\[\], got f32\[\].*", TestFun)
 
 
 class ComputationRootTest(ComputationTest):
@@ -1666,7 +1771,7 @@ class ComputationRootTest(ComputationTest):
     extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
 
     arg = NumpyArrayF32(1.0)
-    compiled_c = c.Build(result).CompileWithExampleArguments([arg])
+    compiled_c = c.Build(result).Compile()
     ans = compiled_c.ExecuteWithPythonValues([arg])
     np.testing.assert_allclose(ans, 4.14)
 

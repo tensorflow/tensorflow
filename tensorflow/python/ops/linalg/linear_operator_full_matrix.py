@@ -57,7 +57,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  matrix = tf.random_normal(shape=[2, 3, 4, 4])
+  matrix = tf.random.normal(shape=[2, 3, 4, 4])
   operator = LinearOperatorFullMatrix(matrix)
   ```
 

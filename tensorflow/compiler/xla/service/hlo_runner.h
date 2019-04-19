@@ -80,7 +80,13 @@ class HloRunner {
     bool run_hlo_passes = false;
   };
 
-  explicit HloRunner(se::Platform* platform);
+  // intra_op_parallelism_threads: For the CPU backend only. It is the thread
+  // pool size for parallel execution of an individual operator. The default
+  // value of -1 will result in initializing the thread pool with the number of
+  // threads equal to the number of
+  // cores in the system.
+  explicit HloRunner(se::Platform* platform,
+                     int intra_op_parallelism_threads = -1);
 
   ~HloRunner();
 
@@ -165,9 +171,19 @@ class HloRunner {
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
   // value.
+  //
+  // use_threads indicates whether this replicated computation will be executed
+  // with a thread-per-replica, vs using an implicitly async call such as
+  // Executable::ExecuteOnStreams.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      const ReplicatedExecuteOptions& options);
+      const ReplicatedExecuteOptions& options, bool use_threads = false);
+
+  // Same as above, but with specified device assignment.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, bool use_threads = false);
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.

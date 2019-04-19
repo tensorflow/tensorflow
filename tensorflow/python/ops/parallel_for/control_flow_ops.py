@@ -13,9 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """for_loop and pfor ops."""
+# pylint: disable=g-direct-tensorflow-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -27,7 +31,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.parallel_for.pfor import PFor
+from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
@@ -68,6 +75,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:
+        # out may be a ref tensor, wrap it in identity to get a non-ref tensor.
         ta = ta.write(i, array_ops.expand_dims(out, 0))
       outputs.append(ta)
     return tuple([i + 1] + outputs)
@@ -79,7 +87,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
   ta_list = control_flow_ops.while_loop(
       lambda i, *ta: i < iters,
       while_body,
-      [0] + [tensor_array_ops.TensorArray(dtype, iters)
+      [0] + [tensor_array_ops.TensorArray(dtype.base_dtype, iters)
              for dtype in flat_loop_fn_dtypes],
       **extra_args)[1:]
 
@@ -96,6 +104,9 @@ def _flatten_first_two_dims(x):
   new_shape = array_ops.concat([[old_shape[0] * old_shape[1]], old_shape[2:]],
                                axis=0)
   return array_ops.reshape(x, new_shape)
+
+
+PFOR_CONFIG_ARG = "pfor_config"
 
 
 def pfor(loop_fn, iters, parallel_iterations=None):
@@ -127,10 +138,11 @@ def pfor(loop_fn, iters, parallel_iterations=None):
 
   Args:
     loop_fn: A function that takes an int32 scalar tf.Tensor object representing
-      the iteration number, and returns a possibly nested structure of Tensor or
-      Operation objects. Note that if setting `parallel_iterations` argument to
-      something other than None, `loop_fn` may be called more than once during
-      graph construction. So it may need to avoid mutating global state.
+      the iteration number, and optionally a keyword argument `pfor_config` set
+      to a PForConfig object. It returns a possibly nested structure of Tensor
+      or Operation objects. Note that if setting `parallel_iterations` argument
+      to something other than None, `loop_fn` may be called more than once
+      during graph construction. So it may need to avoid mutating global state.
     iters: Number of iterations for which to run loop_fn.
     parallel_iterations: A knob to control how many iterations are vectorized
       and dispatched in parallel. The default value of None corresponds to
@@ -151,12 +163,38 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   return f()
 
 
-def _pfor_impl(loop_fn, iters, parallel_iterations=None):
+def _loop_fn_has_config(loop_fn):
+  """Test if `loop_fn` has a `pfor_config` argument."""
+  if tf_inspect.isfunction(loop_fn):
+    argspec = tf_inspect.getargspec(loop_fn)
+    return PFOR_CONFIG_ARG in argspec.args
+  elif isinstance(loop_fn, functools.partial):
+    fn = loop_fn.func
+    argspec = tf_inspect.getargspec(fn)
+    return (PFOR_CONFIG_ARG in argspec.args and
+            PFOR_CONFIG_ARG not in loop_fn.keywords)
+  else:
+    loop_class = tf_decorator.unwrap(loop_fn)[1]
+    if not hasattr(loop_class, "__call__"):
+      raise ValueError("loop_fn object did not have a __call__ method")
+    argspec = tf_inspect.getargspec(loop_class.__call__)
+    return PFOR_CONFIG_ARG in argspec.args
+
+
+def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   """Implementation of pfor."""
+  loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
   with ops.name_scope("loop_body"):
     loop_var = array_ops.placeholder(dtypes.int32, shape=[])
-    loop_fn_outputs = loop_fn(loop_var)
+    if loop_fn_has_config:
+      if pfor_config is None:
+        pfor_config = PForConfig()
+        pfor_config._set_iters(iters)  # pylint: disable=protected-access
+      loop_fn_outputs = loop_fn(loop_var, **{PFOR_CONFIG_ARG: pfor_config})
+    else:
+      assert pfor_config is None
+      loop_fn_outputs = loop_fn(loop_var)
   new_ops = set(ops.get_default_graph().get_operations()) - existing_ops
   iters = ops.convert_to_tensor(iters)
   if parallel_iterations is not None:
@@ -169,18 +207,22 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None):
       parallel_iterations = None
   if parallel_iterations is None:
     with ops.name_scope("pfor"):
-      converter = PFor(loop_var, iters, new_ops)
+      converter = PFor(loop_var, iters, new_ops, pfor_config=pfor_config)
       outputs = []
       for loop_fn_output in nest.flatten(loop_fn_outputs):
         outputs.append(converter.convert(loop_fn_output))
       return nest.pack_sequence_as(loop_fn_outputs, outputs)
   else:
+    if pfor_config is not None and pfor_config._has_reductions():  # pylint: disable=protected-access
+      raise ValueError("Setting parallel_iterations currently unsupported if"
+                       " reductions across iterations are performed.")
     num_tiled_iterations = iters // parallel_iterations
     num_remaining_iterations = iters % parallel_iterations
     # TODO(agarwal): Avoid calling loop_fn twice. Generate the loop body inside
     # a tf.function and extract the graph from there to vectorize it.
     with ops.name_scope("pfor_untiled"):
-      converter = PFor(loop_var, num_remaining_iterations, new_ops)
+      converter = PFor(loop_var, num_remaining_iterations, new_ops,
+                       pfor_config=pfor_config)
       remaining_outputs = []
       flattened_loop_fn_outputs = nest.flatten(loop_fn_outputs)
       for loop_fn_output in flattened_loop_fn_outputs:
@@ -193,10 +235,14 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None):
       def tiled_loop_body(j):
         offset = j * parallel_iterations + num_remaining_iterations
 
-        def tiled_loop_fn(i):
-          return nest.flatten(loop_fn(i + offset))
+        def tiled_loop_fn(i, pfor_config=None):
+          if loop_fn_has_config:
+            return nest.flatten(loop_fn(i + offset, pfor_config=pfor_config))
+          else:
+            return nest.flatten(loop_fn(i + offset))
 
-        return pfor(tiled_loop_fn, parallel_iterations)
+        return _pfor_impl(
+            tiled_loop_fn, parallel_iterations, pfor_config=pfor_config)
 
       tiled_outputs = for_loop(tiled_loop_body, loop_fn_dtypes,
                                num_tiled_iterations, parallel_iterations=1)
@@ -213,7 +259,3 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None):
       else:
         outputs = tiled_outputs
       return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
-
-
-
-

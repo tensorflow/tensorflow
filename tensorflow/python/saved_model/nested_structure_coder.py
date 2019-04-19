@@ -34,10 +34,10 @@ import collections
 import functools
 import six
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.saved_model import struct_pb2
 from tensorflow.python.util import compat
 
 

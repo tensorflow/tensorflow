@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
@@ -46,8 +47,10 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        metrics=[metrics.MeanSquaredError()],
-        weighted_metrics=[metrics.MeanSquaredError()],
+        metrics=[metrics.MeanSquaredError(name='mean_squared_error')],
+        weighted_metrics=[
+            metrics.MeanSquaredError(name='mean_squared_error_2')
+        ],
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
@@ -113,19 +116,22 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
 
     # Total loss = 32.5 + 8.75 = 41.25
 
+    wmse = 'mean_squared_error_2'
+    if not tf2.enabled():
+      wmse = 'weighted_' + wmse
     self.expected_fit_result = {
         'output_1_mean_squared_error': [7.5, 7.5],
         'output_2_mean_squared_error': [7.5, 7.5],
-        'output_1_weighted_mean_squared_error': [9.286, 9.286],
-        'output_2_weighted_mean_squared_error': [4.375, 4.375],
+        'output_1_' + wmse: [9.286, 9.286],
+        'output_2_' + wmse: [4.375, 4.375],
         'loss': [41.25, 41.25],
         'output_1_loss': [32.5, 32.5],
         'output_2_loss': [8.75, 8.75],
     }
 
     # In the order: 'loss', 'output_1_loss', 'output_2_loss',
-    # 'output_1_mean_squared_error', 'output_1_weighted_mean_squared_error',
-    # 'output_2_mean_squared_error', 'output_2_weighted_mean_squared_error'
+    # 'output_1_mean_squared_error', 'output_1_mean_squared_error_2',
+    # 'output_2_mean_squared_error', 'output_2_mean_squared_error_2'
     self.expected_batch_result = [41.25, 32.5, 8.75, 7.5, 9.286, 7.5, 4.375]
 
   def test_fit(self):
@@ -203,8 +209,10 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        metrics=[metrics.MeanSquaredError()],
-        weighted_metrics=[metrics.MeanSquaredError()],
+        metrics=[metrics.MeanSquaredError(name='mean_squared_error')],
+        weighted_metrics=[
+            metrics.MeanSquaredError(name='mean_squared_error_2')
+        ],
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
@@ -249,13 +257,16 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
     #   Count = 2 + 2
     #   Result = 32.5
 
+    wmse = 'mean_squared_error_2'
+    if not tf2.enabled():
+      wmse = 'weighted_' + wmse
     self.expected_fit_result = {
         'mean_squared_error': [7.5, 7.5],
-        'weighted_mean_squared_error': [9.286, 9.286],
+        wmse: [9.286, 9.286],
         'loss': [32.5, 32.5]
     }
 
-    # In the order: 'loss', 'mean_squared_error', 'weighted_mean_squared_error'
+    # In the order: 'loss', 'mean_squared_error', 'mean_squared_error_2'
     self.expected_batch_result = [32.5, 7.5, 9.286]
 
   def test_fit(self):

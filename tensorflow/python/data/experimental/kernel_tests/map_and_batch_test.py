@@ -83,8 +83,10 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     # total number of elements.
     dataset = dataset_fn(14, 28)
     get_next = self.getNext(dataset)
-    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
-                     [shape.as_list() for shape in dataset.output_shapes])
+    self.assertEqual(
+        [[None] + list(c.shape[1:]) for c in components],
+        [shape.as_list()
+         for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     num_batches = (28 * 7) // 14
     for i in range(num_batches):
       result = self.evaluate(get_next())
@@ -143,9 +145,11 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
 
     if drop_remainder:
-      self.assertEqual([4, 1], dataset.output_shapes.as_list())
+      self.assertEqual(
+          [4, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     else:
-      self.assertEqual([None, 1], dataset.output_shapes.as_list())
+      self.assertEqual(
+          [None, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     expected_output = [[[0], [1], [4], [9]], [[16], [25], [36], [49]]]
     if not drop_remainder:
       expected_output.append([[64], [81]])
@@ -164,7 +168,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    self.assertEqual([None, 1], dataset.output_shapes.as_list())
+    self.assertEqual(
+        [None, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     expected_output = [[[0], [1], [4], [9]], [[16], [25], [36], [49]],
                        [[64], [81]]]
     self.assertDatasetProduces(dataset, expected_output=expected_output)

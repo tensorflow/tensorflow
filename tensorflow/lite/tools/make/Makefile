@@ -1,3 +1,7 @@
+# Make uses /bin/sh by default, which is incompatible with the bashisms seen
+# below.
+SHELL := /bin/bash
+
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
 	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -20,7 +24,7 @@ endif
 HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
 
 # Override these on the make command line to target a specific architecture. For example:
-# make -f tensorflow/lite/Makefile TARGET=rpi TARGET_ARCH=armv7l
+# make -f tensorflow/lite/tools/make/Makefile TARGET=rpi TARGET_ARCH=armv7l
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
@@ -51,9 +55,9 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG
+CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
-CCFLAGS := ${CXXFLAGS}
+CFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
 CFLAGS :=
 LDOPTS := -L/usr/local/lib
@@ -86,6 +90,8 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/experimental/c/*.c) \
+$(wildcard tensorflow/lite/experimental/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc)
 ifneq ($(BUILD_TYPE),micro)
@@ -123,6 +129,9 @@ ifeq ($(BUILD_TYPE),micro)
 	BUILD_WITH_NNAPI=false
 endif
 ifeq ($(TARGET),ios)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(TARGET),rpi)
 	BUILD_WITH_NNAPI=false
 endif
 ifeq ($(BUILD_WITH_NNAPI),true)
@@ -190,14 +199,14 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
 BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS))))
 
-# For normal manually-created TensorFlow C++ source files.
+# For normal manually-created TensorFlow Lite C++ source files.
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-# For normal manually-created TensorFlow C++ source files.
+# For normal manually-created TensorFlow Lite C source files.
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)

@@ -326,6 +326,14 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   EXPECT_EQ(ShapeUtil::GetSubshape(sort->shape(), {0}).element_type(), F32);
   EXPECT_NE(computation->root_instruction(), sort);
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(sort->to_apply()->parameter_instruction(1)->shape().element_type(),
+            F32);
+  // Make sure that no convert to BF16 was added to the 'to_apply' comparison
+  // computation.
+  auto users = sort->to_apply()->parameter_instruction(1)->users();
+  for (auto user : users) {
+    EXPECT_NE(user->opcode(), HloOpcode::kConvert);
+  }
 }
 
 // Tests that the normalization should not cause unsupported mixed precision due

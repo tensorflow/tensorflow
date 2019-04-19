@@ -85,6 +85,36 @@ class GPUDeviceTest : public ::testing::Test {
     }
     return options;
   }
+
+  void InitCPUTensor(Tensor* cpu_tensor, int num_elements, float value) {
+    auto tensor = cpu_tensor->tensor<float, 1>();
+    for (int i = 0; i < num_elements; ++i) {
+      tensor(i) = value;
+    }
+  }
+
+  void CopyCPUToGPU(Tensor* cpu_tensor, Tensor* gpu_tensor, Device* device,
+                    DeviceContext* device_context) {
+    Notification note;
+    device_context->CopyCPUTensorToDevice(cpu_tensor, device, gpu_tensor,
+                                          [&note](const Status& s) {
+                                            TF_ASSERT_OK(s);
+                                            note.Notify();
+                                          });
+    note.WaitForNotification();
+  }
+
+  void CopyGPUToCPU(Tensor* gpu_tensor, Tensor* cpu_tensor, Device* device,
+                    DeviceContext* device_context) {
+    Notification note;
+    device_context->CopyDeviceTensorToCPU(gpu_tensor, /*tensor_name=*/"",
+                                          device, cpu_tensor,
+                                          [&note](const Status& s) {
+                                            TF_ASSERT_OK(s);
+                                            note.Notify();
+                                          });
+    note.WaitForNotification();
+  }
 };
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
@@ -275,6 +305,45 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
                                      (memory_limit >> 20) << 20);
   EXPECT_NE(ptr, nullptr);
   allocator->DeallocateRaw(ptr);
+}
+
+TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
+  SessionOptions opts = MakeSessionOptions("0");
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  Device* device = devices[0].get();
+  auto* device_info = device->tensorflow_gpu_device_info();
+  CHECK(device_info);
+  DeviceContext* device_context = device_info->default_context;
+  Allocator* allocator = device->GetAllocator(AllocatorAttributes());
+
+  constexpr int kNumElements = 4;
+  Tensor input_tensor(allocator, DT_FLOAT, TensorShape({kNumElements}));
+  Tensor output_tensor(allocator, DT_FLOAT, TensorShape({kNumElements}));
+  Tensor cpu_tensor(cpu_allocator(), DT_FLOAT, TensorShape({kNumElements}));
+  // Initialize input as {1, 1, 1, 1} and output as {0, 0, 0, 0}.  After copy,
+  // both should become {1, 1, 1, 1}.
+  InitCPUTensor(&cpu_tensor, kNumElements, 0);
+  CopyCPUToGPU(&cpu_tensor, &output_tensor, device, device_context);
+  InitCPUTensor(&cpu_tensor, kNumElements, 1);
+  CopyCPUToGPU(&cpu_tensor, &input_tensor, device, device_context);
+  Notification note;
+  device->CopyTensorInSameDevice(&input_tensor, &output_tensor, device_context,
+                                 [&note](const Status& s) {
+                                   TF_ASSERT_OK(s);
+                                   note.Notify();
+                                 });
+  note.WaitForNotification();
+
+  Tensor output_cpu_tensor(cpu_allocator(), DT_FLOAT,
+                           TensorShape({kNumElements}));
+  CopyGPUToCPU(&output_tensor, &output_cpu_tensor, device, device_context);
+  auto input = cpu_tensor.tensor<float, 1>();
+  auto output = output_cpu_tensor.tensor<float, 1>();
+  for (int i = 0; i < kNumElements; ++i) {
+    EXPECT_EQ(input(i), output(i)) << " for index " << i;
+  }
 }
 
 class GPUKernelTrackerTest : public ::testing::Test {

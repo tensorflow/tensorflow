@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/parallel_map_iterator.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 namespace tensorflow {
@@ -264,9 +265,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void MapFunc(IteratorContext* ctx, const string& prefix,
                    std::vector<Tensor> input, std::vector<Tensor>* output,
                    StatusCallback callback) override {
-        (*ctx->runner())([this, ctx, input, output, callback]() {
+        (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
-              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
+              ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
           for (const Tensor& t : input) {
             auto serialized_t = t.flat<string>();
@@ -332,24 +333,30 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   << ", got " << serialized_sparse.shape().DebugString()
                   << ").";
             }
-            // TODO(b/111553342): User provided tags instead of fixed tag.
+            // TODO(b/123360128): Add component name to streamz metrics without
+            // breaking TFX metrics.
             if (stats_aggregator) {
               stats_aggregator->IncrementCounter(
-                  "examples_count", "trainer",
+                  stats_utils::kExamplesCount, "trainer",
                   example_result.feature_stats.size());
               for (example::PerExampleFeatureStats feature_stats :
                    example_result.feature_stats) {
-                stats_aggregator->AddToHistogram(
-                    "features",
-                    {static_cast<double>(feature_stats.features_count)});
                 stats_aggregator->IncrementCounter(
-                    "features_count", "trainer", feature_stats.features_count);
+                    stats_utils::kFeaturesCount, "trainer",
+                    feature_stats.features_count);
                 stats_aggregator->IncrementCounter(
-                    "feature_values_count", "trainer",
+                    stats_utils::kFeatureValuesCount, "trainer",
                     feature_stats.feature_values_count);
+                int64 steps = ctx->model()->NumElements(prefix);
                 stats_aggregator->AddToHistogram(
-                    "feature-values",
-                    {static_cast<double>(feature_stats.feature_values_count)});
+                    stats_utils::FeatureHistogramName(dataset_->node_name()),
+                    {static_cast<double>(feature_stats.features_count)}, steps);
+
+                stats_aggregator->AddToHistogram(
+                    stats_utils::FeatureValueHistogramName(
+                        dataset_->node_name()),
+                    {static_cast<double>(feature_stats.feature_values_count)},
+                    steps);
               }
             }
           }

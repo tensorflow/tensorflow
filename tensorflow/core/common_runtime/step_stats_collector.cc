@@ -176,9 +176,10 @@ void NodeExecStatsWrapper::AddAllocation(
   memory->set_peak_bytes(std::get<1>(sizes));
   memory->set_live_bytes(std::get<2>(sizes));
 
-  AllocatorStats stats;
-  allocator->GetStats(&stats);
-  memory->set_allocator_bytes_in_use(stats.bytes_in_use);
+  absl::optional<AllocatorStats> stats = allocator->GetStats();
+  if (stats) {
+    memory->set_allocator_bytes_in_use(stats->bytes_in_use);
+  }
   allocations_.push_back(std::make_pair(memory, tracking_allocator));
 }
 

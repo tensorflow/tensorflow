@@ -838,7 +838,8 @@ tensorflow::Status ConvertIdentityOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
-        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient");
+        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient" ||
+        node.op() == "Snapshot");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -1349,7 +1350,7 @@ tensorflow::Status ConvertUnsupportedOperator(
   }
 
   // Parse outputs. Name them after the node's name, plus an ordinal suffix.
-  // Note that some outputs are to be multipled by a named attribute.
+  // Note that some outputs are to be multiplied by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     GetOutputNamesFromNodeDef(node, *op_def, op);
@@ -1483,7 +1484,7 @@ tensorflow::Status ConvertPlaceholderOperator(
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    // TODO(b/62716978): This logic needs to be revisted.  During dims
+    // TODO(b/62716978): This logic needs to be revisited.  During dims
     // refactoring it is an interim fix.
     if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
@@ -2006,6 +2007,9 @@ tensorflow::Status ConvertOperatorSpecialCasedAsRNNBackEdge(
   rnn_state->set_discardable(true);
   rnn_state->set_state_array(node.name());
   rnn_state->set_back_edge_source_array(node.input(0));
+  // TODO(tianjuny): Temporary set the size to 1 to avoid transient array
+  // allocation crash. The real value should depend on the hidden_size of RNN.
+  rnn_state->set_size(1);
   return tensorflow::Status::OK();
 }
 
@@ -2020,6 +2024,27 @@ tensorflow::Status ConvertShapeOperator(
   auto op = absl::make_unique<TensorFlowShapeOperator>();
   op->output_data_type = ConvertDataType(out_type);
   op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.push_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertReverseSequenceOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ReverseSequence");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto op = absl::make_unique<ReverseSequenceOperator>();
+  if (HasAttr(node, "seq_dim")) {
+    op->seq_dim = GetIntAttr(node, "seq_dim");
+  }
+  // In tf.reverse_sequence, batch_dim defaults to 0.
+  op->batch_dim =
+      HasAttr(node, "batch_dim") ? GetIntAttr(node, "batch_dim") : 0;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
   op->outputs.push_back(node.name());
   model->operators.push_back(std::move(op));
   return tensorflow::Status::OK();
@@ -2421,6 +2446,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Div", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"DynamicPartition", ConvertDynamicPartitionOperator},
       {"DynamicStitch", ConvertDynamicStitchOperator},
+      {"Elu", ConvertSimpleOperator<EluOperator, 1, 1>},
       {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2, 1>},
       {"Exp", ConvertSimpleOperator<ExpOperator, 1, 1>},
       {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2, 1>},
@@ -2449,11 +2475,14 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1, 1>},
       {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1, 1>},
       {"MatMul", ConvertMatMulOperator},
+      {"MatrixDiag", ConvertSimpleOperator<MatrixDiagOperator, 1, 1>},
+      {"MatrixSetDiag", ConvertSimpleOperator<MatrixSetDiagOperator, 2, 1>},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},
       {"Mean", ConvertReduceOperator<MeanOperator>},
-      {"Merge", ConvertSimpleOperator<TensorFlowMergeOperator, 2, 1>},
+      {"Merge",
+       ConvertSimpleOperator<TensorFlowMergeOperator, kAnyNumInputs, 1>},
       {"Min", ConvertReduceOperator<TensorFlowMinOperator>},
       {"Minimum", ConvertSimpleOperator<TensorFlowMinimumOperator, 2, 1>},
       {"Mul", ConvertSimpleOperator<MulOperator, 2, 1>},
@@ -2479,6 +2508,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2, 1>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
+      {"ReverseSequence", ConvertReverseSequenceOperator},
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
@@ -2496,6 +2526,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1, 1>},
       {"SquaredDifference",
        ConvertSimpleOperator<SquaredDifferenceOperator, 2, 1>},
+      {"Snapshot", ConvertIdentityOperator},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},
@@ -2514,6 +2545,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
+      {"Where", ConvertSimpleOperator<WhereOperator, 1, 1>},
   });
 }
 

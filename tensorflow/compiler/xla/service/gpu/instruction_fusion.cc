@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -57,15 +58,11 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Check if we can use output fusion for (A @ B) * alpha
-  if (producer->opcode() == HloOpcode::kDot ||
-      (producer->opcode() == HloOpcode::kFusion &&
-       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
+  if (producer->opcode() == HloOpcode::kDot && ImplementedAsGemm(*producer)) {
     int64 other_operand_index = 1 - operand_index;
     HloInstruction* op1 = nullptr;
     HloInstruction* op2 = nullptr;
-    if (consumer->operand_count() == 1 &&
-        consumer->opcode() == HloOpcode::kFusion &&
-        consumer->fusion_kind() == HloInstruction::FusionKind::kLoop &&
+    if (consumer->operand_count() == 1 && consumer->IsLoopFusion() &&
         Match(consumer->fused_expression_root(),
               match::Op()
                   .WithOpcode(HloOpcode::kMultiply)
@@ -104,9 +101,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 
   // Only allow fusing transpose or broadcast into an output fusion that is
   // implemented as a Gemm call.
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      ImplementedAsGemm(*consumer)) {
+  if (consumer->IsOutputFusion() && ImplementedAsGemm(*consumer)) {
     auto producer_operand_index = consumer->operand_index(producer);
     auto fused_parameter = consumer->fused_parameter(producer_operand_index);
     const std::vector<HloInstruction*>& fused_parameter_users =
@@ -140,9 +135,29 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return false;
   }
+  return true;
+}
 
-  // We put this check last because it's potentially expensive.
-  return !FusionWouldBeTooLarge(consumer, producer);
+bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                      int64 operand_index) {
+  if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    return false;
+  }
+  auto producer = consumer->operand(operand_index);
+
+  // Don't fuse variadic reduce.
+  if (consumer->opcode() == HloOpcode::kReduce && consumer->shape().IsTuple()) {
+    return false;
+  }
+  // The following checks are potentially expensive.
+  if (FusionWouldBeTooLarge(consumer, producer)) {
+    return false;
+  }
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  return !FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer);
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
@@ -152,7 +167,7 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer) ||
+  if (IsReductionFromOrToContiguousDimensions(*consumer) ||
       consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }

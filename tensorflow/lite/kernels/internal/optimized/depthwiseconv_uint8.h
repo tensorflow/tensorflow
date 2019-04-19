@@ -1662,7 +1662,7 @@ inline void DepthwiseConvGeneral(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -1684,7 +1684,7 @@ inline void DepthwiseConvGeneral(
   const int input_depth = input_shape.Dims(3);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
+  const int output_rows = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
 #ifdef USE_NEON
   const bool shift_left = (output_shift > 0);
@@ -1700,6 +1700,7 @@ inline void DepthwiseConvGeneral(
                    kAccBufferActualSize);
   TFLITE_DCHECK_LE(kAccBufferActualSize, kAccBufferMaxSize);
   TFLITE_DCHECK_GE(kOutputPixelsInAccBuffer, 1);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   // row_accum_func will point to the core accumulation function to be used
   // for this DepthwiseConv op.
@@ -1766,9 +1767,34 @@ inline void DepthwiseConvGeneral(
   const int filter_height_stride = filter_shape.Dims(3) * filter_shape.Dims(2);
 
   // Now that we have determined row_accum_func, we can start work.
-  uint8* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = output_rows;
+  int output_ptr_offset = 0;
+
+  switch (thread_dim) {
+    case 0:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      output_ptr_offset = batch_start * FlatSizeSkipDim(output_shape, 0);
+      break;
+    case 1:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, output_rows);
+      row_start = thread_start;
+      row_end = thread_end;
+      output_ptr_offset = row_start * output_width * output_depth;
+      break;
+  }
+
+  uint8* output_ptr = output_data + output_ptr_offset;
+  int batch_step =
+      (output_rows + row_start - row_end) * output_width * output_depth;
+  for (int b = batch_start; b < batch_end; ++b) {
+    for (int out_y = row_start; out_y < row_end; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
       const int filter_y_start =
           std::max(0, (-in_y_origin + dilation_height_factor - 1) /
@@ -1944,17 +1970,19 @@ inline void DepthwiseConvGeneral(
         }
       }
     }
+    output_ptr += batch_step;
   }
 }
 
 }  // namespace depthwise_conv
 
-inline void DepthwiseConv(
+template <DepthwiseConvOutputRounding kOutputRounding>
+inline void DepthwiseConvWithRounding(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -1988,9 +2016,10 @@ inline void DepthwiseConv(
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
     gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
-    depthwise_conv::DepthwiseConv3x3Filter(
+    depthwise_conv::DepthwiseConv3x3Filter<kOutputRounding>(
         params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-        bias_data, output_shape, output_data);
+        bias_data, output_shape, output_data, thread_start, thread_end,
+        thread_dim);
     return;
   }
 #endif
@@ -1999,7 +2028,129 @@ inline void DepthwiseConv(
       "DepthwiseConv/8bit/General");
   depthwise_conv::DepthwiseConvGeneral(params, input_shape, input_data,
                                        filter_shape, filter_data, bias_shape,
-                                       bias_data, output_shape, output_data);
+                                       bias_data, output_shape, output_data,
+                                       thread_start, thread_end, thread_dim);
+}
+
+inline void DepthwiseConvImpl(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, thread_start, thread_end,
+      thread_dim);
+}
+
+template <typename T, typename TS>
+struct DepthwiseConvWorkerTask : public gemmlowp::Task {
+  DepthwiseConvWorkerTask(const DepthwiseParams& params,
+                          const RuntimeShape& input_shape, const T* input_data,
+                          const RuntimeShape& filter_shape,
+                          const T* filter_data, const RuntimeShape& bias_shape,
+                          const TS* bias_data, const RuntimeShape& output_shape,
+                          T* output_data, int thread_start, int thread_end,
+                          int thread_dim)
+      : params_(params),
+        input_shape_(input_shape),
+        input_data_(input_data),
+        filter_shape_(filter_shape),
+        filter_data_(filter_data),
+        bias_shape_(bias_shape),
+        bias_data_(bias_data),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        thread_start_(thread_start),
+        thread_end_(thread_end),
+        thread_dim_(thread_dim) {}
+
+  void Run() override {
+    DepthwiseConvImpl(params_, input_shape_, input_data_, filter_shape_,
+                      filter_data_, bias_shape_, bias_data_, output_shape_,
+                      output_data_, thread_start_, thread_end_, thread_dim_);
+  }
+
+ private:
+  const DepthwiseParams& params_;
+  const RuntimeShape& input_shape_;
+  const T* input_data_;
+  const RuntimeShape& filter_shape_;
+  const T* filter_data_;
+  const RuntimeShape& bias_shape_;
+  const TS* bias_data_;
+  const RuntimeShape& output_shape_;
+  T* output_data_;
+  int thread_start_;
+  int thread_end_;
+  int thread_dim_;
+};
+
+inline int HowManyConvThreads(const RuntimeShape& output_shape,
+                              const RuntimeShape& filter_shape,
+                              int thread_dim) {
+  constexpr int kMinMulPerThread = 8;
+  const int output_units = output_shape.Dims(thread_dim);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int num_mul_per_unit =
+      FlatSizeSkipDim(output_shape, thread_dim) * filter_height * filter_width;
+  const int min_units_per_thread = kMinMulPerThread / num_mul_per_unit + 1;
+  int thread_count = output_units / min_units_per_thread;
+  return thread_count;
+}
+
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
+  gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int output_batches = output_shape.Dims(0);
+  const int output_rows = output_shape.Dims(1);
+  int thread_count_batch = HowManyConvThreads(output_shape, filter_shape, 0);
+  int thread_count_row = HowManyConvThreads(output_shape, filter_shape, 1);
+  int thread_dim, thread_count, thread_dim_size;
+  if (thread_count_batch > thread_count_row) {
+    thread_dim = 0;
+    thread_dim_size = output_batches;
+    thread_count = thread_count_batch;
+  } else {
+    thread_dim = 1;
+    thread_dim_size = output_rows;
+    thread_count = thread_count_row;
+  }
+
+  // TODO(b/130555917): Allow multi-threading after fixing ARM accuracy issues.
+  constexpr int kMaxThreads = 1;
+  thread_count = std::max(1, std::min(thread_count, kMaxThreads));
+
+  if (thread_count == 1) {
+    DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
+                      filter_data, bias_shape, bias_data, output_shape,
+                      output_data, /*thread_start=*/0,
+                      /*thread_end=*/output_rows, /*thread_dim=*/1);
+  } else {
+    std::vector<gemmlowp::Task*> tasks(thread_count);
+    int thread_start = 0;
+    for (int i = 0; i < thread_count; ++i) {
+      int thread_end =
+          thread_start + (thread_dim_size - thread_start) / (thread_count - i);
+      tasks[i] = new DepthwiseConvWorkerTask<uint8, int32>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
+      thread_start = thread_end;
+    }
+    gemmlowp_context->workers_pool()->Execute(tasks);
+  }
 }
 
 }  // namespace optimized_ops

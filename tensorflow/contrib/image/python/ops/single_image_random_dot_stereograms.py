@@ -58,7 +58,7 @@ def single_image_random_dot_stereograms(depth_values,
        [1,2,3,4,5,3],
        [1,2,3,4,5,4],
        [6,5,4,4,5,5]]
-  session = tf.InteractiveSession()
+  session = tf.compat.v1.InteractiveSession()
   sirds = single_image_random_dot_stereograms(
       img,
       convergence_dots_size=8,

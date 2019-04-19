@@ -84,6 +84,7 @@ cc_library(
         "stream_executor_internal.h",
     ],
     deps = [
+        ":allocator_stats",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
@@ -128,6 +129,7 @@ cc_library(
         "trace_listener.h",
     ],
     deps = [
+        ":allocator_stats",
         ":device_memory",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
@@ -190,6 +192,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":allocator_stats",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
@@ -386,6 +389,7 @@ cc_library(
         "trace_listener.h",
     ],
     deps = [
+        ":allocator_stats",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
@@ -460,15 +464,6 @@ tf_proto_library(
     provide_cc_alias = True,
 )
 
-tf_proto_library(
-    name = "logging_proto",
-    srcs = ["logging.proto"],
-    cc_api_version = 2,
-    protodeps = [":dnn_proto"],
-    provide_cc_alias = True,
-    visibility = [":friends"],
-)
-
 cc_library(
     name = "dnn",
     srcs = ["dnn.cc"],
@@ -497,6 +492,7 @@ cc_library(
         "stream_executor_internal.h",
     ],
     deps = [
+        ":allocator_stats",
         ":device_description",
         ":device_memory",
         ":device_options",
@@ -510,6 +506,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
@@ -527,6 +524,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":allocator_stats",
         ":dnn_proto_cc",
         ":platform",
         ":stream_executor_headers",
@@ -561,6 +559,7 @@ cc_library(
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -601,6 +600,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":allocator_stats",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         "//tensorflow/core:lib",
@@ -635,6 +635,19 @@ cc_library(
         ":stream_executor_headers",
         ":stream_executor_pimpl",
         ":timer",
+    ],
+)
+
+cc_library(
+    name = "allocator_stats",
+    srcs = [
+        "allocator_stats.cc",
+    ],
+    hdrs = ["allocator_stats.h"],
+    deps = [
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

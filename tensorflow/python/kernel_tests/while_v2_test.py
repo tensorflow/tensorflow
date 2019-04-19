@@ -83,6 +83,20 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(fnWithLoop(), 4.0)
 
+  def testExternalControlDependencies(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.)
+      v.initializer.run()
+      op = v.assign_add(1.)
+
+      def body_fn(i):  # pylint: disable=invalid-name
+        with ops.control_dependencies([op]):
+          return i + 1
+
+      loop = while_loop_v2(lambda i: i < 1, body_fn, [0])
+      loop[0].op.run()
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   @test_util.run_deprecated_v1
   def testMultipleLoopVarsBasic(self):
     x = constant_op.constant(5.)
@@ -283,8 +297,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         while_op = op
 
     body_graph = while_v2._get_graph(while_op, "body")
-    # body_graph.inputs: [counter_arg, x_arg, tl_arg, *accumulators]
-    x_input_t = body_graph.inputs[1]
+    x_input_index = [i for i, inp in enumerate(while_op.inputs) if inp == x][0]
+    x_input_t = body_graph.inputs[x_input_index]
     accumulator_count = len(
         [c for c in x_input_t.consumers() if c.type == "TensorListPushBack"])
     self.assertEqual(accumulator_count, 1)
@@ -331,12 +345,13 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     while_op = ret[0].op.inputs[0].op
     # Gradient pass.
     grad = gradients_impl.gradients(ret[0], x)
+    # Note: There is an Identity b/w grad[0] and the While op.
     grad_while_op = grad[0].op.inputs[0].op
 
     # Get the TensorList output of While op containing the accumulated values
     # of y.
-    # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
-    output = GetAccumulatorForInputAtIndex(while_op, 2)
+    x_input_index = [i for i, inp in enumerate(while_op.inputs) if x == inp][0]
+    output = GetAccumulatorForInputAtIndex(while_op, x_input_index)
     _, val = list_ops.tensor_list_pop_back(output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
@@ -347,8 +362,9 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Get the TensorList output of gradient While op containing the accumulated
     # values of grad_x (note that grad_x is needed by the second derivative).
     # grad_while_op.inputs:
-    # [counter_arg, total_iters_arg, grad_x_arg, grad_y_arg, *other_args]
-    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 2)
+    grad_output_index = grad_while_op.outputs.index(grad[0].op.inputs[0])
+    grad_output = GetAccumulatorForInputAtIndex(grad_while_op,
+                                                grad_output_index)
     _, val = list_ops.tensor_list_pop_back(grad_output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
@@ -447,17 +463,17 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
                                  [x])[0]
     while_op = output.op.inputs[0].op
     self.assertEqual(while_op.type, "While")
-    # outputs = [loop_counter, x]
-    self.assertLen(while_op.outputs, 2)
+    # outputs = [loop_counter, max_iters, x]
+    self.assertLen(while_op.outputs, 3)
 
     gradients_impl.gradients(output, x)
     # while_op should have been rewritten to output 2.0 intermediate.
-    # outputs = [loop_counter, x, 2.0_accumulator, x_accumulator]
-    self.assertLen(while_op.outputs, 4)
+    # outputs = [loop_counter, max_iters, x, 2.0_accumulator, x_accumulator]
+    self.assertLen(while_op.outputs, 5)
 
     gradients_impl.gradients(output, x)
     # Computing the gradient again shouldn't rewrite while_op again.
-    self.assertLen(while_op.outputs, 4)
+    self.assertLen(while_op.outputs, 5)
 
 
 def ScalarShape():

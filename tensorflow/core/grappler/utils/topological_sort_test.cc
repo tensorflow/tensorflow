@@ -16,9 +16,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -200,25 +199,7 @@ TEST_F(TopologicalSortTest, ExtraDependencies) {
 static void BM_ComputeTopologicalOrder(int iters, int size) {
   testing::StopTiming();
 
-  random::PhiloxRandom philox(0x12345);
-  random::SimplePhilox rnd(&philox);
-
-  string prefix = "long_node_name_prefix_to_measure_string_copy_overhead";
-
-  GraphDef graph;
-  for (int i = 0; i < size; ++i) {
-    const string name = absl::StrCat(prefix, i);
-    const uint32 num_inputs = rnd.Uniform(std::min(i, 5));
-
-    NodeDef node;
-    node.set_name(name);
-    for (int n = 0; n < num_inputs; ++n) {
-      const uint32 input_node = rnd.Uniform(i);
-      node.add_input(absl::StrCat(prefix, input_node));
-    }
-
-    *graph.add_node() = std::move(node);
-  }
+  GraphDef graph = test::CreateRandomGraph(size);
 
   testing::StartTiming();
   std::vector<const NodeDef*> topo_order;

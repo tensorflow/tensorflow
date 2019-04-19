@@ -29,7 +29,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import numerics
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -50,7 +49,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   correct results.
 
   Args:
-    t: A `Tensor`.
+    t: A `Tensor` or `IndexedSlices`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
       as `t`. The minimum value to clip by.
     clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -58,7 +57,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     name: A name for the operation (optional).
 
   Returns:
-    A clipped `Tensor`.
+    A clipped `Tensor` or `IndexedSlices`.
 
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
@@ -66,16 +65,20 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
-    t = ops.convert_to_tensor(t, name="t")
+    values = ops.convert_to_tensor(
+        t.values if isinstance(t, ops.IndexedSlices) else t, name="t")
 
     # Go through list of tensors, for each value in each tensor clip
-    t_min = math_ops.minimum(t, clip_value_max)
+    t_min = math_ops.minimum(values, clip_value_max)
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
-    _ = t.shape.merge_with(t_min.shape)
+    _ = values.shape.merge_with(t_min.shape)
 
     t_max = math_ops.maximum(t_min, clip_value_min, name=name)
-    _ = t.shape.merge_with(t_max.shape)
+    _ = values.shape.merge_with(t_max.shape)
+
+    if isinstance(t, ops.IndexedSlices):
+      t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
   # TODO(scottzhu): switch to use new implmentation in 2 weeks.
@@ -126,8 +129,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   In this case, the L2-norm of the output tensor is `clip_norm`.
 
   As another example, if `t` is a matrix and `axes == [1]`, then each row
-  of the output will have L2-norm equal to `clip_norm`. If `axes == [0]`
-  instead, each column of the output will be clipped.
+  of the output will have L2-norm less than or equal to `clip_norm`. If
+  `axes == [0]` instead, each column of the output will be clipped.
 
   This operation is typically used to clip gradients before applying them with
   an optimizer.
@@ -237,6 +240,9 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   If `clip_norm > global_norm` then the entries in `t_list` remain as they are,
   otherwise they're all shrunk by the global ratio.
 
+  If `global_norm == infinity` then the entries in `t_list` are all set to `NaN`
+  to signal that an error occurred.
+
   Any of the entries of `t_list` that are of type `None` are ignored.
 
   This is the correct way to perform gradient clipping (for example, see
@@ -259,7 +265,6 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Raises:
     TypeError: If `t_list` is not a sequence.
-    InvalidArgumentError: If global norm is not finite.
   """
   if (not isinstance(t_list, collections.Sequence)
       or isinstance(t_list, six.string_types)):
@@ -267,15 +272,18 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
-  use_norm = numerics.verify_tensor_all_finite(use_norm,
-                                               "Found Inf or NaN global norm.")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    scale = clip_norm * math_ops.minimum(
+    scale_for_finite = clip_norm * math_ops.minimum(
         1.0 / use_norm,
         constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
+    scale = array_ops.where(
+        math_ops.is_finite(use_norm),
+        scale_for_finite,
+        # Return NaN if use_norm is not finite.
+        constant_op.constant(float("nan"), dtype=use_norm.dtype))
 
     values = [
         ops.convert_to_tensor(
@@ -304,9 +312,9 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
 @deprecation.deprecated(
     date=None,
-    instructions=
-    "clip_by_average_norm is deprecated in TensorFlow 2.0. Please use "
-    "clip_by_norm(t, clip_norm * tf.to_float(tf.size(t), name)) instead.")
+    instructions="clip_by_average_norm is deprecated in TensorFlow 2.0. Please "
+    "use clip_by_norm(t, clip_norm * tf.cast(tf.size(t), tf.float32), name) "
+    "instead.")
 @tf_export(v1=["clip_by_average_norm"])
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.

@@ -18,13 +18,13 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/platform/grpc_services.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
 
-std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService(
     const ProfilerContext& profiler_context);
 }  // namespace tensorflow
 

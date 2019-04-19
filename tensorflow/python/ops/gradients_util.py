@@ -23,7 +23,6 @@ import contextlib
 import warnings
 
 import numpy as np
-import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -479,13 +478,27 @@ def _MaybeCaptured(t):
   return t
 
 
-# TODO(skyewm): plumbing xs through everywhere is ugly, consider making
-# _GradientsHelper a class with xs as a member variable.
 def _NonEagerInputs(op, xs):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
   returned may be less than than the actual number of inputs.
+
+  Args:
+    op: Operation
+    xs: list of Tensors we are differentiating w.r.t.
+
+  Returns:
+    A list of tensors. The tensors may be from multiple Graph/FuncGraphs if op
+    is in a FuncGraph and has captured inputs.
+  """
+  return [t for t in _Inputs(op, xs) if not isinstance(t, ops.EagerTensor)]
+
+
+# TODO(skyewm): plumbing xs through everywhere is ugly, consider making
+# _GradientsHelper a class with xs as a member variable.
+def _Inputs(op, xs):
+  """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Args:
     op: Operation
@@ -505,8 +518,6 @@ def _NonEagerInputs(op, xs):
       # direct input to op.
       if t not in xs:
         t = _MaybeCaptured(t)
-        # Skip captured eager inputs.
-        if isinstance(t, ops.EagerTensor): continue
       inputs.append(t)
     return inputs
   else:
@@ -737,9 +748,10 @@ def _GradientsHelper(ys,
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagate a list of None backwards.
-          in_grads = [None] * len(_NonEagerInputs(op, xs))
-        for i, (t_in, in_grad) in enumerate(zip(_NonEagerInputs(op, xs),
-                                                in_grads)):
+          in_grads = [None] * len(_Inputs(op, xs))
+        # Note: we don't filter out eager inputs here because the inputs need to
+        # line up with in_grads.
+        for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs), in_grads)):
           if in_grad is not None:
             if (isinstance(in_grad, ops.Tensor) and
                 t_in.dtype != dtypes.resource):
@@ -752,7 +764,8 @@ def _GradientsHelper(ys,
                     "Original input shape: %s.  "
                     "Calculated input gradient shape: %s" %
                     (op.name, i, t_in.shape, in_grad.shape))
-            _SetGrad(grads, t_in, in_grad)
+            if not isinstance(t_in, ops.EagerTensor):
+              _SetGrad(grads, t_in, in_grad)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)
 
@@ -912,7 +925,7 @@ def _MultiDeviceAddN(tensor_list, gradient_uid):
   def DeviceKey(dev):
     return "" if dev is None else dev
 
-  for dev in sorted(six.iterkeys(tensors_on_device), key=DeviceKey):
+  for dev in sorted(tensors_on_device, key=DeviceKey):
     tensors = tensors_on_device[dev]
     with ops._colocate_with_for_gradient(  # pylint: disable=protected-access
         tensors[0].op,
@@ -929,12 +942,32 @@ class AggregationMethod(object):
 
   Computing partial derivatives can require aggregating gradient
   contributions. This class lists the various methods that can
-  be used to combine gradients in the graph:
+  be used to combine gradients in the graph.
+
+  The following aggregation methods are part of the stable API for
+  aggregating gradients:
 
   *  `ADD_N`: All of the gradient terms are summed as part of one
-     operation using the "AddN" op. It has the property that all
-     gradients must be ready before any aggregation is performed.
+     operation using the "AddN" op (see `tf.add_n`). This 
+     method has the property that all gradients must be ready and 
+     buffered separately in memory before any aggregation is performed.
   *  `DEFAULT`: The system-chosen default aggregation method.
+
+  The following aggregation methods are experimental and may not 
+  be supported in future releases:
+
+  * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
+    using the "AddN" op. This method of summing gradients may reduce 
+    performance, but it can improve memory utilization because the 
+    gradients can be released earlier.
+
+  * `EXPERIMENTAL_ACCUMULATE_N`: Gradient terms are summed using the
+    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the 
+    overall sum in a single buffer that is shared across threads.
+    This method of summing gradients can result in a lower memory footprint 
+    and lower latency at the expense of higher CPU/GPU utilization.
+    For gradients of types that "AccumulateN" does not support, this
+    summation method falls back on the behavior of `EXPERIMENTAL_TREE`
   """
   ADD_N = 0
   DEFAULT = ADD_N

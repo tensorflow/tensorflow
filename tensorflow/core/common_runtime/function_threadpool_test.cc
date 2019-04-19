@@ -50,7 +50,7 @@ namespace {
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
   void Init(const std::vector<FunctionDef>& flib,
-            thread::ThreadPool* default_thread_pool = nullptr) {
+            thread::ThreadPool* default_thread_pool) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -65,7 +65,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_.reset(new DeviceMgr(std::move(devices)));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, default_thread_pool, nullptr /* cluster_flr */));
+        opts, default_thread_pool));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
 

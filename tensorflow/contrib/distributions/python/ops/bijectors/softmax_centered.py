@@ -46,12 +46,12 @@ class SoftmaxCentered(bijector.Bijector):
   Example Use:
 
   ```python
-  bijector.SoftmaxCentered().forward(tf.log([2, 3, 4]))
+  bijector.SoftmaxCentered().forward(tf.math.log([2, 3, 4]))
   # Result: [0.2, 0.3, 0.4, 0.1]
   # Extra result: 0.1
 
   bijector.SoftmaxCentered().inverse([0.2, 0.3, 0.4, 0.1])
-  # Result: tf.log([2, 3, 4])
+  # Result: tf.math.log([2, 3, 4])
   # Extra coordinate removed.
   ```
 

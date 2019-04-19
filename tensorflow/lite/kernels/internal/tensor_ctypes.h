@@ -103,7 +103,8 @@ inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
 
   TfLiteIntArray* dims = tensor->dims;
   const int dims_size = dims->size;
-  const int32_t* dims_data = dims->data;
+  // C-style cast so this can be included in pure C code.
+  const int32_t* dims_data = (const int32_t*)(dims->data);
   return RuntimeShape(dims_size, dims_data);
 }
 

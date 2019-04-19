@@ -57,14 +57,12 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._dense_defaults = dense_defaults_vec
     self._dense_shapes = dense_shapes
     self._dense_types = dense_types
-    dense_output_shapes = [
-        self._input_dataset.output_shapes.concatenate(shape)
-        for shape in dense_shape_as_shape
-    ]
-    sparse_output_shapes = [
-        self._input_dataset.output_shapes.concatenate([None])
-        for _ in range(len(sparse_keys))
-    ]
+    input_dataset_shape = dataset_ops.get_legacy_output_shapes(
+        self._input_dataset)
+    dense_output_shapes = [input_dataset_shape.concatenate(shape)
+                           for shape in dense_shape_as_shape]
+    sparse_output_shapes = [input_dataset_shape.concatenate([None])
+                            for _ in range(len(sparse_keys))]
 
     output_shapes = dict(
         zip(self._dense_keys + self._sparse_keys,

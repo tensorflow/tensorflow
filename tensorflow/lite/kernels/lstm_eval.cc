@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
@@ -40,7 +41,7 @@ const float kLayerNormEpsilon = 1e-8;
 //  - n_batch: size of batch,
 //  - n_cell: number of cells (or units),
 //  - n_input: the input size,
-//  - n_aux_input: the auxilary input size.
+//  - n_aux_input: the auxiliary input size.
 //  - n_output: the output size.
 //  - output_batch_leading_dim: the leading dimension of the output buffer.
 //
@@ -50,7 +51,7 @@ const float kLayerNormEpsilon = 1e-8;
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_output_weights
-// Auxilary input weights of size 'n_cell * n_aux_input':
+// Auxiliary input weights of size 'n_cell * n_aux_input':
 //   aux_input_to_input_weights        - optional
 //   aux_input_to_forget_weights       - optional
 //   aux_input_to_cell_weights         - optional
@@ -119,7 +120,7 @@ inline void LstmStepWithAuxInput(
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr_batch) {
   // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
+  // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool is_layer_norm_lstm =
@@ -371,7 +372,7 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_input_weights
-// Quantized auxilary input weights of size 'n_cell * n_aux_input':
+// Quantized auxiliary input weights of size 'n_cell * n_aux_input':
 //   aux_input_to_input_weights        - optional
 //   aux_input_to_forget_weights       - optional
 //   aux_input_to_cell_weights         - optional
@@ -473,7 +474,7 @@ inline void LstmStepWithAuxInput(
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
     float* cell_state_ptr, float* output_ptr_batch) {
   // Since we have already checked that weights are all there or none, we
-  // can check the existense of only one to the get the condition.
+  // can check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool is_layer_norm_lstm =
@@ -857,14 +858,6 @@ inline void LstmStepWithAuxInput(
   }
 }
 
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-
 }  // namespace
 
 TfLiteStatus EvalFloat(
@@ -913,7 +906,7 @@ TfLiteStatus EvalFloat(
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
+  // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
   const bool use_peephole = (cell_to_output_weights != nullptr);
   const bool is_layer_norm_lstm = (forget_layer_norm_coefficients != nullptr);

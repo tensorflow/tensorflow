@@ -85,7 +85,7 @@ class RandomFourierFeatures(base_layer.Layer):
   model.add(random_features_layer)
   model.add(tf.keras.layers.Dense(units=num_classes, activation='softmax')
 
-  model.compile(elif isinstance(identifier, six.string_types):
+  model.compile(
     loss=tf.keras.losses.categorical_crossentropy, optimizer=..., metrics=...)
   ```
 

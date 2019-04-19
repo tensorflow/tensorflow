@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Foundation
-
 /// Custom configuration options for a TensorFlow Lite interpreter.
 public struct InterpreterOptions: Equatable {
 

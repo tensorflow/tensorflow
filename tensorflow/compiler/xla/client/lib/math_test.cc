@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -104,6 +105,49 @@ class MathTypedTest : public MathTest {
             {true, false, false, false, false, false, false}),
         {}, error_spec_);
   }
+
+  // sqrt(x) == pow(x, 0.5) except that
+  //
+  //   pow(-inf, 0.5) == inf, while
+  //   sqrt(-inf)     == nan.
+  //
+  // Check that none of our backends are incorrectly assuming that sqrt(x) ==
+  // pow(x, 0.5) without checking this edge case.
+  //
+  // For good measure, we also check pow with an exponent other than 0.5.
+  void TestSqrtPowInequivalence() {
+    SetFastMathDisabled(true);
+
+    // Tests disable constant folding by default, but this test needs it
+    // enabled, otherwise we don't tickle the bug we're trying to catch.
+    // Specifically, without constant folding, the constants we pass to Pow
+    // below are hidden behind a reshape that's never folded away!
+    mutable_debug_options()->clear_xla_disable_hlo_passes();
+
+    const T inf(std::numeric_limits<float>::infinity());
+    const T nan(std::numeric_limits<float>::quiet_NaN());
+
+    XlaBuilder b(TestName());
+    auto x = AddParam(LiteralUtil::CreateR1<T>({-inf}), &b);
+    ConcatInDim(
+        &b, {Sqrt(x), Pow(x, ScalarLike(x, 0.5)), Pow(x, ScalarLike(x, 0.3))},
+        0);
+    std::vector<T> expected = {nan, inf, inf};
+    ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
+  }
+
+  void TestErfEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    auto x = AddParam(LiteralUtil::CreateR1<T>({T{-1}, T{1}, T{0}}), &b);
+    ErfInv(x);
+
+    const T inf(std::numeric_limits<float>::infinity());
+    std::vector<T> expected = {-inf, inf, T{0}};
+
+    ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
+  }
 };
 
 // TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
@@ -119,6 +163,10 @@ XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
 XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
+XLA_TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
+  this->TestSqrtPowInequivalence();
+}
+XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
 //
@@ -239,6 +287,7 @@ XLA_TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 XLA_TEST_F(MathTest, LgammaF16) {
   SetFastMathDisabled(true);
 
@@ -259,6 +308,7 @@ XLA_TEST_F(MathTest, LgammaF16) {
   };
   ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
 }
+#endif
 
 XLA_TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());

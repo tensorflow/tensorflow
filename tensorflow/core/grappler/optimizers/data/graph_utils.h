@@ -144,6 +144,9 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
 // and renaming nodes does not mutate any edges.
 Status EnsureNodeNamesUnique(Graph* g);
 
+// Returns the sink node (i.e. last node) in the graph.
+Status FindSinkNode(const GraphDef& graph_def, NodeDef* sink_node);
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

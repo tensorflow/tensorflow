@@ -23,8 +23,9 @@ limitations under the License.
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/concat_lib_gpu.h"
+#include "tensorflow/core/kernels/gpu_device_array_gpu.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -34,9 +35,9 @@ namespace {
 
 template <typename T, typename IntType>
 __global__ void concat_fixed_kernel(
-    CudaDeviceArrayStruct<const T*> input_ptr_data, int split_size,
+    GpuDeviceArrayStruct<const T*> input_ptr_data, int split_size,
     int total_rows, int total_cols, T* output) {
-  const T** input_ptrs = GetCudaDeviceArrayOnDevice(&input_ptr_data);
+  const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
   IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
 
   for (; gidx < total_cols; gidx += blockDim.x * gridDim.x) {
@@ -58,11 +59,11 @@ __global__ void concat_fixed_kernel(
 // cannot be in anonymous namespace due to extern shared memory
 template <typename T, typename IntType, bool useSmem>
 __global__ void concat_variable_kernel(
-    CudaDeviceArrayStruct<const T*> input_ptr_data,
-    CudaDeviceArrayStruct<IntType> output_scan, IntType total_rows,
+    GpuDeviceArrayStruct<const T*> input_ptr_data,
+    GpuDeviceArrayStruct<IntType> output_scan, IntType total_rows,
     IntType total_cols, T* output) {
-  const T** input_ptrs = GetCudaDeviceArrayOnDevice(&input_ptr_data);
-  IntType* col_scan = GetCudaDeviceArrayOnDevice(&output_scan);
+  const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
+  IntType* col_scan = GetGpuDeviceArrayOnDevice(&output_scan);
 
   // do upper_bound on col to find which pointer we should be using
   IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -135,18 +136,18 @@ void ConcatGPUSlice(
 
 template <typename T, typename IntType>
 void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
-                   const CudaDeviceArrayStruct<const T*>& input_ptrs,
-                   const CudaDeviceArrayStruct<IntType>& output_scan,
+                   const GpuDeviceArrayStruct<const T*>& input_ptrs,
+                   const GpuDeviceArrayStruct<IntType>& output_scan,
                    bool fixed_size, int split_size,
                    typename TTypes<T, 2>::Matrix* output) {
   auto config = GetCuda2DLaunchConfig(output->dimension(1),
                                       output->dimension(0), gpu_device);
 
   if (fixed_size) {
-    concat_fixed_kernel<T, IntType>
-        <<<config.block_count, config.thread_per_block, 0,
-           gpu_device.stream()>>>(input_ptrs, split_size, output->dimension(0),
-                                  output->dimension(1), output->data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        concat_fixed_kernel<T, IntType>, config.block_count,
+        config.thread_per_block, 0, gpu_device.stream(), input_ptrs, split_size,
+        output->dimension(0), output->dimension(1), output->data()));
   } else {
     IntType smem_max = gpu_device.sharedMemPerBlock();
     IntType smem_usage = output_scan.size * sizeof(IntType);
@@ -156,17 +157,17 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance)
-      concat_variable_kernel<T, IntType, true>
-          <<<config.block_count, config.thread_per_block, smem_usage,
-             gpu_device.stream()>>>(input_ptrs, output_scan,
-                                    output->dimension(0), output->dimension(1),
-                                    output->data());
+      TF_CHECK_OK(CudaLaunchKernel(concat_variable_kernel<T, IntType, true>,
+                                   config.block_count, config.thread_per_block,
+                                   smem_usage, gpu_device.stream(), input_ptrs,
+                                   output_scan, output->dimension(0),
+                                   output->dimension(1), output->data()));
     else
-      concat_variable_kernel<T, IntType, false>
-          <<<config.block_count, config.thread_per_block, 0,
-             gpu_device.stream()>>>(input_ptrs, output_scan,
-                                    output->dimension(0), output->dimension(1),
-                                    output->data());
+      TF_CHECK_OK(CudaLaunchKernel(concat_variable_kernel<T, IntType, false>,
+                                   config.block_count, config.thread_per_block,
+                                   0, gpu_device.stream(), input_ptrs,
+                                   output_scan, output->dimension(0),
+                                   output->dimension(1), output->data()));
   }
 }
 
@@ -184,18 +185,18 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
           inputs_flat,                                                        \
       typename TTypes<T, 2>::Matrix* output);
 
-#define REGISTER_GPU32(T)                                               \
-  template void ConcatGPUImpl<T, int32>(                                \
-      const Eigen::GpuDevice& d,                                        \
-      const CudaDeviceArrayStruct<const T*>& input_ptrs,                \
-      const CudaDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size, \
+#define REGISTER_GPU32(T)                                              \
+  template void ConcatGPUImpl<T, int32>(                               \
+      const Eigen::GpuDevice& d,                                       \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs,                \
+      const GpuDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size, \
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
-#define REGISTER_GPU64(T)                                               \
-  template void ConcatGPUImpl<T, int64>(                                \
-      const Eigen::GpuDevice& d,                                        \
-      const CudaDeviceArrayStruct<const T*>& input_ptrs,                \
-      const CudaDeviceArrayStruct<int64>& ptr_offsets, bool fixed_size, \
+#define REGISTER_GPU64(T)                                              \
+  template void ConcatGPUImpl<T, int64>(                               \
+      const Eigen::GpuDevice& d,                                       \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs,                \
+      const GpuDeviceArrayStruct<int64>& ptr_offsets, bool fixed_size, \
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPUCONCAT32);

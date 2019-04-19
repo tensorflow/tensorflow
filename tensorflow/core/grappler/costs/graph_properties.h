@@ -27,6 +27,45 @@ namespace tensorflow {
 
 namespace grappler {
 
+// Optional attributes that tell about node output information.
+// We use these side information, if provided, for static shape inference
+// and VirtualScheduler scheduling.
+
+// Switch op attribute as a vector of int that tells which branch the
+// Switch output is taken on every round of execution.
+// Used for scheduling ops after Switch correctly (e.g., While loop).
+ABSL_CONST_INIT const char kOutputSlots[] = "_output_slot_vector";
+
+// Example:
+// Assume a node has two outputs and iterated for three times. Then it has:
+// _execution_count = 3
+// _output_sizes_vector = [2, 2, 2]
+// _output_dtype_vector.size = 6
+// _output_shape_vector.size = 6
+
+// If all the iterations have same output shapes, then
+// _execution_count = 3
+// _same_output_for_iterations = true
+// _output_sizes_vector = [2]
+// _output_dtype_vector.size = 2
+// _output_shape_vector.size = 2
+
+// How many times this node has been executed.
+ABSL_CONST_INIT const char kExecutionCount[] = "_execution_count";
+
+// Records the output sizes for each round of execution.
+ABSL_CONST_INIT const char kOutputSizes[] = "_output_sizes_vector";
+
+// The node has been scheduled multiple times with outputs that have the same
+// shape.
+ABSL_CONST_INIT const char kOutputSame[] = "_same_output_for_iterations";
+
+// Outputs DataType vector.
+ABSL_CONST_INIT const char kOutputTypes[] = "_output_dtype_vector";
+
+// Outputs TensorShapeProto vector.
+ABSL_CONST_INIT const char kOutputShapes[] = "_output_shape_vector";
+
 class SymbolicShapeRefiner;
 class TopoQueue;
 

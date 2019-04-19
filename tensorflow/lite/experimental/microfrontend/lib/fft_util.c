@@ -68,4 +68,3 @@ void FftFreeStateContents(struct FftState* state) {
   free(state->output);
   free(state->scratch);
 }
-

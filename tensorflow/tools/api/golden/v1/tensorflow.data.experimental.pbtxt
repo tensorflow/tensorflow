@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "MapVectorizationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "NestedStructure"
     mtype: "<type \'type\'>"
   }
@@ -69,6 +73,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorArrayStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TensorStructure"
     mtype: "<type \'type\'>"
   }
@@ -87,6 +95,10 @@ tf_module {
   member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "bytes_produced_stats"
+    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cardinality"
@@ -109,8 +121,8 @@ tf_module {
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
-    name: "filter_for_shard"
-    argspec: "args=[\'num_shards\', \'shard_index\'], varargs=None, keywords=None, defaults=None"
+    name: "from_variant"
+    argspec: "args=[\'variant\', \'structure\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_next_as_optional"
@@ -119,6 +131,10 @@ tf_module {
   member_method {
     name: "get_single_element"
     argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_structure"
+    argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group_by_reducer"
@@ -187,6 +203,10 @@ tf_module {
   member_method {
     name: "take_while"
     argspec: "args=[\'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_variant"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unbatch"

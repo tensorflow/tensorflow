@@ -37,6 +37,22 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+se::port::StatusOr<bool> HasInputsWithMismatchingDeadness(
+    const DeadnessAnalysis& deadness_analysis, const Node& n) {
+  absl::optional<DeadnessAnalysis::DeadnessPredicate> pred;
+  for (const Edge* edge : n.in_edges()) {
+    TF_ASSIGN_OR_RETURN(
+        DeadnessAnalysis::DeadnessPredicate this_pred,
+        deadness_analysis.GetPredicateFor(edge->src(), edge->src_output()));
+    if (pred && *pred != this_pred) {
+      return true;
+    }
+    pred = this_pred;
+  }
+
+  return false;
+}
+
 using deadness_analysis_internal::ComputePredicates;
 using deadness_analysis_internal::PredicateMapTy;
 
@@ -219,7 +235,10 @@ TEST(DeadnessAnalysisTest, BasicPositive) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, BasicNegative) {
@@ -232,7 +251,10 @@ TEST(DeadnessAnalysisTest, BasicNegative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndIsCommutative) {
@@ -260,11 +282,27 @@ TEST(DeadnessAnalysisTest, AndIsCommutative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live0.node()));
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live1.node()));
+  bool has_inputs_with_mismatching_deadness;
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead0.node()));
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead1.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live0.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live1.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead0.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead1.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndIsAssociative) {
@@ -287,7 +325,10 @@ TEST(DeadnessAnalysisTest, AndIsAssociative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, OrIsCommutative) {
@@ -312,11 +353,27 @@ TEST(DeadnessAnalysisTest, OrIsCommutative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live0.node()));
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live1.node()));
+  bool has_inputs_with_mismatching_deadness;
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead0.node()));
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead1.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live0.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live1.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead0.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead1.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, OrIsAssociative) {
@@ -336,7 +393,10 @@ TEST(DeadnessAnalysisTest, OrIsAssociative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndOfOr) {
@@ -358,7 +418,10 @@ TEST(DeadnessAnalysisTest, AndOfOr) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add2.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add2.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, OrOfAnd) {
@@ -382,7 +445,10 @@ TEST(DeadnessAnalysisTest, OrOfAnd) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add2.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add2.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndOrDistributiveSimplified) {
@@ -430,7 +496,10 @@ TEST(DeadnessAnalysisTest, AndOrDistributive) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add3.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add3.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, Ternary) {
@@ -454,7 +523,10 @@ TEST(DeadnessAnalysisTest, Ternary) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, Recv) {
@@ -469,7 +541,10 @@ TEST(DeadnessAnalysisTest, Recv) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, HostRecv) {
@@ -484,7 +559,10 @@ TEST(DeadnessAnalysisTest, HostRecv) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, Loop) {
@@ -505,8 +583,17 @@ TEST(DeadnessAnalysisTest, Loop) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
-    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add1.node()));
+    bool has_inputs_with_mismatching_deadness;
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add1.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
   }
   {
     PredicateMapTy predicate_map;
@@ -544,7 +631,10 @@ TEST(DeadnessAnalysisTest, ControlEquivalentLoopBodies) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_FALSE(has_inputs_with_mismatching_deadness);
   }
   {
     PredicateMapTy predicate_map;
@@ -634,7 +724,10 @@ TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_FALSE(has_inputs_with_mismatching_deadness);
   }
   {
     PredicateMapTy predicate_map;
@@ -693,7 +786,10 @@ TEST(DeadnessAnalysisTest, ControlNonEquivalentNestedLoopBodies) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
   }
 
   {
@@ -792,7 +888,10 @@ TEST(DeadnessAnalysisTest, ControlInputs) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, ControlTrigger) {
@@ -819,7 +918,10 @@ TEST(DeadnessAnalysisTest, ControlTrigger) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, ControlInputsToMerge) {
@@ -840,7 +942,10 @@ TEST(DeadnessAnalysisTest, ControlInputsToMerge) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, RecvVsSwitch) {
@@ -857,7 +962,10 @@ TEST(DeadnessAnalysisTest, RecvVsSwitch) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*logical_and.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *logical_and.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, RecvVsSwitchText) {

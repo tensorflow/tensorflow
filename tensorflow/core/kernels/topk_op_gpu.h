@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cmath>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 // Required for sorting Eigen::half
 namespace cub {
@@ -401,8 +402,9 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
-  TopKKernel<<<batch_size, num_shards, shared_memory_size, stream>>>(
-      input, length, k, sorted, output, indices);
+  TF_CHECK_OK(CudaLaunchKernel(TopKKernel<T>, batch_size, num_shards,
+                               shared_memory_size, stream, input, length, k,
+                               sorted, output, indices));
   return cudaGetLastError();
 }
 

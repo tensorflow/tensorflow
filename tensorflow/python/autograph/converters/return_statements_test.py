@@ -197,6 +197,25 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 4)
     self.assertTransformedEquivalent(test_fn, 5)
 
+  def test_nested_multiple_withs(self):
+
+    def test_fn(x):
+      v = []
+      while x > 0:
+        x -= 1
+        with ops.name_scope(''):
+          if x % 2 == 0:
+            return v
+        with ops.name_scope(''):
+          v.append(x)
+        v.append(x)
+      return v
+
+    self.assertTransformedEquivalent(test_fn, 0)
+    self.assertTransformedEquivalent(test_fn, 1)
+    self.assertTransformedEquivalent(test_fn, 3)
+    self.assertTransformedEquivalent(test_fn, 4)
+
 
 if __name__ == '__main__':
   test.main()

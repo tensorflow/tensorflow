@@ -13,7 +13,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/tracking",
         "@six_archive//:six",
     ],
 )

@@ -28,7 +28,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
@@ -56,7 +55,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             diags_format="compact",
             transpose_rhs=False,
             conjugate_rhs=False):
-    with self.cached_session(use_gpu=False):
+    with self.cached_session(use_gpu=True):
       result = linalg_impl.tridiagonal_solve(diags, rhs, diags_format,
                                              transpose_rhs, conjugate_rhs)
       self.assertAllClose(self.evaluate(result), expected)
@@ -105,6 +104,13 @@ class TridiagonalSolveOpTest(test.TestCase):
     self._testWithLists(
         diags=[[2, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[-5, 3])
 
+  def test2x2Complex(self):
+    for dtype in dtypes.complex64, dtypes.complex128:
+      self._test(
+          diags=constant_op.constant([[2j, 0j], [1j, 3j], [0j, 1j]], dtype),
+          rhs=constant_op.constant([1 - 1j, 4 - 4j], dtype),
+          expected=constant_op.constant([5 + 5j, -3 - 3j], dtype))
+
   def test1x1(self):
     self._testWithLists(diags=[[0], [3], [0]], rhs=[6], expected=[2])
 
@@ -113,6 +119,25 @@ class TridiagonalSolveOpTest(test.TestCase):
         diags=constant_op.constant(0, shape=(3, 0), dtype=dtypes.float32),
         rhs=constant_op.constant(0, shape=(0, 1), dtype=dtypes.float32),
         expected=constant_op.constant(0, shape=(0, 1), dtype=dtypes.float32))
+
+  def test2x2WithMultipleRhs(self):
+    self._testWithLists(
+        diags=[[2, 0], [1, 3], [0, 1]],
+        rhs=[[1, 2, 3], [4, 8, 12]],
+        expected=[[-5, -10, -15], [3, 6, 9]])
+
+  def test1x1WithMultipleRhs(self):
+    self._testWithLists(
+        diags=[[0], [3], [0]], rhs=[[6, 9, 12]], expected=[[2, 3, 4]])
+
+  def test1x1NotInvertible(self):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]], expected=[])
+
+  def test2x2NotInvertible(self):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self._testWithLists(
+          diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[])
 
   # Other edge cases
 
@@ -130,6 +155,10 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[5, -2, -5, 3])
 
   def testNotInvertible(self):
+    if test.is_gpu_available(cuda_only=True):
+      # CuSparse gtsv routine doesn't raise errors for non-invertible
+      # matrices.
+      return
     with self.assertRaises(errors_impl.InvalidArgumentError):
       self._testWithLists(
           diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]],
@@ -338,7 +367,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     diags = array_ops.placeholder(dtypes.float64, shape=diags_shape)
     rhs = array_ops.placeholder(dtypes.float64, shape=rhs_shape)
     x = linalg_impl.tridiagonal_solve(diags, rhs, diags_format)
-    with self.cached_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       result = sess.run(x, feed_dict={diags: diags_feed, rhs: rhs_feed})
       self.assertAllClose(result, expected)
 
@@ -408,7 +437,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     x = linalg_impl.tridiagonal_solve((superdiag, diag, subdiag),
                                       rhs,
                                       diagonals_format="sequence")
-    with self.cached_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       result = sess.run(
           x,
           feed_dict={
@@ -427,29 +456,34 @@ class TridiagonalSolveOpTest(test.TestCase):
              (10000, 1, 10000)]
 
     def _generateData(self, matrix_size, batch_size, num_rhs, seed=42):
-      data = random_ops.random_normal(
-          shape=(batch_size, 3 + num_rhs, matrix_size),
-          dtype=dtypes.float64,
-          seed=seed)
-      diags = array_ops.stack([data[:, 0], data[:, 1], data[:, 2]], axis=-2)
-      rhs = data[:, 3:, :]
-      return diags, rhs
+      np.random.seed(seed)
+      data = np.random.normal(size=(batch_size, matrix_size, 3 + num_rhs))
+      diags = np.stack([data[:, :, 0], data[:, :, 1], data[:, :, 2]], axis=-2)
+      rhs = data[:, :, 3:]
+      return (ops.convert_to_tensor(diags, dtype=dtypes.float64),
+              ops.convert_to_tensor(rhs, dtype=dtypes.float64))
 
     def benchmarkTridiagonalSolveOp(self):
-      for matrix_size, batch_size, num_rhs in self.sizes:
-        with ops.Graph().as_default(), \
-                session.Session(config=benchmark.benchmark_config()) as sess, \
-                ops.device("/cpu:0"):
-          diags, rhs = self._generateData(matrix_size, batch_size, num_rhs)
-          x = linalg_impl.tridiagonal_solve(diags, rhs, transpose_rhs=True)
-          variables.global_variables_initializer().run()
-          self.run_op_benchmark(
-              sess,
-              control_flow_ops.group(x),
-              min_iters=10,
-              store_memory_usage=False,
-              name=("tridiagonal_solve_matrix_size_{}_batch_size_{}_"
-                    "num_rhs_{}").format(matrix_size, batch_size, num_rhs))
+      devices = [("/cpu:0", "cpu")]
+      if test.is_gpu_available(cuda_only=True):
+        devices += [("/gpu:0", "gpu")]
+
+      for device_id, device_name in devices:
+        for matrix_size, batch_size, num_rhs in self.sizes:
+          with ops.Graph().as_default(), \
+              session.Session(config=benchmark.benchmark_config()) as sess, \
+              ops.device(device_id):
+            diags, rhs = self._generateData(matrix_size, batch_size, num_rhs)
+            x = linalg_impl.tridiagonal_solve(diags, rhs)
+            variables.global_variables_initializer().run()
+            self.run_op_benchmark(
+                sess,
+                control_flow_ops.group(x),
+                min_iters=10,
+                store_memory_usage=False,
+                name=("tridiagonal_solve_{}_matrix_size_{}_batch_size_{}_"
+                      "num_rhs_{}").format(device_name, matrix_size, batch_size,
+                                           num_rhs))
 
 
 if __name__ == "__main__":

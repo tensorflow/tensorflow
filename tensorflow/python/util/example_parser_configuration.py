@@ -28,7 +28,7 @@ def extract_example_parser_configuration(parse_example_op, sess):
 
   Args:
     parse_example_op: A ParseExample `Operation`
-    sess: A tf.Session needed to obtain some configuration values.
+    sess: A tf.compat.v1.Session needed to obtain some configuration values.
   Returns:
     A ExampleParserConfig proto.
 

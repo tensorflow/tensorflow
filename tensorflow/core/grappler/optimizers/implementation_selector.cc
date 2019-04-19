@@ -101,8 +101,7 @@ Status UpdateNodeDef(NodeDef* node_def, const string& funcName,
   return Status::OK();
 }
 
-Status ImplementationSelector::LoadFunctions(
-    const GraphDef& graph) {
+Status ImplementationSelector::LoadFunctions(const GraphDef& graph) {
   lib_info_.reset(new FunctionLibraryApiInfo);
   TF_RETURN_IF_ERROR(lib_info_->Init(graph.library()));
   return Status::OK();
@@ -131,14 +130,13 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
     return Status::OK();
   }
 
-  string task, device;
-  if (!DeviceNameUtils::SplitDeviceName(node_def->device(), &task, &device)) {
-    return errors::Internal("Could not split device name:", node_def->device());
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name) ||
+      !parsed_name.has_type) {
+    return errors::Internal("Could not parse device name:", node_def->device());
   }
   VLOG(2) << "Op " << node_def->name() << " runs on " << node_def->device()
-          << " = (" << task << ", " << device << ")";
-  DeviceNameUtils::ParsedName parsed_name;
-  DeviceNameUtils::ParseLocalName(device, &parsed_name);
+          << " = (" << parsed_name.type << ")";
 
   for (const auto& attr_name : function_attribute_names) {
     string function_name = node_def->attr().at(attr_name).func().name();
@@ -170,10 +168,13 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
   return Status::OK();
 }
 
-Status ImplementationSelector::SelectImplementation(
-    GraphDef* graph) const {
+Status ImplementationSelector::SelectImplementation(GraphDef* graph) const {
   if (!graph->has_library()) {
     VLOG(2) << "Skipping graph since it does not have function def";
+    return Status::OK();
+  }
+  if (lib_info_->empty()) {
+    VLOG(2) << "Skipping optimization since lib_info is empty";
     return Status::OK();
   }
 
@@ -184,8 +185,8 @@ Status ImplementationSelector::SelectImplementation(
 }
 
 Status ImplementationSelector::Optimize(Cluster* cluster,
-                                                    const GrapplerItem& item,
-                                                    GraphDef* optimized_graph) {
+                                        const GrapplerItem& item,
+                                        GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
   TF_RETURN_IF_ERROR(LoadFunctions(*optimized_graph));
   return SelectImplementation(optimized_graph);

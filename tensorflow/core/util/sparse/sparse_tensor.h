@@ -63,7 +63,7 @@ class SparseTensor {
                                     ix.shape().dim_size(0), ", values = ",
                                     vals.shape().dim_size(0), ")"));
     }
-    int dims;
+    int dims = 0;
     TF_RETURN_IF_ERROR(GetDimsFromIx(ix, &dims));
     if (order.size() != dims) {
       return Status(error::INVALID_ARGUMENT,

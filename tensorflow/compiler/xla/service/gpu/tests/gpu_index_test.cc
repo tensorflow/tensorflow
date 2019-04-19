@@ -48,8 +48,9 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* param_y = builder.AddInstruction(
       HloInstruction::CreateParameter(1, param_shape, "y"));
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {5, 7, 2}), HloOpcode::kGe, param_x, param_y));
+  builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {5, 7, 2}), param_x, param_y,
+      ComparisonDirection::kGe));
 
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
@@ -73,7 +74,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
       x = f32[5,7,2]{2,1,0} parameter(0)
       y = f32[5,14]{1,0} parameter(1)
       reshape = f32[5,7,2]{2,1,0} reshape(y)
-      ROOT gte = pred[5,7,2]{2,1,0} greater-than-or-equal-to(x, reshape)
+      ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
     })",
                                config)
                     .ValueOrDie();
@@ -98,7 +99,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       y = f32[14]{0} parameter(1)
       reshape = f32[7,2]{1,0} reshape(y)
       broadcast = f32[5,7,2]{2,1,0} broadcast(reshape), dimensions={1,2}
-      ROOT gte = pred[5,7,2]{2,1,0} greater-than-or-equal-to(x, broadcast)
+      ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
     })",
                                config)
                     .ValueOrDie();

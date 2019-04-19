@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import six
 
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -137,29 +138,86 @@ def _map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
   return extra_sources
 
 
+# Represents an input to `copied_op` which must be updated once
+# `old_graph_tensor` has been copied.
+_InputMutation = collections.namedtuple(
+    "_InputMutation",
+    ["copied_op", "input_index", "old_graph_tensor"])
+
+
+# Represents a control input to `copied_op` which must be added once
+# `old_graph_op` has been copied.
+_ControlMutation = collections.namedtuple(
+    "_ControlMutation",
+    ["copied_op", "old_graph_op"])
+
+
 def _copy_non_source(op, graph, op_map):
   """Copy an op directly to a given graph.
 
-  This function assumes that all of the inputs to an op have already been
-  copied.
+  Generally `op`'s inputs should already have been copied. If this is not the
+  case, for example with v1 while_loops, then `_copy_non_source` inserts
+  placeholders for the unavailable Tensors and returns a list of required
+  mutations.
 
   Args:
     op: The op to be copied.
     graph: The destination graph.
     op_map: A dict mapping ops and tensors in the old graph to the new one.
+  Returns:
+    A tuple of (required_inputs, required_control_inputs):
+      required_inputs:
+        A list of `_InputMutation` tuples containing inputs to `copied_op` which
+        must be updated once `old_graph_tensor` has been copied.
+      required_control_inputs:
+        A list of `_ControlMutation` tuples containing control inputs to
+        `copied_op` which must be added once `old_graph_op` has been copied.
   """
-  copied_inputs = [op_map[x] for x in op.inputs]
-  copied_control_inputs = [op_map[x] for x in op.control_inputs]
+  input_mutations = []
+  control_mutations = []
+  copied_inputs = []
+  for input_index, original_input in enumerate(op.inputs):
+    copied_input = op_map.get(original_input, None)
+    if copied_input is None:
+      # An input for this op is missing due to a loop in the graph. We'll insert
+      # a placeholder for now and return information about the required post-hoc
+      # mutation.
+      copied_input = array_ops.placeholder(
+          name="unused_control_flow_input",
+          shape=original_input.shape,
+          dtype=original_input.dtype)
+      input_mutations.append(
+          # `copied_op` is filled in below, after we've created it.
+          _InputMutation(copied_op=None,
+                         input_index=input_index,
+                         old_graph_tensor=original_input))
+    copied_inputs.append(copied_input)
+
+  copied_control_inputs = []
+  for original_control_input in op.control_inputs:
+    copied_control_input = op_map.get(original_control_input, None)
+    if copied_control_input is None:
+      control_mutations.append(
+          _ControlMutation(copied_op=None,
+                           old_graph_op=original_control_input))
+    else:
+      copied_control_inputs.append(copied_control_input)
   with ops.control_dependencies(copied_control_inputs), ops.device(op.device):
     copied_op = graph.create_op(
         op_type=op.type,
         inputs=copied_inputs,
         dtypes=[x.dtype for x in op.outputs],
-        attrs=op.node_def.attr,
+        attrs={key: value for key, value in op.node_def.attr.items()
+               if not key.startswith("_class")},  # b/128981532.
         name=op.name)
   op_map[op] = copied_op
   for i, o in enumerate(op.outputs):
     op_map[o] = copied_op.outputs[i]
+
+  return ([mutation._replace(copied_op=copied_op)
+           for mutation in input_mutations],
+          [mutation._replace(copied_op=copied_op)
+           for mutation in control_mutations])
 
 
 def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
@@ -191,7 +249,12 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
   elif s.op.type == "PlaceholderWithDefault" and _constant_inputs(s):
     # Copy the default value to the graph.
     default_value = s.op.inputs[0]
-    _copy_non_source(op=default_value.op, graph=graph, op_map=op_map)
+    unavailable_inputs, unavailable_control_inputs = _copy_non_source(
+        op=default_value.op, graph=graph, op_map=op_map)
+    if unavailable_inputs or unavailable_control_inputs:
+      raise AssertionError(
+          "Could not copy source node {} because it has inputs."
+          .format(default_value))
 
     with ops.device(s.op.device):
       copied_placeholder = array_ops.placeholder_with_default(
@@ -209,6 +272,9 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
         graph_mode=True)
 
   op_map[s] = copied_placeholder
+  # Add an entry for the op of the source tensor so that if there are any nodes
+  # depending on that op via control dependencies it can work correctly.
+  op_map[s.op] = copied_placeholder.op
 
 
 def lift_to_graph(init_tensors, graph, sources=None,
@@ -256,22 +322,31 @@ def lift_to_graph(init_tensors, graph, sources=None,
         op_outputs=op_outputs,
         add_sources=add_sources))
 
-  # Topologically sort the nodes we've extracted. Now we know how many of their
-  # outputs are part of this subgraph.
+  # Try to topologically sort the nodes we've extracted. Now we know how many of
+  # their outputs are part of this subgraph.
   ops_to_copy = []
   marked_ops = set([])
   ops_to_visit = [_as_operation(t) for t in init_tensors
                   if not op_outputs[_as_operation(t)]]
-  while ops_to_visit:
-    op = ops_to_visit.pop()
-    if op in marked_ops:
-      continue
-    marked_ops.add(op)
-    ops_to_copy.append(op)
-    for inp in _graph_inputs(op):
-      if (all(x in marked_ops for x in op_outputs[inp]) and
-          inp not in sources):
-        ops_to_visit.append(inp)
+  unvisited_ops = set(ops_to_visit)
+  while unvisited_ops:
+    while ops_to_visit:
+      op = ops_to_visit.pop()
+      if op in marked_ops:
+        continue
+      marked_ops.add(op)
+      ops_to_copy.append(op)
+      for inp in _graph_inputs(op):
+        unvisited_ops.add(inp)
+        if (all(x in marked_ops for x in op_outputs[inp]) and
+            inp not in sources):
+          ops_to_visit.append(inp)
+    unvisited_ops.difference_update(marked_ops)
+    if unvisited_ops:
+      # `unvisited_ops` should only have elements if the graph has a loop. In
+      # this case we want to keep copying and there's no topological ordering;
+      # we'll do ugly post-hoc mutations instead.
+      ops_to_visit.append(next(iter(unvisited_ops)))
 
   # When lifting from one FuncGraph to another, we will need to capture the
   # relevant tensors as well.
@@ -287,16 +362,46 @@ def lift_to_graph(init_tensors, graph, sources=None,
   with graph.as_default():
     op_map = {i: i for i in variable_init_tensors}  # Pass through variables.
     source_ops = set()
+    # Add the sources in the same order as the original graph.
+    for s in six.itervalues(captures):
+      if s in sources:
+        sources.remove(s)
+        source_ops.add(s.op)
+        _copy_source(
+            s=s,
+            graph=graph,
+            op_map=op_map,
+            handle_captures=handle_captures,
+            inverse_captures=inverse_captures)
     for s in sources:
       source_ops.add(s.op)
-      _copy_source(s=s, graph=graph, op_map=op_map,
-                   handle_captures=handle_captures,
-                   inverse_captures=inverse_captures)
+      _copy_source(
+          s=s,
+          graph=graph,
+          op_map=op_map,
+          handle_captures=handle_captures,
+          inverse_captures=inverse_captures)
 
+    input_mutations = []
+    control_mutations = []
     for op in reversed(ops_to_copy):
       if op in source_ops:
         continue
+      new_input_mutations, new_control_mutations = _copy_non_source(
+          op=op, graph=graph, op_map=op_map)
+      input_mutations.extend(new_input_mutations)
+      control_mutations.extend(new_control_mutations)
 
-      _copy_non_source(op=op, graph=graph, op_map=op_map)
+    # Mutate the new graph to insert any loops which existed in the source
+    # graph due to v1 while_loops.
+    #
+    # pylint: disable=protected-access
+    with graph._mutation_lock():
+      for mutation in input_mutations:
+        mutation.copied_op._update_input(
+            mutation.input_index, op_map[mutation.old_graph_tensor])
+      for mutation in control_mutations:
+        mutation.copied_op._add_control_input(op_map[mutation.old_graph_op])
+    # pylint: enable=protected-access
 
     return op_map

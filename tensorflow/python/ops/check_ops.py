@@ -135,12 +135,20 @@ def assert_negative_v2(x, message=None, summarize=None, name=None):
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).  Defaults to "assert_negative".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` is all negative. This can be
+      used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x[i] < 0` is False. The check can be performed immediately during eager
       execution or if `x` is statically known.
   """
-  assert_negative(x=x, message=message, summarize=summarize, name=name)
+  return assert_negative(x=x, message=message, summarize=summarize, name=name)
 
 
 @tf_export(v1=['debugging.assert_negative', 'assert_negative'])
@@ -151,7 +159,7 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_negative(x)]):
+  with tf.control_dependencies([tf.compat.v1.assert_negative(x)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -201,12 +209,20 @@ def assert_positive_v2(x, message=None, summarize=None, name=None):
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional). Defaults to "assert_positive".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` is all positive. This can be
+      used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x[i] > 0` is False. The check can be performed immediately during eager
       execution or if `x` is statically known.
   """
-  assert_positive(x=x, summarize=summarize, message=message, name=name)
+  return assert_positive(x=x, summarize=summarize, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_positive', 'assert_positive'])
@@ -217,7 +233,7 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_positive(x)]):
+  with tf.control_dependencies([tf.compat.v1.assert_positive(x)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -267,12 +283,21 @@ def assert_non_negative_v2(x, message=None, summarize=None, name=None):
     name: A name for this operation (optional).  Defaults to
       "assert_non_negative".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` is all non-negative. This can
+      be used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x[i] >= 0` is False. The check can be performed immediately during eager
       execution or if `x` is statically known.
   """
-  assert_non_negative(x=x, summarize=summarize, message=message, name=name)
+  return assert_non_negative(x=x, summarize=summarize, message=message,
+                             name=name)
 
 
 @tf_export(v1=['debugging.assert_non_negative', 'assert_non_negative'])
@@ -283,7 +308,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_non_negative(x)]):
+  with tf.control_dependencies([tf.compat.v1.assert_non_negative(x)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -335,12 +360,21 @@ def assert_non_positive_v2(x, message=None, summarize=None, name=None):
     name: A name for this operation (optional).  Defaults to
       "assert_non_positive".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` is all non-positive. This can
+      be used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x[i] <= 0` is False. The check can be performed immediately during eager
       execution or if `x` is statically known.
   """
-  assert_non_positive(x=x, summarize=summarize, message=message, name=name)
+  return assert_non_positive(x=x, summarize=summarize, message=message,
+                             name=name)
 
 
 @tf_export(v1=['debugging.assert_non_positive', 'assert_non_positive'])
@@ -351,7 +385,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_non_positive(x)]):
+  with tf.control_dependencies([tf.compat.v1.assert_non_positive(x)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -404,12 +438,20 @@ def assert_equal_v2(x, y, message=None, summarize=None, name=None):
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).  Defaults to "assert_equal".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x == y` is False. This can be
+      used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x == y` is False. The check can be performed immediately during eager
       execution or if `x` and `y` are statically known.
   """
-  assert_equal(x=x, y=y, summarize=summarize, message=message, name=name)
+  return assert_equal(x=x, y=y, summarize=summarize, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_equal', 'assert_equal'])
@@ -419,7 +461,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_equal(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_equal(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -438,7 +480,9 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
 
   Returns:
     Op that raises `InvalidArgumentError` if `x == y` is False.
-    @compatibility{eager} returns None
+    @compatibility(eager)
+    returns None
+    @end_compatibility
 
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
@@ -532,13 +576,22 @@ def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
     name: A name for this operation (optional).  Defaults to
     "assert_none_equal".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x != y` is ever False. This can
+      be used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x != y` is False for any pair of elements in `x` and `y`. The check can
       be performed immediately during eager execution or if `x` and `y` are
       statically known.
   """
-  assert_none_equal(x=x, y=y, summarize=summarize, message=message, name=name)
+  return assert_none_equal(x=x, y=y, summarize=summarize, message=message,
+                           name=name)
 
 
 @tf_export(v1=['debugging.assert_none_equal', 'assert_none_equal'])
@@ -550,7 +603,7 @@ def assert_none_equal(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_none_equal(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_none_equal(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -622,6 +675,14 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).  Defaults to "assert_near".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x` and `y` are not close enough.
+      This can be used with `tf.control_dependencies` inside of `tf.function`s
+      to block followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x != y` is False for any pair of elements in `x` and `y`. The check can
@@ -634,8 +695,8 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
   and even `16bit` data.
   @end_compatibility
   """
-  assert_near(x=x, y=y, rtol=rtol, atol=atol, summarize=summarize,
-              message=message, name=name)
+  return assert_near(x=x, y=y, rtol=rtol, atol=atol, summarize=summarize,
+                     message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_near', 'assert_near'])
@@ -648,7 +709,7 @@ def assert_near(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_near(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_near(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -736,12 +797,20 @@ def assert_less_v2(x, y, message=None, summarize=None, name=None):
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).  Defaults to "assert_less".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x < y` is False.
+    This can be used with `tf.control_dependencies` inside of `tf.function`s
+    to block followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x < y` is False. The check can be performed immediately during eager
       execution or if `x` and `y` are statically known.
   """
-  assert_less(x=x, y=y, summarize=summarize, message=message, name=name)
+  return assert_less(x=x, y=y, summarize=summarize, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_less', 'assert_less'])
@@ -751,7 +820,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_less(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_less(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -811,12 +880,21 @@ def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional). Defaults to "assert_less_equal".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x <= y` is False. This can be
+      used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x <= y` is False. The check can be performed immediately during eager
       execution or if `x` and `y` are statically known.
   """
-  assert_less_equal(x=x, y=y, summarize=summarize, message=message, name=name)
+  return assert_less_equal(x=x, y=y,
+                           summarize=summarize, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_less_equal', 'assert_less_equal'])
@@ -827,7 +905,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_less_equal(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_less_equal(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -887,12 +965,21 @@ def assert_greater_v2(x, y, message=None, summarize=None, name=None):
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).  Defaults to "assert_greater".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x > y` is False. This can be
+      used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x > y` is False. The check can be performed immediately during eager
       execution or if `x` and `y` are statically known.
   """
-  assert_greater(x=x, y=y, summarize=summarize, message=message, name=name)
+  return assert_greater(x=x, y=y, summarize=summarize, message=message,
+                        name=name)
 
 
 @tf_export(v1=['debugging.assert_greater', 'assert_greater'])
@@ -902,7 +989,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_greater(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_greater(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -963,13 +1050,21 @@ def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
     name: A name for this operation (optional).  Defaults to
     "assert_greater_equal".
 
+  Returns:
+    Op that raises `InvalidArgumentError` if `x >= y` is False. This can be
+      used with `tf.control_dependencies` inside of `tf.function`s to block
+      followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x >= y` is False. The check can be performed immediately during eager
       execution or if `x` and `y` are statically known.
   """
-  assert_greater_equal(x=x, y=y, summarize=summarize, message=message,
-                       name=name)
+  return assert_greater_equal(x=x, y=y, summarize=summarize, message=message,
+                              name=name)
 
 
 @tf_export(v1=['debugging.assert_greater_equal', 'assert_greater_equal'])
@@ -981,7 +1076,7 @@ def assert_greater_equal(x, y, data=None, summarize=None, message=None,
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_greater_equal(x, y)]):
+  with tf.control_dependencies([tf.compat.v1.assert_greater_equal(x, y)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1087,12 +1182,21 @@ def assert_rank_v2(x, rank, message=None, name=None):
     name: A name for this operation (optional). Defaults to
       "assert_rank".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` has specified rank.
+    If static checks determine `x` has correct rank, a `no_op` is returned.
+    This can be used with `tf.control_dependencies` inside of `tf.function`s
+    to block followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: if the check can be performed immediately and
       `x` does not have rank `rank`. The check can be performed immediately
       during eager execution or if the shape of `x` is statically known.
   """
-  assert_rank(x=x, rank=rank, message=message, name=name)
+  return assert_rank(x=x, rank=rank, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_rank', 'assert_rank'])
@@ -1102,7 +1206,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_rank(x, 2)]):
+  with tf.control_dependencies([tf.compat.v1.assert_rank(x, 2)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1173,12 +1277,21 @@ def assert_rank_at_least_v2(x, rank, message=None, name=None):
     name: A name for this operation (optional).  Defaults to
       "assert_rank_at_least".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless `x` has specified rank or higher.
+    If static checks determine `x` has correct rank, a `no_op` is returned.
+    This can be used with `tf.control_dependencies` inside of `tf.function`s
+    to block followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: `x` does not have rank at least `rank`, but the rank
       cannot be statically determined.
     ValueError: If static checks determine `x` has mismatched rank.
   """
-  assert_rank_at_least(x=x, rank=rank, message=message, name=name)
+  return assert_rank_at_least(x=x, rank=rank, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_rank_at_least', 'assert_rank_at_least'])
@@ -1190,7 +1303,7 @@ def assert_rank_at_least(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_rank_at_least(x, 2)]):
+  with tf.control_dependencies([tf.compat.v1.assert_rank_at_least(x, 2)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1328,12 +1441,21 @@ def assert_rank_in_v2(x, ranks, message=None, name=None):
     message: A string to prefix to the default message.
     name: A name for this operation (optional). Defaults to "assert_rank_in".
 
+  Returns:
+    Op raising `InvalidArgumentError` unless rank of `x` is in `ranks`.
+    If static checks determine `x` has matching rank, a `no_op` is returned.
+    This can be used with `tf.control_dependencies` inside of `tf.function`s
+    to block followup computation until the check has executed.
+    @compatibility(eager)
+    returns None
+    @end_compatibility
+
   Raises:
     InvalidArgumentError: `x` does not have rank in `ranks`, but the rank cannot
       be statically determined.
     ValueError: If static checks determine `x` has mismatched rank.
   """
-  assert_rank_in(x=x, ranks=ranks, message=message, name=name)
+  return assert_rank_in(x=x, ranks=ranks, message=message, name=name)
 
 
 @tf_export(v1=['debugging.assert_rank_in', 'assert_rank_in'])
@@ -1345,7 +1467,7 @@ def assert_rank_in(
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_rank_in(x, (2, 4))]):
+  with tf.control_dependencies([tf.compat.v1.assert_rank_in(x, (2, 4))]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1406,6 +1528,8 @@ def assert_integer_v2(x, message=None, name=None):
   If `x` has a non-integer type, `message`, as well as the dtype of `x` are
   printed, and `InvalidArgumentError` is raised.
 
+  This can always be checked statically, so this method returns nothing.
+
   Args:
     x: A `Tensor`.
     message: A string to prefix to the default message.
@@ -1425,7 +1549,7 @@ def assert_integer(x, message=None, name=None):
   Example of adding a dependency to an operation:
 
   ```python
-  with tf.control_dependencies([tf.assert_integer(x)]):
+  with tf.control_dependencies([tf.compat.v1.assert_integer(x)]):
     output = tf.reduce_sum(x)
   ```
 
@@ -1459,6 +1583,8 @@ def assert_integer(x, message=None, name=None):
 @tf_export('debugging.assert_type', v1=[])
 def assert_type_v2(tensor, tf_type, message=None, name=None):
   """Asserts that the given `Tensor` is of the specified type.
+
+  This can always be checked statically, so this method returns nothing.
 
   Args:
     tensor: A `Tensor`.
@@ -1706,6 +1832,8 @@ def assert_scalar_v2(tensor, message=None, name=None):
   `tensor` is a scalar. `ValueError` is also raised if the shape of `tensor` is
   unknown.
 
+  This is always checked statically, so this method returns nothing.
+
   Args:
     tensor: A `Tensor`.
     message: A string to prefix to the default message.
@@ -1758,7 +1886,7 @@ def ensure_shape(x, shape, name=None):
 
   For example:
   ```python
-  x = tf.placeholder(tf.int32)
+  x = tf.compat.v1.placeholder(tf.int32)
   print(x.shape)
   ==> TensorShape(None)
   y = x * 2
@@ -1769,7 +1897,7 @@ def ensure_shape(x, shape, name=None):
   print(y.shape)
   ==> TensorShape([Dimension(None), Dimension(3), Dimension(3)])
 
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     # Raises tf.errors.InvalidArgumentError, because the shape (3,) is not
     # compatible with the shape (None, 3, 3)
     sess.run(y, feed_dict={x: [1, 2, 3]})

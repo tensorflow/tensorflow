@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/adjust_hsv_gpu.cu.h"
 #include "tensorflow/core/kernels/adjust_hue_op.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -35,9 +35,10 @@ void AdjustHueGPU<T>::operator()(GPUDevice* device,
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  internal::adjust_hsv_nhwc<true, false, false, T>
-      <<<block_count, threads_per_block, 0, stream>>>(
-          number_of_elements, input, output, delta, nullptr, nullptr);
+  TF_CHECK_OK(CudaLaunchKernel(internal::adjust_hsv_nhwc<true, false, false, T>,
+                               block_count, threads_per_block, 0, stream,
+                               number_of_elements, input, output, delta,
+                               nullptr, nullptr));
 }
 
 template struct AdjustHueGPU<float>;

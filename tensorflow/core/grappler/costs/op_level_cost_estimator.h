@@ -68,6 +68,8 @@ class OpLevelCostEstimator {
     int64 iz;         // Input depth.
     int64 kx;         // Kernel x.
     int64 ky;         // Kernel y.
+    int64 kz;  // Kernel depth (in case of group convolution, this will be
+               // smaller than input depth).
     int64 oz;         // Output depth.
     int64 ox;         // Output size x.
     int64 oy;         // Output size y.
@@ -132,6 +134,7 @@ class OpLevelCostEstimator {
   Costs PredictConv2DBackpropFilter(const OpContext& op_context) const;
   Costs PredictFusedConv2DBiasActivation(const OpContext& op_context) const;
   Costs PredictMatMul(const OpContext& op_context) const;
+  Costs PredictSparseTensorDenseMatMul(const OpContext& op_context) const;
   Costs PredictNoOp(const OpContext& op_context) const;
   Costs PredictIdentity(const OpContext& op_context) const;
   Costs PredictVariable(const OpContext& op_context) const;

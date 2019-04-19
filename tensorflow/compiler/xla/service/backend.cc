@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -69,16 +68,14 @@ const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
 
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
-struct Backend::EigenThreadPoolWrapper {
-  explicit EigenThreadPoolWrapper(const int num_threads)
+struct Backend::IntraOpThreadPool {
+  explicit IntraOpThreadPool(const int num_threads)
       : pool(new tensorflow::thread::ThreadPool(tensorflow::Env::Default(),
                                                 "XLAEigen", num_threads)),
-        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
-        device(new Eigen::ThreadPoolDevice(wrapper.get(),
-                                           wrapper->NumThreads())) {}
+        device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
+                                           pool->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
@@ -146,8 +143,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tensorflow::port::NumSchedulableCPUs();
-    intra_op_thread_pool_wrapper_.reset(
-        new EigenThreadPoolWrapper(num_threads));
+    intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
   }
 }
 
@@ -159,17 +155,17 @@ int Backend::default_device_ordinal() const {
 
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
     const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) {
+  if (intra_op_thread_pool_ == nullptr) {
     return nullptr;
   }
-  return intra_op_thread_pool_wrapper_->device.get();
+  return intra_op_thread_pool_->device.get();
 }
 
 tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) {
+  if (intra_op_thread_pool_ == nullptr) {
     return nullptr;
   }
-  return intra_op_thread_pool_wrapper_->pool.get();
+  return intra_op_thread_pool_->pool.get();
 }
 
 StatusOr<se::StreamExecutor*> Backend::stream_executor(

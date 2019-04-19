@@ -46,6 +46,29 @@ extern const char* kSingleAvgPoolModelMinMinus5MaxPlus5;
 // and an add operation.
 extern const char* kModelWithSharedWeights;
 
+// Test model with Add followed by a reshape. Model has 2 inputs for add.
+extern const char* kMultiInputAddWithReshape;
+
+// Test gather operation with quantized input.
+extern const char* kQuantizedWithGather;
+
+// Test model with a tf.constant input to tf.add. Model has 2 inputs one
+// constant and other placeholder.
+extern const char* kConstInputAddModel;
+
+// A float test model with concat that has [0, 5] and [0, 10] for inputs and [0,
+// 10] as output.
+extern const char* kFloatConcatMax5Max10Max10;
+
+// Test model with a custom op.
+extern const char* kModelWithCustomOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithArgMaxOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithFCOp;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

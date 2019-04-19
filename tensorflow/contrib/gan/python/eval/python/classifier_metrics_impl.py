@@ -140,7 +140,7 @@ def preprocess_image(images,
   is_single = images.shape.ndims == 3
   with ops.name_scope(scope, 'preprocess', [images, height, width]):
     if not images.dtype.is_floating:
-      images = math_ops.to_float(images)
+      images = math_ops.cast(images, dtypes.float32)
     if is_single:
       images = array_ops.expand_dims(images, axis=0)
     resized = image_ops.resize_bilinear(images, [height, width])
@@ -1057,7 +1057,8 @@ def kernel_classifier_distance_and_std_from_activations(real_activations,
   n_g = array_ops.shape(generated_activations)[0]
 
   n_bigger = math_ops.maximum(n_r, n_g)
-  n_blocks = math_ops.to_int32(math_ops.ceil(n_bigger / max_block_size))
+  n_blocks = math_ops.cast(math_ops.ceil(n_bigger / max_block_size),
+                           dtypes.int32)
 
   v_r = n_r // n_blocks
   v_g = n_g // n_blocks

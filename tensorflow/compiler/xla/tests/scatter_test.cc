@@ -718,5 +718,32 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, ScatterIntoScalar) {
+  const char* hlo_text = R"(
+HloModule ScatterIntoScalar
+
+update_s32 {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  parameter.1 = s32[] parameter(0)
+  parameter.2 = s32[0]{0} parameter(1)
+  parameter.3 = s32[] parameter(2)
+  ROOT scatter = s32[] scatter(parameter.1, parameter.2, parameter.3),
+      update_window_dims={},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={},
+      index_vector_dim=0,
+      to_apply=update_s32
+}
+)";
+  Literal operand = LiteralUtil::CreateR0<int32>(1);
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({});
+  Literal updates = LiteralUtil::CreateR0<int32>(2);
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 }  // namespace
 }  // namespace xla

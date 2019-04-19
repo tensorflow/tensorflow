@@ -212,8 +212,29 @@ def model_iteration(model,
     while step < target_steps:
       batch_data = _get_next_batch(generator, mode)
       if batch_data is None:
-        if not is_dataset:
+        if is_dataset:
+          # The dataset passed by the user ran out of batches.
+          # Now we know the cardinality of the dataset.
+          # If steps_per_epoch was specified, then running out of data is
+          # unexpected, so we stop training and inform the user.
+          if steps_per_epoch:
+            callbacks.model.stop_training = True
+            logging.warning(
+                'Your dataset ran out of data; interrupting training. '
+                'Make sure that your dataset can generate at least '
+                '`%s * epochs` batches (in this case, %d batches). '
+                'You may need to use the repeat() function when '
+                'building your dataset.'
+                % (steps_name, steps_per_epoch * epochs))
+          elif step > 0:
+            steps_per_epoch = step
+            aggregator.num_samples_or_steps = steps_per_epoch
+            if mode == ModeKeys.TRAIN:
+              progbar.params['steps'] = steps_per_epoch
+              progbar.progbar.target = steps_per_epoch
+        else:
           # We ran out of batches while the user passed an iterator (legacy).
+          callbacks.model.stop_training = True
           logging.warning(
               'Your dataset iterator ran out of data; '
               'interrupting training. Make sure that your iterator '
@@ -221,16 +242,6 @@ def model_iteration(model,
               'batches (in this case, %d batches). You may need to'
               'use the repeat() function when building your '
               'dataset.' % (steps_name, steps_per_epoch * epochs))
-          callbacks.model.stop_training = True
-        else:
-          # The dataset passed by the user ran out of batches.
-          # Now we know the cardinality of the dataset.
-          # assert steps_per_epoch is None
-          if step > 0:
-            steps_per_epoch = step
-            aggregator.num_samples_or_steps = steps_per_epoch
-            progbar.params['steps'] = steps_per_epoch
-            progbar.progbar.target = steps_per_epoch
         break
 
       # `batch_size` used for validation data if validation
@@ -407,7 +418,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
 
   val_gen = (
       data_utils.is_generator_or_sequence(validation_data) or
-      isinstance(validation_data, iterator_ops.EagerIterator))
+      isinstance(validation_data, iterator_ops.IteratorV2))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
     raise ValueError('Please specify the `validation_steps` argument.')
@@ -426,9 +437,9 @@ def convert_to_generator_like(data,
 
   Arguments:
     data: Either a generator or `keras.utils.data_utils.Sequence` object or
-      `Dataset` or `EagerIterator` or a {1,2,3}-tuple of NumPy arrays or
-      EagerTensors. If a tuple, the elements represent `(x, y, sample_weights)`
-      and may be `None` or `[None]`.
+      `Dataset`, `Iterator`, or a {1,2,3}-tuple of NumPy arrays or EagerTensors.
+      If a tuple, the elements represent `(x, y, sample_weights)` and may be
+      `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
     steps_per_epoch: Steps of the generator to run each epoch. If `None` the
@@ -438,7 +449,7 @@ def convert_to_generator_like(data,
     shuffle: Whether the data should be shuffled.
 
   Returns:
-    - Generator or `keras.utils.data_utils.Sequence` or EagerIterator.
+    - Generator, `keras.utils.data_utils.Sequence`, or `Iterator`.
 
   Raises:
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
@@ -448,11 +459,9 @@ def convert_to_generator_like(data,
     # Scrub `Nones` that might have been passed for `targets`, `sample_weights`.
     data = tuple(
         ele for ele in data if not all(e is None for e in nest.flatten(ele)))
-    if len(data) == 1:
-      data = data[0]
 
   if data_utils.is_generator_or_sequence(data) or isinstance(
-      data, iterator_ops.EagerIterator):
+      data, iterator_ops.IteratorV2):
     if isinstance(data, data_utils.Sequence):
       if steps_per_epoch is None:
         steps_per_epoch = len(data)

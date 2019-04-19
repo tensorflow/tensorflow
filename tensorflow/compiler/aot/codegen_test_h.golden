@@ -52,7 +52,7 @@ namespace bar {
 //   is guaranteed that no thread may call a non-const method.
 //
 // The logical function signature is:
-//   ((unknown): f32[1,2], (unknown): s64[3,4], (unknown): f32[1], (unknown): s32[5]) -> (u32[5,6], f32[1], s32[5])
+//   ((unknown): f32[1,2], (unknown): s64[3,4], (unknown): f32[1], (unknown): f32[1], (unknown): s32[5]) -> (u32[5,6], f32[1], s32[5])
 //
 // Memory stats:
 //   arg bytes total:    104
@@ -228,40 +228,44 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
 
-  void set_var_myvar_input_data(float* data) {
+  void set_var_myvar_readonly_data(const float* data) {
     set_arg_data(2, data);
   }
 
-  void set_var_myvar2_input_data(tensorflow::int32* data) {
+  void set_var_myvar_data(float* data) {
     set_arg_data(3, data);
   }
 
-  float* var_myvar_result_data() {
+  void set_var_myvar2_data(tensorflow::int32* data) {
+    set_arg_data(4, data);
+  }
+
+  float* var_myvar_data() {
     return static_cast<float*>(result_data(1));
   }
-  float& var_myvar_result() {
+  float& var_myvar() {
     return (*static_cast<float(*)[1]>(
         result_data(1)))[0];
   }
-  const float* var_myvar_result_data() const {
+  const float* var_myvar_data() const {
     return static_cast<const float*>(result_data(1));
   }
-  const float& var_myvar_result() const {
+  const float& var_myvar() const {
     return (*static_cast<const float(*)[1]>(
         result_data(1)))[0];
   }
 
-  tensorflow::int32* var_myvar2_result_data() {
+  tensorflow::int32* var_myvar2_data() {
     return static_cast<tensorflow::int32*>(result_data(2));
   }
-  tensorflow::int32& var_myvar2_result(size_t dim0) {
+  tensorflow::int32& var_myvar2(size_t dim0) {
     return (*static_cast<tensorflow::int32(*)[5]>(
         result_data(2)))[dim0];
   }
-  const tensorflow::int32* var_myvar2_result_data() const {
+  const tensorflow::int32* var_myvar2_data() const {
     return static_cast<const tensorflow::int32*>(result_data(2));
   }
-  const tensorflow::int32& var_myvar2_result(size_t dim0) const {
+  const tensorflow::int32& var_myvar2(size_t dim0) const {
     return (*static_cast<const tensorflow::int32(*)[5]>(
         result_data(2)))[dim0];
   }
@@ -270,15 +274,15 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = 6;
 
-  static const ::tensorflow::cpu_function_runtime::BufferInfo* BufferInfos() {
-    static const ::tensorflow::cpu_function_runtime::BufferInfo
+  static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
+    static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
-::tensorflow::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
-::tensorflow::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
+::xla::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
+::xla::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
       };
     return kBufferInfos;
   }
@@ -309,7 +313,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const xla::ProgramShapeProto* StaticProgramShape() {
     static const xla::ProgramShapeProto* kShape = []() {
     xla::ProgramShapeProto* proto = new xla::ProgramShapeProto;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 132);
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 149);
     return proto;
   }();
     return kShape;

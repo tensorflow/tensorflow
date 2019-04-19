@@ -80,6 +80,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
 
+    verify_captures(true_graph, false_graph)
     return _build_cond(pred, true_graph, false_graph,
                        true_graph.external_captures,
                        false_graph.external_captures,
@@ -192,18 +193,21 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
                                    true_inputs, false_inputs)
 
   # Create the If op.
-  tensors = gen_functional_ops._if(  # pylint: disable=protected-access
-      pred,
-      cond_inputs, [t.dtype for t in true_graph.outputs],
-      util.create_new_tf_function(true_graph),
-      util.create_new_tf_function(false_graph),
-      output_shapes=_get_output_shapes(true_graph.outputs,
-                                       false_graph.outputs),
-      name=name)
+  with ops.control_dependencies(
+      list(true_graph.control_captures) + list(false_graph.control_captures)):
+    tensors = gen_functional_ops._if(  # pylint: disable=protected-access
+        pred,
+        cond_inputs, [t.dtype for t in true_graph.outputs],
+        util.create_new_tf_function(true_graph),
+        util.create_new_tf_function(false_graph),
+        output_shapes=_get_output_shapes(true_graph.outputs,
+                                         false_graph.outputs),
+        name=name)
 
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
   util.maybe_set_lowering_attr(if_op)
+  util.maybe_propagate_compile_time_consts_in_xla(if_op)
 
   # Return identities for each output of the If op, rather than the output of
   # the If op directly. This makes pruning work if the output of cond() is
@@ -595,6 +599,21 @@ def _get_output_shapes(true_graph_outputs, false_graph_outputs):
   return output_shapes
 
 
+def verify_captures(true_graph, false_graph):
+  """Verify that a true_fn tensor is not accessed in false_fn and vice-versa."""
+  for t in false_graph.external_captures:
+    if not isinstance(t, ops.EagerTensor) and t.graph is true_graph:
+      raise ValueError("Tensor {} in true_fn is accessed from false_fn.".format(
+          t.name))
+  # Note: This is technically not possible right now because `false_graph`
+  # is built "after" `true_graph` but we add this check for completeness and to
+  # guard against potential future changes.
+  for t in true_graph.external_captures:
+    if not isinstance(t, ops.EagerTensor) and t.graph is false_graph:
+      raise ValueError("Tensor {} in false_fn is accessed from true_fn.".format(
+          t.name))
+
+
 class _CondGradFuncGraph(util.CondBranchFuncGraph):
   """FuncGraph for the gradient function of the branch of an If op.
 
@@ -649,31 +668,44 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     if captured_tensor is not None:
       return captured_tensor
 
-    # 'tensor' is an uncaptured intermediate in the forward graph. We wrap it in
-    # an optional in the forward graph and capture the optional normally. We
-    # then unwrap the captured optional value in the gradient graph to get the
-    # raw intermediate value.
+    # 'tensor' is an uncaptured intermediate in the forward graph.
+    # If it is not a resource, we wrap it in an optional in the forward graph
+    # and capture the optional normally. We then unwrap the captured optional
+    # value in the gradient graph to get the raw intermediate value.
+    # If it is a resource, we trace the resource upto the input in the forward
+    # graph and capture that.
 
-    if tensor not in self._wrapped_intermediates:
-      # If the gradient has already been computed for this If op, 'tensor' may
-      # already be wrapped.
-      for consumer in tensor.consumers():
-        if (consumer.type == "OptionalFromValue"
-            and consumer.outputs[0] in self._forward_graph.outputs):
-          optional = consumer.outputs[0]
-          break
-      else:
-        # 'tensor' hasn't been wrapped, do it now.
-        with self._forward_graph.as_default():
-          optional = gen_dataset_ops.optional_from_value([tensor])
-        self.if_op_needs_rewrite = True
+    if tensor.dtype == dtypes.resource:
+      # Index of the forward graph input corresponding to the resource tensor.
+      index = util.resource_input_index(
+          tensor.name, [t.name for t in self._forward_graph.inputs],
+          {op.name: op.node_def for op in self._forward_graph.get_operations()},
+          self._forward_graph._functions)
+      # This gets mapped to the corresponding If op input in
+      # `_resolve_grad_inputs`.
+      captured_tensor = super(_CondGradFuncGraph, self)._capture_helper(
+          self._forward_graph.inputs[index], name)
+    else:
+      if tensor not in self._wrapped_intermediates:
+        # If the gradient has already been computed for this If op, 'tensor' may
+        # already be wrapped.
+        for consumer in tensor.consumers():
+          if (consumer.type == "OptionalFromValue" and
+              consumer.outputs[0] in self._forward_graph.outputs):
+            optional = consumer.outputs[0]
+            break
+        else:
+          # 'tensor' hasn't been wrapped, do it now.
+          with self._forward_graph.as_default():
+            optional = gen_dataset_ops.optional_from_value([tensor])
+          self.if_op_needs_rewrite = True
+        self._wrapped_intermediates[tensor] = optional
 
-      self._wrapped_intermediates[tensor] = optional
+      optional = self._wrapped_intermediates[tensor]
+      captured_optional = super(_CondGradFuncGraph,
+                                self)._capture_helper(optional, name)
+      captured_tensor = gen_dataset_ops.optional_get_value(
+          captured_optional, [tensor.dtype], [tensor.shape])[0]
 
-    optional = self._wrapped_intermediates[tensor]
-    captured_optional = super(_CondGradFuncGraph, self)._capture_helper(
-        optional, name)
-    captured_tensor = gen_dataset_ops.optional_get_value(
-        captured_optional, [tensor.dtype], [tensor.shape])[0]
     self._indirect_captures[tensor] = captured_tensor
     return captured_tensor

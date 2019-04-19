@@ -28,12 +28,10 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.examples.saved_model.integration_tests import util
-from tensorflow.python.saved_model import load as svmd_load
-tf.saved_model.load = svmd_load.load
 
 FLAGS = flags.FLAGS
 
@@ -46,6 +44,12 @@ flags.DEFINE_integer(
 flags.DEFINE_bool(
     'retrain', False,
     'If set, the imported SavedModel is trained further.')
+flags.DEFINE_float(
+    'dropout_rate', None,
+    'If set, dropout rate passed to the SavedModel.')
+flags.DEFINE_float(
+    'regularization_loss_multiplier', None,
+    'If set, multiplier for the regularization losses in the SavedModel.')
 flags.DEFINE_bool(
     'use_fashion_mnist', False,
     'Use Fashion MNIST (products) instead of the real MNIST (digits). '
@@ -53,49 +57,77 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
+flags.DEFINE_bool(
+    'use_mirrored_strategy', False,
+    'Whether to use mirrored distribution strategy.')
 
 
-def make_classifier(feature_extractor, dropout_rate=0.5):
+def make_feature_extractor(saved_model_path, trainable,
+                           regularization_loss_multiplier):
+  """Load a pre-trained feature extractor and wrap it for use in Keras."""
+  obj = tf.saved_model.load(saved_model_path)
+
+  # Optional: scale regularization losses to target problem.
+  if regularization_loss_multiplier:
+    def _scale_one_loss(l):  # Separate def avoids lambda capture of loop var.
+      f = tf.function(lambda: tf.multiply(regularization_loss_multiplier, l()))
+      _ = f.get_concrete_function()
+      return f
+    obj.regularization_losses = [_scale_one_loss(l)
+                                 for l in obj.regularization_losses]
+
+  arguments = {}
+  if FLAGS.dropout_rate is not None:
+    arguments['dropout_rate'] = FLAGS.dropout_rate
+
+  # CustomLayer mimics hub.KerasLayer because the tests are not able to depend
+  # on Hub at the moment.
+  return util.CustomLayer(obj, trainable=trainable, arguments=arguments)
+
+
+def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
   """Returns a Keras Model to classify MNIST using feature_extractor."""
+  regularizer = lambda: tf.keras.regularizers.l2(l2_strength)
   net = inp = tf.keras.Input(mnist_util.INPUT_SHAPE)
   net = feature_extractor(net)
   net = tf.keras.layers.Dropout(dropout_rate)(net)
-  net = tf.keras.layers.Dense(mnist_util.NUM_CLASSES,
-                              activation='softmax')(net)
+  net = tf.keras.layers.Dense(mnist_util.NUM_CLASSES, activation='softmax',
+                              kernel_regularizer=regularizer())(net)
   return tf.keras.Model(inputs=inp, outputs=net)
 
 
 def main(argv):
   del argv
 
-  # Load a pre-trained feature extractor and wrap it for use in Keras.
-  obj = tf.saved_model.load(FLAGS.export_dir)
-  feature_extractor = util.CustomLayer(obj, output_shape=[128],
-                                       trainable=FLAGS.retrain)
+  if FLAGS.use_mirrored_strategy:
+    strategy = tf.distribute.MirroredStrategy()
+  else:
+    strategy = tf.distribute.get_strategy()
 
-  # Build a classifier with it.
-  model = make_classifier(feature_extractor)
+  with strategy.scope():
+    feature_extractor = make_feature_extractor(
+        FLAGS.export_dir,
+        FLAGS.retrain,
+        FLAGS.regularization_loss_multiplier)
+    model = make_classifier(feature_extractor)
+
+    model.compile(loss=tf.keras.losses.categorical_crossentropy,
+                  optimizer=tf.keras.optimizers.SGD(),
+                  metrics=['accuracy'])
 
   # Train the classifier (possibly on a different dataset).
   (x_train, y_train), (x_test, y_test) = mnist_util.load_reshaped_data(
       use_fashion_mnist=FLAGS.use_fashion_mnist,
       fake_tiny_data=FLAGS.fast_test_mode)
-  model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.keras.optimizers.SGD(),
-                metrics=['accuracy'],
-                # TODO(arnoegw): Remove after investigating huge allocs.
-                run_eagerly=True)
   print('Training on %s with %d trainable and %d untrainable variables.' %
         ('Fashion MNIST' if FLAGS.use_fashion_mnist else 'MNIST',
          len(model.trainable_variables), len(model.non_trainable_variables)))
   model.fit(x_train, y_train,
             batch_size=128,
             epochs=FLAGS.epochs,
-            steps_per_epoch=3,
             verbose=1,
             validation_data=(x_test, y_test))
 
 
 if __name__ == '__main__':
-  # tf.enable_v2_behavior()
   app.run(main)

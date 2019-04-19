@@ -140,10 +140,9 @@ static string GetSmName(std::pair<int, int> compute_capability) {
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
-string MakeNameForTempProduct(const std::string& input_filename,
+string MakeNameForTempProduct(absl::string_view input_filename,
                               absl::string_view extension) {
-  return ReplaceFilenameExtension(absl::string_view(tensorflow::io::Basename(
-                                      llvm_ir::AsString(input_filename))),
+  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
                                   extension);
 }
 
@@ -220,7 +219,6 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0;
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
@@ -254,11 +252,8 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     llvm::buffer_ostream pstream(stream);
     // The extension is stripped by IrDumpingPassManager, so we need to
     // get creative to add a suffix.
-    string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
     IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(
-            absl::string_view(tensorflow::io::Basename(module_id)),
-            "-nvptx.dummy"),
+        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
         "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
@@ -336,7 +331,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   // If the module has no functions or globals, there's nothing to compile. Just
   // return an empty string.
   if (module->empty() && module->global_empty()) {
-    VLOG(2) << "Module '" << llvm_ir::AsString(module->getName())
+    VLOG(2) << "Module '" << module->getName().str()
             << "' is empty. Skipping compilation.";
     return string();
   }
@@ -492,11 +487,10 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
-    tensorflow::tracing::ScopedActivity activity(
-        "Compiling IR", llvm_ir::AsString(module->getName()),
-        /*is_expensive=*/true);
-    XLA_SCOPED_LOGGING_TIMER("Compile module " +
-                             llvm_ir::AsString(module->getName()));
+    tensorflow::tracing::ScopedActivity activity("Compiling IR",
+                                                 module->getName().str(),
+                                                 /*is_expensive=*/true);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
         ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
                                 libdevice_dir_path));

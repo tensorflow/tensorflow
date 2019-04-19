@@ -26,18 +26,19 @@ namespace client {
 Status ValidateHostPortPair(const string& host_port);
 
 // Repeatedly collects profiles and shows user-friendly metrics for
-// 'num_queries' time(s).
+// 'num_queries' time(s). If timestamp flag is true, timestamp will be
+// displayed in "%H:%M:%S" format.
 void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries);
+                     int monitoring_level, bool timestamp, int num_queries);
 
 // Starts tracing on a single or multiple hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
-void StartTracing(const tensorflow::string& service_addr,
-                  const tensorflow::string& logdir,
-                  const tensorflow::string& workers_list,
-                  bool include_dataset_ops, int duration_ms,
-                  int num_tracing_attempts);
+Status StartTracing(const tensorflow::string& service_addr,
+                    const tensorflow::string& logdir,
+                    const tensorflow::string& workers_list,
+                    bool include_dataset_ops, int duration_ms,
+                    int num_tracing_attempts);
 
 }  // namespace client
 }  // namespace profiler
