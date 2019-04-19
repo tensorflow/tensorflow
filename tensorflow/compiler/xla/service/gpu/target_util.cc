@@ -36,43 +36,47 @@ namespace {
 
 // Wrapper structure for  intrinsic information for NVPTX/AMDGPU.
 struct TargetIntrinsicInfo {
-  TargetIntrinsicInfo() : intrinsic(llvm::Intrinsic::not_intrinsic) {}
   TargetIntrinsicInfo(llvm::Intrinsic::ID x) : intrinsic(x) {}
   llvm::Intrinsic::ID intrinsic;
 };
 
 // Wrapper structure for  device functionc information for NVPTX/AMDGPU.
 struct TargetFunctionInfo {
-  TargetFunctionInfo()
-      : callee_name(""),
-        input_types({PRIMITIVE_TYPE_INVALID}),
-        result_type(PRIMITIVE_TYPE_INVALID),
-        use_bitcast(false) {}
-  TargetFunctionInfo(const string callee_name_)
+  // No signature mismatch.
+  TargetFunctionInfo(const string callee_name_, bool check_signature_)
       : callee_name(callee_name_),
+        check_signature(check_signature_),
         input_types({PRIMITIVE_TYPE_INVALID}),
-        result_type(PRIMITIVE_TYPE_INVALID),
-        use_bitcast(false) {}
-  TargetFunctionInfo(const string callee_name_,
+        result_type(PRIMITIVE_TYPE_INVALID) {}
+  // Potential signature mismatch - generate casts if needed.
+  TargetFunctionInfo(const string callee_name_, bool check_signature_,
+                     absl::Span<const PrimitiveType> input_types_,
+                     const PrimitiveType output_type_)
+      : callee_name(callee_name_),
+        check_signature(check_signature_),
+        input_types(input_types_),
+        result_type(output_type_) {}
+  // Potential signature mistamatch - use bitcast if needed.
+  TargetFunctionInfo(const string callee_name_, bool check_signature_,
                      absl::Span<const PrimitiveType> input_types_,
                      const PrimitiveType output_type_, bool use_bitcast_)
       : callee_name(callee_name_),
-        check_signature(true),
+        check_signature(check_signature_),
         input_types(input_types_),
         result_type(output_type_),
         use_bitcast(use_bitcast_) {}
   // Device function name.
   const string callee_name;
-  // Check signature of the device function and if needed generate casts
-  absl::optional<bool> check_signature;
+  // Check signature of the device function and if needed generate casts.
+  bool check_signature;
   // Inpute types accespted by the device function.
   absl::Span<const PrimitiveType> input_types;
   // Result type of the device function.
   PrimitiveType result_type;
   // Use bitcast to generate casts if the desired signature at the call site
   // does not match the signature of the device function.
-  bool use_bitcast;
-} target_function_info;
+  absl::optional<bool> use_bitcast;
+};
 
 // Wrapper structure to carry either information about the intrinsic
 // or device function for NVPTX/AMDGPU.
@@ -99,9 +103,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
     case TargetFunctionID::kShflDownF32:{ 
       TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_shfl_sync_down_f32);
       TargetFunctionInfo amdgpu_function_info(
-           "__ockl_readuplane" ,
-           { PRIMITIVE_TYPE_INVALID, S32, S32, PRIMITIVE_TYPE_INVALID}, 
-                  S32, true);
+          "__ockl_readuplane", true,
+          {PRIMITIVE_TYPE_INVALID, S32, S32, PRIMITIVE_TYPE_INVALID}, S32,
+          true);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
          return TargetInfo(nvptx_intrinsic_info);
@@ -112,9 +116,9 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
     case TargetFunctionID::kShflDownI32:{ 
       TargetIntrinsicInfo nvptx_intrinsic_info(llvm::Intrinsic::nvvm_shfl_sync_down_i32);
       TargetFunctionInfo amdgpu_function_info(
-           "__ockl_readuplane" ,
-           { PRIMITIVE_TYPE_INVALID, S32, S32, PRIMITIVE_TYPE_INVALID}, 
-                  S32, true);
+          "__ockl_readuplane", true,
+          {PRIMITIVE_TYPE_INVALID, S32, S32, PRIMITIVE_TYPE_INVALID}, S32,
+          true);
 
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
@@ -198,8 +202,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kPow: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_pow");
-      TargetFunctionInfo nvptx_function_info("__nv_pow");
+      TargetFunctionInfo amdgpu_function_info("__ocml_pow", false);
+      TargetFunctionInfo nvptx_function_info("__nv_pow", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -208,8 +212,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kErfcinv: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_erfcinv");
-      TargetFunctionInfo nvptx_function_info("__nv_erfcinv");
+      TargetFunctionInfo amdgpu_function_info("__ocml_erfcinv", false);
+      TargetFunctionInfo nvptx_function_info("__nv_erfcinv", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -218,8 +222,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kLog: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_log");
-      TargetFunctionInfo nvptx_function_info("__nv_log");
+      TargetFunctionInfo amdgpu_function_info("__ocml_log", false);
+      TargetFunctionInfo nvptx_function_info("__nv_log", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -228,8 +232,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kLog1p: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_log1p");
-      TargetFunctionInfo nvptx_function_info("__nv_log1p");
+      TargetFunctionInfo amdgpu_function_info("__ocml_log1p", false);
+      TargetFunctionInfo nvptx_function_info("__nv_log1p", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -238,8 +242,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kSin: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_sin");
-      TargetFunctionInfo nvptx_function_info("__nv_sin");
+      TargetFunctionInfo amdgpu_function_info("__ocml_sin", false);
+      TargetFunctionInfo nvptx_function_info("__nv_sin", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -248,8 +252,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kCos: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_cos");
-      TargetFunctionInfo nvptx_function_info("__nv_cos");
+      TargetFunctionInfo amdgpu_function_info("__ocml_cos", false);
+      TargetFunctionInfo nvptx_function_info("__nv_cos", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -258,8 +262,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kExp: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_exp");
-      TargetFunctionInfo nvptx_function_info("__nv_exp");
+      TargetFunctionInfo amdgpu_function_info("__ocml_exp", false);
+      TargetFunctionInfo nvptx_function_info("__nv_exp", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -268,8 +272,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kExpm1: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_expm1");
-      TargetFunctionInfo nvptx_function_info("__nv_expm1");
+      TargetFunctionInfo amdgpu_function_info("__ocml_expm1", false);
+      TargetFunctionInfo nvptx_function_info("__nv_expm1", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -278,8 +282,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kSqrt: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_sqrt");
-      TargetFunctionInfo nvptx_function_info("__nv_sqrt");
+      TargetFunctionInfo amdgpu_function_info("__ocml_sqrt", false);
+      TargetFunctionInfo nvptx_function_info("__nv_sqrt", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -288,8 +292,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kRsqrt: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_rsqrt");
-      TargetFunctionInfo nvptx_function_info("__nv_rsqrt");
+      TargetFunctionInfo amdgpu_function_info("__ocml_rsqrt", false);
+      TargetFunctionInfo nvptx_function_info("__nv_rsqrt", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -298,8 +302,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kAtan2: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_atan2");
-      TargetFunctionInfo nvptx_function_info("__nv_atan2");
+      TargetFunctionInfo amdgpu_function_info("__ocml_atan2", false);
+      TargetFunctionInfo nvptx_function_info("__nv_atan2", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -308,8 +312,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kFmod: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_fmod");
-      TargetFunctionInfo nvptx_function_info("__nv_fmod");
+      TargetFunctionInfo amdgpu_function_info("__ocml_fmod", false);
+      TargetFunctionInfo nvptx_function_info("__nv_fmod", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -318,8 +322,8 @@ struct TargetInfo GetTargetInfo(TargetFunctionID function_id,
       }
     }
     case TargetFunctionID::kRound: {
-      TargetFunctionInfo amdgpu_function_info("__ocml_round");
-      TargetFunctionInfo nvptx_function_info("__nv_round");
+      TargetFunctionInfo amdgpu_function_info("__ocml_round", false);
+      TargetFunctionInfo nvptx_function_info("__nv_round", false);
       if (target_triple.getArch() == llvm::Triple::nvptx ||
           target_triple.getArch() == llvm::Triple::nvptx64) {
         return TargetInfo(nvptx_function_info);
@@ -352,7 +356,6 @@ llvm::Value* EmitCallToTargetFunction(
     PrimitiveType from_type, to_type;
     PrimitiveType callee_result_type;
     if (gpu_info.target_function_info->check_signature) {
-      auto indices = gpu_info.target_function_info->input_types.size();
       CHECK_EQ(input_types.size(),
                gpu_info.target_function_info->input_types.size());
       CHECK_EQ(input_types.size(), operands.size());
@@ -427,7 +430,6 @@ llvm::Value* EmitCallToTargetFunction(
     if (from_type == to_type){
       return result;
     } else if (gpu_info.target_function_info->use_bitcast) {
-      int bit_width = result->getType()->getPrimitiveSizeInBits();
       llvm::Value* converted_result = b->CreateBitCast(
           result, llvm_ir::PrimitiveTypeToIrType(to_type, module));
       return converted_result;
