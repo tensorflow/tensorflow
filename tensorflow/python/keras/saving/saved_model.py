@@ -256,8 +256,8 @@ def _export_mode(
 
     # Make sure that iterations variable is added to the global step collection,
     # to ensure that, when the SavedModel graph is loaded, the iterations
-    # variable is returned by `tf.train.get_global_step()`. This is required for
-    # compatibility with the SavedModelEstimator.
+    # variable is returned by `tf.compat.v1.train.get_global_step()`. This is
+    # required for compatibility with the SavedModelEstimator.
     if compile_clone:
       g.add_to_collection(ops.GraphKeys.GLOBAL_STEP, clone.optimizer.iterations)
 
