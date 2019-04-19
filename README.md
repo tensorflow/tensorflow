@@ -109,3 +109,10 @@ building a compiler for a Toy language.
   * Chris Lattner & Jacques Pienaar, Google at
     [Compilers for Machine Learning](https://www.c4ml.org/) workshop at
     [CGO 2019](http://cgo.org/cgo2019/)
+* "[MLIR: Multi-Level Intermediate Representation for Compiler
+    Infrastructure](https://llvm.org/devmtg/2019-04/talks.html#Keynote_1)"
+  * Tatiana Shpeisman & Chris Lattner, Google at
+    [EuroLLVM 2019](https://llvm.org/devmtg/2019-04)
+* "[Tutorial: Building a Compiler with MLIR](https://llvm.org/devmtg/2019-04/talks.html#Tutorial_1)"
+  * Mehdi Amini, Jacques Pienaar, Nicolas Vasilache, Google at
+    [EuroLLVM 2019](https://llvm.org/devmtg/2019-04)
