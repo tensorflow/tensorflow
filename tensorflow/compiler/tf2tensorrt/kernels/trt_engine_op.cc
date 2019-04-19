@@ -173,6 +173,9 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.state_handle = "";
   inst_ops.target = ctx->device()->name();
+  inst_ops.is_multi_device_function = true;
+  inst_ops.input_devices.assign(ctx->num_inputs(), ctx->device()->name());
+  inst_ops.output_devices.assign(ctx->num_outputs(), ctx->device()->name());
   native_func_ = 0;
   auto status = lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()),
                                  inst_ops, &native_func_);

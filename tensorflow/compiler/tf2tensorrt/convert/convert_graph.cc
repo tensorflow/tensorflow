@@ -676,12 +676,13 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
   for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
     auto name = StrCat(kOutputPHName, i);
     auto node = io_nodes[name];
+    // Create RetOp connected to output port 0 of output Identity node. Keeping
+    // the identity op in place allows TF to use it to move the output of node
+    // to the correct device.
     NodeDef nd;
     NodeDefBuilder node_builder(StrCat(name, "_Ret"),
                                 FunctionLibraryDefinition::kRetOp);
-    auto edge = *(node->in_edges().begin());
-    NodeDefBuilder::NodeOut nout(edge->src()->name(), edge->src_output(),
-                                 edge->src()->output_type(edge->src_output()));
+    NodeDefBuilder::NodeOut nout(node->name(), 0, node->output_type(0));
     VLOG(1) << " input " << nout.node << ":" << nout.index
             << " dtype=" << DataTypeString(nout.data_type);
     // nvcc complains that Input(<brace-enclosed initializer list>) is
@@ -698,27 +699,19 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Ret node for " << name;
     }
-    VLOG(1) << "Update edge from " << edge->src()->name() << ":"
-            << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
-    sgraph.AddEdge(edge->src(), edge->src_output(), node_ret, 0);
-    s = sgraph.UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
+    VLOG(1) << "Add edge from " << node->name() << ":" << 0 << " - > "
+            << node_ret->name() << ":" << 0;
+    sgraph.AddEdge(node, 0, node_ret, 0);
+    s = sgraph.UpdateEdge(node, 0, node_ret, 0);
     if (!s.ok()) {
-      LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
-                 << edge->src_output() << " - > " << node_ret->name() << ":"
-                 << 0;
+      LOG(ERROR) << "Failed to update edge from " << node->name() << ":" << 0
+                 << " - > " << node_ret->name() << ":" << 0;
     }
-    sgraph.RemoveNode(node);
   }
   FunctionDefLibrary fdeflib;
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       sgraph, StrCat(engine_name, "_native_segment"), native_segment));
-  // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
-  // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
-  // would be on host if the op generating the tensor has host memory tag set.
-  (*native_segment
-        ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
-      .set_b(true);
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
