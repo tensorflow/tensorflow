@@ -880,7 +880,7 @@ class _EagerTensorBase(Tensor):
       self_device = self.device
 
       def grad_fun(dresult):
-        return [dresult] if isinstance(dresult, IndexedSlices) else [dresult._copy(device_name=self_device)]
+        return [dresult._copy(device_name=self_device)] if hasattr(dresult, '_copy') else [dresult]
 
       tape.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
