@@ -1240,22 +1240,33 @@ class DatasetV2(tracking_base.Trackable):
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
-    """Combines input elements into a dataset of windows.
+    """Combines (nests of) input elements into a dataset of (nests of) windows.
 
-    Each window is a dataset itself and contains `size` elements (or
-    possibly fewer if there are not enough input elements to fill the window
-    and `drop_remainder` evaluates to false).
+    A "window" is a finite dataset of flat elements of size `size` (or possibly
+    fewer if there are not enough input elements to fill the window and
+    `drop_remainder` evaluates to false).
 
-    The `stride` argument determines the stride of the input elements,
-    and the `shift` argument determines the shift of the window.
+    The `stride` argument determines the stride of the input elements, and the
+    `shift` argument determines the shift of the window.
 
-    For example:
+    For example, letting {...} to represent a Dataset:
+
     - `tf.data.Dataset.range(7).window(2)` produces
       `{{0, 1}, {2, 3}, {4, 5}, {6}}`
     - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
       `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
     - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
       `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+
+    Note that when the `window` transformation is applied to a dataset of
+    nested elements, it produces a dataset of nested windows.
+
+    For example:
+
+    - `tf.data.Dataset.from_tensor_slices((range(4), range(4)).window(2)`
+      produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
+    - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
+      produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
@@ -1270,9 +1281,9 @@ class DatasetV2(tracking_base.Trackable):
         `window_size`.
 
     Returns:
-      Dataset: A `Dataset` of windows, each of which is a nested `Dataset` with
-        the same structure as this dataset, but a finite subsequence of its
-        elements.
+      Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
+        elements created from the (nests of) input elements.
+
     """
     if shift is None:
       shift = size
