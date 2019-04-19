@@ -752,11 +752,11 @@ static bool isDialectTypeSimpleEnoughForPrettyForm(StringRef typeName) {
         return false;
       break;
     case ')':
-      if (nestedPunctuation.pop_back_val() != ')')
+      if (nestedPunctuation.pop_back_val() != '(')
         return false;
       break;
     case '}':
-      if (nestedPunctuation.pop_back_val() != '}')
+      if (nestedPunctuation.pop_back_val() != '{')
         return false;
       break;
     default:

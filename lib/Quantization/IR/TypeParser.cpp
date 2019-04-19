@@ -67,12 +67,10 @@ namespace {
 enum class TokenKind {
   error,
   eof,
-  l_bracket,
-  r_bracket,
   l_brace,
   r_brace,
-  l_paren,
-  r_paren,
+  l_angle,
+  r_angle,
   colon,
   comma,
   alpha_ident,
@@ -144,18 +142,14 @@ Token Lexer::lexToken() {
 
     return emitError(tokStart, "unexpected character");
 
-  case '[':
-    return formToken(TokenKind::l_bracket, tokStart);
-  case ']':
-    return formToken(TokenKind::r_bracket, tokStart);
+  case '<':
+    return formToken(TokenKind::l_angle, tokStart);
+  case '>':
+    return formToken(TokenKind::r_angle, tokStart);
   case '{':
     return formToken(TokenKind::l_brace, tokStart);
   case '}':
     return formToken(TokenKind::r_brace, tokStart);
-  case '(':
-    return formToken(TokenKind::l_paren, tokStart);
-  case ')':
-    return formToken(TokenKind::r_paren, tokStart);
   case ':':
     return formToken(TokenKind::colon, tokStart);
   case ',':
@@ -312,17 +306,17 @@ Type TypeParser::parseType() {
 
 /// Parses a UniformQuantizedType.
 ///
-///   uniform_type ::= `uniform` type_spec quant_param_spec
-///
-///   type_spec ::= `[` storage-spec `:` expressed-type (quant-dim)? `]`
-///   quant-dim ::= `:` integer-literal
-///   storage-spec ::= storage-type (`(` storage-range `)`)?
+///   uniform_type ::= uniform_per_layer
+///                  | uniform_per_axis
+///   uniform_per_layer ::= `uniform<` storage-spec `,` scale-zero `>`
+///   uniform_per_axis ::= `uniform<` storage-spec axis-spec
+///                        `,` scale-zero-list `>`
+///   storage-spec ::= storage-type (`<` storage-range `>`)?
 ///   storage-range ::= integer-literal `:` integer-literal
 ///   storage-type ::= (`i` | `u`) integer-literal
-///   expressed-type ::= (`f16` | `f32` | `f64` | `bf16`)
-///
-///   quant_param_spec ::= `{` scale-zero (`,` scale-zero )* `}`
+///   axis-spec ::= `:` integer-literal
 ///   scale-zero ::= float-literal `:` integer-literal
+///   scale-zero-list ::= `{` scale-zero (`,` scale-zero)* `}`
 Type TypeParser::parseUniformType() {
   IntegerType storageType;
   FloatType expressedType;
@@ -335,7 +329,7 @@ Type TypeParser::parseUniformType() {
   SmallVector<int64_t, 1> zeroPoints;
 
   // Type specification.
-  if (!consumeIf(TokenKind::l_bracket)) {
+  if (!consumeIf(TokenKind::l_angle)) {
     return (emitError("unrecognized token: " + curToken.spelling), nullptr);
   }
 
@@ -354,7 +348,7 @@ Type TypeParser::parseUniformType() {
       isSigned, storageType.getWidth());
   int64_t defaultIntegerMax = QuantizedType::getDefaultMaxinumForInteger(
       isSigned, storageType.getWidth());
-  if (consumeIf(TokenKind::l_paren)) {
+  if (consumeIf(TokenKind::l_angle)) {
     // Explicit storage min and storage max.
     if (curToken.kind != TokenKind::integer_literal) {
       return (emitError("expected storage type minimum"), nullptr);
@@ -380,7 +374,7 @@ Type TypeParser::parseUniformType() {
     }
     consumeToken(TokenKind::integer_literal);
 
-    if (!consumeIf(TokenKind::r_paren)) {
+    if (!consumeIf(TokenKind::r_angle)) {
       return (emitError("unrecognized token: " + curToken.spelling), nullptr);
     }
   } else {
@@ -410,13 +404,17 @@ Type TypeParser::parseUniformType() {
     isPerAxis = true;
   }
 
-  if (!consumeIf(TokenKind::r_bracket)) {
+  // Comma leading into range_spec.
+  if (!consumeIf(TokenKind::comma)) {
     return (emitError("unrecognized token: " + curToken.spelling), nullptr);
   }
 
   // Parameter specification.
-  if (!consumeIf(TokenKind::l_brace)) {
-    return (emitError("unrecognized token: " + curToken.spelling), nullptr);
+  // For per-axis, ranges are in a {} delimitted list.
+  if (isPerAxis) {
+    if (!consumeIf(TokenKind::l_brace)) {
+      return (emitError("unrecognized token: " + curToken.spelling), nullptr);
+    }
   }
 
   // Parse scales/zeroPoints.
@@ -426,9 +424,15 @@ Type TypeParser::parseUniformType() {
     if (parseQuantParams(scales.back(), zeroPoints.back())) {
       return nullptr;
     }
-  } while (consumeIf(TokenKind::comma));
+  } while (isPerAxis && consumeIf(TokenKind::comma));
 
-  if (!consumeIf(TokenKind::r_brace)) {
+  if (isPerAxis) {
+    if (!consumeIf(TokenKind::r_brace)) {
+      return (emitError("unrecognized token: " + curToken.spelling), nullptr);
+    }
+  }
+
+  if (!consumeIf(TokenKind::r_angle)) {
     return (emitError("unrecognized token: " + curToken.spelling), nullptr);
   }
 
@@ -567,8 +571,8 @@ static void printStorageType(QuantizedType type, raw_ostream &out) {
       QuantizedType::getDefaultMaxinumForInteger(isSigned, storageWidth);
   if (defaultIntegerMin != type.getStorageTypeMin() ||
       defaultIntegerMax != type.getStorageTypeMax()) {
-    out << "(" << type.getStorageTypeMin() << ":" << type.getStorageTypeMax()
-        << ")";
+    out << "<" << type.getStorageTypeMin() << ":" << type.getStorageTypeMax()
+        << ">";
   }
 }
 
@@ -599,28 +603,27 @@ static void printQuantParams(double scale, int64_t zeroPoint,
 /// Helper that prints a UniformQuantizedType.
 static void printUniformQuantizedType(UniformQuantizedType type,
                                       raw_ostream &out) {
-  out << "uniform[";
+  out << "uniform<";
   printStorageType(type, out);
   out << ":";
   printExpressedType(type, out);
-  out << "]";
+  out << ", ";
 
   // scheme specific parameters
-  out << "{";
   printQuantParams(type.getScale(), type.getZeroPoint(), out);
-  out << "}";
+  out << ">";
 }
 
 /// Helper that prints a UniformQuantizedPerAxisType.
 static void printUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type,
                                              raw_ostream &out) {
-  out << "uniform[";
+  out << "uniform<";
   printStorageType(type, out);
   out << ":";
   printExpressedType(type, out);
   out << ":";
   out << type.getQuantizedDimension();
-  out << "]";
+  out << ", ";
 
   // scheme specific parameters
   ArrayRef<double> scales = type.getScales();
@@ -632,7 +635,7 @@ static void printUniformQuantizedPerAxisType(UniformQuantizedPerAxisType type,
       out << ",";
     }
   }
-  out << "}";
+  out << "}>";
 }
 
 /// Print a type registered to this dialect.
