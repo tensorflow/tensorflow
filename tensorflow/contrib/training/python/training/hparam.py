@@ -161,6 +161,11 @@ def _cast_to_type_if_compatible(name, param_type, value):
       "Could not cast hparam '%s' of type '%s' from value %r" %
       (name, param_type, value))
 
+  # If `value` is already of type `param_type`, return it directly.
+  # `isinstance` is too weak (e.g. isinstance(True, int) == True).
+  if type(value) == param_type:  # pylint: disable=unidiomatic-typecheck
+    return value
+
   # Some callers use None, for which we can't do any casting/checking. :(
   if issubclass(param_type, type(None)):
     return value
@@ -545,7 +550,7 @@ class HParams(object):
       ValueError: If `values` cannot be parsed or a hyperparameter in `values`
       doesn't exist.
     """
-    type_map = dict()
+    type_map = {}
     for name, t in self._hparam_types.items():
       param_type, _ = t
       type_map[name] = param_type
@@ -658,10 +663,13 @@ class HParams(object):
     return key in self._hparam_types
 
   def __str__(self):
-    return str(sorted(self.values().items()))
+    hpdict = self.values()
+    output_list = ['{}={}'.format(key, hpdict[key]) for key in hpdict]
+    return ','.join(output_list)
 
   def __repr__(self):
-    return '%s(%s)' % (type(self).__name__, self.__str__())
+    strval = str(sorted(self.values().items()))
+    return '%s(%s)' % (type(self).__name__, strval)
 
   @staticmethod
   def _get_kind_name(param_type, is_list):

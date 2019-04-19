@@ -30,7 +30,9 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util.tf_export import keras_export
 
@@ -41,6 +43,96 @@ _DEFUN_API_NAME_ATTRIBUTE = 'api_implements'
 _DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
 _CPU_DEVICE_NAME = 'CPU'
 _GPU_DEVICE_NAME = 'GPU'
+
+
+@keras_export('keras.layers.GRUCell', v1=[])
+class GRUCell(recurrent.GRUCell):
+  """Cell class for the GRU layer.
+
+  Arguments:
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use. Default: hyperbolic tangent
+      (`tanh`). If you pass None, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use for the recurrent step.
+      Default: sigmoid (`sigmoid`). If you pass `None`, no activation is
+      applied (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix, used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to the `kernel` weights
+      matrix.
+    recurrent_regularizer: Regularizer function applied to the
+      `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to the `kernel` weights
+      matrix.
+    recurrent_constraint: Constraint function applied to the `recurrent_kernel`
+      weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the
+      linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 (default) will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+    reset_after: GRU convention (whether to apply reset gate after or
+      before matrix multiplication). False = "before",
+      True = "after" (default and CuDNN compatible).
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
+  """
+
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=2,
+               reset_after=True,
+               **kwargs):
+    super(GRUCell, self).__init__(
+        units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        reset_after=reset_after,
+        **kwargs)
 
 
 @keras_export('keras.layers.GRU', v1=[])
@@ -61,7 +153,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   4. `unroll` is False
   5. `use_bias` is True
   6. `reset_after` is True
-  7. No use of masking.
+  7. Inputs are not masked or strictly right padded.
 
   There are two variants of the GRU implementation. The default one is based on
   [v3](https://arxiv.org/abs/1406.1078v3) and has reset gate applied to hidden
@@ -163,7 +255,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
+               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -218,7 +310,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if mask is not None or not self.could_use_cudnn:
+    if not self.could_use_cudnn:
       # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
 
@@ -240,7 +332,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       runtime = _runtime('unknown')
     else:
       last_output, outputs, runtime, states = self._defun_gru_call(
-          inputs, initial_state, training)
+          inputs, initial_state, training, mask)
 
     if self.stateful:
       updates = [state_ops.assign(self.states[0], states[0])]
@@ -258,41 +350,45 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     else:
       return output
 
-  def _defun_gru_call(self, inputs, initial_state, training):
+  def _defun_gru_call(self, inputs, initial_state, training, mask):
     # Use the new defun approach for backend implementation swap.
     # Note that different implementations need to have same function
     # signature, eg, the tensor parameters need to have same shape and dtypes.
-    if self.go_backwards:
-      # Reverse time axis.
-      inputs = K.reverse(inputs, 0 if self.time_major else 1)
 
     self.reset_dropout_mask()
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
       inputs *= dropout_mask[0]
+
+    cudnn_gru_kwargs = {
+        'inputs': inputs,
+        'init_h': initial_state[0],
+        'kernel': self.cell.kernel,
+        'recurrent_kernel': self.cell.recurrent_kernel,
+        'bias': self.cell.bias,
+        'mask': mask,
+        'time_major': self.time_major,
+        'go_backwards': self.go_backwards
+    }
+    normal_gru_kwargs = cudnn_gru_kwargs.copy()
+    normal_gru_kwargs.update({
+        'activation': self.activation,
+        'recurrent_activation': self.recurrent_activation
+    })
+
     if context.executing_eagerly():
       device_type = _get_context_device_type()
-      if device_type == _GPU_DEVICE_NAME or (
-          device_type is None and context.num_gpus() > 0):
-        # Under eager context, check the device placement and prefer the
-        # GPU implementation when GPU is available.
-        last_output, outputs, new_h, runtime = cudnn_gru(
-            inputs=inputs,
-            init_h=initial_state[0],
-            kernel=self.cell.kernel,
-            recurrent_kernel=self.cell.recurrent_kernel,
-            bias=self.cell.bias,
-            time_major=self.time_major)
+      can_use_gpu = (
+          # Either user specified GPU or unspecified but GPU is available.
+          (device_type == _GPU_DEVICE_NAME
+           or (device_type is None and context.num_gpus() > 0))
+          and
+          (mask is None or is_sequence_right_padded(mask, self.time_major)))
+      # Under eager context, check the device placement and prefer the
+      if can_use_gpu:
+        last_output, outputs, new_h, runtime = cudnn_gru(**cudnn_gru_kwargs)
       else:
-        last_output, outputs, new_h, runtime = standard_gru(
-            inputs=inputs,
-            init_h=initial_state[0],
-            kernel=self.cell.kernel,
-            recurrent_kernel=self.cell.recurrent_kernel,
-            bias=self.cell.bias,
-            activation=self.activation,
-            recurrent_activation=self.recurrent_activation,
-            time_major=self.time_major)
+        last_output, outputs, new_h, runtime = standard_gru(**normal_gru_kwargs)
     else:
       api_name = 'gru_' + str(uuid.uuid4())
       defun_standard_gru = _generate_defun_backend(
@@ -302,24 +398,26 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       # Call the normal GRU impl and register the CuDNN impl function. The
       # grappler will kick in during session execution to optimize the graph.
       last_output, outputs, new_h, runtime = defun_standard_gru(
-          inputs=inputs,
-          init_h=initial_state[0],
-          kernel=self.cell.kernel,
-          recurrent_kernel=self.cell.recurrent_kernel,
-          bias=self.cell.bias,
-          activation=self.activation,
-          recurrent_activation=self.recurrent_activation,
-          time_major=self.time_major)
+          **normal_gru_kwargs)
 
-      function.register(defun_cudnn_gru, inputs, initial_state[0],
-                        self.cell.kernel, self.cell.recurrent_kernel,
-                        self.cell.bias, self.time_major)
+      def register_cudnn_defun():
+        function.register(defun_cudnn_gru, **cudnn_gru_kwargs)
+        # return some dummy value since the tf.cond require some return value.
+        return 0
+      if mask is None:
+        register_cudnn_defun()
+      else:
+        # Only when seq_right_padded=True, CuDNN kernel can support that
+        # properly.
+        control_flow_ops.cond(is_sequence_right_padded(mask, self.time_major),
+                              true_fn=register_cudnn_defun,
+                              false_fn=lambda: 0)
     states = [new_h]
     return last_output, outputs, runtime, states
 
 
 def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
-                 recurrent_activation, time_major):
+                 recurrent_activation, mask, time_major, go_backwards):
   """GRU with standard kernel implementation.
 
   This implementation can be run on all types of hardware.
@@ -330,16 +428,20 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
   removed since CuDNN implementation does not support that.
 
   Arguments:
-    inputs: input tensor of GRU layer.
-    init_h: initial state tensor for the cell output.
-    kernel: weights for cell kernel.
-    recurrent_kernel: weights for cell recurrent kernel.
-    bias: weights for cell kernel bias and recurrent bias. The bias contains the
+    inputs: Input tensor of GRU layer.
+    init_h: Initial state tensor for the cell output.
+    kernel: Weights for cell kernel.
+    recurrent_kernel: Weights for cell recurrent kernel.
+    bias: Weights for cell kernel bias and recurrent bias. The bias contains the
       combined input_bias and recurrent_bias.
     activation: Activation function to use for output.
     recurrent_activation: Activation function to use for hidden recurrent state.
-    time_major: boolean, whether the inputs are in the format of
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
+    go_backwards: Boolean (default False). If True, process the input sequence
+      backwards and return the reversed sequence.
 
   Returns:
     last_output: output tensor for the last timestep, which has shape
@@ -385,11 +487,14 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
       constants=None,
       unroll=False,
       time_major=time_major,
+      mask=mask,
+      go_backwards=go_backwards,
       input_length=timesteps)
   return last_output, outputs, new_states[0], _runtime('cpu')
 
 
-def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
+def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
+              go_backwards):
   """GRU with CuDNN implementation which is only available for GPU."""
   if not time_major:
     inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
@@ -417,18 +522,129 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
       shape=constant_op.constant([-1]),
       transpose_weights=True)
 
-  outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
+  if mask is not None:
+    sequence_length = calculate_sequence_by_mask(mask, time_major)
+  else:
+    # Fill the array with shape [batch] with value of max timesteps.
+    sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
+                                     array_ops.shape(inputs)[0])
+  if go_backwards:
+    inputs = array_ops.reverse_sequence_v2(inputs, sequence_length, seq_axis=0,
+                                           batch_axis=1)
+
+  outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
       inputs,
       input_h=init_h,
       input_c=0,
       params=params,
       is_training=True,
-      rnn_mode='gru')
+      rnn_mode='gru',
+      sequence_lengths=sequence_length)
   last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = h[0]
+
+  # In the case of variable length input, the cudnn kernel will fill zeros for
+  # the output, whereas the default keras behavior is to bring over the previous
+  # output for t-1, so that in the return_sequence=False case, user can quickly
+  # get the final effect output instead just 0s at the last timestep.
+  # In order to mimic the default keras behavior, we copy the final h state as
+  # the last_output, since it is numerically same as the output.
+  if mask is not None:
+    last_output = h
+
   return last_output, outputs, h, _runtime('cudnn')
+
+
+@keras_export('keras.layers.LSTMCell', v1=[])
+class LSTMCell(recurrent.LSTMCell):
+  """Cell class for the LSTM layer.
+
+  Arguments:
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use. Default: hyperbolic tangent
+      (`tanh`). If you pass `None`, no activation is applied (ie. "linear"
+      activation: `a(x) = x`).
+    recurrent_activation: Activation function to use for the recurrent step.
+      Default: sigmoid (`sigmoid`). If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix, used for
+      the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel` weights
+      matrix, used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    unit_forget_bias: Boolean. If True, add 1 to the bias of the forget gate at
+      initialization. Setting it to true will also force
+      `bias_initializer="zeros"`. This is recommended in [Jozefowicz et
+        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+    kernel_regularizer: Regularizer function applied to the `kernel` weights
+      matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to the `kernel` weights
+      matrix.
+    recurrent_constraint: Constraint function applied to the `recurrent_kernel`
+      weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the linear
+      transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of smaller dot
+      products and additions, whereas mode 2 (default) will batch them into
+      fewer, larger operations. These modes will have different performance
+      profiles on different hardware and for different applications.
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
+  """
+
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=2,
+               **kwargs):
+    super(LSTMCell, self).__init__(
+        units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        **kwargs)
 
 
 @keras_export('keras.layers.LSTM', v1=[])
@@ -448,7 +664,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   3. `recurrent_dropout` == 0
   4. `unroll` is False
   5. `use_bias` is True
-  7. No use of masking.
+  6. Inputs are not masked or strictly right padded.
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -533,7 +749,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
+               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -589,8 +805,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    if mask is not None or not self.could_use_cudnn:
-      # CuDNN does not support masking, fall back to use the normal LSTM.
+    if not self.could_use_cudnn:
+      # Fall back to use the normal LSTM.
       kwargs = {'training': training}
 
       def step(inputs, states):
@@ -614,29 +830,43 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       # signature, eg, the tensor parameters need to have same shape and dtypes.
       # Since the CuDNN has an extra set of bias, those bias will be passed to
       # both normal and CuDNN implementations.
-      if self.go_backwards:
-        # Reverse time axis.
-        inputs = K.reverse(inputs, 0 if self.time_major else 1)
-
       self.reset_dropout_mask()
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
         inputs *= dropout_mask[0]
+      cudnn_lstm_kwargs = {
+          'inputs': inputs,
+          'init_h': initial_state[0],
+          'init_c': initial_state[1],
+          'kernel': self.cell.kernel,
+          'recurrent_kernel': self.cell.recurrent_kernel,
+          'bias': self.cell.bias,
+          'mask': mask,
+          'time_major': self.time_major,
+          'go_backwards': self.go_backwards
+      }
+      normal_lstm_kwargs = cudnn_lstm_kwargs.copy()
+      normal_lstm_kwargs.update({
+          'activation': self.activation,
+          'recurrent_activation': self.recurrent_activation
+      })
 
       if context.executing_eagerly():
         device_type = _get_context_device_type()
-        if device_type == _GPU_DEVICE_NAME or (
-            device_type is None and context.num_gpus() > 0):
-          # Under eager context, check the device placement and prefer the
-          # GPU implementation when GPU is available.
+        can_use_gpu = (
+            # Either user specified GPU or unspecified but GPU is available.
+            (device_type == _GPU_DEVICE_NAME
+             or (device_type is None and context.num_gpus() > 0))
+            and
+            (mask is None or is_sequence_right_padded(mask, self.time_major)))
+        # Under eager context, check the device placement and prefer the
+        # GPU implementation when GPU is available.
+        if can_use_gpu:
           last_output, outputs, new_h, new_c, runtime = cudnn_lstm(
-              inputs, initial_state[0], initial_state[1], self.cell.kernel,
-              self.cell.recurrent_kernel, self.cell.bias, self.time_major)
+              **cudnn_lstm_kwargs)
         else:
           last_output, outputs, new_h, new_c, runtime = standard_lstm(
-              inputs, initial_state[0], initial_state[1], self.cell.kernel,
-              self.cell.recurrent_kernel, self.cell.bias, self.activation,
-              self.recurrent_activation, self.time_major)
+              **normal_lstm_kwargs)
       else:
         # Each time a `tf.function` is called, we will give it a unique
         # identifiable API name, so that Grappler won't get confused when it
@@ -651,14 +881,20 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
         # Call the normal LSTM impl and register the CuDNN impl function. The
         # grappler will kick in during session execution to optimize the graph.
         last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
-            inputs, initial_state[0], initial_state[1], self.cell.kernel,
-            self.cell.recurrent_kernel, self.cell.bias, self.activation,
-            self.recurrent_activation, self.time_major)
+            **normal_lstm_kwargs)
 
-        function.register(defun_cudnn_lstm, inputs, initial_state[0],
-                          initial_state[1], self.cell.kernel,
-                          self.cell.recurrent_kernel, self.cell.bias,
-                          self.time_major)
+        def register_cudnn_defun():
+          function.register(defun_cudnn_lstm, **cudnn_lstm_kwargs)
+          # return some dummy value since the tf.cond require some return value.
+          return 0
+        if mask is None:
+          register_cudnn_defun()
+        else:
+          # Only when seq_right_padded=True, CuDNN kernel can support that
+          # properly.
+          control_flow_ops.cond(is_sequence_right_padded(mask, self.time_major),
+                                true_fn=register_cudnn_defun,
+                                false_fn=lambda: 0)
       states = [new_h, new_c]
 
     if self.stateful:
@@ -712,7 +948,8 @@ def _canonical_to_params(weights, biases, shape, transpose_weights=False):
 
 
 def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
-                  activation, recurrent_activation, time_major):
+                  activation, recurrent_activation, mask, time_major,
+                  go_backwards):
   """LSTM with standard kernel implementation.
 
   This implementation can be run on all types for hardware.
@@ -737,8 +974,11 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
       is used in this case.
     activation: Activation function to use for output.
     recurrent_activation: Activation function to use for hidden recurrent state.
+    mask: Boolean tensor for mask out the steps within sequence.
     time_major: boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
+    go_backwards: Boolean (default False). If True, process the input sequence
+      backwards and return the reversed sequence.
 
   Returns:
     last_output: output tensor for the last timestep, which has shape
@@ -778,17 +1018,48 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
       constants=None,
       unroll=False,
       time_major=time_major,
+      mask=mask,
+      go_backwards=go_backwards,
       input_length=timesteps)
   return last_output, outputs, new_states[0], new_states[1], _runtime('cpu')
 
 
-def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias,
-               time_major):
-  """LSTM with CuDNN implementation which is only available for GPU."""
+def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
+               time_major, go_backwards):
+  """LSTM with CuDNN implementation which is only available for GPU.
+
+  Note that currently only right padded data is supported, or the result will be
+  polluted by the unmasked data which should be filtered.
+
+  Args:
+    inputs: Input tensor of LSTM layer.
+    init_h: Initial state tensor for the cell output.
+    init_c: Initial state tensor for the cell hidden state.
+    kernel: Weights for cell kernel.
+    recurrent_kernel: Weights for cell recurrent kernel.
+    bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
+      is used in this case.
+    mask: Boolean tensor for mask out the steps within sequence.
+    time_major: Boolean, whether the inputs are in the format of
+      [time, batch, feature] or [batch, time, feature].
+    go_backwards: Boolean (default False). If True, process the input sequence
+      backwards and return the reversed sequence.
+
+  Returns:
+    last_output: Output tensor for the last timestep, which has shape
+      [batch, units].
+    outputs: Output tensor for all timesteps, which has shape
+      [batch, time, units].
+    state_0: The cell output, which has same shape as init_h.
+    state_1: The cell hidden state, which has same shape as init_c.
+    runtime: Constant string tensor which indicate real runtime hardware. This
+      value is for testing purpose and should not be used by user.
+  """
   if not time_major:
+    # Cudnn kernel prefer the input to be time major.
     inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
-  input_h = array_ops.expand_dims(input_h, axis=0)
-  input_c = array_ops.expand_dims(input_c, axis=0)
+  init_h = array_ops.expand_dims(init_h, axis=0)
+  init_c = array_ops.expand_dims(init_c, axis=0)
 
   weights = array_ops.split(kernel, 4, axis=1)
   weights += array_ops.split(recurrent_kernel, 4, axis=1)
@@ -796,21 +1067,110 @@ def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias,
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
+  if mask is not None:
+    sequence_length = calculate_sequence_by_mask(mask, time_major)
+  else:
+    # Fill the array with shape [batch] with value of max timesteps.
+    sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
+                                     array_ops.shape(inputs)[0])
+  if go_backwards:
+    inputs = array_ops.reverse_sequence_v2(inputs, sequence_length, seq_axis=0,
+                                           batch_axis=1)
+
   params = _canonical_to_params(
       weights=weights,
       biases=array_ops.split(full_bias, 8),
       shape=constant_op.constant([-1]),
       transpose_weights=True)
 
-  outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      inputs, input_h=input_h, input_c=input_c, params=params, is_training=True)
+  outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
+      inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
+      rnn_mode='lstm', sequence_lengths=sequence_length)
   last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = h[0]
   c = c[0]
 
+  # In the case of variable length input, the cudnn kernel will fill zeros for
+  # the output, whereas the default keras behavior is to bring over the previous
+  # output for t-1, so that in the return_sequence=False case, user can quickly
+  # get the final effect output instead just 0s at the last timestep.
+  # In order to mimic the default keras behavior, we copy the final h state as
+  # the last_output, since it is numerically same as the output.
+  if mask is not None:
+    last_output = h
   return last_output, outputs, h, c, _runtime('cudnn')
+
+
+def is_sequence_right_padded(mask, time_major):
+  """Check the mask tensor and see if it right padded.
+
+  For CuDNN kernel, it uses the sequence length param to skip the tailing
+  timestep. If the data is left padded, or not a strict right padding (has
+  masked value in the middle of the sequence), then CuDNN kernel won't be work
+  properly in those cases.
+
+  Left padded data: [[False, False, True, True, True]].
+  Right padded data: [[True, True, True, False, False]].
+  Mixture of mask/unmasked data: [[True, False, True, False, False]].
+
+  Note that for the mixed data example above, the actually data RNN should see
+  are those 2 Trues (index 0 and 2), the index 1 False should be ignored and not
+  pollute the internal states.
+
+  Args:
+    mask: the Boolean tensor with shape [batch, timestep] or [timestep, batch]
+      when time_major is True.
+    time_major: Boolean, whether the input mask is time major or batch major.
+
+  Returns:
+    boolean scalar tensor, whether the mask is strictly right padded.
+  """
+  timestep_index = 0 if time_major else 1
+  max_seq_length = array_ops.shape(mask)[timestep_index]
+  reversed_mask = math_ops.cast(array_ops.reverse(mask, axis=[timestep_index]),
+                                dtypes.int32)
+  # Use the argmax to find the index of leading 1 in the reversed mask, which is
+  # the index of the last True value in the original mask.
+  index = math_ops.argmax(reversed_mask, axis=timestep_index,
+                          output_type=dtypes.int32)
+  count_of_true = math_ops.reduce_sum(reversed_mask, axis=timestep_index)
+  # If the data is strictly right padded, then the
+  # "index = max_seq_length - count_of_true" should hold.
+  return math_ops.reduce_all(
+      math_ops.equal(index, max_seq_length - count_of_true))
+
+
+def calculate_sequence_by_mask(mask, time_major):
+  """Calculate the sequence length tensor (1-D) based on the masking tensor.
+
+  The masking tensor is a 2D boolean tensor with shape [batch, timestep]. For
+  any timestep that should be masked, the corresponding field will be False.
+  Consider the following example:
+    a = [[True, True, False, False],
+         [True, False, True, False]]
+  It is a (2, 4) tensor, and the corresponding sequence length result should be
+  1D tensor with value [2, 3]. Note that for the second example, we need to find
+  the index of the last True value, which is 2 and sequence length is 3.
+
+  Args:
+    mask: Boolean tensor with shape [batch, timestep] or [timestep, batch] if
+      time_major=True.
+    time_major: Boolean, which indicates whether the mask is time major or batch
+      major.
+  Returns:
+    sequence_length: 1D int32 tensor.
+  """
+  timestep_index = 0 if time_major else 1
+  max_seq_length = array_ops.shape(mask)[timestep_index]
+  reversed_mask = math_ops.cast(array_ops.reverse(mask, axis=[timestep_index]),
+                                dtypes.int32)
+  # Use the argmax to find the index of leading 1 in the reversed mask, which is
+  # the index of the last True value in the original mask.
+  reversed_index = math_ops.argmax(reversed_mask, axis=timestep_index,
+                                   output_type=dtypes.int32)
+  return max_seq_length - reversed_index
 
 
 def _generate_defun_backend(unique_api_name, preferred_device, func):

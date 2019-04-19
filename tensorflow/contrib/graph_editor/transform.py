@@ -86,7 +86,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
   """Add the transformed elem to the (renamed) collections of elem.
 
   A collection is renamed only if is not a known key, as described in
-  `tf.GraphKeys`.
+  `tf.compat.v1.GraphKeys`.
 
   Args:
     info: Transform._TmpInfo instance.

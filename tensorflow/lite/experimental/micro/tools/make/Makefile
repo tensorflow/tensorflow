@@ -1,4 +1,8 @@
 
+ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
+  $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
+endif
+
 MAKEFILE_DIR := tensorflow/lite/experimental/micro/tools/make
 
 # Pull in some convenience functions.
@@ -111,7 +115,8 @@ tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/internal/quantization_util.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/version.h
+tensorflow/lite/version.h \
+tensorflow/core/public/version.h
 
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \
@@ -138,11 +143,19 @@ KEIL_PROJECT_FILES := \
   README_KEIL.md \
   keil_project.uvprojx
 
+ARDUINO_PROJECT_FILES := \
+  library.properties
+
 ALL_PROJECT_TARGETS :=
 
 KEIL_PROJECT_FILES := \
   README_KEIL.md \
   keil_project.uvprojx
+
+include $(MAKEFILE_DIR)/third_party_downloads.inc
+THIRD_PARTY_DOWNLOADS :=
+$(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
+$(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
@@ -175,6 +188,11 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 # Load the examples.
 include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 
+# Create rules for downloading third-party dependencies.
+THIRD_PARTY_TARGETS :=
+$(foreach DOWNLOAD,$(THIRD_PARTY_DOWNLOADS),$(eval $(call create_download_rule,$(DOWNLOAD))))
+third_party_downloads: $(THIRD_PARTY_TARGETS)
+
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
@@ -182,17 +200,17 @@ MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
 $(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
-$(OBJDIR)%.o: %.cc
+$(OBJDIR)%.o: %.cc third_party_downloads
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow C source files.
-$(OBJDIR)%.o: %.c
+$(OBJDIR)%.o: %.c third_party_downloads
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow ASM source files.
-$(OBJDIR)%.o: %.S
+$(OBJDIR)%.o: %.S third_party_downloads
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
@@ -238,6 +256,10 @@ generate_projects: $(ALL_PROJECT_TARGETS)
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
+
+# Removes third-party downloads.
+clean_downloads:
+	rm -rf $(MAKEFILE_DIR)/downloads
 
 $(DEPDIR)/%.d: ;
 .PRECIOUS: $(DEPDIR)/%.d

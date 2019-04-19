@@ -49,19 +49,21 @@ EagerContext::EagerContext(const SessionOptions& opts,
                            std::unique_ptr<const DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
     : EagerContext(opts, default_policy, async, device_mgr.release(),
-                   /*device_mgr_owned*/ true, rendezvous) {}
+                   /*device_mgr_owned*/ true, rendezvous, nullptr) {}
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
                            bool async, const DeviceMgr* device_mgr,
-                           bool device_mgr_owned, Rendezvous* rendezvous)
+                           bool device_mgr_owned, Rendezvous* rendezvous,
+                           const CustomKernelCreator* custom_kernel_creator)
     : policy_(default_policy),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
           device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-          opts.config.graph_options().optimizer_options(), thread_pool_.get())),
+          opts.config.graph_options().optimizer_options(), thread_pool_.get(),
+          nullptr, custom_kernel_creator)),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
@@ -173,8 +175,9 @@ void EagerContext::CloseRemoteContexts() {
 
   int i = 0;
   for (const auto& worker_and_context_id : remote_contexts_) {
-    auto* client =
-        remote_eager_workers_->GetClient(worker_and_context_id.first);
+    eager::EagerClient* client;
+    Status s =
+        remote_eager_workers_->GetClient(worker_and_context_id.first, &client);
 
     requests[i].set_context_id(worker_and_context_id.second);
     client->CloseContextAsync(
@@ -319,8 +322,9 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
     requests[i].set_context_id(target_and_context_id.second);
     *requests[i].mutable_function_def() = fdef;
 
-    auto* eager_client =
-        remote_eager_workers_->GetClient(target_and_context_id.first);
+    eager::EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(
+        target_and_context_id.first, &eager_client));
 
     eager_client->RegisterFunctionAsync(
         &requests[i], &responses[i],
@@ -407,7 +411,8 @@ Status EagerContext::GetClientAndContextID(Device* device,
   string device_task_name;
   TF_RETURN_IF_ERROR(GetTaskName(device, &device_task_name));
 
-  *client = remote_eager_workers_->GetClient(device_task_name);
+  TF_RETURN_IF_ERROR(
+      remote_eager_workers_->GetClient(device_task_name, client));
 
   if (*client == nullptr) {
     return errors::InvalidArgument(
@@ -518,6 +523,11 @@ Status EagerContext::InitializeRemote(
             {
               {
                 mutex_lock l(keep_alive_thread_shutdown_mu_);
+
+                if (shutting_down_) {
+                  return;
+                }
+
                 keep_alive_thread_cv_.wait_for(
                     l, std::chrono::seconds(sleep_for_secs_));
 
@@ -530,8 +540,17 @@ Status EagerContext::InitializeRemote(
                 if (keep_alive_secs_ > 0) {
                   {
                     for (const auto& worker_and_context_id : remote_contexts_) {
-                      auto* client = remote_eager_workers_->GetClient(
-                          worker_and_context_id.first);
+                      eager::EagerClient* client;
+                      Status s = remote_eager_workers_->GetClient(
+                          worker_and_context_id.first, &client);
+
+                      if (!s.ok()) {
+                        LOG(WARNING) << "Keep-alive thread was unable to find "
+                                        "a client for target "
+                                     << worker_and_context_id.first
+                                     << ". Got error: " << s;
+                        continue;
+                      }
 
                       eager::KeepAliveRequest* request =
                           new eager::KeepAliveRequest;

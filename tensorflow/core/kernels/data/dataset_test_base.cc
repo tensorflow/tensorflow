@@ -30,7 +30,78 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:
-      return errors::Internal("Unsupported dtype", a.dtype());
+      return errors::Internal("Unsupported dtype: ", a.dtype());
+  }
+  return Status::OK();
+}
+
+template <typename T>
+bool compare(Tensor t1, Tensor t2) {
+  auto flat_t1 = t1.flat<T>();
+  auto flat_t2 = t2.flat<T>();
+  auto length = std::min(flat_t1.size(), flat_t2.size());
+  for (int i = 0; i < length; ++i) {
+    if (flat_t1(i) < flat_t2(i)) return true;
+    if (flat_t1(i) > flat_t2(i)) return false;
+  }
+  return flat_t1.size() < length;
+}
+
+Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
+                                       std::vector<Tensor> expected_tensors,
+                                       bool expect_items_equal) {
+  if (produced_tensors.size() != expected_tensors.size()) {
+    return Status(tensorflow::errors::Internal(
+        "The two tensor vectors have different size (", produced_tensors.size(),
+        " v.s. ", expected_tensors.size(), ")"));
+  }
+
+  if (produced_tensors.empty()) return Status::OK();
+  if (produced_tensors[0].dtype() != expected_tensors[0].dtype()) {
+    return Status(tensorflow::errors::Internal(
+        "The two tensor vectors have different dtypes (",
+        produced_tensors[0].dtype(), " v.s. ", expected_tensors[0].dtype(),
+        ")"));
+  }
+
+  if (expect_items_equal) {
+    const DataType& dtype = produced_tensors[0].dtype();
+    switch (dtype) {
+#define CASE(DT)                                                \
+  case DT:                                                      \
+    std::sort(produced_tensors.begin(), produced_tensors.end(), \
+              compare<EnumToDataType<DT>::Type>);               \
+    std::sort(expected_tensors.begin(), expected_tensors.end(), \
+              compare<EnumToDataType<DT>::Type>);               \
+    break;
+      CASE(DT_FLOAT);
+      CASE(DT_DOUBLE);
+      CASE(DT_INT32);
+      CASE(DT_UINT8);
+      CASE(DT_INT16);
+      CASE(DT_INT8);
+      CASE(DT_STRING);
+      CASE(DT_INT64);
+      CASE(DT_BOOL);
+      CASE(DT_QINT8);
+      CASE(DT_QUINT8);
+      CASE(DT_QINT32);
+      CASE(DT_QINT16);
+      CASE(DT_QUINT16);
+      CASE(DT_UINT16);
+      CASE(DT_HALF);
+      CASE(DT_UINT32);
+      CASE(DT_UINT64);
+      // TODO(feihugis): support other dtypes.
+#undef CASE
+      default:
+        return errors::Internal("Unsupported dtype: ", dtype);
+    }
+  }
+
+  for (int i = 0; i < produced_tensors.size(); ++i) {
+    TF_RETURN_IF_ERROR(DatasetOpsTestBase::ExpectEqual(produced_tensors[i],
+                                                       expected_tensors[i]));
   }
   return Status::OK();
 }
@@ -106,6 +177,15 @@ Status DatasetOpsTestBase::CreateDataset(OpKernel* kernel,
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::RestoreIterator(
+    IteratorContext* ctx, IteratorStateReader* reader,
+    const string& output_prefix, const DatasetBase& dataset,
+    std::unique_ptr<IteratorBase>* iterator) {
+  TF_RETURN_IF_ERROR(dataset.MakeIterator(ctx, output_prefix, iterator));
+  TF_RETURN_IF_ERROR((*iterator)->Restore(ctx, reader));
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CreateIteratorContext(
     OpKernelContext* const op_context,
     std::unique_ptr<IteratorContext>* iterator_context) {
@@ -131,7 +211,7 @@ Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
         "The `thread_num` argument should be positive but got: ", thread_num);
   }
   thread_pool_ = absl::make_unique<thread::ThreadPool>(
-      Env::Default(), ThreadOptions(), "inter_op", thread_num);
+      Env::Default(), ThreadOptions(), "test_thread_pool", thread_num);
   return Status::OK();
 }
 
@@ -211,9 +291,8 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
 
 Status DatasetOpsTestBase::CreateSerializationContext(
     std::unique_ptr<SerializationContext>* context) {
-  SerializationContext::Params params;
-  params.flib_def = lib_def_.get();
-  *context = absl::make_unique<SerializationContext>(params);
+  *context =
+      absl::make_unique<SerializationContext>(SerializationContext::Params{});
   return Status::OK();
 }
 

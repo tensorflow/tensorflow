@@ -67,7 +67,7 @@ function build_libtensorflow_tarball() {
   # in tensorflow/tools/lib_package/BUILD are removed.
   # Till then, must manually run the test since these tests are
   # not covered by the continuous integration.
-  bazel test ${BAZEL_OPTS} \
+  bazel test ${BAZEL_OPTS} --test_output=errors \
     //tensorflow/tools/lib_package:libtensorflow_test \
     //tensorflow/tools/lib_package:libtensorflow_java_test
 

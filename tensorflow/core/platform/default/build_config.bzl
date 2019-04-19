@@ -317,7 +317,7 @@ def tf_proto_library_cc(
         srcs = [],
         has_services = None,
         protodeps = [],
-        visibility = [],
+        visibility = None,
         testonly = 0,
         cc_libs = [],
         cc_stubby_versions = None,
@@ -387,7 +387,7 @@ def tf_proto_library_py(
         srcs = [],
         protodeps = [],
         deps = [],
-        visibility = [],
+        visibility = None,
         testonly = 0,
         srcs_version = "PY2AND3",
         use_grpc_plugin = False):
@@ -433,7 +433,7 @@ def tf_proto_library(
         srcs = [],
         has_services = None,
         protodeps = [],
-        visibility = [],
+        visibility = None,
         testonly = 0,
         cc_libs = [],
         cc_api_version = 2,
@@ -520,6 +520,14 @@ def tf_additional_lib_srcs(exclude = []):
         ], exclude = exclude),
     })
 
+def tf_additional_monitoring_hdrs():
+    return []
+
+def tf_additional_monitoring_srcs():
+    return [
+        "platform/default/monitoring.cc",
+    ]
+
 def tf_additional_minimal_lib_srcs():
     return [
         "platform/default/integral_types.h",
@@ -578,7 +586,7 @@ def tf_protos_grappler():
 
 def tf_additional_cupti_wrapper_deps():
     return [
-        "//tensorflow/core/platform/default/gpu:cupti_wrapper",
+        "//tensorflow/stream_executor/cuda:cupti_stub",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -600,6 +608,12 @@ def tf_additional_device_tracer_deps():
 
 def tf_additional_device_tracer_test_flags():
     return []
+
+def tf_additional_profiler_lib_deps():
+    return [
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+    ]
 
 def tf_additional_libdevice_data():
     return []

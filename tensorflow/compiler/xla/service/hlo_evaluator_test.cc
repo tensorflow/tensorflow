@@ -2910,6 +2910,30 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, MixedPrecisionReduction) {
+  const string hlo_text = R"(
+HloModule MixedPrecisionReduction
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  arg0 = f32[4]{0} parameter(0)
+  init = f32[] constant(0)
+  ROOT %reduce = bf16[] reduce(arg0, init), dimensions={0}, to_apply=add_f32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal arg = LiteralUtil::CreateR1<float>({1.0f, 3.0f, -2.0f, 42.0f});
+  Literal expected = LiteralUtil::CreateR0<bfloat16>(bfloat16(44.0f));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, DontFailOnCallUnimplementedOps) {
   // Infeed triggers unimplemented error within HandleCall, and we verify that
   // the Evaluator does fail in such case.
@@ -3077,13 +3101,13 @@ ENTRY main {
                 .status()
                 .error_message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2].");
+            "but arg was s32[2]{0}.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input_wrong_shape})
                 .status()
                 .error_message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2].");
+            "but arg was s32[2]{0}.");
 }
 
 // Check that we get a useful error if we pass too many or too few inputs.

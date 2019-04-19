@@ -21,7 +21,6 @@ import functools
 import weakref
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -246,6 +245,14 @@ class DefFunctionTest(test.TestCase):
         def_function.function(functools.partial(lambda x, y: x + y, 1.))(
             constant_op.constant(2.)))
 
+  def test_functools_partial_new_default(self):
+    def f(x=3, y=7):
+      return x + y
+
+    func = def_function.function(functools.partial(f, y=6))
+    self.assertEqual(func().numpy(), 9)
+    self.assertEqual(func(y=8).numpy(), 11)
+
   def test_functools_partial_keywords(self):
     def f(x, y):
       return x + y
@@ -253,6 +260,14 @@ class DefFunctionTest(test.TestCase):
     func = def_function.function(
         functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
     self.assertAllEqual(func(), [0.0])
+
+  def test_functools_partial_single_positional(self):
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, constant_op.constant(1)))
+    self.assertAllEqual(func(5), 6)
 
   def test_unspecified_default_argument(self):
     wrapped = def_function.function(
@@ -485,10 +500,8 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
-    if not context.num_gpus():
-      self.skipTest("Needs multiple devices")
-
     a = []
 
     @def_function.function()

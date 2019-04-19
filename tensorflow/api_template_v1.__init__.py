@@ -50,6 +50,7 @@ WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.
 For more information, please see:
   * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
   * https://github.com/tensorflow/addons
+  * https://github.com/tensorflow/io (for I/O related ops)
 If you depend on functionality not listed there, please file an issue.
 """
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib',
@@ -117,7 +118,11 @@ if _running_from_pip_package():
 # pylint: disable=undefined-variable
 try:
   del python
+  if '__all__' in vars():
+    vars()['__all__'].remove('python')
   del core
+  if '__all__' in vars():
+    vars()['__all__'].remove('core')
 except NameError:
   # Don't fail if these modules are not available.
   # For e.g. this file will be originally placed under tensorflow/_api/v1 which
@@ -128,6 +133,8 @@ except NameError:
 # others don't exist.
 try:
   del compiler
+  if '__all__' in vars():
+    vars()['__all__'].remove('compiler')
 except NameError:
   pass
 # pylint: enable=undefined-variable

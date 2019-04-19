@@ -48,6 +48,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -579,7 +580,7 @@ class Flatten(Layer):
         inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
                  array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
-      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
+      outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
 
   def compute_output_shape(self, input_shape):
@@ -647,7 +648,7 @@ class RepeatVector(Layer):
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
-  The `Lambda` layer exists so that aribtrary TensorFlow functions
+  The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
   quick experimentation. For more advanced use cases, subclassing
@@ -738,11 +739,15 @@ class Lambda(Layer):
     self._trainable_weights = []
     self._non_trainable_weights = []
 
+    function_args = tf_inspect.getfullargspec(self.function).args
+    self._fn_expects_training_arg = 'training' in function_args
+    self._fn_expects_mask_arg = 'mask' in function_args
+
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self._output_shape is None:
       # Make use of existing autocomputation but provide Lambda-specific
-      # error message. This is always safe to run even whn the outer context
+      # error message. This is always safe to run even when the outer context
       # is Graph mode because Lambda layers don't have side effects such as
       # `add_loss`.
       with context.eager_mode():
@@ -767,10 +772,12 @@ class Lambda(Layer):
     output_shapes = tf_utils.convert_shapes(self._output_shape, to_tuples=False)
     return nest.map_structure(_add_batch, output_shapes)
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs, mask=None, training=None):
     arguments = self.arguments
-    if generic_utils.has_arg(self.function, 'mask'):
+    if self._fn_expects_mask_arg:
       arguments['mask'] = mask
+    if self._fn_expects_training_arg:
+      arguments['training'] = training
     with variable_scope.variable_creator_scope(self._variable_creator):
       return self.function(inputs, **arguments)
 
@@ -1017,7 +1024,7 @@ class Dense(Layer):
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.
       if not context.executing_eagerly():
-        shape = inputs.get_shape().as_list()
+        shape = inputs.shape.as_list()
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:

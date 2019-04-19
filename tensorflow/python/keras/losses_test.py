@@ -72,7 +72,7 @@ class KerasLossesTest(test.TestCase):
       y_b = keras.backend.variable(np.random.random((5, 6, 7)))
       for obj in ALL_LOSSES:
         objective_output = obj(y_a, y_b)
-        self.assertListEqual(objective_output.get_shape().as_list(), [5, 6])
+        self.assertListEqual(objective_output.shape.as_list(), [5, 6])
 
   def test_objective_shapes_2d(self):
     with self.cached_session():
@@ -80,7 +80,9 @@ class KerasLossesTest(test.TestCase):
       y_b = keras.backend.variable(np.random.random((6, 7)))
       for obj in ALL_LOSSES:
         objective_output = obj(y_a, y_b)
-        self.assertListEqual(objective_output.get_shape().as_list(), [6,])
+        self.assertListEqual(objective_output.shape.as_list(), [
+            6,
+        ])
 
   def test_cce_one_hot(self):
     with self.cached_session():
@@ -185,8 +187,7 @@ class KerasLossesTest(test.TestCase):
     mse_obj = keras.losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
 
     self.assertEqual(mse_obj.name, 'mean_squared_error')
-    self.assertEqual(mse_obj.reduction,
-                     losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
+    self.assertEqual(mse_obj.reduction, losses_utils.ReductionV2.AUTO)
 
     y_true = constant_op.constant([[1., 9.], [2., 5.]])
     y_pred = constant_op.constant([[4., 8.], [12., 3.]])

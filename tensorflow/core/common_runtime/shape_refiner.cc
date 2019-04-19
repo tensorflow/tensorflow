@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -130,8 +131,8 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
 // Maybe we won't support recursive functions at all in TF, because of
 // other maintainability issues.
 Status ShapeRefiner::InferShapesForFunction(
-    const tensorflow::FunctionDef* function_def, bool keep_nested_shapes,
-    ExtendedInferenceContext* outer_context) {
+    const FunctionDef* function_def, AttrSlice attributes,
+    bool keep_nested_shapes, ExtendedInferenceContext* outer_context) {
   const Graph* graph;
   auto it = functions_.find(function_def);
   if (it != functions_.end()) {
@@ -139,7 +140,7 @@ Status ShapeRefiner::InferShapesForFunction(
   } else {
     InstantiationResult result;
     TF_RETURN_IF_ERROR(InstantiateFunction(
-        *function_def, outer_context->get_context()->attrs(),
+        *function_def, attributes,
         [this](const string& op, const OpDef** sig) {
           return this->function_library_->LookUpOpDef(op, sig);
         },
@@ -216,19 +217,30 @@ Status ShapeRefiner::AddNode(const Node* node) {
   std::vector<ShapeHandle> input_shapes(node->num_inputs());
   std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
       input_handle_shapes_and_types(node->num_inputs());
+  std::vector<bool> inputs_missing_context(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
+
+    if (e->dst_input() < 0) {
+      return tensorflow::errors::Internal(
+          "Index ", e->dst_input(), " is negative but not a control edge.");
+    }
 
     const Node* input = e->src();
     auto it = node_to_context_.find(input);
     if (it == node_to_context_.end()) {
-      return errors::FailedPrecondition(
-          "Input ", e->dst_input(), " ('", input->name(), "') for '",
-          node->name(), "' was not previously added to ShapeRefiner.");
+      // v1 control flow adds loops to the graph; we have to break them
+      // somewhere, so we'll ignore this input and leave its shape undefined.
+      input_nodes[e->dst_input()] = input;
+      // We don't have a context yet. We'll make one below and use that to
+      // generate an unknown shape. An uninitialized ShapeHandle is already an
+      // unknown shape, but there are debug checks that each input was
+      // explicitly set and satisfying them isn't very costly.
+      inputs_missing_context[e->dst_input()] = true;
+      continue;
     }
 
     InferenceContext* c = it->second->get_context();
-    DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
 
@@ -262,6 +274,12 @@ Status ShapeRefiner::AddNode(const Node* node) {
                            std::move(input_handle_shapes_and_types)));
   if (!c->construction_status().ok()) {
     return c->construction_status();
+  }
+
+  for (unsigned int i = 0; i < input_shapes.size(); ++i) {
+    if (inputs_missing_context[i]) {
+      c->SetInput(i, c->UnknownShape());
+    }
   }
 
   std::unique_ptr<ExtendedInferenceContext> ec(
@@ -636,13 +654,30 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   // Run the shape inference function, and return if there was an error.
   // Capture as lambda, because we might need to re-run inference later on.
   auto run_inference_lambda = [&]() {
-    if (function_library_ && op_reg_data->is_function_op) {
-      // Special inference logic for user-defined functions.
-
-      auto* func_def = function_library_->Find(op_reg_data->op_def.name());
-      if (func_def) {
-        return InferShapesForFunction(func_def, keep_nested_shape_inferences_,
-                                      ec);
+    if (function_library_ && IsFunctionCall(*function_library_, *node)) {
+      bool disable_shape_inference;
+      if (!GetNodeAttr(AttrSlice(node->def()), "_disable_call_shape_inference",
+                       &disable_shape_inference)
+               .ok() ||
+          !disable_shape_inference) {
+        // Special inference logic for user-defined functions.
+        NameAttrList function;
+        TF_RETURN_IF_ERROR(
+            NameAndAttrsFromFunctionCall(node->def(), &function));
+        const FunctionDef* function_def =
+            function_library_->Find(function.name());
+        if (function_def != nullptr) {
+          // The constant Tensor map we have for the outside context is not
+          // valid inside the function. We need to push a new clean map while
+          // performing inference on the function body.
+          auto const_tensor_map_copy = const_tensor_map_;
+          const_tensor_map_.clear();
+          Status function_inference_status =
+              InferShapesForFunction(function_def, AttrSlice(&function.attr()),
+                                     keep_nested_shape_inferences_, ec);
+          const_tensor_map_ = const_tensor_map_copy;
+          return function_inference_status;
+        }
       }
     }
 

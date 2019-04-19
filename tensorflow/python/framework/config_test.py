@@ -18,6 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
+from tensorflow.core.protobuf import cluster_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -25,9 +30,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 def reset_eager(fn):
@@ -42,7 +49,7 @@ def reset_eager(fn):
   return wrapper
 
 
-class ConfigTest(test.TestCase):
+class ConfigTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_gpu_only
   @reset_eager
@@ -56,8 +63,7 @@ class ConfigTest(test.TestCase):
     config.set_device_policy('silent')
     config.set_intra_op_parallelism_threads(2)
 
-    # Excute a dummy op to ensure that the context has been initialized
-    constant_op.constant(1)
+    context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
       cpu_tensor = constant_op.constant(1, dtype=dtype)
@@ -115,44 +121,14 @@ class ConfigTest(test.TestCase):
     self.assertEqual(context.ASYNC, context.context().execution_mode)
 
   @reset_eager
-  def testGpuPerProcessMemoryFraction(self):
-    config.set_gpu_per_process_memory_fraction(0.5)
-    self.assertEqual(
-        config.get_gpu_per_process_memory_fraction(),
-        context.context().gpu_per_process_memory_fraction)
-
-    constant_op.constant(1)
-    with self.assertRaises(RuntimeError):
-      config.set_gpu_per_process_memory_fraction(0.5)
-
-  @reset_eager
-  def testGpuPerProcessMemoryGrowth(self):
-    self.assertFalse(config.get_gpu_per_process_memory_growth())
-
-    config.set_gpu_per_process_memory_growth(True)
-    self.assertTrue(config.get_gpu_per_process_memory_growth())
-    self.assertEqual(
-        config.get_gpu_per_process_memory_growth(),
-        context.context().gpu_per_process_memory_growth)
-
-    config.set_gpu_per_process_memory_growth(False)
-    self.assertFalse(config.get_gpu_per_process_memory_growth())
-    self.assertEqual(
-        config.get_gpu_per_process_memory_growth(),
-        context.context().gpu_per_process_memory_growth)
-
-    constant_op.constant(1)
-    with self.assertRaises(RuntimeError):
-      config.set_gpu_per_process_memory_growth(True)
-
-  @reset_eager
   def testIntraOpParallelismThreads(self):
     config.set_intra_op_parallelism_threads(10)
     self.assertEqual(
         config.get_intra_op_parallelism_threads(),
         context.context().intra_op_parallelism_threads)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_intra_op_parallelism_threads(1)
 
@@ -163,14 +139,18 @@ class ConfigTest(test.TestCase):
         config.get_inter_op_parallelism_threads(),
         context.context().inter_op_parallelism_threads)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       config.set_inter_op_parallelism_threads(1)
 
   @test_util.run_gpu_only
   @reset_eager
   def testSoftPlacement(self):
-    self.assertEqual(config.get_soft_device_placement(), True)
+    if context.executing_eagerly():
+      self.assertTrue(config.get_soft_device_placement())
+    else:
+      self.assertFalse(config.get_soft_device_placement())
 
     @def_function.function
     def mod():
@@ -178,6 +158,12 @@ class ConfigTest(test.TestCase):
         a = constant_op.constant(1.0)
         b = constant_op.constant(1.0)
         return math_ops.mod(a, b)
+
+    config.set_soft_device_placement(True)
+    self.assertEqual(config.get_soft_device_placement(), True)
+    self.assertEqual(
+        config.get_soft_device_placement(),
+        context.context().soft_device_placement)
 
     # Since soft placement is enabled, the mod operation should work with CPU
     mod()
@@ -192,18 +178,9 @@ class ConfigTest(test.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       mod()
 
-    config.set_soft_device_placement(True)
-    self.assertEqual(config.get_soft_device_placement(), True)
-    self.assertEqual(
-        config.get_soft_device_placement(),
-        context.context().soft_device_placement)
-
-    # Since soft placement is re-enabled, the mod operation should work with CPU
-    mod()
-
   @reset_eager
   def testLogDevicePlacement(self):
-    self.assertEqual(context.get_log_device_placement(), False)
+    self.assertFalse(context.get_log_device_placement())
 
     context.set_log_device_placement(True)
     self.assertEqual(context.get_log_device_placement(), True)
@@ -217,11 +194,328 @@ class ConfigTest(test.TestCase):
         context.get_log_device_placement(),
         context.context().log_device_placement)
 
-    constant_op.constant(1)
+    context.ensure_initialized()
+
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(False)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testJit(self):
+    self.assertEqual(config.get_optimizer_jit(), False)
+
+    # the following function should cause Op fusion to occur. However, there is
+    # unfortunately no straightforward way to ensure this. We will just have to
+    # settle for creating a test that can trigger JIT.
+    @def_function.function
+    def fun(a, b):
+      c = a * b
+      d = c + a
+      return d
+
+    a = constant_op.constant([2., 2.])
+    b = constant_op.constant([2., 2.])
+
+    self.evaluate(fun(a, b))
+
+    config.set_optimizer_jit(True)
+    self.assertEqual(config.get_optimizer_jit(), True)
+    self.assertEqual(config.get_optimizer_jit(),
+                     context.context().optimizer_jit)
+
+    self.evaluate(fun(a, b))
+
+    config.set_optimizer_jit(False)
+    self.assertEqual(config.get_optimizer_jit(), False)
+    self.assertEqual(config.get_optimizer_jit(),
+                     context.context().optimizer_jit)
+
+    self.evaluate(fun(a, b))
+
+  @parameterized.named_parameters(
+      ('LayoutOptimizer', 'layout_optimizer'),
+      ('ConstantFolding', 'constant_folding'),
+      ('ShapeOptimization', 'shape_optimization'),
+      ('Remapping', 'remapping'),
+      ('ArithmeticOptimization', 'arithmetic_optimization'),
+      ('DependencyOptimization', 'dependency_optimization'),
+      ('LoopOptimization', 'loop_optimization'),
+      ('FunctionOptimization', 'function_optimization'),
+      ('DebugStripper', 'debug_stripper'),
+      ('ScopedAllocatorOptimization', 'scoped_allocator_optimization'),
+      ('ImplementationSelector', 'implementation_selector'),
+      ('AutoMixedPrecision', 'auto_mixed_precision'))
+  @reset_eager
+  def testOptimizerToggleOption(self, field):
+    # TODO(b/128531235): Improve testing of option
+    options = config.get_optimizer_experimental_options()
+    self.assertIsNone(options.get(field))
+
+    config.set_optimizer_experimental_options({field: True})
+    options[field] = True
+    self.assertDictEqual(config.get_optimizer_experimental_options(), options)
+    self.assertDictEqual(
+        context.context().get_optimizer_experimental_options(), options)
+
+    config.set_optimizer_experimental_options({field: False})
+    options[field] = False
+    self.assertDictEqual(config.get_optimizer_experimental_options(), options)
+    self.assertDictEqual(
+        context.context().get_optimizer_experimental_options(), options)
+
+  @parameterized.named_parameters(
+      ('DisableModelPruning', 'disable_model_pruning'),
+      ('DisableMetaOptimizer', 'disable_meta_optimizer'))
+  @reset_eager
+  def testOptimizerBoolOption(self, field):
+    # TODO(b/128531235): Improve testing of option
+    options = config.get_optimizer_experimental_options()
+    self.assertFalse(options.get(field))
+
+    config.set_optimizer_experimental_options({field: True})
+    options[field] = True
+    self.assertDictEqual(config.get_optimizer_experimental_options(), options)
+    self.assertDictEqual(
+        context.context().get_optimizer_experimental_options(), options)
+
+    config.set_optimizer_experimental_options({field: False})
+    options[field] = False
+    self.assertDictEqual(config.get_optimizer_experimental_options(), options)
+    self.assertDictEqual(
+        context.context().get_optimizer_experimental_options(), options)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testOptimizerToggleOptionPinToHost(self):
+    options = config.get_optimizer_experimental_options()
+    self.assertIsNone(options.get('pin_to_host_optimization'))
+
+    @def_function.function
+    def fun():
+      op = test_ops.device_placement_op()
+      return op
+
+    # Force optimizer to run for all graphs
+    config.set_optimizer_experimental_options({'min_graph_nodes': -1})
+    options['min_graph_nodes'] = -1
+
+    # Since pin to host is disabled, the operation should go on GPU
+    gpu = self.evaluate(fun())
+    self.assertIn(compat.as_bytes('GPU'), gpu)
+
+    config.set_optimizer_experimental_options(
+        {'pin_to_host_optimization': True})
+    options['pin_to_host_optimization'] = True
+    self.assertDictEqual(config.get_optimizer_experimental_options(), options)
+    self.assertDictEqual(
+        context.context().get_optimizer_experimental_options(), options)
+
+    # Since pin to host is enabled, the operation should go on CPU
+    cpu = self.evaluate(fun())
+    self.assertIn(compat.as_bytes('CPU'), cpu)
+
+    config.set_optimizer_experimental_options(
+        {'pin_to_host_optimization': False})
+    options['pin_to_host_optimization'] = False
+    self.assertDictEqual(config.get_optimizer_experimental_options(), options)
+    self.assertDictEqual(
+        context.context().get_optimizer_experimental_options(), options)
+
+    # Since pin to host is disabled again, the operation should go on GPU
+    gpu2 = self.evaluate(fun())
+    self.assertIn(compat.as_bytes('GPU'), gpu2)
+
+
+class DeviceTest(test.TestCase):
+
+  @reset_eager
+  def testPhysicalDevices(self):
+    cpus = config.list_physical_devices('CPU')
+    self.assertGreater(len(cpus), 0)
+    if test_util.is_gpu_available():
+      gpus = config.list_physical_devices('GPU')
+      self.assertGreater(len(gpus), 0)
+
+  @reset_eager
+  def testCpuMultiple(self):
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
+
+    context.ensure_initialized()
+
+    cpus = config.list_logical_devices('CPU')
+    self.assertEqual(len(cpus), 2)
+
+    with ops.device('/device:CPU:0'):
+      a = constant_op.constant(1.0)
+      self.evaluate(a)
+    with ops.device('/device:CPU:1'):
+      b = constant_op.constant(1.0)
+      self.evaluate(b)
+    with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
+      with ops.device('/device:CPU:2'):
+        c = constant_op.constant(1.0)
+        self.evaluate(c)
+
+    # Ensure we can place ops on each of the device names
+    for cpu in cpus:
+      with ops.device(cpu.name):
+        d = constant_op.constant(1.0)
+        self.evaluate(d)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGpuNone(self):
+    gpus = config.list_physical_devices('GPU')
+    self.assertGreater(len(gpus), 0)
+
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+
+    self.assertEqual(len(config.get_visible_devices('CPU')), 1)
+    self.assertGreater(len(config.get_visible_devices('GPU')), 0)
+    config.set_visible_devices(cpus[0])
+    self.assertEqual(len(config.get_visible_devices('CPU')), 1)
+    self.assertEqual(len(config.get_visible_devices('GPU')), 0)
+
+    with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
+      with ops.device('/device:GPU:0'):
+        a = constant_op.constant(1.0)
+        self.evaluate(a)
+
+  @reset_eager
+  def testGpuMultiple(self):
+    gpus = config.list_physical_devices('GPU')
+    if len(gpus) < 2:
+      self.skipTest('Need at least 2 GPUs')
+
+    context.ensure_initialized()
+
+    for i in range(0, len(gpus)):
+      with ops.device('/device:GPU:' + str(i)):
+        a = constant_op.constant(1.0)
+        self.evaluate(a)
+
+    with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
+      with ops.device('/device:GPU:' + str(len(gpus))):
+        a = constant_op.constant(1.0)
+        self.evaluate(a)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testVirtualGpu(self):
+    gpus = config.list_physical_devices('GPU')
+    self.assertNotEqual(len(gpus), 0)
+
+    self.assertIsNone(config.get_virtual_device_configuration(gpus[-1]))
+    config.set_virtual_device_configuration(gpus[-1], [
+        context.VirtualDeviceConfiguration(memory_limit=10),
+        context.VirtualDeviceConfiguration(memory_limit=10)
+    ])
+    self.assertEqual(len(config.get_virtual_device_configuration(gpus[-1])), 2)
+
+    logical_gpus = config.list_logical_devices('GPU')
+    self.assertTrue(len(logical_gpus), len(gpus) + 1)
+    for i in range(0, len(logical_gpus)):
+      with ops.device('/device:GPU:' + str(i)):
+        a = constant_op.constant(1.0)
+        self.evaluate(a)
+
+    with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
+      with ops.device('/device:GPU:' + str(len(logical_gpus))):
+        a = constant_op.constant(1.0)
+        self.evaluate(a)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGpuInvalidConfig(self):
+    gpus = config.list_physical_devices('GPU')
+    self.assertNotEqual(len(gpus), 0)
+
+    for gpu in gpus:
+      config.set_memory_growth(gpu, True)
+
+    c = context.context().config
+    self.assertTrue(c.gpu_options.allow_growth)
+
+    with self.assertRaisesRegexp(ValueError, 'memory limit'):
+      config.set_virtual_device_configuration(gpus[-1], [
+          context.VirtualDeviceConfiguration(),
+          context.VirtualDeviceConfiguration()
+      ])
+
+    self.assertIsNone(config.get_virtual_device_configuration(gpus[-1]))
+    config.set_virtual_device_configuration(gpus[-1], [
+        context.VirtualDeviceConfiguration(memory_limit=10),
+        context.VirtualDeviceConfiguration(memory_limit=10)
+    ])
+
+    c = context.context().config
+    self.assertFalse(c.gpu_options.allow_growth)
+
+    with self.assertRaisesRegexp(ValueError, 'virtual devices'):
+      config.set_memory_growth(gpus[-1], False)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testRemote(self):
+    gpus = config.list_logical_devices('GPU')
+    self.assertNotEqual(len(gpus), 0)
+
+    context.ensure_initialized()
+
+    gpus = config.list_logical_devices('GPU')
+    self.assertNotEqual(len(gpus), 0)
+    for gpu in gpus:
+      self.assertIsNotNone(gpu.name)
+
+    context.ensure_initialized()
+
+    job_name = 'test'
+    cluster_def = cluster_pb2.ClusterDef()
+    job_def = cluster_def.job.add()
+    job_def.name = job_name
+    job_def.tasks[0] = 'localhost:0'
+
+    server_def = tensorflow_server_pb2.ServerDef(
+        cluster=cluster_def, job_name=job_name, task_index=0, protocol='grpc')
+
+    context.set_server_def(server_def)
+
+    gpus = config.list_logical_devices('GPU')
+    for gpu in gpus:
+      self.assertIsNotNone(gpu.name)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testV1Compatibility(self):
+    # Ensure we set 1 CPU by default
+    context.context()._config = config_pb2.ConfigProto()
+    new_config = context.context().config
+    self.assertEqual(new_config.device_count['CPU'], 1)
+    context.context()._physical_devices = None
+
+    # Ensure CPU is split
+    context.context()._config = config_pb2.ConfigProto(device_count={'CPU': 2},)
+    new_config = context.context().config
+    self.assertEqual(new_config.device_count['CPU'], 2)
+    context.context()._physical_devices = None
+
+    # Ensure Handle visible device list parsing
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list='',),)
+    gpus = config.list_physical_devices('GPU')
+    new_config = context.context().config
+    self.assertEqual(new_config.gpu_options.visible_device_list,
+                     ','.join(str(i) for i in range(len(gpus))))
+    context.context()._physical_devices = None
 
 
 if __name__ == '__main__':

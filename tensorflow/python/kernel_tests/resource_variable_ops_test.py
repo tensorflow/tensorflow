@@ -21,6 +21,7 @@ import copy
 import gc
 import os
 import pickle
+import re
 
 from absl.testing import parameterized
 import numpy as np
@@ -80,9 +81,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  @test_util.run_gpu_only
   def testGPUInt64(self):
-    if not context.context().num_gpus():
-      return
     with context.eager_mode(), context.device("gpu:0"):
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
       self.assertAllEqual(1, v.numpy())
@@ -697,6 +697,24 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
     self.assertAllEqual(init_value[[0, 3, 1, 2], ...], value)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherNd(self):
+    init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
+    v = resource_variable_ops.ResourceVariable(
+        constant_op.constant(init_value, dtype=dtypes.int32), name="var3")
+    self.evaluate(variables.global_variables_initializer())
+
+    value_op = v.gather_nd([[0, 0], [1, 2], [3, 3]])
+    self.assertAllEqual([3, 4], value_op.shape)
+    value = self.evaluate(value_op)
+    self.assertAllEqual([[0, 1, 2, 3], [24, 25, 26, 27], [60, 61, 62, 63]],
+                        value)
+
+    value_op = v.gather_nd([[0, 0, 0], [1, 2, 3], [3, 3, 3]])
+    self.assertAllEqual([3], value_op.shape)
+    value = self.evaluate(value_op)
+    self.assertAllEqual([0, 27, 63], value)
+
   @test_util.run_deprecated_v1
   def testToFromProto(self):
     with self.cached_session():
@@ -996,6 +1014,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       state_ops.scatter_nd_add(v, indices, updates)
       self.assertAllClose(expected, v.numpy())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testUnreadVariableInsideFunction(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def assign():
+      v.assign(1.0)
+
+    graph = assign.get_concrete_function().graph
+    self.assertTrue(all(x.type != "ReadVariableOp"
+                        for x in graph.get_operations()))
+
   def testScatterNdSubStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(
@@ -1025,7 +1055,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testAssignIncompatibleShape(self):
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
     self.evaluate(v.initializer)
-    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+    pattern = re.compile("shapes must be equal", re.IGNORECASE)
+    with self.assertRaisesRegexp(Exception, pattern):
       self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
 
   @test_util.run_in_graph_and_eager_modes

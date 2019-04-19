@@ -141,10 +141,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (stats_aggregator) {
         stats_aggregator->AddScalar(
             stats_utils::BufferSizeScalarName(dataset()->node_name()),
-            static_cast<float>(buffer_.size()));
+            static_cast<float>(buffer_.size()), num_elements());
         stats_aggregator->AddScalar(
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
-            static_cast<float>(auto_tuner_.buffer_limit()));
+            static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
       return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
@@ -235,13 +235,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         stats_aggregator->AddToHistogram(
             stats_utils::BufferUtilizationHistogramName(dataset()->node_name()),
             {static_cast<float>(buffer_.size()) /
-             static_cast<float>(auto_tuner_.buffer_limit())});
+             static_cast<float>(auto_tuner_.buffer_limit())},
+            num_elements());
         stats_aggregator->AddScalar(
             stats_utils::BufferSizeScalarName(dataset()->node_name()),
-            static_cast<float>(buffer_.size()));
+            static_cast<float>(buffer_.size()), num_elements());
         stats_aggregator->AddScalar(
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
-            static_cast<float>(auto_tuner_.buffer_limit()));
+            static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
       // A new element is available. Forward the status from computing it, and
       // (if we successfully got an element) the output values.
@@ -386,7 +387,10 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                  ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
   OP_REQUIRES(ctx,
               buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
-              errors::InvalidArgument("buffer_size must be >= 0"));
+              errors::InvalidArgument("buffer_size must be >= 0 or set "
+                                      "buffer_size to be ",
+                                      PrefetchAutotuner::kAutoTune,
+                                      " for auto-tuning"));
 
   if (buffer_size == PrefetchAutotuner::kAutoTune) {
     metrics::RecordTFDataAutotune(kDatasetName);

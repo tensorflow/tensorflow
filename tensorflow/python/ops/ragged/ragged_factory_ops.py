@@ -21,7 +21,10 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import tf_export
@@ -294,3 +297,40 @@ def _default_inner_shape_for_pylist(pylist, ragged_rank):
   inner_shape = get_inner_shape(flat_values)
   check_inner_shape(flat_values, inner_shape)
   return inner_shape[1:]
+
+
+@tf_export(v1=["ragged.placeholder"])
+def placeholder(dtype, ragged_rank, value_shape=None, name=None):
+  """Creates a placeholder for a `tf.RaggedTensor` that will always be fed.
+
+  **Important**: This ragged tensor will produce an error if evaluated.
+  Its value must be fed using the `feed_dict` optional argument to
+  `Session.run()`, `Tensor.eval()`, or `Operation.run()`.
+
+  @compatibility{eager} Placeholders are not compatible with eager execution.
+
+  Args:
+    dtype: The data type for the `RaggedTensor`.
+    ragged_rank: The ragged rank for the `RaggedTensor`
+    value_shape: The shape for individual flat values in the `RaggedTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `RaggedTensor` that may be used as a handle for feeding a value, but
+    not evaluated directly.
+
+  Raises:
+    RuntimeError: if eager execution is enabled
+  """
+  if ragged_rank == 0:
+    return array_ops.placeholder(dtype, value_shape, name)
+
+  with ops.name_scope(name, "RaggedPlaceholder", []):
+    flat_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
+    result = array_ops.placeholder(dtype, flat_shape, "flat_values")
+    for i in reversed(range(ragged_rank)):
+      row_splits = array_ops.placeholder(dtypes.int64, [None],
+                                         "row_splits_%d" % i)
+      result = ragged_tensor.RaggedTensor(result, row_splits, internal=True)
+    return result
+

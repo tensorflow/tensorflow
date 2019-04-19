@@ -69,6 +69,31 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(new_layer.gamma_regularizer.__class__,
                      keras.regularizers.L1L2)
 
+  @parameterized.parameters(
+      [batchnorm_v1.BatchNormalization, batchnorm_v2.BatchNormalization])
+  def test_deserialize_batchnorm_backwards_compatiblity(self, batchnorm_layer):
+    layer = batchnorm_layer(
+        momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    # To simulate if BatchNormalizationV1 or BatchNormalizationV2 appears in the
+    # saved model.
+    if batchnorm_layer is batchnorm_v1.BatchNormalization:
+      config['class_name'] = 'BatchNormalizationV1'
+    else:
+      config['class_name'] = 'BatchNormalizationV2'
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.momentum, 0.9)
+    if tf2.enabled():
+      self.assertIsInstance(new_layer, batchnorm_v2.BatchNormalization)
+      self.assertEqual(new_layer.beta_initializer.__class__,
+                       keras.initializers.ZerosV2)
+    else:
+      self.assertIsInstance(new_layer, batchnorm_v1.BatchNormalization)
+      self.assertEqual(new_layer.beta_initializer.__class__,
+                       keras.initializers.Zeros)
+    self.assertEqual(new_layer.gamma_regularizer.__class__,
+                     keras.regularizers.L1L2)
+
   @parameterized.parameters([rnn_v1.LSTM, rnn_v2.LSTM])
   def test_serialize_deserialize_lstm(self, layer):
     lstm = layer(5, return_sequences=True)

@@ -56,9 +56,9 @@ class Metric(trackable.Trackable):
   inputs = ... # Some tensors to compute the metric on.
   m_update = m(inputs)
   # Variables defined in first call, so get the initialization op afterwards.
-  m_init = m.init_variables()  # or tf.global_variables_initializer()
+  m_init = m.init_variables()  # or tf.compat.v1.global_variables_initializer()
   m_result = m.result()
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     sess.run(m_init)
     for input in ...:
       sess.run(m_update)
@@ -67,12 +67,12 @@ class Metric(trackable.Trackable):
   Example use with graph execution with placeholders and feed_dict:
   ```python
   m = SomeMetric(...)
-  m_placeholder = tf.placeholder(...)
+  m_placeholder = tf.compat.v1.placeholder(...)
   m_update = m(m_placeholder)
   # Variables defined in first call, so get the initialization op afterwards.
-  m_init = m.init_variables()  # or tf.global_variables_initializer()
+  m_init = m.init_variables()  # or tf.compat.v1.global_variables_initializer()
   m_result = m.result()
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     sess.run(m_init)
     for input in ...:
       sess.run(m_update, feed_dict={m_placeholder: input})
@@ -406,8 +406,8 @@ class CategoricalAccuracy(Mean):
   """Calculates how often `predictions` matches `labels`.
 
   This class is compatible with `tf.keras.losses.categorical_crossentropy`,
-  `tf.nn.softmax_cross_entropy_with_logits_v2`,
-  `tf.losses.softmax_cross_entropy`.
+  `tf.nn.softmax_cross_entropy_with_logits`,
+  `tf.compat.v1.losses.softmax_cross_entropy`.
 
   Attributes:
     name: name of the accuracy object.
@@ -450,7 +450,7 @@ class BinaryAccuracy(Mean):
   """Calculates how often `predictions` matches `labels`.
 
   This class is compatible with `tf.keras.losses.binary_crossentropy`,
-  `tf.losses.sigmoid_cross_entropy`,
+  `tf.compat.v1.losses.sigmoid_cross_entropy`,
   `tf.nn.sigmoid_cross_entropy_with_logits`.
   If there is more than one label, this will become multi-label classification.
 
@@ -505,7 +505,7 @@ class SparseAccuracy(Mean):
   This class is compatible with
   `tf.keras.losses.sparse_categorical_crossentropy`,
   `tf.nn.sparse_softmax_cross_entropy_with_logits`,
-  `tf.losses.sparse_softmax_cross_entropy`.
+  `tf.compat.v1.losses.sparse_softmax_cross_entropy`.
 
   Attributes:
     name: name of the accuracy object

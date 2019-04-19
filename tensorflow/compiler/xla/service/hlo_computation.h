@@ -270,7 +270,12 @@ class HloComputation {
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool operator==(const HloComputation& other) const;
+  bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
+
+  // Return whether `*this` and `other` are functionally equivalent.
+  bool operator==(const HloComputation& other) const {
+    return Equal(other, true);
+  }
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
