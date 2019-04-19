@@ -2804,7 +2804,13 @@ _SSIM_FILTER_SIZE = 11
 _SSIM_SIGMA = 1.5
 
 
-def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=_SSIM_K1, k2=_SSIM_K2):
+def _ssim_helper(x,
+                 y,
+                 reducer,
+                 max_val,
+                 compensation=1.0,
+                 k1=_SSIM_K1,
+                 k2=_SSIM_K2):
   r"""Helper function for computing SSIM.
 
   SSIM estimates covariances with weighted sums.  The default parameters
@@ -2880,8 +2886,13 @@ def _fspecial_gauss(size, sigma):
   return array_ops.reshape(g, shape=[size, size, 1, 1])
 
 
-def _ssim_per_channel(img1, img2, max_val=1.0, filter_size = _SSIM_FILTER_SIZE,
-    filter_sigma = _SSIM_SIGMA, k1 = _SSIM_K1, k2 = _SSIM_K2):
+def _ssim_per_channel(img1,
+                      img2,
+                      max_val=1.0,
+                      filter_size=_SSIM_FILTER_SIZE,
+                      filter_sigma=_SSIM_SIGMA,
+                      k1=_SSIM_K1,
+                      k2=_SSIM_K2):
   """Computes SSIM index between img1 and img2 per color channel.
 
   This function matches the standard SSIM implementation from:
@@ -2944,7 +2955,7 @@ def _ssim_per_channel(img1, img2, max_val=1.0, filter_size = _SSIM_FILTER_SIZE,
                                                   array_ops.shape(y)[1:]], 0))
 
   luminance, cs = _ssim_helper(img1, img2, reducer, max_val, compensation,
-                                k1, k2)
+                               k1, k2)
 
   # Average over the second and the third from the last: height, width.
   axes = constant_op.constant([-3, -2], dtype=dtypes.int32)
@@ -2954,8 +2965,13 @@ def _ssim_per_channel(img1, img2, max_val=1.0, filter_size = _SSIM_FILTER_SIZE,
 
 
 @tf_export('image.ssim')
-def ssim(img1, img2, max_val, filter_size = _SSIM_FILTER_SIZE,
-         filter_sigma = _SSIM_SIGMA, k1 = _SSIM_K1, k2 = _SSIM_K2):
+def ssim(img1,
+         img2,
+         max_val,
+         filter_size=_SSIM_FILTER_SIZE,
+         filter_sigma=_SSIM_SIGMA,
+         k1=_SSIM_K1,
+         k2=_SSIM_K2):
   """Computes SSIM index between img1 and img2.
 
   This function is based on the standard SSIM implementation from:
@@ -2980,14 +2996,14 @@ def ssim(img1, img2, max_val, filter_size = _SSIM_FILTER_SIZE,
       im1 = tf.decode_png('path/to/im1.png')
       im2 = tf.decode_png('path/to/im2.png')
       # Compute SSIM over tf.uint8 Tensors.
-      ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size = 11,
-                            filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
+      ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size=11,
+                            filter_sigma=1.5, k1=0.01, k2=0.03)
 
       # Compute SSIM over tf.float32 Tensors.
       im1 = tf.image.convert_image_dtype(im1, tf.float32)
       im2 = tf.image.convert_image_dtype(im2, tf.float32)
-      ssim2 = tf.image.ssim(im1, im2, max_val=1.0, filter_size = 11,
-                            filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
+      ssim2 = tf.image.ssim(im1, im2, max_val=1.0, filter_size=11,
+                            filter_sigma=1.5, k1=0.01, k2=0.03)
       # ssim1 and ssim2 both have type tf.float32 and are almost equal.
   ```
 
@@ -3019,7 +3035,7 @@ def ssim(img1, img2, max_val, filter_size = _SSIM_FILTER_SIZE,
   img1 = convert_image_dtype(img1, dtypes.float32)
   img2 = convert_image_dtype(img2, dtypes.float32)
   ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
-                                          filter_sigma, k1, k2 )
+                                          filter_sigma, k1, k2)
   # Compute average over color channels.
   return math_ops.reduce_mean(ssim_per_channel, [-1])
 
@@ -3029,9 +3045,14 @@ _MSSSIM_WEIGHTS = (0.0448, 0.2856, 0.3001, 0.2363, 0.1333)
 
 
 @tf_export('image.ssim_multiscale')
-def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS,
-    filter_size = _SSIM_FILTER_SIZE, filter_sigma = _SSIM_SIGMA,
-    k1 = _SSIM_K1, k2 = _SSIM_K2):
+def ssim_multiscale(img1,
+                    img2,
+                    max_val,
+                    power_factors=_MSSSIM_WEIGHTS,
+                    filter_size=_SSIM_FILTER_SIZE,
+                    filter_sigma=_SSIM_SIGMA,
+                    k1=_SSIM_K1,
+                    k2=_SSIM_K2):
   """Computes the MS-SSIM between img1 and img2.
 
   This function assumes that `img1` and `img2` are image batches, i.e. the last
@@ -3059,7 +3080,7 @@ def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS,
     filter_sigma: width of gaussian filter.
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
+      lower values, so it would be better if we taken the values in range
       of 0< K2 <0.4).
 
   Returns:
@@ -3130,8 +3151,9 @@ def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS,
 
         # Overwrite previous ssim value since we only need the last one.
         ssim_per_channel, cs = _ssim_per_channel(*imgs, max_val=max_val,
-                               filter_size = filter_size,
-                               filter_sigma = filter_sigma, k1 = k1, k2 = k2)
+                                                 filter_size=filter_size,
+                                                 filter_sigma=filter_sigma,
+                                                 k1=k1, k2=k2)
         mcs.append(nn_ops.relu(cs))
 
     # Remove the cs score for the last scale. In the MS-SSIM calculation,
