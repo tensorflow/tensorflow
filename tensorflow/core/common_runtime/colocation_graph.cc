@@ -238,11 +238,18 @@ Status Member::SetRequestedDeviceName(const Node& node) {
   return Status::OK();
 }
 
-void Member::FillPossibleDevices(PossibleDevices* possible_device) const {
+Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
+  if (DeviceNameUtils::HasSomeDetails(assigned_device_name_)) {
+    return errors::Internal(
+        "Cannot fill PossibleDevices from a member that has non-empty assigned "
+        "device. Did we start assigning devices to functions called by deep "
+        "ops? ",
+        DebugString());
+  }
   possible_device->requested_device_name = requested_device_name_;
-  possible_device->assigned_device_name = assigned_device_name_;
   possible_device->resource_device_name = resource_device_name_;
   possible_device->device_types = supported_device_types_;
+  return Status::OK();
 }
 
 Status Member::EnsureCompatibilityAcrossResourceEdge(
@@ -528,8 +535,6 @@ Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
       &requested_device_name_, devices.requested_device_name,
       allow_soft_placement));
-  TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
-      &assigned_device_name_, devices.assigned_device_name));
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
       &resource_device_name_, devices.resource_device_name));
   MergeSupportedDevices(devices.device_types);

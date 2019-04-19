@@ -48,7 +48,7 @@ class Member {
   Status SetResourceDeviceName(const Node& node);
   Status SetRequestedDeviceName(const Node& node);
 
-  void FillPossibleDevices(PossibleDevices* possible_device) const;
+  Status FillPossibleDevices(PossibleDevices* possible_device) const;
 
   Status EnsureCompatibilityAcrossResourceEdge(
       const Node& src, const Member& src_root,

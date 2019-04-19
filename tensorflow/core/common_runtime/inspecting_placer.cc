@@ -50,8 +50,8 @@ string IOColocationGroups::DebugString() const {
         "Group(", group_id, " members = [", absl::StrJoin(members, ", "),
         "] requested_device_name = \"",
         DeviceNameUtils::ParsedNameToString(devices.requested_device_name),
-        " assigned_device_name = \"",
-        DeviceNameUtils::ParsedNameToString(devices.assigned_device_name),
+        "\" resource_device_name = \"",
+        DeviceNameUtils::ParsedNameToString(devices.resource_device_name),
         "\" device_types = [",
         absl::StrJoin(
             devices.device_types, ", ",
@@ -90,14 +90,15 @@ class ColocationGraphToIOColocationGroups {
     }
   }
 
-  void FillGroups(std::vector<PossibleDevices>* group_devices) {
+  Status FillGroups(std::vector<PossibleDevices>* group_devices) {
     group_devices->resize(group_ids_.size());
     for (const auto& it : group_ids_) {
       int assigned_group_id = it.second;
       PossibleDevices& possible_devices = (*group_devices)[assigned_group_id];
       const Member& member = colocation_graph_->members()[it.first];
-      member.FillPossibleDevices(&possible_devices);
+      TF_RETURN_IF_ERROR(member.FillPossibleDevices(&possible_devices));
     }
+    return Status::OK();
   }
 
  private:
@@ -141,7 +142,7 @@ Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
   ColocationGraphToIOColocationGroups converter(&colocation_graph);
   converter.AssignGroups(fbody->arg_nodes, &groups->input_groups);
   converter.AssignGroups(fbody->ret_nodes, &groups->output_groups);
-  converter.FillGroups(&groups->group_devices);
+  TF_RETURN_IF_ERROR(converter.FillGroups(&groups->group_devices));
   return Status::OK();
 }
 
