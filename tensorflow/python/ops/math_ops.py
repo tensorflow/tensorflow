@@ -2562,7 +2562,7 @@ def matmul(a,
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
-    if fwd_compat.forward_compatible(2019, 4, 18):
+    if fwd_compat.forward_compatible(2019, 4, 25):
       output_may_have_non_empty_batch_shape = (
           (a_shape is None or len(a_shape) > 2) or
           (b_shape is None or len(b_shape) > 2))
