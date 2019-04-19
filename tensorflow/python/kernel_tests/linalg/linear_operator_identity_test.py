@@ -495,6 +495,20 @@ class LinearOperatorScaledIdentityTest(
         linalg_lib.LinearOperatorScaledIdentity))
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
+  def test_identity_solve(self):
+    operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
+    operator2 = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3.)
+    self.assertTrue(isinstance(
+        operator1.solve(operator1),
+        linalg_lib.LinearOperatorIdentity))
+
+    operator_solve = operator1.solve(operator2)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorScaledIdentity))
+    self.assertAllClose(3., self.evaluate(operator_solve.multiplier))
+
   def test_scaled_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2,
