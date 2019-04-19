@@ -105,10 +105,12 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
       }
       int64 cardinality = 0;
       if (drop_remainder_) {
-        while (1 + (n - 1) / window_stride_ >= window_size_) {
-          cardinality++;
-          n = n - window_shift_;
-        }
+        // Compute rest_elements, the number of elements after the last element
+        // of the initial window. If it is negative, we know that the
+        // cardinality is 0. Otherwise, it will be the number of valid shifts
+        // over the rest_elements.
+        int64 rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
+        cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
       } else {
         cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
       }
