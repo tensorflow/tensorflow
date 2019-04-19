@@ -26,6 +26,7 @@ import weakref
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import common_shapes
@@ -47,6 +48,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
@@ -158,16 +160,14 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
   def testEagerCopy(self):
     with context.eager_mode():
-      shape = (5, 5)
-      initializer = tf.random_uniform_initializer(-1.0, 1.0)
-      var = tfe.Variable(initializer(shape), name='tensor')
-      with tf.GradientTape() as tape:
-        a = tf.gather(tf.gather(var, [0, 1]), [0, 1])
-        b = tf.gather(tf.gather(var, [2, 3]), [0, 1])
-        r = tf.einsum('ij,ij->i', a, b)
+      var = variables.Variable([[0.0], [0.0], [0.0], [0.0], [0.0]], name='tensor')
+      with backprop.GradientTape() as tape:
+        a = array_ops.gather(array_ops.gather(var, [0, 1]), [0, 1])
+        b = array_ops.gather(array_ops.gather(var, [2, 3]), [0, 1])
+        r = special_math_ops.einsum('ij,ij->i', a, b)
       g = tape.gradient(r, [var])[0]
-      values = g.values if isinstance(g, tf.IndexedSlices) else g
-      self.assertAllEqual(values.get_shape(), [4, 5])
+      values = g.values if isinstance(g, ops.IndexedSlices) else g
+      self.assertAllEqual(values.get_shape(), [4, 1])
 
   @test_util.run_deprecated_v1
   def testNegation(self):
