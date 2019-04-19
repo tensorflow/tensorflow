@@ -424,9 +424,9 @@ llvm::TargetOptions CompilerTargetOptions(
   if (module_config.debug_options().xla_cpu_enable_fast_math()) {
     target_options.UnsafeFPMath = true;
     target_options.NoInfsFPMath =
-        module_config.debug_options().xla_cpu_fast_math_honor_infs();
+        !module_config.debug_options().xla_cpu_fast_math_honor_infs();
     target_options.NoNaNsFPMath =
-        module_config.debug_options().xla_cpu_fast_math_honor_nans();
+        !module_config.debug_options().xla_cpu_fast_math_honor_nans();
     target_options.NoSignedZerosFPMath = true;
   } else {
     target_options.UnsafeFPMath = false;
