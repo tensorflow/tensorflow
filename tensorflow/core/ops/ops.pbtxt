@@ -16630,7 +16630,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "Less"
@@ -20319,7 +20318,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "MultiDeviceIterator"
@@ -24029,7 +24027,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "QuantizedAvgPool"
@@ -26636,7 +26633,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "QuantizedRelu"
@@ -33116,7 +33112,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "Rint"
