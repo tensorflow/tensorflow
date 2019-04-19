@@ -42,6 +42,19 @@ enum class TargetFunctionID {
   kBlockIdy,
   kBlockIdz,
   kBarrierId,
+  kPow,
+  kErfcinv,
+  kLog,
+  kLog1p,
+  kSin,
+  kCos,
+  kExp,
+  kExpm1,
+  kSqrt,
+  kRsqrt,
+  kAtan2,
+  kFmod,
+  kRound,
 };
 
 // Emits a call to the specified target function  with the given operands.
