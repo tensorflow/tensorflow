@@ -347,10 +347,6 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
                                                    const xla::Shape& output,
                                                    TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateInterIpuCopy(
-    CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map);
-
 StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);

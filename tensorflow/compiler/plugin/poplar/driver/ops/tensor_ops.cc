@@ -319,45 +319,5 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateInterIpuCopy(
-    CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output, TensorMap& tensor_map) {
-  poplar::program::Sequence seq;
-
-  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
-                      FindInstructionInput(tensor_map, res, inst, 0, seq));
-
-  const auto src = inst->operand(0);
-
-  if (!inst->has_sharding()) {
-    return xla::FailedPrecondition("Missing shard information on %s",
-                                   inst->name());
-  }
-  if (!src->has_sharding()) {
-    return xla::FailedPrecondition("Missing shard information on %s",
-                                   src->name());
-  }
-
-  const auto& src_sharding = GetShardingDeviceIdVector(src->sharding());
-  const auto& dst_sharding = GetShardingDeviceIdVector(inst->sharding());
-  if (src_sharding.size() != dst_sharding.size()) {
-    return xla::FailedPrecondition("Mismatched sharding info on %s",
-                                   inst->name());
-  }
-
-  // Should this be done by flattening, concatenating and copying a single
-  // tensor?
-  for (int index = 0; index < src_sharding.size(); index++) {
-    if (src_sharding[index] != dst_sharding[index]) {
-      out = poputil::copyToIpu(
-          res.main_graph, out, seq, dst_sharding[index], GetDebugName(inst),
-          poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
-
-      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, index, out));
-    }
-  }
-  return seq;
-}
-
 }  // namespace poplarplugin
 }  // namespace xla

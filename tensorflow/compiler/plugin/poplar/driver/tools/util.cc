@@ -1,15 +1,16 @@
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/ipu_inter_copy.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-
-#include "absl/types/optional.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -247,8 +248,7 @@ bool IsRepeatLoop(const xla::HloInstruction* inst) {
 }
 
 bool IsInterIpuCopy(const HloInstruction* inst) {
-  return inst->opcode() == HloOpcode::kCustomCall &&
-         inst->custom_call_target() == "inter_ipu_copy";
+  return DynCast<HloIpuInterCopy>(inst);
 }
 
 const HloInstruction* GetOperandLookThroughInterIpuCopy(
