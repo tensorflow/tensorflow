@@ -406,18 +406,21 @@ StatusOr<std::vector<PyLocalBuffer>> PyLocalExecutable::ExecutePerReplica(
     absl::Mutex mu;
     int running GUARDED_BY(mu) = num_replicas();
     int failed GUARDED_BY(mu) = 0;
+    Status first_failure_status GUARDED_BY(mu);
 
     for (int replica = 0; replica < num_replicas(); ++replica) {
-      client_->execute_threads().at(replica)->Schedule(
-          [&execute, &mu, &running, &failed, &results, replica] {
-            results[replica] = execute(replica);
+      client_->execute_threads().at(replica)->Schedule([&, replica] {
+        results[replica] = execute(replica);
 
-            absl::MutexLock lock(&mu);
-            --running;
-            if (!results[replica].ok()) {
-              ++failed;
-            }
-          });
+        absl::MutexLock lock(&mu);
+        --running;
+        if (!results[replica].ok()) {
+          if (failed == 0) {
+            first_failure_status = results[replica].status();
+          }
+          ++failed;
+        }
+      });
     }
 
     auto done_running_or_failed = [&]() {
@@ -439,8 +442,10 @@ StatusOr<std::vector<PyLocalBuffer>> PyLocalExecutable::ExecutePerReplica(
                                absl::Seconds(10))) {
         LOG(FATAL)
             << "Replicated computation launch failed, but not all replicas "
-               "terminated. Aborting process to work around deadlock. See the "
-               "error log for details of the failure.";
+               "terminated. Aborting process to work around deadlock. Failure "
+               "message (there may have been multiple failures, see the "
+               "error log for all failures): \n\n"
+            << first_failure_status.error_message();
       }
     }
   }
