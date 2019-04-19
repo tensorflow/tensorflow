@@ -28,7 +28,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {};
     property->restrict_same_input_output_scale = false;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output =  {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_AVERAGE_POOL_2D ||
@@ -41,7 +41,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {};
     property->restrict_same_input_output_scale = true;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_CONCATENATION) {
@@ -53,7 +53,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {};
     property->restrict_same_input_output_scale = true;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_CONV_2D) {
@@ -65,7 +65,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {2};
     property->restrict_same_input_output_scale = false;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_DEPTHWISE_CONV_2D) {
@@ -77,7 +77,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {2};
     property->restrict_same_input_output_scale = false;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_FULLY_CONNECTED) {
@@ -89,7 +89,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {2};
     property->restrict_same_input_output_scale = false;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_MEAN || op == BuiltinOperator_PAD ||
@@ -102,7 +102,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {};
     property->restrict_same_input_output_scale = false;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   if (op == BuiltinOperator_SOFTMAX) {
@@ -141,7 +141,7 @@ TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
     property->biases = {};
     property->restrict_same_input_output_scale = false;
     property->restriction_on_output = false;
-    property->restricted_value_on_output = {};
+    property->restricted_value_on_output = {0.0,0.0};
     return kTfLiteOk;
   }
   return kTfLiteError;
