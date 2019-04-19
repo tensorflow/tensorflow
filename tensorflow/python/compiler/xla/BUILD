@@ -60,6 +60,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 

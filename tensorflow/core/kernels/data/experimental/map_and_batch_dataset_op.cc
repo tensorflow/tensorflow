@@ -60,6 +60,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
     OP_REQUIRES_OK(
         ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
@@ -86,9 +90,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
+    data::CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     OP_REQUIRES_OK(ctx,
                    CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            /*params=*/{}, &captured_func));
+                                            std::move(params), &captured_func));
 
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
@@ -810,6 +816,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList func_;
   bool preserve_cardinality_;
   std::vector<int> short_circuit_indices_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(

@@ -80,11 +80,15 @@ void ExecuteWithProfiling(bool async) {
        profiler_result->length}));
   string profile_proto_str = profile_proto.DebugString();
   if (!gpu_device_name.empty()) {
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "GPU:0"));
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
+    // TODO(fishx): move following check out from this if statement.
+    // This is collected by TraceMe
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
   }
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "CPU:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:CPU:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "MatMul"));
   TF_DeleteBuffer(profiler_result);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);

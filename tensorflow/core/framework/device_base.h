@@ -255,6 +255,22 @@ class DeviceBase {
   // be tagging deallocated memory chunks using the same counter.
   virtual uint64 SafeAllocFrontier() { return 0; }
 
+  // Copies `input_tensor` to `output_tensor`, where both tensors are on this
+  // device. This function assumes that `output_tensor` has already been
+  // allocated with a buffer that is large enough to hold `input_tensor`'s data.
+  // Calls `done` from a device-specific thread after copy is finished, which
+  // may be the same as calling thread.
+  //
+  // NOTE(ayushd): This function is for TensorFlow internal use only.  Deep copy
+  // is discouraged and should not be used in OpKernels.
+  virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
+                                      Tensor* output_tensor,
+                                      const DeviceContext* device_context,
+                                      StatusCallback done) {
+    done(errors::Internal("Device ", name(), " does not implement ",
+                          "CopyTensorInSameDevice"));
+  }
+
  protected:
   // Does not take ownership.
   void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {

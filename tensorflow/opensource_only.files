@@ -102,6 +102,7 @@ tensorflow/third_party/gpus/rocm/BUILD
 tensorflow/third_party/gpus/rocm/BUILD.tpl
 tensorflow/third_party/gpus/rocm/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
+tensorflow/third_party/gpus/find_cuda_config.py
 tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/cython.BUILD
@@ -216,6 +217,7 @@ tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/pprof.BUILD
 tensorflow/third_party/BUILD
 tensorflow/third_party/tflite_mobilenet_quant.BUILD
+tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/lmdb.BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/BUILD
@@ -247,6 +249,7 @@ tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/jsoncpp.BUILD
 tensorflow/third_party/tflite_ovic_testdata.BUILD
+tensorflow/third_party/__init__.py
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/third_party/eigen.BUILD

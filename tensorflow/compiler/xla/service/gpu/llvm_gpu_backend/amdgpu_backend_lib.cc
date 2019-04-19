@@ -132,13 +132,13 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 
   // enable fma synthesis.
   target_options.AllowFPOpFusion = FPOpFusion::Fast;
-  
+
   // set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
-  
+
   // the selection of codegen optimization level is copied from function
   // getcodegenoptlevel in //external/llvm/tools/opt/opt.cpp.
-  CodeGenOpt::Level codegen_opt_level; 
+  CodeGenOpt::Level codegen_opt_level;
   switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
       codegen_opt_level = CodeGenOpt::Less;
@@ -179,7 +179,6 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0;
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
@@ -194,7 +193,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
   std::error_code error_code;
   llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
-                                     llvm::sys::fs::F_None); 
+                                     llvm::sys::fs::F_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
@@ -293,7 +292,7 @@ std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target
   int lld_result = llvm::sys::ExecuteAndWait(*lld_program,
                                              llvm_ir::AsArrayRef(lld_args),
                                              llvm::None, {}, 0, 0,
-                                             &error_message); 
+                                             &error_message);
 
   if (lld_result) {
     LOG(FATAL) << "ld.lld execute fail: " << error_message;

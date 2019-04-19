@@ -453,28 +453,6 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(layer.beta.constraint, max_norm)
 
   @keras_parameterized.run_all_keras_modes
-  def test_layernorm_convnet(self):
-    if test.is_gpu_available(cuda_only=True):
-      with self.session(use_gpu=True):
-        model = keras.models.Sequential()
-        norm = keras.layers.LayerNormalization(
-            input_shape=(3, 4, 4))
-        model.add(norm)
-        model.compile(loss='mse',
-                      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                      run_eagerly=testing_utils.should_run_eagerly())
-
-        # centered on 5.0, variance 10.0
-        x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 3, 4, 4))
-        model.fit(x, x, epochs=4, verbose=0)
-        out = model.predict(x)
-        out -= np.reshape(keras.backend.eval(norm.beta), (1, 3, 1, 1))
-        out /= np.reshape(keras.backend.eval(norm.gamma), (1, 3, 1, 1))
-
-        np.testing.assert_allclose(np.mean(out, axis=(0, 2, 3)), 0.0, atol=1e-1)
-        np.testing.assert_allclose(np.std(out, axis=(0, 2, 3)), 1.0, atol=1e-1)
-
-  @keras_parameterized.run_all_keras_modes
   def test_layernorm_convnet_channel_last(self):
     model = keras.models.Sequential()
     norm = keras.layers.LayerNormalization(input_shape=(4, 4, 3))

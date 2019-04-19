@@ -77,14 +77,13 @@ class XrtBackend(xla_client.Backend):
   def destructure_tuple(self, c_buffer):
     return c_buffer.DestructureTuple()
 
-  def compile(self, computation, arg_shapes, result_shape, compile_options):
-    del arg_shapes
-    del result_shape
+  def compile(self, computation, compile_options):
     # pylint: disable=protected-access
     program_shape = xla_client._wrap_program_shape(
         computation.GetProgramShape())
     # pylint: enable=protected-access
     proto = computation.GetSerializedProto()
+    # TODO(phawkins): use the layouts in compile_options.
     arg_shapes = [
         _make_xla_shape(shape.with_major_to_minor_layout_if_absent())
         for shape in program_shape.parameter_shapes

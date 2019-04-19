@@ -1946,7 +1946,7 @@ class KerasTPUModel(models.Model):
     # in TPUs.
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
-          isinstance(validation_data, iterator_ops.EagerIterator) or
+          isinstance(validation_data, iterator_ops.IteratorV2) or
           isinstance(validation_data, dataset_ops.DatasetV2)):
         raise ValueError('KerasTPUModel cannot handle a Dataset or Iterator '
                          'for validation_data. Please instead pass a function '

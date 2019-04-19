@@ -45,14 +45,20 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, short_circuit_indices_.size() <= 1,
                 errors::InvalidArgument(
                     "predicate function has more than one return value."));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
+    data::CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     OP_REQUIRES_OK(ctx,
                    CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            /*params=*/{}, &captured_func));
+                                            std::move(params), &captured_func));
 
     FilterIteratorPredicate filter_pred;
     if (short_circuit_indices_.empty()) {
@@ -277,6 +283,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
  private:
   NameAttrList func_;
   std::vector<int> short_circuit_indices_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),

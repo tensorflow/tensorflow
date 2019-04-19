@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <numeric>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"

@@ -192,10 +192,8 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
                                       name=name)
 
 
-@tf_export(v1=["string_split"])
-@deprecation.deprecated_args(None,
-                             "delimiter is deprecated, please use sep instead.",
-                             "delimiter")
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
 def string_split(source, sep=None, skip_empty=True, delimiter=None):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
@@ -251,7 +249,8 @@ def string_split(source, sep=None, skip_empty=True, delimiter=None):  # pylint: 
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-@tf_export("strings.split")
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
 

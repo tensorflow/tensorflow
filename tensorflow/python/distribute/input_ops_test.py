@@ -198,10 +198,8 @@ class AutoShardDatasetTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testZip(self):
-    src1 = dataset_ops.Dataset.from_tensor_slices(self._createTFRecordFiles())
-    dataset1 = src1.flat_map(readers.TFRecordDataset)
-    src2 = dataset_ops.Dataset.from_tensor_slices(self._createTextFiles())
-    dataset2 = src2.flat_map(readers.TextLineDataset)
+    dataset1 = readers.TFRecordDataset(self._createTFRecordFiles())
+    dataset2 = readers.TextLineDataset(self._createTextFiles())
 
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
     dataset = input_ops.auto_shard_dataset(
@@ -212,10 +210,8 @@ class AutoShardDatasetTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testConcat(self):
-    src1 = dataset_ops.Dataset.from_tensor_slices(self._createTFRecordFiles())
-    dataset1 = src1.flat_map(readers.TFRecordDataset)
-    src2 = dataset_ops.Dataset.from_tensor_slices(self._createTextFiles())
-    dataset2 = src2.flat_map(readers.TextLineDataset)
+    dataset1 = readers.TFRecordDataset(self._createTFRecordFiles())
+    dataset2 = readers.TextLineDataset(self._createTextFiles())
 
     dataset = dataset1.concatenate(dataset2)
     dataset = input_ops.auto_shard_dataset(
@@ -235,8 +231,7 @@ class AutoShardDatasetTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTextLineReader(self):
-    src = dataset_ops.Dataset.from_tensor_slices(self._createTextFiles())
-    dataset = src.flat_map(readers.TextLineDataset)
+    dataset = readers.TextLineDataset(self._createTextFiles())
 
     dataset = input_ops.auto_shard_dataset(
         dataset, self._num_shards, self._shard_index)
@@ -245,8 +240,7 @@ class AutoShardDatasetTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTextLineReaderWithFlatMap(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(self._createTextFiles())
-    dataset = dataset.flat_map(readers.TextLineDataset)
+    dataset = readers.TextLineDataset(self._createTextFiles())
     dataset = input_ops.auto_shard_dataset(
         dataset, self._num_shards, self._shard_index)
 
@@ -254,10 +248,8 @@ class AutoShardDatasetTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFixedLengthReaderWithFlatMap(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        self._createFixedLengthRecordFiles())
-    dataset = dataset.flat_map(
-        lambda f: readers.FixedLengthRecordDataset(f, self._record_bytes))
+    dataset = readers.FixedLengthRecordDataset(
+        self._createFixedLengthRecordFiles(), self._record_bytes)
     dataset = input_ops.auto_shard_dataset(
         dataset, self._num_shards, self._shard_index)
 

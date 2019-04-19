@@ -82,6 +82,7 @@ limitations under the License.
 %rename("%s") TFE_Py_RegisterVSpace;
 %rename("%s") TFE_Py_EncodeArg;
 %rename("%s") TFE_EnableCollectiveOps;
+%rename("%s") TF_ListPhysicalDevices;
 %rename("%s") TF_PickUnusedPortOrDie;
 %rename("%s") TFE_MonitoringSetGauge;
 %rename("%s") TFE_MonitoringAddCounter;
@@ -90,8 +91,28 @@ limitations under the License.
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+
+static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
+  std::vector<string> devices;
+  tensorflow::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  tensorflow::Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) {
+    Py_RETURN_NONE;
+  };
+  PyObject* result = PyList_New(devices.size());
+  int i = 0;
+  for (auto& dev : devices) {
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev.data(), dev.size());
+    PyList_SetItem(result, i, dev_obj);
+    ++i;
+  }
+  return result;
+}
 %}
+static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 
 %typemap(in) (const void* proto) {
   char* c_string;

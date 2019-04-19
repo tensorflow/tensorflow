@@ -406,10 +406,9 @@ Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   return Status::OK();
 }
 
-#endif 
+#endif
 
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 #endif  // TENSORFLOW_CORE_UTIL_GPU_KERNEL_HELPER_H_

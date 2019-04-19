@@ -558,11 +558,9 @@ class RMSpropOptimizerTest(test.TestCase):
 class SlotColocationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
-
     with ops.device("/device:CPU:0"):
       if use_resource:
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],

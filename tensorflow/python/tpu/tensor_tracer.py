@@ -421,7 +421,11 @@ class TensorTracer(object):
   def is_enabled():
     """Returns True if TensorTracer is enabled."""
 
-    return TensorTracer._is_flag_on(_FLAG_NAME_ENABLE)
+    if TensorTracer._is_flag_on(_FLAG_NAME_ENABLE):
+      logging.info('Tensor Tracer is enabled.')
+      return True
+    else:
+      return False
 
   @staticmethod
   def use_test_undeclared_outputs_dir():
@@ -594,6 +598,7 @@ class TensorTracer(object):
     op_in_degree = {op: _in_op_degree(op) for op in g.get_operations()}
 
     frontier = [op for (op, degree) in op_in_degree.items() if degree == 0]
+    frontier.sort(key=lambda op: op.name)
     while frontier:
       op = frontier.pop()
       # Remove the op from graph, and remove its outgoing edges.
@@ -605,7 +610,7 @@ class TensorTracer(object):
       # pylint: enable=protected-access
       for out_tensor in op.outputs:
         consumers += [consumer_op for consumer_op in out_tensor.consumers()]
-
+      consumers.sort(key=lambda op: op.name)
       for consumer in consumers:
         # For each deleted edge shift the bucket of the vertex.
         op_in_degree[consumer] -= 1
@@ -814,6 +819,11 @@ class TensorTracer(object):
           self._included_op_full_names.add(op.name)
           return True
 
+      for optype_re in self._included_optype_re_list:
+        if optype_re.match(op.type):
+          self._included_op_full_names.add(op.name)
+          return True
+
       if check_after > 0:
         for out_tensor in op.outputs:
           for consumer in out_tensor.consumers():
@@ -919,7 +929,9 @@ class TensorTracer(object):
     for i in range(0, len(tensor_list)):
       tensor = tensor_list[i]
       line = '%d "%s"'%(i, tensor.name)
-      for consumer_op in tensor.consumers():
+      consumers = tensor.consumers()
+      consumers.sort(key=lambda op: op.name)
+      for consumer_op in consumers:
         if consumer_op.name not in opname_idx_map:
           raise ValueError(
               'consumer_op %s is not in opname_idx_map'%consumer_op.name)

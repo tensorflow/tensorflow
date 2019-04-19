@@ -973,7 +973,7 @@ def check_steps_argument(input_data, steps, steps_name):
   """
   # TODO(fchollet): allow datasets with steps=None if cardinality is known.
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.EagerIterator))
+      input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1179,8 +1179,8 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-             iterator_ops.EagerIterator))
+      data,
+      (dataset_ops.DatasetV1, dataset_ops.DatasetV2, iterator_ops.IteratorV2))
 
 
 # pylint: disable=protected-access
@@ -1317,7 +1317,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.EagerIterator, iterator_ops.Iterator))
+                           iterator_ops.Iterator, iterator_ops.IteratorV2))
 
 
 def get_iterator(dataset):

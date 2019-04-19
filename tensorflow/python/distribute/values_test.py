@@ -23,7 +23,6 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -38,16 +37,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
-
-
-# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
-# third_party/tensorflow/python/distribute/strategy_combinations.py
-# pylint: disable=g-long-lambda
-parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
-    "ParameterServer2GPUs",
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
-    required_gpus=2)
 
 
 class DistributedValuesTest(test.TestCase):
@@ -86,9 +75,6 @@ class DistributedValuesTest(test.TestCase):
     self.assertEqual(canonical_cpu, v.devices)
     v = values.DistributedValues(values.SingleDeviceMap("/CPU:0"), (42,))
     self.assertEqual(canonical_cpu, v.devices)
-    with self.assertRaises(AssertionError):
-      v = values.DistributedValues(
-          values.SingleDeviceMap("/device:cpu:0"), (42,))
 
   def testIsTensorLike(self):
     with context.graph_mode(), \
@@ -564,7 +550,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[parameter_server_strategy_with_two_gpus],
+          distribution=[
+              strategy_combinations.central_storage_strategy_with_two_gpus
+          ],
           mode=["graph", "eager"]))
   def testAssignOutOfScope_aggregating(self, distribution):
     with distribution.scope():
@@ -580,7 +568,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              parameter_server_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["graph", "eager"]))
   def testExtendsVariable(self, distribution):
@@ -594,7 +582,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              parameter_server_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["graph", "eager"]))
   def testCheckpointing(self, distribution):

@@ -40,6 +40,7 @@ from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -532,7 +533,12 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
+    if tfdev.is_device_spec(device):
+      device = device.to_string()
     self.device = device
+
+  def _set_device_from_string(self, device_str):
+    self.device = device_str
 
 
 def _get_current_tf_device():
@@ -546,7 +552,7 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return op.device
+  return tfdev.DeviceSpec.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -3620,7 +3626,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
@@ -3659,7 +3665,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if hasattr(new_state, 'set_shape'):
+          if isinstance(new_state, ops.Tensor):
             new_state.set_shape(state.shape)
 
         flat_output = nest.flatten(output)
@@ -3684,7 +3690,7 @@ def rnn(step_function,
 
   # static shape inference
   def set_shape(output_):
-    if hasattr(output_, 'set_shape'):
+    if isinstance(output_, ops.Tensor):
       shape = output_.shape.as_list()
       shape[0] = time_steps
       shape[1] = batch
@@ -5087,6 +5093,10 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
   """Returns a tensor with random binomial distribution of values.
 
+  The binomial distribution with parameters `n` and `p` is the probability
+  distribution of the number of successful Bernoulli process. Only supports
+  `n` = 1 for now.
+
   Arguments:
       shape: A tuple of integers, the shape of tensor to create.
       p: A float, `0. <= p <= 1`, probability of binomial distribution.
@@ -5420,7 +5430,8 @@ def configure_and_create_distributed_session(distribution_strategy):
 
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
-  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+  return (strategy is not None and
+          strategy.__class__.__name__.startswith('TPUStrategy'))
 
 
 def cast_variables_to_tensor(tensors):

@@ -1,6 +1,10 @@
 path: "tensorflow.train.experimental"
 tf_module {
   member {
+    name: "MixedPrecisionLossScaleOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "PythonState"
     mtype: "<type \'type\'>"
   }

@@ -70,33 +70,41 @@ std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
 
 // Gets the list of op->inputs indices of the weights inputs to be quantized for
 // the provided op.
-std::vector<int32_t> GetWeightInputIndices(const BuiltinOperator& op_code) {
-  if (op_code == BuiltinOperator_CONV_2D ||
-      op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
-      op_code == BuiltinOperator_FULLY_CONNECTED ||
-      op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
+std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
+                                           const CustomOpMap& custom_op_map) {
+  const BuiltinOperator builtin_op_code = op_code->builtin_code;
+  if (builtin_op_code == BuiltinOperator_CUSTOM) {
+    const std::string custom_code = op_code->custom_code;
+    const auto& custom_op_info = custom_op_map.find(custom_code);
+    if (custom_op_info != custom_op_map.end()) {
+      return custom_op_info->second.quantizable_input_indices;
+    }
+  } else if (builtin_op_code == BuiltinOperator_CONV_2D ||
+             builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
+             builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
     return {1};
-  } else if (op_code == BuiltinOperator_SVDF) {
+  } else if (builtin_op_code == BuiltinOperator_SVDF) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/svdf.cc
     return {1, 2};
-  } else if (op_code == BuiltinOperator_LSTM ||
-             op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM) {
+  } else if (builtin_op_code == BuiltinOperator_LSTM ||
+             builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/lstm.cc
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/unidirectional_sequence_lstm.cc
     return {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16};
-  } else if (op_code == BuiltinOperator_RNN ||
-             op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
+  } else if (builtin_op_code == BuiltinOperator_RNN ||
+             builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/basic_rnn.cc
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/unidirectional_sequence_rnn.cc
     return {1, 2};
-  } else if (op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM) {
+  } else if (builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_lstm.cc
     return {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 16,
             18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 33};
-  } else if (op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN) {
+  } else if (builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_rnn.cc
     return {1, 2, 4, 5};
-  } else if (op_code == BuiltinOperator_GATHER) {
+  } else if (builtin_op_code == BuiltinOperator_GATHER) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/gather.cc
     return {0};
   }
@@ -104,19 +112,30 @@ std::vector<int32_t> GetWeightInputIndices(const BuiltinOperator& op_code) {
 }
 
 // Returns true if the operator supports hybrid evaluation.
-bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
+bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
+                          const CustomOpMap& custom_op_map) {
+  const BuiltinOperator builtin_op_code = op_code->builtin_code;
   // Operations that support hybrid evaluation.
   bool eval_hybrid = false;
-  if (op_code == BuiltinOperator_FULLY_CONNECTED ||
-      op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
-      op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
-      op_code == BuiltinOperator_RNN ||
-      op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
-      op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
-      op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
-      op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
+  if (builtin_op_code == BuiltinOperator_CUSTOM) {
+    const std::string custom_code = op_code->custom_code;
+    const auto custom_op_info = custom_op_map.find(custom_code);
+    if (custom_op_info == custom_op_map.end()) {
+      return {};
+    } else {
+      return custom_op_info->second.is_hybrid;
+    }
+  } else if (builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_CONV_2D ||
+             builtin_op_code == BuiltinOperator_SVDF ||
+             builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
+             builtin_op_code == BuiltinOperator_RNN ||
+             builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
+             builtin_op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
+             builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
+             builtin_op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
     eval_hybrid = true;
-  } else if (op_code == BuiltinOperator_LSTM) {
+  } else if (builtin_op_code == BuiltinOperator_LSTM) {
     const LSTMOptionsT* options = op->builtin_options.AsLSTMOptions();
     // Only lstm kernel_type full supports hybrid evaluation.
     if (options->kernel_type == LSTMKernelType_FULL) {
@@ -128,8 +147,10 @@ bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
 
 // Returns true if all of the op's inputs are quantized.
 bool CheckAllOpInputsQuantized(const SubGraphT* subgraph, const OperatorT* op,
-                               const BuiltinOperator& op_code) {
-  std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
+                               const OperatorCodeT* op_code,
+                               const CustomOpMap& custom_op_map) {
+  std::vector<int32_t> op_input_indices =
+      GetWeightInputIndices(op_code, custom_op_map);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
 
@@ -151,17 +172,19 @@ bool CheckAllOpInputsQuantized(const SubGraphT* subgraph, const OperatorT* op,
 // quantized into tensor_map.
 TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     const ModelT* model, const OperatorT* op, uint64_t weights_min_num_elements,
+    const CustomOpMap& custom_op_map,
     std::unordered_map<int32_t, TensorT*>* tensor_map) {
   SubGraphT* subgraph = model->subgraphs.at(0).get();
-  const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+  const OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
 
-  std::vector<int32_t> op_input_indices = GetWeightInputIndices(op_code);
+  std::vector<int32_t> op_input_indices =
+      GetWeightInputIndices(op_code, custom_op_map);
   for (const int32_t op_input_idx : op_input_indices) {
     int32_t tensor_idx = op->inputs[op_input_idx];
     if (tensor_idx == -1) {
       LOG(INFO) << "Skipping optional tensor input " << op_input_idx
-                << " of operation " << EnumNameBuiltinOperator(op_code);
+                << " of operation "
+                << EnumNameBuiltinOperator(op_code->builtin_code);
       continue;
     }
 
@@ -274,17 +297,17 @@ bool IsQuantizationPassThroughOps(
 std::tuple<int32_t, TensorT*, std::vector<ConsumerOpInfo>>
 PassQuantizationAndGetConsumers(
     const ModelT* model, const SubGraphT* subgraph,
-    const std::vector<ConsumerOpInfo>& consumer_op_infos) {
+    const std::vector<ConsumerOpInfo>& consumer_op_infos,
+    const CustomOpMap& custom_op_map) {
   const OperatorT* op = consumer_op_infos.front().op;
-  const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+  const OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
   if (op->outputs.size() != 1) {
     LOG(ERROR)
         << "An op that passes quantization has more than one quantized output";
     return std::make_tuple(-1, nullptr, std::vector<ConsumerOpInfo>());
   }
   const int32_t output_tensor_idx = op->outputs.front();
-  const auto input_idx = GetWeightInputIndices(op_code);
+  const auto input_idx = GetWeightInputIndices(op_code, custom_op_map);
   if (input_idx.size() != 1) {
     LOG(ERROR)
         << "An op that passes quantization has more than one quantized input";
@@ -308,7 +331,8 @@ PassQuantizationAndGetConsumers(
 TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
                                      const Model* input_model,
                                      bool use_hybrid_evaluation,
-                                     uint64_t weights_min_num_elements) {
+                                     uint64_t weights_min_num_elements,
+                                     const CustomOpMap& custom_op_map) {
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
@@ -326,7 +350,7 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
     TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
-        model.get(), op, weights_min_num_elements, &tensor_map));
+        model.get(), op, weights_min_num_elements, custom_op_map, &tensor_map));
   }
 
   // The unordered_map ensures that we quantize each tensor exactly once.
@@ -347,7 +371,7 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
     if (IsQuantizationPassThroughOps(model.get(), consumer_op_infos)) {
       std::tie(tensor_idx, tensor, consumer_op_infos) =
           PassQuantizationAndGetConsumers(model.get(), subgraph,
-                                          consumer_op_infos);
+                                          consumer_op_infos, custom_op_map);
       if (tensor_idx < 0) {
         // Error message is already logged by PassQuantizationAndGetConsumers.
         return kTfLiteError;
@@ -357,15 +381,16 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
     std::vector<ConsumerOpInfo> dequant_op_infos;  // Ops that need dequants.
     for (ConsumerOpInfo& consumer_op_info : consumer_op_infos) {
       OperatorT* consumer_op = consumer_op_info.op;
-      const BuiltinOperator consumer_op_code =
-          model->operator_codes[consumer_op->opcode_index]->builtin_code;
+      const OperatorCodeT* consumer_op_code =
+          model->operator_codes[consumer_op->opcode_index].get();
       // If the op is a hybrid op and all the required tensors are quantized,
       // we have no further work to do, but for all ops that require
       // dequantization we need to add a Dequantize op.
       bool eval_hybrid =
           use_hybrid_evaluation &&
-          IsHybridEvaluationOp(consumer_op, consumer_op_code) &&
-          CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code);
+          IsHybridEvaluationOp(consumer_op, consumer_op_code, custom_op_map) &&
+          CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
+                                    custom_op_map);
       if (!eval_hybrid) {
         dequant_op_infos.push_back(consumer_op_info);
       }
@@ -439,24 +464,35 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              bool use_hybrid_evaluation) {
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
+  CustomOpMap custom_op_map;
   return QuantizeWeightsInternal(builder, input_model, use_hybrid_evaluation,
-                                 weights_min_num_elements);
+                                 weights_min_num_elements, custom_op_map);
 }
 }  // namespace internal
 
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements) {
+  CustomOpMap custom_op_map;
   return QuantizeWeightsInternal(builder, input_model, true,
-                                 weights_min_num_elements);
+                                 weights_min_num_elements, custom_op_map);
 }
 
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model) {
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
+  CustomOpMap custom_op_map;
   return QuantizeWeightsInternal(builder, input_model, true,
-                                 kWeightsMinNumElementsDefault);
+                                 kWeightsMinNumElementsDefault, custom_op_map);
+}
+
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             uint64_t weights_min_num_elements,
+                             const CustomOpMap& custom_op_map) {
+  return QuantizeWeightsInternal(builder, input_model, true,
+                                 weights_min_num_elements, custom_op_map);
 }
 
 }  // namespace optimize

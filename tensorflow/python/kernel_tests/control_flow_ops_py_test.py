@@ -758,6 +758,29 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(
           self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 1)
 
+  def testCondAccessTrueBranchTensorInFalseBranchRaises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def true_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="true_branch")
+        return inputs["c"]
+
+      def false_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      pred = constant_op.constant(True)
+      return control_flow_ops.cond(
+          pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+      f()
+
   def testCondListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
@@ -1590,11 +1613,14 @@ class ControlFlowTest(test.TestCase):
         # With while_v2 on xla, run_metadata only contains the unlowered While
         # op so node_stats does not have statistics for the pushes. So as a
         # loose check we check the pushes in the lowered version.
-        node_stats = run_metadata_without_xla_context.step_stats.dev_stats[
-            0].node_stats
+        for dev in run_metadata_without_xla_context.step_stats.dev_stats:
+          if "/device:CPU" in dev.device:
+            node_stats = dev.node_stats
         stack_push_op = "TensorListPushBack"
       else:
-        node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+        for dev in run_metadata.step_stats.dev_stats:
+          if "/device:CPU" in dev.device:
+            node_stats = dev.node_stats
         stack_push_op = "StackPushV2"
       stack_push_count = len(
           [x for x in node_stats if x.node_name.endswith(stack_push_op)])
@@ -2662,6 +2688,20 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=10)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
+
+  def testWhileGradInControlDeps(self):
+
+    @def_function.function
+    def f():
+      x_init = constant_op.constant(2.)
+      loop_cond = lambda i, x: math_ops.less(i, 2)
+      loop_body = lambda i, x: [i + 1, x**2]
+      _, x = control_flow_ops.while_loop(loop_cond, loop_body, [0, x_init])
+      with ops.control_dependencies([x]):
+        (grad,) = gradients_impl.gradients(x, x_init)
+        return grad
+
+    self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
 
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 

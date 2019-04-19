@@ -12,7 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bring in all of the public TensorFlow interface into this module."""
+"""
+Top-level module of TensorFlow. By convention, we refer to this module as 
+`tf` instead of `tensorflow`, following the common practice of importing 
+TensorFlow via the command `import tensorflow as tf`.
+
+The primary function of this module is to import all of the public TensorFlow 
+interfaces into a single place. The interfaces themselves are located in 
+sub-modules, as described below.
+
+Note that the file `__init__.py` in the TensorFlow source code tree is actually 
+only a placeholder to enable test cases to run. The TensorFlow build replaces 
+this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
+"""
 
 from __future__ import absolute_import as _absolute_import
 from __future__ import division as _division

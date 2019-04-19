@@ -88,7 +88,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-@_tf_export("lite.OpHint")
+@_tf_export(v1=["lite.OpHint"])
 class OpHint(object):
   """A class that helps build tflite function invocations.
 
@@ -1253,7 +1253,7 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
-@_tf_export("lite.experimental.convert_op_hints_to_stubs")
+@_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):

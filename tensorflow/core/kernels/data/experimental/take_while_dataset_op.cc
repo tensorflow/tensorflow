@@ -39,6 +39,10 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
     OP_REQUIRES_OK(
         ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
     OP_REQUIRES(
@@ -49,9 +53,11 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
+    data::CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     OP_REQUIRES_OK(ctx,
                    CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            /*params=*/{}, &captured_func));
+                                            std::move(params), &captured_func));
 
     LoopIteratorPredicate loop_pred;
     if (short_circuit_indices_.empty()) {
@@ -233,6 +239,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
   NameAttrList func_;
   std::vector<int> short_circuit_indices_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalTakeWhileDataset").Device(DEVICE_CPU),

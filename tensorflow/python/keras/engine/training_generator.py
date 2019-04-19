@@ -418,7 +418,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
 
   val_gen = (
       data_utils.is_generator_or_sequence(validation_data) or
-      isinstance(validation_data, iterator_ops.EagerIterator))
+      isinstance(validation_data, iterator_ops.IteratorV2))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
     raise ValueError('Please specify the `validation_steps` argument.')
@@ -437,9 +437,9 @@ def convert_to_generator_like(data,
 
   Arguments:
     data: Either a generator or `keras.utils.data_utils.Sequence` object or
-      `Dataset` or `EagerIterator` or a {1,2,3}-tuple of NumPy arrays or
-      EagerTensors. If a tuple, the elements represent `(x, y, sample_weights)`
-      and may be `None` or `[None]`.
+      `Dataset`, `Iterator`, or a {1,2,3}-tuple of NumPy arrays or EagerTensors.
+      If a tuple, the elements represent `(x, y, sample_weights)` and may be
+      `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
     steps_per_epoch: Steps of the generator to run each epoch. If `None` the
@@ -449,7 +449,7 @@ def convert_to_generator_like(data,
     shuffle: Whether the data should be shuffled.
 
   Returns:
-    - Generator or `keras.utils.data_utils.Sequence` or EagerIterator.
+    - Generator, `keras.utils.data_utils.Sequence`, or `Iterator`.
 
   Raises:
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
@@ -461,7 +461,7 @@ def convert_to_generator_like(data,
         ele for ele in data if not all(e is None for e in nest.flatten(ele)))
 
   if data_utils.is_generator_or_sequence(data) or isinstance(
-      data, iterator_ops.EagerIterator):
+      data, iterator_ops.IteratorV2):
     if isinstance(data, data_utils.Sequence):
       if steps_per_epoch is None:
         steps_per_epoch = len(data)

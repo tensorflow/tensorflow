@@ -32,9 +32,18 @@ constexpr std::array<DataType, 10> kExecAllTypes = {
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 };
+
+Status XlaInterpreterDeviceFactory::ListPhysicalDevices(
+    std::vector<string>* devices) {
+  devices->push_back(
+      absl::StrCat("/physical_device:", DEVICE_XLA_INTERPRETER, ":0"));
+
+  return Status::OK();
+}
 
 Status XlaInterpreterDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,

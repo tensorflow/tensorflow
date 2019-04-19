@@ -16,14 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 #define TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 
-/**
- * Wrappers and helpers for CUDA device code.
- *
- * Wraps the warp-cooperative intrinsics introduced in CUDA 9 to provide
- * backwards compatibility, see go/volta-porting for details.
- * Provides atomic operations on types that aren't natively supported.
- */
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
@@ -781,7 +773,7 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a / value; });
 }
 
-#if GOOGLE_CUDA  
+#if GOOGLE_CUDA
 // Operator overloads for complex numbers.
 
 __device__ inline std::complex<float> operator+(const std::complex<float>& a,
@@ -840,7 +832,7 @@ __device__ inline std::complex<double> operator/(
   return std::complex<double>(result.x, result.y);
 }
 #endif // GOOGLE_CUDA
-  
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

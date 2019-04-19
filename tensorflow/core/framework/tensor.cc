@@ -758,8 +758,22 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   }
 }
 
+// NOTE(mrry): The default allocator for a Tensor (when none is specified) is
+// the default CPU allocator for NUMA zone 0. Accessing that currently involves
+// acquiring a lock, which guards initialization of the per-NUMA zone
+// allocators, and becomes highly contended.
+//
+// Note also that it would be better if all Tensor allocations required the user
+// to specify an allocator, for purposes of accounting, etc. However, the
+// default allocator is widely used throughout the codebase and in client code.
+static Allocator* get_default_cpu_allocator() {
+  static Allocator* default_cpu_allocator =
+      cpu_allocator(port::kNUMANoAffinity);
+  return default_cpu_allocator;
+}
+
 Tensor::Tensor(DataType type, const TensorShape& shape)
-    : Tensor(cpu_allocator(), type, shape) {}
+    : Tensor(get_default_cpu_allocator(), type, shape) {}
 
 void Tensor::HostScalarTensorBufferBase::FillAllocationDescription(
     AllocationDescription* proto) const {
@@ -852,7 +866,7 @@ Tensor Tensor::SubSlice(int64 index) const {
 }
 
 bool Tensor::FromProto(const TensorProto& proto) {
-  return FromProto(cpu_allocator(), proto);
+  return FromProto(get_default_cpu_allocator(), proto);
 }
 
 bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
