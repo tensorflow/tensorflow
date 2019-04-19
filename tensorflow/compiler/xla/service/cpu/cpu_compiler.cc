@@ -749,15 +749,29 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
-  // flag that needs to be consistent is fast-math.
-  const bool fast_math_enabled =
-      modules[0]->config().debug_options().xla_cpu_enable_fast_math();
-  for (const auto& module : modules) {
-    if (module->config().debug_options().xla_cpu_enable_fast_math() !=
-        fast_math_enabled) {
-      return InvalidArgument(
-          "All HLO module configs must have the same value for "
-          "xla_enable_fast_math.");
+  // flags that need to be consistent are for fast-math.
+  for (const auto& fn_and_name :
+       {std::make_pair(&DebugOptions::xla_cpu_enable_fast_math,
+                       "xla_cpu_enable_fast_math"),
+        std::make_pair(&DebugOptions::xla_cpu_fast_math_honor_infs,
+                       "xla_cpu_fast_math_honor_infs"),
+        std::make_pair(&DebugOptions::xla_cpu_fast_math_honor_nans,
+                       "xla_cpu_fast_math_honor_nans")}) {
+    // This only works because each of the method pointers above returns a bool.
+    // Otherwise we'd have to do some template magic.
+    const auto& field_method_ptr = fn_and_name.first;
+    const auto& field_name = fn_and_name.second;
+    bool first_module_val =
+        (modules[0]->config().debug_options().*field_method_ptr)();
+    for (int64 i = 0; i < modules.size(); ++i) {
+      bool cur_module_val =
+          (modules[i]->config().debug_options().*field_method_ptr)();
+      if (first_module_val != cur_module_val) {
+        return InvalidArgument(
+            "All HLO module configs must have the same value for %s, but "
+            "module 0 and %d have different values (%d vs %d).",
+            field_name, i, first_module_val, cur_module_val);
+      }
     }
   }
 
