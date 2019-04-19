@@ -18,6 +18,8 @@
 #include "mlir/Quantization/QuantOps.h"
 #include "TypeDetail.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Quantization/QuantTypes.h"
 #include "llvm/ADT/StringRef.h"
@@ -30,6 +32,41 @@ using namespace mlir::quant::detail;
 
 #define GET_OP_CLASSES
 #include "mlir/Quantization/QuantOps.cpp.inc"
+
+namespace {
+
+/// Matches x -> [scast -> scast] -> y, replacing the second scast with the
+/// value of x if the casts invert each other.
+class RemoveRedundantStorageCastsRewrite : public RewritePattern {
+public:
+  RemoveRedundantStorageCastsRewrite(MLIRContext *context)
+      : RewritePattern(StorageCastOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(Operation *op) const override {
+    auto scastOp = op->cast<StorageCastOp>();
+    if (matchPattern(scastOp.arg(), m_Op<StorageCastOp>())) {
+      auto srcScastOp = scastOp.arg()->getDefiningOp()->cast<StorageCastOp>();
+      if (srcScastOp.arg()->getType() == scastOp.getResult()->getType()) {
+        return matchSuccess();
+      }
+    }
+    return matchFailure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    auto scastOp = op->cast<StorageCastOp>();
+    auto srcScastOp = scastOp.arg()->getDefiningOp()->cast<StorageCastOp>();
+    rewriter.replaceOp(op, srcScastOp.arg());
+  }
+};
+
+} // end anonymous namespace
+
+void StorageCastOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.push_back(
+      llvm::make_unique<RemoveRedundantStorageCastsRewrite>(context));
+}
 
 QuantizationDialect::QuantizationDialect(MLIRContext *context)
     : Dialect(/*name=*/"quant", context) {

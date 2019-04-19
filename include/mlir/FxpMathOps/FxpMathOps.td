@@ -90,39 +90,66 @@ class fxpmath_Op<string mnemonic, list<OpTrait> traits> :
 
 //===----------------------------------------------------------------------===//
 // Fixed-point (fxp) arithmetic ops used by kernels.
+// Some of these are temporary pending inclusion into a more core dialect.
 //===----------------------------------------------------------------------===//
 
-def fxpmath_RoundingDivideByPotFxpOp :
-    fxpmath_Op<"rounding_divide_by_poti", [NoSideEffect, SameValueType]>,
-    Arguments<(ins quant_StorageValueType:$x, I32Attr:$exponent)>,
-    Results<(outs quant_StorageValueType:$y)> {
+def fxpmath_ClampISOp : fxpmath_Op<"clampis", [NoSideEffect, SameValueType]> {
+  let summary =
+      "Clamps a signed-integer like argument to a min/max range.";
+  let description = [{
+    Element-wise equivalent to:
+      r = std::min(clamp_max, std::max(e, clamp_min))
+  }];
+  let arguments = (ins IntegerLike:$arg,
+                       APIntAttr:$clamp_min,
+                       APIntAttr:$clamp_max);
+  let results = (outs IntegerLike);
+}
+
+def fxpmath_ConvertISOp :
+    fxpmath_Op<"convertis",
+               [NoSideEffect, SameValueShape]> {
+  let summary =
+      "Does an element-wise conversion from a signed integer to signed integer";
+  let description = [{
+    Similar to an element-wise static_cast in C++, from a one signed integer
+    element type to another.
+  }];
+  let arguments = (ins IntegerLike:$arg);
+  let results = (outs IntegerLike);
+}
+
+def fxpmath_VecScalarSaturatingRoundingDoublingHighMulISOp :
+    fxpmath_Op<"vs_saturating_rounding_doubling_high_mulis",
+               [NoSideEffect, SameValueType]> {
+  let summary = "Implements equivalent functionality to ARMv7 NEON VQRDMULH";
+  let description = [{
+    Equivalent to the ARMv7 NEON VQRDMULH instruction.
+    See gemmlowp::SaturatingRoundingDoublingHighMul for a reference
+    implementation.
+  }];
+  let arguments = (ins IntegerLike:$a, APIntAttr:$b);
+  let results = (outs IntegerLike);
+}
+
+def fxpmath_RoundingDivideByPotISOp :
+    fxpmath_Op<"rounding_divide_by_potis", [NoSideEffect, SameValueType]> {
+  let summary = [{
+    Computes a rounding arithmetic right shift.
+  }];
   let description = [{
     Computes integer division by a power-of-two, correctly rounded-to-nearest.
     Also known as a rounding arithmetic right shift. See
     gemmlowp::RoundingDivideByPOT for a reference implementation.
   }];
-
+  let arguments = (ins IntegerLike:$x, APIntAttr:$exponent);
+  let results = (outs IntegerLike:$y);
   let verifier = [{
     auto verifyExponent = exponent().getSExtValue();
     if (verifyExponent < 0 || verifyExponent > 31) {
       return emitOpError("exponent must be in range [0..31]");
     }
     return success();
-  }];
-}
-
-def fxpmath_SaturatingAddFxpOp :
-    fxpmath_Op<"saturating_addi", [NoSideEffect, SameValueType]>,
-    Arguments<(ins quant_StorageValueType:$x,
-                   quant_StorageValueType:$y,
-                   I32Attr:$clamp_min,
-                   I32Attr:$clamp_max)>,
-    Results<(outs quant_StorageValueType:$sum)> {
-  let description = [{
-    Computes saturating addition of two operands, saturating to the given min
-    and max value. The implementation is responsible for choosing an
-    intermediate register size appropriate to carry out the operation without
-    overflow. See gemmlowp::SaturatingAdd for a reference implementation.
   }];
 }
 

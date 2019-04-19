@@ -336,11 +336,11 @@ class TypedStaticShapeTensor<Type t>
     : Type<AllOf<[ TypedTensor<t>.predicate, IsStaticShapeTensorTypePred ]>,
            "statically shaped tensor">;
 
-def I1Tensor  : TypedTensor<I1>;
-def I8Tensor  : TypedTensor<I8>;
-def I16Tensor : TypedTensor<I16>;
-def I32Tensor : TypedTensor<I32>;
-def I64Tensor : TypedTensor<I64>;
+def I1Tensor      : TypedTensor<I1>;
+def I8Tensor      : TypedTensor<I8>;
+def I16Tensor     : TypedTensor<I16>;
+def I32Tensor     : TypedTensor<I32>;
+def I64Tensor     : TypedTensor<I64>;
 
 def BF16Tensor : TypedTensor<BF16>;
 def F16Tensor  : TypedTensor<F16>;
@@ -500,6 +500,12 @@ class IntegerAttrBase<I attrValType, string descr> :
                      CPred<"$_self.cast<IntegerAttr>().getType()."
                            "isInteger(" # attrValType.bitwidth # ")">]>,
               descr> {
+  let returnType = [{ APInt }];
+}
+
+def APIntAttr : Attr<CPred<"$_self.isa<IntegerAttr>()">,
+                     "arbitrary integer attribute"> {
+  let storageType = [{ IntegerAttr }];
   let returnType = [{ APInt }];
 }
 

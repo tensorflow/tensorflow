@@ -131,6 +131,10 @@ def RemIUOp : IntArithmeticOp<"std.remiu"> {
   let hasConstantFolder = 0b1;
 }
 
+def ShlISOp : IntArithmeticOp<"std.shlis"> {
+  let summary = "signed integer shift left";
+}
+
 def SubFOp : FloatArithmeticOp<"std.subf"> {
   let summary = "floating point subtraction operation";
   let hasConstantFolder = 0b1;
