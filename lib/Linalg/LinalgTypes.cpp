@@ -30,7 +30,7 @@ using namespace mlir;
 mlir::LinalgDialect::LinalgDialect(MLIRContext *context)
     : Dialect("linalg", context) {
   addTypes<BufferType, RangeType, ViewType>();
-  addOperations<BaseViewOp, BufferAllocOp, BufferDeallocOp, RangeOp>();
+  addOperations<BufferAllocOp, BufferDeallocOp, RangeOp, SliceOp, ViewOp>();
 }
 
 struct mlir::BufferTypeStorage : public mlir::TypeStorage {

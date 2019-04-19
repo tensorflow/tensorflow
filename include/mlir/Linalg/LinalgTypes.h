@@ -42,7 +42,9 @@ public:
   void printType(Type type, llvm::raw_ostream &os) const override;
 };
 
-/// A BufferType represents a minimal range abstraction (min, max, step).
+/// A BufferType represents a contiguous block of memory that can be allocated
+/// and deallocated. A buffer cannot be indexed directly, a view must be
+/// laid out on a buffer to give it indexing semantics.
 class BufferTypeStorage;
 class BufferType : public Type::TypeBase<BufferType, Type, BufferTypeStorage> {
 public:
@@ -58,6 +60,14 @@ public:
 };
 
 /// A RangeType represents a minimal range abstraction (min, max, step).
+/// It is constructed by calling the linalg.range op with three values index of
+/// index type:
+///
+/// ```{.mlir}
+///    func @foo(%arg0 : index, %arg1 : index, %arg2 : index) {
+///      %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
+///    }
+/// ```
 class RangeType : public Type::TypeBase<RangeType, Type> {
 public:
   // Used for generic hooks in TypeBase.
@@ -74,13 +84,13 @@ public:
 /// A ViewType represents a multi-dimensional range abstraction on top of an
 /// underlying storage type. It is parameterizable by the underlying element
 /// type and the rank of the view.
-/// A new value of ViewType is constructed from a buffer with a base_view op and
+/// A new value of ViewType is constructed from a buffer with a view op and
 /// passing it ranges:
 ///
 /// ```{.mlir}
 ///    %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
 ///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-///    %3 = linalg.base_view %1[%2, %2] : !linalg.view<?x?xf32>
+///    %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xf32>
 /// ```
 class ViewTypeStorage;
 class ViewType

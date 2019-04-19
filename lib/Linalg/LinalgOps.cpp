@@ -30,89 +30,6 @@
 using namespace mlir;
 
 //////////////////////////////////////////////////////////////////////////////
-// BaseViewOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::BaseViewOp::build(Builder *b, OperationState *result, Value *buffer,
-                             ArrayRef<Value *> indexings) {
-  BufferType bufferType = buffer->getType().cast<BufferType>();
-  result->addOperands({buffer});
-  result->addOperands(indexings);
-  assert(
-      std::none_of(indexings.begin(), indexings.end(),
-                   [](Value *v) { return !v->getType().isa<RangeType>(); }) &&
-      "linalg.base_view takes only arguments of type linalg.range");
-
-  Type elementType = bufferType.getElementType();
-  result->addTypes(
-      {ViewType::get(b->getContext(), elementType, indexings.size())});
-}
-
-LogicalResult mlir::BaseViewOp::verify() {
-  if (llvm::empty(getOperands()))
-    return emitOpError(
-        "requires at least a buffer operand followed by indexings");
-  auto bufferType = getOperand(0)->getType().dyn_cast<BufferType>();
-  if (!bufferType)
-    return emitOpError("first operand must be of BufferType");
-  unsigned index = 0;
-  for (auto indexing : getIndexings()) {
-    if (!indexing->getType().isa<RangeType>()) {
-      return emitOpError(Twine(index) + "^th index must be of range type");
-    }
-    ++index;
-  }
-  if (getViewType().getRank() != index)
-    return emitOpError(
-        "the rank of the base view must be the number of its indexings");
-  return success();
-}
-
-bool mlir::BaseViewOp::parse(OpAsmParser *parser, OperationState *result) {
-  OpAsmParser::OperandType bufferInfo;
-  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
-  Type type;
-  if (parser->parseOperand(bufferInfo) ||
-      parser->parseOperandList(indexingsInfo, -1,
-                               OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
-    return true;
-
-  ViewType viewType = type.dyn_cast<ViewType>();
-  if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "view type expected");
-  if (viewType.getRank() != indexingsInfo.size())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected" + Twine(viewType.getRank()) +
-                                 " range indexings");
-  return parser->resolveOperand(
-             bufferInfo,
-             BufferType::get(type.getContext(), viewType.getElementType()),
-             result->operands) ||
-         (!indexingsInfo.empty() &&
-          parser->resolveOperands(indexingsInfo,
-                                  RangeType::get(type.getContext()),
-                                  result->operands)) ||
-         parser->addTypeToList(viewType, result->types);
-}
-
-// A BaseViewOp prints as:
-//
-// ```{.mlir}
-//   linalg.base_view %0[%1, %2] : !linalg.view<?x?xf32>
-// ```
-//
-// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
-// holding a range.
-void mlir::BaseViewOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getSupportingBuffer() << "[";
-  interleave(
-      getIndexings().begin(), getIndexings().end(),
-      [&](mlir::Value *v) { *p << *v; }, [&]() { *p << ", "; });
-  *p << "] : " << getType();
-}
-
-//////////////////////////////////////////////////////////////////////////////
 // BufferAllocOp
 //////////////////////////////////////////////////////////////////////////////
 void mlir::BufferAllocOp::build(Builder *b, OperationState *result, Type type,
@@ -122,9 +39,8 @@ void mlir::BufferAllocOp::build(Builder *b, OperationState *result, Type type,
 }
 
 mlir::LogicalResult mlir::BufferAllocOp::verify() {
-  if (!size() || !size()->getType().isa<IntegerType>() ||
-      !size()->getType().cast<IntegerType>().isInteger(64))
-    return emitOpError("first operand should be of type i64");
+  if (!size() || !size()->getType().isa<IndexType>())
+    return emitOpError("first operand should be of type index");
   if (!VectorType::isValidElementType(getElementType()) &&
       !getElementType().isa<VectorType>())
     return emitOpError("unsupported buffer element type");
@@ -143,14 +59,14 @@ void mlir::BufferAllocOp::print(OpAsmPrinter *p) {
 bool mlir::BufferAllocOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType sizeInfo;
   BufferType bufferType;
-  auto int64Ty = parser->getBuilder().getIntegerType(64);
+  auto indexTy = parser->getBuilder().getIndexType();
   if (parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType))
     return true;
   if (bufferType.getElementType() != parser->getBuilder().getF32Type())
     return parser->emitError(
         parser->getNameLoc(),
         "Only buffer<f32> supported until mlir::Parser pieces are exposed");
-  return parser->resolveOperands(sizeInfo, int64Ty, result->operands) ||
+  return parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
          parser->addTypeToList(bufferType, result->types);
 }
 
@@ -183,7 +99,6 @@ bool mlir::BufferDeallocOp::parse(OpAsmParser *parser, OperationState *result) {
   return parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType) ||
          parser->resolveOperands(sizeInfo, bufferType, result->operands);
 }
-
 //////////////////////////////////////////////////////////////////////////////
 // RangeOp
 //////////////////////////////////////////////////////////////////////////////
@@ -223,4 +138,219 @@ bool mlir::RangeOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->parseOperand(rangeInfo[2]) || parser->parseColonType(type) ||
          parser->resolveOperands(rangeInfo, affineIntTy, result->operands) ||
          parser->addTypeToList(type, result->types);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// SliceOp
+//////////////////////////////////////////////////////////////////////////////
+void mlir::SliceOp::build(Builder *b, OperationState *result, Value *base,
+                          ArrayRef<Value *> indexings) {
+  result->addOperands({base});
+  result->addOperands(indexings);
+
+  ViewType viewType = base->getType().cast<ViewType>();
+  unsigned rank = viewType.getRank();
+  for (auto *i : indexings)
+    if (!i->getType().isa<RangeType>())
+      rank--;
+  Type elementType = viewType.getElementType();
+  result->addTypes(
+      {ViewType::get(b->getContext(), elementType, indexings.size())});
+}
+
+LogicalResult mlir::SliceOp::verify() {
+  if (llvm::empty(getOperands()))
+    return emitOpError(
+        "requires at least a view operand followed by 'rank' indices");
+  if (!getOperand(0)->getDefiningOp()->isa<ViewOp>())
+    return emitOpError(
+        "requires at least a view operand followed by 'rank' indices");
+
+  auto viewOp = getOperand(0)->getDefiningOp()->dyn_cast<ViewOp>();
+  if (!viewOp)
+    return emitOpError("first operand must come from a ViewOp");
+  unsigned rank = getBaseViewRank();
+  if (llvm::size(getIndexings()) != rank) {
+    return emitOpError("requires at least a view operand followed by " +
+                       Twine(rank) + " indexings");
+  }
+  unsigned index = 0;
+  for (auto indexing : getIndexings()) {
+    if (!indexing->getType().isa<RangeType>() &&
+        !indexing->getType().isa<IndexType>()) {
+      return emitOpError(Twine(index) +
+                         "^th index must be of range or index type");
+    }
+    if (indexing->getType().isa<IndexType>())
+      --rank;
+    ++index;
+  }
+  if (getRank() != rank) {
+    return emitOpError("the rank of the view must be the number of its range "
+                       "indices: " +
+                       Twine(rank));
+  }
+  return success();
+}
+
+bool mlir::SliceOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType baseInfo;
+  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
+  SmallVector<Type, 8> types;
+  if (parser->parseOperand(baseInfo) ||
+      parser->parseOperandList(indexingsInfo, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types))
+    return true;
+
+  if (types.size() != 2 + indexingsInfo.size())
+    return parser->emitError(parser->getNameLoc(),
+                             "unexpected number of types ");
+  ViewType baseViewType = types[0].dyn_cast<ViewType>();
+  if (!baseViewType)
+    return parser->emitError(parser->getNameLoc(),
+                             "view type expected for first type");
+  if (indexingsInfo.size() != baseViewType.getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected " + Twine(baseViewType.getRank()) +
+                                 " indexings");
+  ViewType viewType = types.back().dyn_cast<ViewType>();
+  if (!viewType)
+    return parser->emitError(parser->getNameLoc(), "view type expected");
+
+  ArrayRef<Type> indexingTypes =
+      ArrayRef<Type>(types).drop_front(1).drop_back(1);
+  if (indexingTypes.size() != baseViewType.getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected " + Twine(baseViewType.getRank()) +
+                                 " indexing types");
+  return parser->resolveOperand(baseInfo, baseViewType, result->operands) ||
+         (!indexingsInfo.empty() &&
+          parser->resolveOperands(indexingsInfo, indexingTypes,
+                                  indexingsInfo.front().location,
+                                  result->operands)) ||
+         parser->addTypeToList(viewType, result->types);
+}
+
+// A SliceOp prints as:
+//
+// ```{.mlir}
+//   linalg.slice %0[%1, %2] :
+//     !linalg.view<?x?xf32>, [indexing-types], !linalg.view<?x?xf32>
+// ```
+//
+// Where %0 is an ssa-value holding a view created from a buffer, %1 and %2 are
+// ssa-value each holding a range.
+void mlir::SliceOp::print(OpAsmPrinter *p) {
+  *p << getOperationName() << " " << *getBaseView() << "[";
+  interleave(
+      getIndexings().begin(), getIndexings().end(),
+      [&](mlir::Value *v) { *p << *v; }, [&]() { *p << ", "; });
+  *p << "] : " << getBaseViewType();
+  for (auto indexing : getIndexings()) {
+    *p << ", " << indexing->getType();
+  }
+  *p << ", " << getType();
+}
+
+ViewOp mlir::SliceOp::getBaseViewOp() {
+  return getOperand(0)->getDefiningOp()->cast<ViewOp>();
+}
+
+ViewType mlir::SliceOp::getBaseViewType() {
+  return getBaseViewOp().getType().cast<ViewType>();
+}
+
+SmallVector<Value *, 8> mlir::SliceOp::getRanges() {
+  llvm::SmallVector<Value *, 8> res;
+  for (auto *operand : getIndexings()) {
+    if (!operand->getType().isa<IndexType>()) {
+      res.push_back(operand);
+    }
+  }
+  return res;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// ViewOp
+//////////////////////////////////////////////////////////////////////////////
+void mlir::ViewOp::build(Builder *b, OperationState *result, Value *buffer,
+                         ArrayRef<Value *> indexings) {
+  BufferType bufferType = buffer->getType().cast<BufferType>();
+  result->addOperands({buffer});
+  result->addOperands(indexings);
+  assert(
+      std::none_of(indexings.begin(), indexings.end(),
+                   [](Value *v) { return !v->getType().isa<RangeType>(); }) &&
+      "linalg.view takes only arguments of type linalg.range");
+
+  Type elementType = bufferType.getElementType();
+  result->addTypes(
+      {ViewType::get(b->getContext(), elementType, indexings.size())});
+}
+
+LogicalResult mlir::ViewOp::verify() {
+  if (llvm::empty(getOperands()))
+    return emitOpError(
+        "requires at least a buffer operand followed by indexings");
+  auto bufferType = getOperand(0)->getType().dyn_cast<BufferType>();
+  if (!bufferType)
+    return emitOpError("first operand must be of BufferType");
+  unsigned index = 0;
+  for (auto indexing : getIndexings()) {
+    if (!indexing->getType().isa<RangeType>()) {
+      return emitOpError(Twine(index) + "^th index must be of range type");
+    }
+    ++index;
+  }
+  if (getViewType().getRank() != index)
+    return emitOpError(
+        "the rank of the view must be the number of its indexings");
+  return success();
+}
+
+bool mlir::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType bufferInfo;
+  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
+  Type type;
+  if (parser->parseOperand(bufferInfo) ||
+      parser->parseOperandList(indexingsInfo, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type))
+    return true;
+
+  ViewType viewType = type.dyn_cast<ViewType>();
+  if (!viewType)
+    return parser->emitError(parser->getNameLoc(), "view type expected");
+  if (viewType.getRank() != indexingsInfo.size())
+    return parser->emitError(parser->getNameLoc(),
+                             "expected" + Twine(viewType.getRank()) +
+                                 " range indexings");
+  return parser->resolveOperand(
+             bufferInfo,
+             BufferType::get(type.getContext(), viewType.getElementType()),
+             result->operands) ||
+         (!indexingsInfo.empty() &&
+          parser->resolveOperands(indexingsInfo,
+                                  RangeType::get(type.getContext()),
+                                  result->operands)) ||
+         parser->addTypeToList(viewType, result->types);
+}
+
+// A ViewOp prints as:
+//
+// ```{.mlir}
+//   linalg.view %0[%1, %2] : !linalg.view<?x?xf32>
+// ```
+//
+// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
+// holding a range.
+void mlir::ViewOp::print(OpAsmPrinter *p) {
+  *p << getOperationName() << " " << *getSupportingBuffer() << "[";
+  interleave(
+      getIndexings().begin(), getIndexings().end(),
+      [&](mlir::Value *v) { *p << *v; }, [&]() { *p << ", "; });
+  *p << "] : " << getType();
 }

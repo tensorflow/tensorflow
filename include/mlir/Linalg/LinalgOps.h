@@ -24,53 +24,14 @@
 
 namespace mlir {
 
-/// A `BaseViewOp` produces a `ViewType` which is a multi-dimensional range
-/// abstraction on top of an underlying linalg.buffer. A BaseViewOp gives a
-/// buffer an indexing structure.
-///
-/// A new value of ViewType is constructed from a buffer with a base_view op and
-/// ranges:
+/// The "buffer_alloc" op creates a 1-D linalg.buffer of the specified type,
+/// upon which a base view can be laid out to give it indexing semantics.
+/// "buffer_alloc" takes a single argument, the size of the buffer to allocate
+/// (in number of elements).
 ///
 /// ```{.mlir}
-///    %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
-///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-///    %3 = linalg.base_view %1[%2, %2] : !linalg.view<?x?xf32>
+///     %0 = linalg.buffer_alloc %arg0 : !linalg.buffer<f32>
 /// ```
-class BaseViewOp : public mlir::Op<BaseViewOp, mlir::OpTrait::VariadicOperands,
-                                   mlir::OpTrait::OneResult,
-                                   mlir::OpTrait::HasNoSideEffect> {
-  enum { FirstIndexingOperand = 1 };
-
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.base_view"; }
-  static void build(mlir::Builder *b, mlir::OperationState *result,
-                    mlir::Value *buffer,
-                    llvm::ArrayRef<mlir::Value *> indexings);
-  mlir::LogicalResult verify();
-  static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
-  void print(mlir::OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  unsigned getRank() { return getViewType().getRank(); }
-  mlir::Type getElementType() { return getViewType().getElementType(); }
-  ViewType getViewType() { return getType().cast<ViewType>(); }
-  mlir::Value *getSupportingBuffer() { return getOperand(0); }
-  // Get the underlying indexing at a given rank.
-  mlir::Value *getIndexing(unsigned rank) {
-    return *(getIndexings().begin() + rank);
-  }
-  // Get all the indexings in this view.
-  mlir::Operation::operand_range getIndexings() {
-    return {operand_begin() + BaseViewOp::FirstIndexingOperand, operand_end()};
-  }
-};
-
-/// A BufferAllocOp is used to create a 1-D !linalg.buffer upon which a base
-/// view can be laid out. The size argument is an `i64` (and not an index), so
-/// that we can
 class BufferAllocOp
     : public Op<BufferAllocOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
@@ -89,7 +50,11 @@ public:
   Type getElementType() { return getBufferType().getElementType(); }
 };
 
-/// A BufferDeallocOp is used to free a !linalg.buffer.
+/// The "buffer_dealloc" op frees a 1-D linalg.buffer of the specified type.
+///
+/// ```{.mlir}
+///     linalg.buffer_dealloc %0 : !linalg.buffer<f32>
+/// ```
 class BufferDeallocOp
     : public Op<BufferDeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
@@ -109,8 +74,12 @@ public:
   }
 };
 
-/// A RangeOp is used to create a value of RangeType from 3 values of type index
+/// The "linalg.range" op creates a linalg.range from 3 values of type `index`
 /// that represent the min, max and step values of the range.
+///
+/// ```{.mlir}
+///    %3 = linalg.range %0:%1:%2 : !linalg.range
+/// ```
 class RangeOp : public Op<RangeOp, OpTrait::NOperands<3>::Impl,
                           OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
@@ -128,6 +97,126 @@ public:
   Value *min() { return getOperand(0); }
   Value *max() { return getOperand(1); }
   Value *step() { return getOperand(2); }
+};
+
+/// The "linalg.slice" op produces a linalg.view which is a subview of a given
+/// base view. This allows defining a subregion within the underlying buffer to
+/// operate on only a subset of the buffer.
+///
+/// A "linalg.slice" op takes a base view and a variadic number of indexings and
+/// produces a linalg.view of the same elemental type as the buffer. An indexing
+/// is either:
+///   1. a linalg.range, in which case it does not reduce the rank of the parent
+///      view.
+///   2. an index, in which case it reduces the rank of the parent view by one.
+///
+/// The parent view must be a base view (i.e. either a function argument or has
+/// been produced by a linalg.view op). In other words, chains of
+/// linalg.slice operations cannot be constructed in the IR. This defines away
+/// problems related to keeping track of which dimensions of the base view have
+/// been rank-reduced.
+///
+/// Examples:
+///   1. rank-preserving slice:
+///
+/// ```{.mlir}
+///    %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, !linalg.range,
+///    !linalg.range, !linalg.view<?x?xf32>
+/// ```
+///
+///   2. rank-reducing slice (from 2-D to 1-D):
+///
+/// ```{.mlir}
+///    %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index,
+///    !linalg.range, !linalg.view<?xf32>
+/// ```
+///
+///   3. rank-reducing slice (from 2-D to 0-D):
+///
+/// ```{.mlir}
+///    %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index, index,
+///    !linalg.view<f32>
+/// ```
+class ViewOp;
+class SliceOp : public mlir::Op<SliceOp, mlir::OpTrait::VariadicOperands,
+                                mlir::OpTrait::OneResult,
+                                mlir::OpTrait::HasNoSideEffect> {
+  enum { FirstIndexingOperand = 1 };
+
+public:
+  using Op::Op;
+
+  // Hooks to customize the behavior of this op.
+  static llvm::StringRef getOperationName() { return "linalg.slice"; }
+  static void build(mlir::Builder *b, mlir::OperationState *result,
+                    mlir::Value *base, llvm::ArrayRef<mlir::Value *> indexings);
+  mlir::LogicalResult verify();
+  static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
+  void print(mlir::OpAsmPrinter *p);
+
+  // Op-specific functionality.
+  unsigned getRank() { return getViewType().getRank(); }
+  mlir::Type getElementType() { return getViewType().getElementType(); }
+  ViewType getViewType() { return getType().cast<ViewType>(); }
+  Value *getBaseView() { return getOperand(0); }
+  ViewOp getBaseViewOp();
+  ViewType getBaseViewType();
+  unsigned getBaseViewRank() { return getBaseViewType().getRank(); }
+  // Get the underlying indexing at a given rank.
+  mlir::Value *getIndexing(unsigned rank) {
+    return *(getIndexings().begin() + rank);
+  }
+  // Get all the indexings in this view.
+  mlir::Operation::operand_range getIndexings() {
+    return {operand_begin() + SliceOp::FirstIndexingOperand, operand_end()};
+  }
+  // Get the subset of indexings that are of RangeType.
+  SmallVector<Value *, 8> getRanges();
+};
+
+/// The "linalg.view" op produces a linalg.view which is a multi-dimensional
+/// range abstraction on top of an underlying linalg.buffer. This gives an
+/// indexing structure to an otherwise non-indexable linalg.buffer.
+///
+/// A "linalg.view" takes a buffer and a variadic number of ranges and produces
+/// a `view` of the same elemental type as the buffer and of rank the number of
+/// ranges:
+///
+/// ```{.mlir}
+///    %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
+///    %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xf32>
+/// ```
+class ViewOp : public mlir::Op<ViewOp, mlir::OpTrait::VariadicOperands,
+                               mlir::OpTrait::OneResult,
+                               mlir::OpTrait::HasNoSideEffect> {
+  enum { FirstIndexingOperand = 1 };
+
+public:
+  using Op::Op;
+
+  // Hooks to customize the behavior of this op.
+  static llvm::StringRef getOperationName() { return "linalg.view"; }
+  static void build(mlir::Builder *b, mlir::OperationState *result,
+                    mlir::Value *buffer,
+                    llvm::ArrayRef<mlir::Value *> indexings);
+  mlir::LogicalResult verify();
+  static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
+  void print(mlir::OpAsmPrinter *p);
+
+  // Op-specific functionality.
+  unsigned getRank() { return getViewType().getRank(); }
+  mlir::Type getElementType() { return getViewType().getElementType(); }
+  ViewType getViewType() { return getType().cast<ViewType>(); }
+  mlir::Value *getSupportingBuffer() { return getOperand(0); }
+  // Get the underlying indexing at a given rank.
+  mlir::Value *getIndexing(unsigned rank) {
+    return *(getIndexings().begin() + rank);
+  }
+  // Get all the indexings in this view.
+  mlir::Operation::operand_range getIndexings() {
+    return {operand_begin() + ViewOp::FirstIndexingOperand, operand_end()};
+  }
 };
 
 } // namespace mlir
