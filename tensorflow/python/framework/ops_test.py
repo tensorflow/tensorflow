@@ -156,6 +156,19 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(x, name="tensor")
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEagerCopy(self):
+    shape = (5, 5)
+    initializer = tf.random_uniform_initializer(-1.0, 1.0)
+    var = tfe.Variable(initializer(shape), name='tensor')
+    with tf.GradientTape() as tape:
+        a = tf.gather(tf.gather(var, [0, 1]), [0, 1])
+        b = tf.gather(tf.gather(var, [2, 3]), [0, 1])
+        r = tf.einsum('ij,ij->i', a, b)
+    g = tape.gradient(r, [var])[0]
+    values = g.values if isinstance(g, tf.IndexedSlices) else g
+    self.assertAllEqual(values.get_shape(), (4, 5))
+
   @test_util.run_deprecated_v1
   def testNegation(self):
     with self.cached_session():
