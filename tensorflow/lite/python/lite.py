@@ -109,7 +109,7 @@ class RepresentativeDataset(object):
   converted floating point model.
   """
 
-  def __init__(self, input_gen, output_gen=None):
+  def __init__(self, input_gen):
     """Creates a representative dataset.
 
     Args:
@@ -117,14 +117,8 @@ class RepresentativeDataset(object):
         for the model. This must be a callable object that returns an object
         that supports the `iter()` protocol (e.g. a generator function). The
         elements generated must have same type and shape as inputs to the model.
-      output_gen: (optional) an output generator that can be used to generate
-        output samples for the model. This must be a callable object that
-        returns an object that supports the `iter()` protocol (e.g. a generator
-        function). The elements generated must have same type and shape as
-        outputs to the model. (default None)
     """
     self.input_gen = input_gen
-    self.output_gen = output_gen
 
 
 @_tf_export("lite.TargetSpec")

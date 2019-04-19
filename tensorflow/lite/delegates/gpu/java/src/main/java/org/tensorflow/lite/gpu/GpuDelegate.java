@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package org.tensorflow.lite.experimental;
+package org.tensorflow.lite.gpu;
 
 import java.io.Closeable;
 import org.tensorflow.lite.Delegate;

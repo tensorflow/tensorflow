@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
+from tensorflow.python.util import compat
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
 _counter_methods = [
@@ -37,32 +40,62 @@ _counter_methods = [
         delete=pywrap_tensorflow.TFE_MonitoringDeleteCounter2,
         get_cell=pywrap_tensorflow.TFE_MonitoringGetCellCounter2),
 ]
-
-
-def gauge(name, label, value):
-  """Set the value of a Gauge metric.
-
-  If the metric with this name does not exist, it will create a new metric.
-
-  Args:
-    name: metric name
-    label: long label
-    value: a int64 value
-  """
-  pywrap_tensorflow.TFE_MonitoringSetGauge(name, label, value)
-
-
-def sampler(name, label, value):
-  """Add the value of a Sampler metric.
-
-  If the metric with this name does not exist, it will create a new metric.
-
-  Args:
-    name: metric name
-    label: metric label
-    value: a double value
-  """
-  pywrap_tensorflow.TFE_MonitoringAddSampler(name, label, value)
+_int_gauge_methods = [
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewIntGauge0,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteIntGauge0,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellIntGauge0),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewIntGauge1,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteIntGauge1,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellIntGauge1),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewIntGauge2,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteIntGauge2,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellIntGauge2),
+]
+_string_gauge_methods = [
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewStringGauge0,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteStringGauge0,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellStringGauge0),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewStringGauge1,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteStringGauge1,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellStringGauge1),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewStringGauge2,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteStringGauge2,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellStringGauge2),
+]
+_bool_gauge_methods = [
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewBoolGauge0,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteBoolGauge0,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellBoolGauge0),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewBoolGauge1,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteBoolGauge1,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellBoolGauge1),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewBoolGauge2,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteBoolGauge2,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellBoolGauge2),
+]
+_sampler_methods = [
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewSampler0,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteSampler0,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellSampler0),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewSampler1,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteSampler1,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellSampler1),
+    _MetricMethod(
+        create=pywrap_tensorflow.TFE_MonitoringNewSampler2,
+        delete=pywrap_tensorflow.TFE_MonitoringDeleteSampler2,
+        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellSampler2),
+]
 
 
 class Metric(object):
@@ -88,7 +121,8 @@ class Metric(object):
     self._metric = self._metric_methods[self._label_length].create(*args)
 
   def __del__(self):
-    self._metric_methods[self._label_length].delete(self._metric)
+    if hasattr(self, '_metric'):
+      self._metric_methods[self._label_length].delete(self._metric)
 
   def get_cell(self, *labels):
     """Retrieves the cell."""
@@ -124,7 +158,12 @@ class CounterCell(object):
 
 
 class Counter(Metric):
-  """A stateful class for updating a cumulative integer metric."""
+  """A stateful class for updating a cumulative integer metric.
+
+  This class encapsulates a set of values (or a single value for a label-less
+  metric). Each value is identified by a tuple of labels. The class allows the
+  user to increment each value.
+  """
 
   def __init__(self, name, description, *labels):
     """Creates a new Counter.
@@ -132,7 +171,7 @@ class Counter(Metric):
     Args:
       name: name of the new metric.
       description: description of the new metric.
-      *labels: The label list of the new metrics
+      *labels: The label list of the new metric.
     """
     super(Counter, self).__init__('Counter', _counter_methods, len(labels),
                                   name, description, *labels)
@@ -140,3 +179,245 @@ class Counter(Metric):
   def get_cell(self, *labels):
     """Retrieves the cell."""
     return CounterCell(super(Counter, self).get_cell(*labels))
+
+
+class IntGaugeCell(object):
+  """A single integer value stored in an `IntGauge`."""
+
+  def __init__(self, cell):
+    """Creates a new IntGaugeCell.
+
+    Args:
+      cell: A c pointer of TFE_MonitoringIntGaugeCell.
+    """
+    self._cell = cell
+
+  def set(self, value):
+    """Atomically set the value.
+
+    Args:
+      value: integer value.
+    """
+    pywrap_tensorflow.TFE_MonitoringIntGaugeCellSet(self._cell, value)
+
+  def value(self):
+    """Retrieves the current value."""
+    return pywrap_tensorflow.TFE_MonitoringIntGaugeCellValue(self._cell)
+
+
+class IntGauge(Metric):
+  """A stateful class for updating a gauge-like integer metric.
+
+  This class encapsulates a set of integer values (or a single value for a
+  label-less metric). Each value is identified by a tuple of labels. The class
+  allows the user to set each value.
+  """
+
+  def __init__(self, name, description, *labels):
+    """Creates a new IntGauge.
+
+    Args:
+      name: name of the new metric.
+      description: description of the new metric.
+      *labels: The label list of the new metric.
+    """
+    super(IntGauge, self).__init__('IntGauge', _int_gauge_methods, len(labels),
+                                   name, description, *labels)
+
+  def get_cell(self, *labels):
+    """Retrieves the cell."""
+    return IntGaugeCell(super(IntGauge, self).get_cell(*labels))
+
+
+class StringGaugeCell(object):
+  """A single string value stored in an `StringGauge`."""
+
+  def __init__(self, cell):
+    """Creates a new StringGaugeCell.
+
+    Args:
+      cell: A c pointer of TFE_MonitoringStringGaugeCell.
+    """
+    self._cell = cell
+
+  def set(self, value):
+    """Atomically set the value.
+
+    Args:
+      value: string value.
+    """
+    pywrap_tensorflow.TFE_MonitoringStringGaugeCellSet(self._cell, value)
+
+  def value(self):
+    """Retrieves the current value."""
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tensorflow.TFE_MonitoringStringGaugeCellValue(self._cell, buffer_)
+      value = pywrap_tensorflow.TF_GetBuffer(buffer_).decode('utf-8')
+    return value
+
+
+class StringGauge(Metric):
+  """A stateful class for updating a gauge-like string metric.
+
+  This class encapsulates a set of string values (or a single value for a
+  label-less metric). Each value is identified by a tuple of labels. The class
+  allows the user to set each value.
+  """
+
+  def __init__(self, name, description, *labels):
+    """Creates a new StringGauge.
+
+    Args:
+      name: name of the new metric.
+      description: description of the new metric.
+      *labels: The label list of the new metric.
+    """
+    super(StringGauge, self).__init__('StringGauge', _string_gauge_methods,
+                                      len(labels), name, description, *labels)
+
+  def get_cell(self, *labels):
+    """Retrieves the cell."""
+    return StringGaugeCell(super(StringGauge, self).get_cell(*labels))
+
+
+class BoolGaugeCell(object):
+  """A single boolean value stored in an `BoolGauge`."""
+
+  def __init__(self, cell):
+    """Creates a new BoolGaugeCell.
+
+    Args:
+      cell: A c pointer of TFE_MonitoringBoolGaugeCell.
+    """
+    self._cell = cell
+
+  def set(self, value):
+    """Atomically set the value.
+
+    Args:
+      value: bool value.
+    """
+    pywrap_tensorflow.TFE_MonitoringBoolGaugeCellSet(self._cell, value)
+
+  def value(self):
+    """Retrieves the current value."""
+    return pywrap_tensorflow.TFE_MonitoringBoolGaugeCellValue(self._cell)
+
+
+class BoolGauge(Metric):
+  """A stateful class for updating a gauge-like bool metric.
+
+  This class encapsulates a set of boolean values (or a single value for a
+  label-less metric). Each value is identified by a tuple of labels. The class
+  allows the user to set each value.
+  """
+
+  def __init__(self, name, description, *labels):
+    """Creates a new BoolGauge.
+
+    Args:
+      name: name of the new metric.
+      description: description of the new metric.
+      *labels: The label list of the new metric.
+    """
+    super(BoolGauge, self).__init__('BoolGauge', _bool_gauge_methods,
+                                    len(labels), name, description, *labels)
+
+  def get_cell(self, *labels):
+    """Retrieves the cell."""
+    return BoolGaugeCell(super(BoolGauge, self).get_cell(*labels))
+
+
+class SamplerCell(object):
+  """SamplerCell stores each value of a Sampler."""
+
+  def __init__(self, cell):
+    """Creates a new SamplerCell.
+
+    Args:
+      cell: A c pointer of TFE_MonitoringSamplerCell.
+    """
+    self._cell = cell
+
+  def add(self, value):
+    """Atomically add a sample.
+
+    Args:
+      value: float value.
+    """
+    pywrap_tensorflow.TFE_MonitoringSamplerCellAdd(self._cell, value)
+
+  def value(self):
+    """Retrieves the current distribution of samples.
+
+    Returns:
+      A HistogramProto describing the distribution of samples.
+    """
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tensorflow.TFE_MonitoringSamplerCellValue(self._cell, buffer_)
+      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+    histogram_proto = summary_pb2.HistogramProto()
+    histogram_proto.ParseFromString(compat.as_bytes(proto_data))
+    return histogram_proto
+
+
+class Buckets(object):
+  """Bucketing strategies for the samplers."""
+
+  def __init__(self, buckets):
+    """Creates a new Buckets.
+
+    Args:
+      buckets: A c pointer of TFE_MonitoringBuckets.
+    """
+    self.buckets = buckets
+
+  def __del__(self):
+    pywrap_tensorflow.TFE_MonitoringDeleteBuckets(self.buckets)
+
+
+class ExponentialBuckets(Buckets):
+  """Exponential bucketing strategy.
+
+  Sets up buckets of the form:
+      [-DBL_MAX, ..., scale * growth^i,
+       scale * growth_factor^(i + 1), ..., DBL_MAX].
+  """
+
+  def __init__(self, scale, growth_factor, bucket_count):
+    """Creates a new exponential Buckets.
+
+    Args:
+      scale: float
+      growth_factor: float
+      bucket_count: integer
+    """
+    super(ExponentialBuckets, self).__init__(
+        pywrap_tensorflow.TFE_MonitoringNewExponentialBuckets(
+            scale, growth_factor, bucket_count))
+
+
+class Sampler(Metric):
+  """A stateful class for updating a cumulative histogram metric.
+
+  This class encapsulates a set of histograms (or a single histogram for a
+  label-less metric) configured with a list of increasing bucket boundaries.
+  Each histogram is identified by a tuple of labels. The class allows the
+  user to add a sample to each histogram value.
+  """
+
+  def __init__(self, name, buckets, description, *labels):
+    """Creates a new Sampler.
+
+    Args:
+      name: name of the new metric.
+      buckets: bucketing strategy of the new metric.
+      description: description of the new metric.
+      *labels: The label list of the new metric.
+    """
+    super(Sampler, self).__init__('Sampler', _sampler_methods, len(labels),
+                                  name, buckets.buckets, description, *labels)
+
+  def get_cell(self, *labels):
+    """Retrieves the cell."""
+    return SamplerCell(super(Sampler, self).get_cell(*labels))

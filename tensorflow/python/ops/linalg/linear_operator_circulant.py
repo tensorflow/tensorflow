@@ -602,7 +602,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   ```python
   # convolution_kernel is real ==> spectrum is Hermitian.
   convolution_kernel = [1., 2., 1.]]
-  spectrum = tf.fft(tf.cast(convolution_kernel, tf.complex64))
+  spectrum = tf.signal.fft(tf.cast(convolution_kernel, tf.complex64))
 
   # spectrum is Hermitian ==> operator is real.
   # spectrum is shape [3] ==> operator is shape [3, 3]
@@ -654,7 +654,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
        [0, 1, 4, 1],
        [1, 0, 1, 4]]
 
-  # convolution_kernel = tf.ifft(spectrum)
+  # convolution_kernel = tf.signal.ifft(spectrum)
   operator.convolution_kernel()
   ==> [4, 1, 0, 1]
   ```
@@ -830,7 +830,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
   ```python
   # convolution_kernel is real ==> spectrum is Hermitian.
   convolution_kernel = [[1., 2., 1.], [5., -1., 1.]]
-  spectrum = tf.fft2d(tf.cast(convolution_kernel, tf.complex64))
+  spectrum = tf.signal.fft2d(tf.cast(convolution_kernel, tf.complex64))
 
   # spectrum is shape [2, 3] ==> operator is shape [6, 6]
   # spectrum is Hermitian ==> operator is real.

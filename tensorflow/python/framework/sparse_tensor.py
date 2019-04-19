@@ -229,7 +229,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     return (self._indices, self._values, self._dense_shape)
 
   @classmethod
-  def _from_components(cls, components):
+  def _from_components(cls, components, metadata):
     return cls(*components)
 
   def _shape_invariant_to_components(self, shape=None):

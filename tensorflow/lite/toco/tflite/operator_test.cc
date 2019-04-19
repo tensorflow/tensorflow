@@ -17,11 +17,10 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/tooling_util.h"
-
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
@@ -864,6 +863,10 @@ TEST_F(OperatorTest, VersioningMaxTest) {
 
 TEST_F(OperatorTest, VersioningMinTest) {
   SimpleVersioningTest<TensorFlowMinimumOperator>();
+}
+
+TEST_F(OperatorTest, VersioningMeanTest) {
+  SimpleVersioningTest<MeanOperator>();
 }
 
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }

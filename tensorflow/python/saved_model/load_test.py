@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import os
+import sys
 import tempfile
 import weakref
 
@@ -64,14 +65,22 @@ from tensorflow.python.util import tf_inspect
     dict(testcase_name="ReloadThrice", cycles=3))
 class LoadTest(test.TestCase, parameterized.TestCase):
 
-  def cycle(self, obj, cycles, signatures=None):
+  def cycle(self, obj, cycles, signatures=None, use_gpu=True):
     to_save = obj
     # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
     # point w.r.t. saving/restoring, ideally after 2nd saving.
     for _ in range(cycles):
       path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-      save.save(to_save, path, signatures)
-      loaded = load.load(path)
+      if use_gpu:
+        # If available, we'll run the save and restore preferring the GPU. This
+        # just makes sure we aren't throwing errors and have enough
+        # device("CPU") blocks to satisfy the placer.
+        with test_util.use_gpu():
+          save.save(to_save, path, signatures)
+          loaded = load.load(path)
+      else:
+        save.save(to_save, path, signatures)
+        loaded = load.load(path)
       to_save = loaded
     return loaded
 
@@ -1336,6 +1345,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
             b=tensor_spec.TensorSpec(None, dtypes.float32, name="b")))
     obj = tracking.AutoTrackable()
     obj.__call__ = f
+    if sys.version_info.major == 3 and sys.version_info.minor < 5:
+      # TODO(allenl): figure out why this doesn't work in Python3.4
+      self.skipTest("Not working in Python 3.4")
     imported = self.cycle(obj, cycles)
     self.assertAllClose(3.,
                         imported(NamedTupleType(a=constant_op.constant(1.),
@@ -1436,7 +1448,12 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = HasDataset()
     self.assertEqual(3 * (1 + 4 + 9 + 16),
                      root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
-    root = self.cycle(root, cycles)
+    with ops.device("CPU"):
+      # TODO(b/130706977): Fix loading of captured Datsets with a GPU device
+      # available.
+      root = self.cycle(
+          root, cycles,
+          use_gpu=False)
     self.assertEqual(3 * (1 + 4 + 9 + 16),
                      root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 

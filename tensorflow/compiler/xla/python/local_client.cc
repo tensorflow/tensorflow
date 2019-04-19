@@ -79,9 +79,13 @@ StatusOr<std::unique_ptr<PyLocalClient>> PyLocalClient::Get(
 PyLocalClient::PyLocalClient(LocalClient* client)
     : client_(client),
       h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
-                         client->device_count()),
-      execute_pool_(tensorflow::Env::Default(), "py_xla_execute",
-                    client->device_count()) {}
+                         client->device_count()) {
+  execute_threads_.reserve(client->device_count());
+  for (int i = 0; i < client->device_count(); ++i) {
+    execute_threads_.push_back(absl::make_unique<WorkerThread>(
+        tensorflow::Env::Default(), "py_xla_execute"));
+  }
+}
 
 Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,
                                        int device_ordinal) {
@@ -406,7 +410,7 @@ StatusOr<std::vector<LocalShapedBuffer>> PyLocalExecutable::ExecutePerReplica(
     int failed GUARDED_BY(mu) = 0;
 
     for (int replica = 0; replica < num_replicas(); ++replica) {
-      client_->execute_pool()->Schedule(
+      client_->execute_threads().at(replica)->Schedule(
           [&execute, &mu, &running, &failed, &results, replica] {
             results[replica] = execute(replica);
 

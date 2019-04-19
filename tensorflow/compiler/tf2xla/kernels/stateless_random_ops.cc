@@ -33,6 +33,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+xla::BitGeneratorTy GetBitGeneratorForDevice(absl::string_view) {
+  return xla::ThreeFryBitGenerator;
+}
+
+}  // namespace
+
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   if (dtype == DT_BFLOAT16) {
     xla::XlaBuilder* builder = input.builder();
@@ -45,7 +53,8 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   }
 }
 
-xla::XlaOp StatelessRngUniform(xla::XlaOp seeds, const xla::Shape& shape,
+xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
+                               xla::XlaOp seeds, const xla::Shape& shape,
                                xla::XlaOp minval, xla::XlaOp maxval) {
   xla::XlaBuilder* builder = seeds.builder();
 
@@ -58,15 +67,17 @@ xla::XlaOp StatelessRngUniform(xla::XlaOp seeds, const xla::Shape& shape,
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
     case xla::F32:
-      return xla::UniformF32Distribution(key, initial_state,
-                                         xla::ThreeFryBitGenerator, minval,
-                                         maxval, shape)
+      return xla::UniformF32Distribution(
+                 key, initial_state,
+                 GetBitGeneratorForDevice(device_type_string), minval, maxval,
+                 shape)
           .value;
     case xla::S32:  // fall through
     case xla::S64:
-      return UniformIntDistribution(key, initial_state,
-                                    xla::ThreeFryBitGenerator, minval, maxval,
-                                    shape)
+      return UniformIntDistribution(
+                 key, initial_state,
+                 GetBitGeneratorForDevice(device_type_string), minval, maxval,
+                 shape)
           .value;
       break;
     default:
@@ -82,7 +93,8 @@ namespace {
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -100,15 +112,17 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-    xla::XlaOp uniform = StatelessRngUniform(
-        seed, xla_shape, xla::ConstantR0<float>(builder, 0.0),
-        xla::ConstantR0<float>(builder, 1.0));
+    xla::XlaOp uniform =
+        StatelessRngUniform(device_type_string_, seed, xla_shape,
+                            xla::ConstantR0<float>(builder, 0.0),
+                            xla::ConstantR0<float>(builder, 1.0));
     uniform = MaybeConvertF32ToBF16(uniform, dtype_);
     ctx->SetOutput(0, uniform);
   }
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformOp);
 };
@@ -123,7 +137,8 @@ REGISTER_XLA_OP(Name("StatelessRandomUniform")
 class StatelessRandomUniformIntOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformIntOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -150,13 +165,15 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-    xla::XlaOp uniform = StatelessRngUniform(seed, xla_shape, minval, maxval);
+    xla::XlaOp uniform = StatelessRngUniform(device_type_string_, seed,
+                                             xla_shape, minval, maxval);
 
     ctx->SetOutput(0, uniform);
   }
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformIntOp);
 };
@@ -171,7 +188,8 @@ REGISTER_XLA_OP(Name("StatelessRandomUniformInt")
 class StatelessRandomNormalOp : public XlaOpKernel {
  public:
   explicit StatelessRandomNormalOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -195,8 +213,9 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                      ShiftLeft(ConvertElementType(seed1, xla::U64),
                                ConstantR0WithType(builder, xla::U64, 32));
     xla::XlaOp normal =
-        xla::NormalF32Distribution(key, initial_state,
-                                   xla::ThreeFryBitGenerator, xla_shape)
+        xla::NormalF32Distribution(
+            key, initial_state, GetBitGeneratorForDevice(device_type_string_),
+            xla_shape)
             .value;
     normal = MaybeConvertF32ToBF16(normal, dtype_);
     ctx->SetOutput(0, normal);
@@ -204,6 +223,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomNormalOp);
 };
@@ -218,7 +238,8 @@ REGISTER_XLA_OP(Name("StatelessRandomNormal")
 class StatelessTruncatedNormalOp : public XlaOpKernel {
  public:
   explicit StatelessTruncatedNormalOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -236,7 +257,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
     xla::XlaOp uniform = StatelessRngUniform(
-        seed, xla_shape,
+        device_type_string_, seed, xla_shape,
         xla::MinPositiveNormalValue(builder, xla_shape.element_type()),
         xla::One(builder, xla_shape.element_type()));
     xla::XlaOp truncated_normal = TruncatedNormal(uniform);
@@ -246,6 +267,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
 };

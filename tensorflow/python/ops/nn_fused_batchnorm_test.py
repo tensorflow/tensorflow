@@ -136,7 +136,7 @@ class BatchNormalizationTest(test.TestCase):
     self.assertAllClose(mean_ref, mean_val, atol=1e-3)
     # This is for Bessel's correction. tf.nn.moments uses n, instead of n-1, as
     # the denominator in the formula to calculate variance, while
-    # tf.nn.fused_batch_norm has Bessel's correction built in.
+    # tf.compat.v1.nn.fused_batch_norm has Bessel's correction built in.
     sample_size = x_val.size / scale_val.size
     var_ref = var_ref * sample_size / (max(sample_size - 1.0, 1.0))
     self.assertAllClose(var_ref, var_val, atol=1e-3)

@@ -38,6 +38,16 @@ py_test(
 )
 
 cc_library(
+    name = "worker_thread",
+    srcs = ["worker_thread.cc"],
+    hdrs = ["worker_thread.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -106,6 +116,7 @@ tf_pybind_extension(
     module_name = "xla_extension",
     deps = [
         ":types",
+        ":worker_thread",
         ":xrt",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

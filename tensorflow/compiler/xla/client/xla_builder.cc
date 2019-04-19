@@ -554,33 +554,50 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
                             const XlaOp& ehs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
-    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
-    TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, GetShape(ehs));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferTernaryOpShape(triop, lhs_shape,
-                                                         rhs_shape, ehs_shape));
-    *instr.mutable_shape() = shape.ToProto();
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
-    if (!shape.IsTuple()) {
-      if (!lhs_shape.IsTuple() &&
-          !ShapeUtil::SameDimensions(shape, lhs_shape)) {
-        // lhs is being implicitly broadcasted. Change to explicit.
-        TF_ASSIGN_OR_RETURN(updated_lhs, AddBroadcastSequence(shape, lhs));
+    // The client API supports implicit broadcast for kSelect and kClamp, but
+    // XLA does not support implicit broadcast. Make implicit broadcast explicit
+    // and update the operands.
+    if (triop == HloOpcode::kSelect || triop == HloOpcode::kClamp) {
+      TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
+      TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
+      TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, GetShape(ehs));
+
+      absl::optional<Shape> non_scalar_shape;
+      for (const Shape& shape : {lhs_shape, rhs_shape, ehs_shape}) {
+        if (shape.IsArray() && shape.rank() != 0) {
+          non_scalar_shape = shape;
+        }
       }
-      if (!rhs_shape.IsTuple() &&
-          !ShapeUtil::SameDimensions(shape, rhs_shape)) {
-        // rhs is being implicitly broadcasted. Change to explicit.
-        TF_ASSIGN_OR_RETURN(updated_rhs, AddBroadcastSequence(shape, rhs));
-      }
-      if (!ehs_shape.IsTuple() &&
-          !ShapeUtil::SameDimensions(shape, ehs_shape)) {
-        // ehs is being implicitly broadcasted. Change to explicit.
-        TF_ASSIGN_OR_RETURN(updated_ehs, AddBroadcastSequence(shape, ehs));
+      if (non_scalar_shape.has_value()) {
+        if (ShapeUtil::IsScalar(lhs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_lhs,
+                              AddBroadcastSequence(*non_scalar_shape, lhs));
+        }
+        if (ShapeUtil::IsScalar(rhs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_rhs,
+                              AddBroadcastSequence(*non_scalar_shape, rhs));
+        }
+        if (ShapeUtil::IsScalar(ehs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_ehs,
+                              AddBroadcastSequence(*non_scalar_shape, ehs));
+        }
       }
     }
+
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(updated_lhs));
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(updated_rhs));
+    TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, GetShape(updated_ehs));
+    StatusOr<const Shape> status_or_shape = ShapeInference::InferTernaryOpShape(
+        triop, lhs_shape, rhs_shape, ehs_shape);
+    if (!status_or_shape.status().ok()) {
+      return InvalidArgument(
+          "%s Input scalar shapes may have been changed to non-scalar shapes.",
+          status_or_shape.status().error_message());
+    }
+    *instr.mutable_shape() = status_or_shape.ConsumeValueOrDie().ToProto();
     return AddInstruction(std::move(instr), triop,
                           {updated_lhs, updated_rhs, updated_ehs});
   });

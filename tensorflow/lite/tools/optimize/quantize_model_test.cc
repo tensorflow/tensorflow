@@ -117,6 +117,10 @@ TEST_F(QuantizeConvModelTest, TensorShapesAndStructureIsUnchanged) {
       EXPECT_EQ(quant_tensor->name, float_tensor->name()->str());
     }
   }
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_CONV_2D);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 TEST_F(QuantizeConvModelTest, OperatorsAreUnchanged) {
@@ -129,7 +133,7 @@ TEST_F(QuantizeConvModelTest, OperatorsAreUnchanged) {
     const auto float_model_op = readonly_model_->operator_codes()->Get(i);
     EXPECT_EQ(model_.operator_codes[i]->builtin_code,
               float_model_op->builtin_code());
-    EXPECT_EQ(model_.operator_codes[i]->version, float_model_op->version());
+    EXPECT_EQ(model_.operator_codes[i]->version, 2);
   }
 
   ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
@@ -359,6 +363,14 @@ TEST_F(QuantizeConcatModelTest, AddRequantBeforeConcat) {
   EXPECT_EQ(concat->inputs[0], 3);
   EXPECT_EQ(concat->inputs[1], 1);
   EXPECT_EQ(concat->outputs[0], 2);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code,
+            BuiltinOperator_CONCATENATION);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
+  EXPECT_EQ(model_.operator_codes[1]->builtin_code, BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
 class QuantizeConvModel1Test : public QuantizeModelTest {
@@ -455,6 +467,11 @@ TEST_F(QuantizeConvModel1Test, VerifyConvQuantizationWithUnitScale) {
       EXPECT_NEAR(dequantized_value, weights_float_buffer[element_idx], eps);
     }
   }
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_CONV_2D);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 class QuantizeConvModel2Test : public QuantizeModelTest {
@@ -548,6 +565,11 @@ TEST_F(QuantizeConvModel2Test, VerifyConvQuantization) {
       EXPECT_EQ(zero_point, 0);
     }
   }
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_CONV_2D);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 class QuantizeSoftmaxTest : public QuantizeModelTest {
@@ -603,6 +625,11 @@ TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
   ASSERT_EQ(output_quant_params->zero_point.size(), 1);
   ASSERT_EQ(1.0f / 256.0f, output_quant_params->scale[0]);
   ASSERT_EQ(-128, output_quant_params->zero_point[0]);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_SOFTMAX);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 class QuantizeAvgPoolTest : public QuantizeModelTest {
@@ -658,6 +685,12 @@ TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
   EXPECT_EQ(input_quant_params->min[0], output_quant_params->min[0]);
   EXPECT_EQ(input_quant_params->max[0], output_quant_params->max[0]);
   EXPECT_EQ(input_quant_params->scale[0], output_quant_params->scale[0]);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code,
+            BuiltinOperator_AVERAGE_POOL_2D);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 class QuantizeMultiInputAddWithReshapeTest : public QuantizeModelTest {
@@ -707,6 +740,13 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyReshapeQuantization) {
   ASSERT_EQ(float_output_quant_params->max()->size(), 1);
   ASSERT_EQ(output_quant_params->min.size(), 1);
   ASSERT_EQ(output_quant_params->max.size(), 1);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_ADD);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
+  EXPECT_EQ(model_.operator_codes[1]->builtin_code, BuiltinOperator_RESHAPE);
+  EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
 TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
@@ -751,6 +791,13 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
   ASSERT_EQ(float_output_quant_params->max()->size(), 1);
   ASSERT_EQ(output_quant_params->min.size(), 1);
   ASSERT_EQ(output_quant_params->max.size(), 1);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_ADD);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
+  EXPECT_EQ(model_.operator_codes[1]->builtin_code, BuiltinOperator_RESHAPE);
+  EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
 class QuantizeConstInputTest : public QuantizeModelTest {
@@ -788,6 +835,11 @@ TEST_F(QuantizeConstInputTest, VerifyConstOpInput) {
   }
 
   EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_ADD);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 class QuantizeArgMaxTest : public QuantizeModelTest {
@@ -825,6 +877,11 @@ TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
   // The output of ArgMax should still be the same type.
   ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
             subgraph->tensors[op->outputs[0]].get()->type);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_ARG_MAX);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
 class QuantizeFCTest : public QuantizeModelTest {
@@ -867,6 +924,14 @@ TEST_F(QuantizeFCTest, VerifyFC) {
   ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
             TensorType_FLOAT32);
   EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code,
+            BuiltinOperator_FULLY_CONNECTED);
+  EXPECT_EQ(model_.operator_codes[0]->version, 4);
+  EXPECT_EQ(model_.operator_codes[1]->builtin_code, BuiltinOperator_RESHAPE);
+  EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
 }  // namespace

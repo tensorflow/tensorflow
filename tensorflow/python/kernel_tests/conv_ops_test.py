@@ -778,7 +778,8 @@ class Conv2DTest(test.TestCase):
             stride_cols=1,
             test_input=test_input,
             data_format=data_format,
-            use_gpu=True)
+            use_gpu=True,
+            max_err=0.005)
 
   @test_util.deprecated_graph_mode_only
   @test_util.run_cuda_only

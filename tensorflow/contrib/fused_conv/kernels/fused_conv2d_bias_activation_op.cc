@@ -90,6 +90,9 @@ struct Int8x4ToInt32<int8> {
 
 template <typename BiasType, typename ScaleType>
 class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
+  using T = qint8;       // conv_input and filter type
+  using TempT = qint32;  // temporary accumulator type for tensor contraction
+
  public:
   void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
               const Tensor& conv_input, ScaleType conv_input_scale,
@@ -105,9 +108,6 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
     // contraction using 32-bit accumulation (QInt32).
     Tensor temp_output(DT_QINT32, output->shape());
 
-    using T = qint8;
-    using TempT = qint32;
-
     constexpr int32 row_dilation = 1;
     constexpr int32 col_dilation = 1;
 
@@ -115,6 +115,10 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
 
     // CPU convolution works with input in NHWC and filter in HWIO data formats.
     // NOTE: This code is mostly shared with 'Conv2D' and 'FusedConv2D'.
+
+    BiasActivationOutputKernel output_kernel(conv_input_scale, side_input,
+                                             side_input_scale, bias,
+                                             activation_mode, output);
 
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
         col_stride == 1) {
@@ -128,7 +132,7 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
       auto in0 = conv_input.shaped<T, 2>({conv_width, filter.dim_size(2)});
       auto in1 = filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)});
 
-      out.device(device) = in0.contract(in1, dim_pair /*, output_kernel*/);
+      out.device(device) = in0.contract(in1, dim_pair, output_kernel);
 
     } else if (filter.dim_size(0) == conv_input.dim_size(1) &&
                filter.dim_size(1) == conv_input.dim_size(2) &&
@@ -147,7 +151,7 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
       auto in0 = conv_input.shaped<T, 2>({conv_input.dim_size(0), k});
       auto in1 = filter.shaped<T, 2>({k, filter.dim_size(3)});
 
-      out.device(device) = in0.contract(in1, dim_pair /*, output_kernel*/);
+      out.device(device) = in0.contract(in1, dim_pair, output_kernel);
 
     } else {
       auto out = temp_output.tensor<TempT, 4>();
@@ -155,57 +159,95 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
       auto in1 = filter.tensor<T, 4>();
 
       // Need to swap row/col when calling Eigen.
-      out.device(device) = Eigen::SpatialConvolution(
-          in0, in1, col_stride, row_stride, padding, col_dilation,
-          row_dilation /*, output_kernel*/);
-    }
-
-    constexpr int8 max_range = 127;
-    constexpr int8 min_range = -128;
-
-#if defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::IndexList<int, int, int, Eigen::type2index<1>> broadcast_bias;
-    broadcast_bias.set(0, temp_output.dim_size(0));
-    broadcast_bias.set(1, temp_output.dim_size(1));
-    broadcast_bias.set(2, temp_output.dim_size(2));
-#else
-    const Eigen::array<int, 4> broadcast_bias(temp_output.dim_size(0),
-                                              temp_output.dim_size(1),
-                                              temp_output.dim_size(2), 1);
-#endif
-
-    // TODO(ezhulenev): Bias and SideInput could be added to the result of
-    // convolution using Eigen output kernels.
-
-    auto temp_t = temp_output.tensor<TempT, 4>();
-    auto bias_t = bias.shaped<BiasType, 4>({1, 1, 1, temp_output.dim_size(3)});
-    auto side_input_t = side_input.tensor<T, 4>();
-
-    auto conv_output_scaled = temp_t.cast<ScaleType>() * conv_input_scale;
-    auto broadcasted_bias = bias_t.broadcast(broadcast_bias);
-    auto side_input_scaled = side_input_t.cast<ScaleType>() * side_input_scale;
-
-    // This expression corresponds to cuDNN implementation of INT8
-    // cudnnConvolutionBiasActivationForward.
-    // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#scaling-parameters__fig-conv-bias-activation-forward
-
-    if (activation_mode == ActivationMode::NONE) {
-      output->tensor<T, 4>().device(device) =
-          (conv_output_scaled + broadcasted_bias + side_input_scaled)
-              .round()
-              .clip(static_cast<ScaleType>(min_range),
-                    static_cast<ScaleType>(max_range))
-              .template cast<T>();
-    } else if (activation_mode == ActivationMode::RELU) {
-      output->tensor<T, 4>().device(device) =
-          (conv_output_scaled + broadcasted_bias + side_input_scaled)
-              .round()
-              .clip(0, static_cast<ScaleType>(max_range))
-              .template cast<T>();
-    } else {
-      OP_REQUIRES(ctx, false, errors::Internal("Unsupported activation mode"));
+      out.device(device) =
+          Eigen::SpatialConvolution(in0, in1, col_stride, row_stride, padding,
+                                    col_dilation, row_dilation, output_kernel);
     }
   }
+
+ private:
+  // Contraction output mapper for temporary QInt32 tensor.
+  using ContractionOutputMapper =
+      Eigen::internal::blas_data_mapper<TempT, Eigen::Index, Eigen::ColMajor>;
+
+  // This output kernel computes an expressions corresponding to cuDNN
+  // implementation of INT8 cudnnConvolutionBiasActivationForward:
+  // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#scaling-parameters__fig-conv-bias-activation-forward
+  struct BiasActivationOutputKernel {
+    static constexpr int8 kMaxRange = 127;
+    static constexpr int8 kMinRange = -128;
+
+    explicit BiasActivationOutputKernel(ScaleType conv_input_scale,
+                                        const Tensor& side_input,
+                                        ScaleType side_input_scale,
+                                        const Tensor& bias,
+                                        ActivationMode activation_mode,
+                                        Tensor* output)
+        : activation_mode(activation_mode),
+          conv_input_scale(conv_input_scale),
+          bias_data(bias.flat<BiasType>().data()),
+          side_input_data(side_input.flat<T>().data()),
+          side_input_scale(side_input_scale),
+          output_data(const_cast<T*>(output->flat<T>().data())) {}
+
+    EIGEN_ALWAYS_INLINE void operator()(
+        const ContractionOutputMapper& conv_output_mapper,
+        const Eigen::TensorContractionParams& params, Eigen::Index i,
+        Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) const {
+      DCHECK(params.swapped_arguments);
+
+      const auto stride = conv_output_mapper.stride();
+
+      const BiasType* bias_base = bias_data + i;
+      typename TTypes<BiasType>::UnalignedConstTensor bias(bias_base, num_rows);
+
+      const T* side_input_base = side_input_data + i + j * stride;
+      T* output_base = output_data + i + j * stride;
+
+      for (int col = 0; col < num_cols; ++col) {
+        // A column of an output tensor after QInt8xQInt8 -> QInt32 contraction.
+        // This is a temporary tensor, that we will scale, add bias with
+        // side_input, and quantize before writing to final output tensor.
+        typename TTypes<TempT>::UnalignedConstTensor conv_output(
+            &conv_output_mapper(0, col), num_rows);
+
+        // A column of side input tensor corresponding to conv output row.
+        typename TTypes<T>::UnalignedConstTensor side_input(
+            side_input_base + col * stride, num_rows);
+
+        // A column of output quantized tensor corresponding to conv output row.
+        typename TTypes<T>::UnalignedTensor output(output_base + col * stride,
+                                                   num_rows);
+
+        auto conv_output_scaled =
+            conv_output.cast<ScaleType>() * conv_input_scale;
+        auto side_input_scaled =
+            side_input.cast<ScaleType>() * side_input_scale;
+
+        if (activation_mode == ActivationMode::NONE) {
+          output = (conv_output_scaled + bias + side_input_scaled)
+                       .round()
+                       .clip(static_cast<ScaleType>(kMinRange),
+                             static_cast<ScaleType>(kMaxRange))
+                       .template cast<T>();
+
+        } else if (activation_mode == ActivationMode::RELU) {
+          output = (conv_output_scaled + bias + side_input_scaled)
+                       .round()
+                       .clip(0, static_cast<ScaleType>(kMaxRange))
+                       .template cast<T>();
+        }
+      }
+    }
+
+   private:
+    ActivationMode activation_mode;
+    ScaleType conv_input_scale;
+    const BiasType* bias_data;
+    const T* side_input_data;
+    ScaleType side_input_scale;
+    T* output_data;
+  };
 };
 #endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 

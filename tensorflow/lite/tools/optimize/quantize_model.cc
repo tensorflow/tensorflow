@@ -35,6 +35,7 @@ namespace tflite {
 namespace optimize {
 
 namespace {
+
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           const TensorT* weight_tensor, TensorT* bias_tensor,
                           bool is_per_channel, int channel_dim_index,
@@ -538,6 +539,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
       QuantizeWeightsInputOutput(builder, model, error_reporter));
   TF_LITE_ENSURE_STATUS(ApplyConstraints(builder, model, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeBiases(builder, model, error_reporter));
+  TF_LITE_ENSURE_STATUS(utils::SetOperatorCodeVersion(model));
   SetInputAndOutputTypes(model, input_type, output_type);
 
   flatbuffers::Offset<Model> output_model_location =

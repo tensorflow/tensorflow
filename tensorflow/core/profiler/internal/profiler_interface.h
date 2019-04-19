@@ -19,8 +19,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+class EagerContext;
 struct ProfilerContext {
-  class EagerContext* eager_context = nullptr;
+  EagerContext* eager_context = nullptr;
 };
 
 namespace profiler {

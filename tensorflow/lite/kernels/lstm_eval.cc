@@ -41,7 +41,7 @@ const float kLayerNormEpsilon = 1e-8;
 //  - n_batch: size of batch,
 //  - n_cell: number of cells (or units),
 //  - n_input: the input size,
-//  - n_aux_input: the auxilary input size.
+//  - n_aux_input: the auxiliary input size.
 //  - n_output: the output size.
 //  - output_batch_leading_dim: the leading dimension of the output buffer.
 //
@@ -51,7 +51,7 @@ const float kLayerNormEpsilon = 1e-8;
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_output_weights
-// Auxilary input weights of size 'n_cell * n_aux_input':
+// Auxiliary input weights of size 'n_cell * n_aux_input':
 //   aux_input_to_input_weights        - optional
 //   aux_input_to_forget_weights       - optional
 //   aux_input_to_cell_weights         - optional
@@ -372,7 +372,7 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_input_weights
-// Quantized auxilary input weights of size 'n_cell * n_aux_input':
+// Quantized auxiliary input weights of size 'n_cell * n_aux_input':
 //   aux_input_to_input_weights        - optional
 //   aux_input_to_forget_weights       - optional
 //   aux_input_to_cell_weights         - optional
