@@ -113,11 +113,10 @@ class LocalBackend(Backend):
     return self.client.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.LocalShapedBuffer.FromPython(pyval, self.client, device)
+    return _xla.PyLocalBuffer.FromPython(pyval, self.client, device)
 
   def buffers_from_pyvals(self, pyvals_and_devices):
-    return _xla.LocalShapedBuffer.FromPythonValues(pyvals_and_devices,
-                                                   self.client)
+    return _xla.PyLocalBuffer.FromPythonValues(pyvals_and_devices, self.client)
 
   def delete_buffer(self, c_buffer):
     c_buffer.Delete()
