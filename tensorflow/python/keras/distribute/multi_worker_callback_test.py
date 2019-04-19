@@ -336,8 +336,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       model.compile(
           loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
-    # TODO(b/129779608): Fix the flakiness of the following check.
-    # test_obj.assertTrue(os.path.exists(saving_filepath))
+    test_obj.assertTrue(os.path.exists(saving_filepath))
 
     # Unmatched format. Should raise ValueError.
     with test_obj.assertRaisesRegexp(ValueError, 'Error loading file from'):
