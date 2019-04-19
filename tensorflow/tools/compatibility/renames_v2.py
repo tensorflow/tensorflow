@@ -879,6 +879,8 @@ renames = {
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
     'tf.parse_single_sequence_example':
