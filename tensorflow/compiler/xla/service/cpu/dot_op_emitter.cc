@@ -250,11 +250,6 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
   std::tie(tile_size_m, tile_size_k, tile_size_n_in_vector_width) =
       GetGemmTileSize();
 
-  const bool enable_fast_math =
-      hlo_module_config_.debug_options().xla_cpu_enable_fast_math();
-  const bool optimize_for_size =
-      options::OptimizeForSizeRequested(hlo_module_config_);
-
   EmitSmallGemm(
       /*scalar_type=*/primitive_type,
       /*m=*/m, /*k=*/k, /*n=*/n,
@@ -262,9 +257,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
       /*max_vector_count=*/tile_size_n_in_vector_width,
       /*min_vectorization_width=*/std::min<int64>(4, max_target_vector_width),
       /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k, /*lhs=*/lhs,
-      /*rhs=*/rhs, /*result=*/target, b_,
-      /*enable_fast_math=*/enable_fast_math,
-      /*optimize_for_size=*/optimize_for_size);
+      /*rhs=*/rhs, /*result=*/target, b_, hlo_module_config_);
 }
 
 void DotOpEmitter::EmitTiledLlvmIrGemv() {
@@ -323,11 +316,6 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
   llvm::Value* rhs_op =
       swap_operands ? lhs_array_.GetBasePointer() : rhs_array_.GetBasePointer();
 
-  const bool enable_fast_math =
-      hlo_module_config_.debug_options().xla_cpu_enable_fast_math();
-  const bool optimize_for_size =
-      options::OptimizeForSizeRequested(hlo_module_config_);
-
   const int target_vector_register_element_size =
       target_machine_features_.vector_register_num_elements(
           *b_->GetInsertBlock()->getParent(), primitive_type);
@@ -349,9 +337,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
         /*tile_rows=*/vector_register_element_size, /*tile_cols=*/tiling_factor,
         /*m=*/m, /*k=*/k, /*lhs=*/lhs_op, /*rhs=*/rhs_op,
         /*addend=*/addend_array_ ? addend_array_->GetBasePointer() : nullptr,
-        /*result=*/result_op, b_,
-        /*enable_fast_math=*/enable_fast_math,
-        /*optimize_for_size=*/optimize_for_size);
+        /*result=*/result_op, b_, hlo_module_config_);
   } else {
     VLOG(2) << "Emitting row major matrix-vector multiply with m = " << m
             << " and k = " << k;
@@ -361,9 +347,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
         /*tile_cols=*/vector_register_element_size,
         /*m=*/m, /*k=*/k, /*lhs=*/lhs_op, /*rhs=*/rhs_op,
         /*addend=*/addend_array_ ? addend_array_->GetBasePointer() : nullptr,
-        /*result=*/result_op, b_,
-        /*enable_fast_math=*/enable_fast_math,
-        /*optimize_for_size=*/optimize_for_size);
+        /*result=*/result_op, b_, hlo_module_config_);
   }
 }
 
@@ -728,8 +712,7 @@ absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     return {};
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput) {
+  if (hlo.IsOutputFusion()) {
     auto* fusion_root =
         hlo.fused_instructions_computation()->root_instruction();
     if (fusion_root->opcode() != HloOpcode::kAdd) {
@@ -1024,11 +1007,8 @@ bool DotImplementationCanHandleTranspose(
       GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
                                    DotInfo(dot_instr), target_machine_features);
 
-  // TODO(sanjoy): This is not quite right, it should be `impl_strategy ==
-  // kEigen || impl_strategy == kTiledLlvmIrGemv || impl_strategy ==
-  // kNaiveLlvmIr` but I'll fix this in a later CL in the interest of keeping
-  // the CL adding this comment NFC.
-  return impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemm ||
+  return impl_strategy == DotImplementationStrategy::kNaiveLlvmIr ||
+         impl_strategy == DotImplementationStrategy::kTiledLlvmIrGemv ||
          impl_strategy == DotImplementationStrategy::kEigen;
 }
 

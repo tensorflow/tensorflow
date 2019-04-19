@@ -200,7 +200,7 @@ def rewrite_tf_runtime_error(error, source_map):
   """Rewrites TensorFlow runtime errors raised by ops created in AG code.
 
   Args:
-    error: tf.OpError
+    error: tf.errors.OpError
     source_map: Dict[origin_info.LineLocation, origin_info.OriginInfo]
 
   Returns:

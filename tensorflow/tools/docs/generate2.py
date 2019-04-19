@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""A tool to generate api_docs for TensorFlow2.
+"""A tool to generate api_docs for TensorFlow2.
 
 ```
 python generate2.py --output_dir=/tmp/out

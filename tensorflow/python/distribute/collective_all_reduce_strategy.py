@@ -45,8 +45,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(yuefengz): support in-graph replication.
-@tf_export("distribute.experimental.MultiWorkerMirroredStrategy")
-class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
+@tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
+class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   """Distribution strategy that uses collective ops for all-reduce.
 
   It is similar to MirroredStrategy but it uses collective ops for reduction.
@@ -80,6 +80,21 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
             communication=communication))
 
 
+@tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])
+class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
+
+  __doc__ = CollectiveAllReduceStrategy.__doc__
+
+  def __init__(
+      self,
+      communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
+    """Initializes the object."""
+    super(CollectiveAllReduceStrategyV1, self).__init__(
+        CollectiveAllReduceExtended(
+            self,
+            communication=communication))
+
+
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   """Implementation of CollectiveAllReduceStrategy."""
 
@@ -87,8 +102,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                container_strategy,
                communication,
                cluster_resolver=TFConfigClusterResolver()):
-    distribute_lib.DistributionStrategyExtended.__init__(
-        self, container_strategy)
+    distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     assert isinstance(
         communication,
         cross_device_ops_lib.CollectiveCommunication)
@@ -165,16 +179,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     task_id = cluster_resolver.task_id
     if task_type is None or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
-                       "`task_type` and `task_id` in the `cluster_resolver`.")
-    if task_type not in ("chief", "worker"):
-      raise ValueError(
-          "Unrecognized task_type: %r, valid task types are: \"chief\", "
-          "\"worker\"." % task_type)
+                       "`task_type` and `task_id`.")
 
     self._num_workers = multi_worker_util.worker_count(cluster_spec, task_type)
     if not self._num_workers:
-      raise ValueError("No `worker` or `chief` tasks can be found in "
-                       "`cluster_spec`.")
+      raise ValueError("No `worker`, `chief` or `evaluator` tasks can be found "
+                       "in `cluster_spec`.")
 
     self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
                                                 task_id)
@@ -328,15 +338,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, *args, **kwargs)
 
-  def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(dataset, self._input_workers,
-                                     self._num_replicas_in_sync)
-
-  def _make_input_fn_iterator(
-      self,
-      input_fn,
-      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    """Distributes the dataset to each local GPU."""
+  def _make_input_context(self):
     if self._cluster_spec is None:
       input_pipeline_id = 0
     else:
@@ -346,7 +348,27 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_input_pipelines=self._num_workers,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
+    return input_context
 
+  def _experimental_distribute_dataset(self, dataset):
+    input_context = self._make_input_context()
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._num_replicas_in_sync,
+                                             input_context=input_context)
+
+  def _make_dataset_iterator(self, dataset):
+    """Distributes the dataset to each local GPU."""
+    input_context = self._make_input_context()
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._num_replicas_in_sync,
+                                     input_context=input_context)
+
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    """Distributes the input function to each local GPU."""
+    input_context = self._make_input_context()
     return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, [input_context])
 
@@ -358,7 +380,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     """Configures the object.
 
     Args:
-      session_config: a `tf.ConfigProto`
+      session_config: a `tf.compat.v1.ConfigProto`
       cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
         cluster configurations.
       task_type: the current task type, such as "worker".
@@ -410,15 +432,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     # Collective group leader is needed for collective ops to coordinate
     # workers.
-    if "chief" in self._cluster_spec.jobs:
-      updated_config.experimental.collective_group_leader = (
-          "/job:chief/replica:0/task:0")
-    else:
-      if "worker" not in self._cluster_spec.jobs:
-        raise ValueError(
-            "You must have `chief` or `worker` jobs in the `cluster_spec`.")
-      updated_config.experimental.collective_group_leader = (
-          "/job:worker/replica:0/task:0")
+    updated_config.experimental.collective_group_leader = (
+        multi_worker_util.collective_leader(self._cluster_spec, self._task_type,
+                                            self._task_id))
 
     # The device filters prevent communication between workers.
     del updated_config.device_filters[:]

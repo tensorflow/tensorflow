@@ -196,8 +196,8 @@ class StreamExecutorInterface {
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
-  virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
-                                  uint64 size) = 0;
+  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
+                             uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -373,6 +373,11 @@ class StreamExecutorInterface {
   virtual absl::optional<AllocatorStats> GetAllocatorStats() {
     return absl::nullopt;
   }
+
+  // Clears the compilation cache from volatile memory. Returns OK if no
+  // compilation cache exists or if clearing the compilation cache is
+  // unsupported. Caches in non-volatile storage are unaffected.
+  virtual port::Status FlushCompilationCache() { return port::Status::OK(); }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);

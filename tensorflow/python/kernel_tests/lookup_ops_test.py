@@ -230,7 +230,7 @@ class StaticHashTableTest(BaseLookupTableTest):
           lookup_ops.KeyValueTensorInitializer(["a"], [1], [dtypes.string],
                                                dtypes.int64), default_val)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("(Cached) Sessions not available in TF2.0")
   def testNotInitialized(self):
     with self.cached_session():
       default_val = -1
@@ -245,7 +245,7 @@ class StaticHashTableTest(BaseLookupTableTest):
       with self.assertRaisesOpError("Table not initialized"):
         self.evaluate(output)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("(Cached) Sessions not available in TF2.0")
   def testInitializeTwice(self):
     with self.cached_session():
       default_val = -1
@@ -270,7 +270,7 @@ class StaticHashTableTest(BaseLookupTableTest):
       self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("Sessions not available in TF2.0")
   def testMultipleSessions(self):
     # Start a server
     server = server_lib.Server({"local0": ["localhost:0"]},

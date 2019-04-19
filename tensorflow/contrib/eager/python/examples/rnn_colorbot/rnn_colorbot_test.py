@@ -19,15 +19,11 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.eager.python import tfe
 from tensorflow.contrib.eager.python.examples.rnn_colorbot import rnn_colorbot
+from tensorflow.python.framework import test_util
 
 
 LABEL_DIMENSION = 5
-
-
-def device():
-  return "/device:GPU:0" if tfe.num_gpus() else "/device:CPU:0"
 
 
 def random_dataset():
@@ -53,7 +49,7 @@ class RNNColorbotTest(tf.test.TestCase):
         keep_prob=1.0)
     optimizer = tf.train.AdamOptimizer(learning_rate=.01)
     dataset = random_dataset()
-    with tf.device(device()):
+    with test_util.use_gpu():
       rnn_colorbot.train_one_epoch(model, optimizer, dataset)
 
   def testTest(self):
@@ -62,7 +58,7 @@ class RNNColorbotTest(tf.test.TestCase):
         label_dimension=LABEL_DIMENSION,
         keep_prob=1.0)
     dataset = random_dataset()
-    with tf.device(device()):
+    with test_util.use_gpu():
       rnn_colorbot.test(model, dataset)
 
 

@@ -84,12 +84,13 @@ class EagerContext {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_policy, bool async,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous);
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator);
 
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
-  FunctionLibraryRuntime* func_lib(Device* d) const {
+  FunctionLibraryRuntime* func_lib(const Device* d) const {
     return pflr_->GetFLR(d->name());
   }
 

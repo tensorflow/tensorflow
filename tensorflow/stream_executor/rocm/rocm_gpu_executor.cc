@@ -426,17 +426,14 @@ void* GpuExecutor::Allocate(uint64 size) {
   return GpuDriver::DeviceAllocate(context_, size);
 }
 
-void* GpuExecutor::AllocateSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                                     uint64 size_bytes) {
+void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
+                                uint64 size_bytes) {
   // offset and size are in bytes, so char* works as the pointer type.
   return reinterpret_cast<char*>(mem->opaque()) + offset_bytes;
 }
 
 void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
-  // ROCM "sub-buffers" are just pointer + offset, so no dealloc is necessary.
-  if (!mem->is_sub_buffer()) {
-    GpuDriver::DeviceDeallocate(context_, mem->opaque());
-  }
+  GpuDriver::DeviceDeallocate(context_, mem->opaque());
 }
 
 bool GpuExecutor::HostMemoryRegister(void* location, uint64 size) {

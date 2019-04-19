@@ -326,6 +326,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       }
       return Unimplemented("unary op Not is not defined for type '%d'", type);
     }
+    case HloOpcode::kPopulationCount: {
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::ctpop,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
+    }
     default:
       return Unimplemented("unary integer op '%s'",
                            HloOpcodeString(op->opcode()));
@@ -1465,11 +1470,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
       }
     }
     case RNG_NORMAL: {
+      // Convert uniform x in (0, 1] to normal using formula:
+      //   Normal(x, mu, sigma) = mu + sqrt(2)*sigma*ErfcInv(2x)
+      //                        = mu + sqrt(2)*sigma*ErfInv(1-2x)
       TF_ASSIGN_OR_RETURN(
           llvm::Value * r,
           EmitErfcInv(elem_prim_ty, FMul(llvm::ConstantFP::get(elem_ir_ty, 2.0),
                                          elem_value)));
-      return FAdd(FMul(r, b_or_sigma), a_or_mean);
+      return FAdd(FMul(llvm::ConstantFP::get(r->getType(), std::sqrt(2.0)),
+                       FMul(r, b_or_sigma)),
+                  a_or_mean);
     }
     default:
       return InvalidArgument(
@@ -2219,6 +2229,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kLog1p:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -2407,8 +2418,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
       return [hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
-        IrArray::Index source_index = target_index;
-        source_index.ClearLinearIndex();
+        IrArray::Index source_index(target_index.multidim(),
+                                    hlo->operand(0)->shape(),
+                                    target_index.GetType());
         TF_ASSIGN_OR_RETURN(
             llvm::Value * operand_value,
             operand_to_generator.at(hlo->operand(0))(source_index));

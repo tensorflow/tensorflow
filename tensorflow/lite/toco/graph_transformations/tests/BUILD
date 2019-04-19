@@ -19,6 +19,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "identify_l2_pool_test",
+    srcs = ["identify_l2_pool_test.cc"],
+    deps = [
+        "//tensorflow/lite/toco:graph_transformations",
+        "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/toco:tooling_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
     name = "resolve_constant_concatenation_test",
     srcs = ["resolve_constant_concatenation_test.cc"],
     deps = [

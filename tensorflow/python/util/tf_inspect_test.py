@@ -122,6 +122,20 @@ class TfInspectTest(test.TestCase):
 
     self.assertEqual(argspec, tf_inspect.getargspec(partial_func))
 
+  def testGetArgSpecOnPartialArgumentWithConvertibleToFalse(self):
+    """Tests getargspec on partial function with args that convert to False."""
+
+    def func(m, n):
+      return 2 * m + n
+
+    partial_func = functools.partial(func, m=0)
+
+    exception_message = (r"Some arguments \['n'\] do not have default value, "
+                         "but they are positioned after those with default "
+                         "values. This can not be expressed with ArgSpec.")
+    with self.assertRaisesRegexp(ValueError, exception_message):
+      tf_inspect.getargspec(partial_func)
+
   def testGetArgSpecOnPartialInvalidArgspec(self):
     """Tests getargspec on partial function that doesn't have valid argspec."""
 

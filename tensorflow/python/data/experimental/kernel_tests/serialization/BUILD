@@ -378,6 +378,7 @@ py_test(
     srcs = ["numa_map_and_batch_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",  # b/118497483
         "no_pip",
         "no_windows",
         "notap",

@@ -97,7 +97,7 @@ class NodeStepper(object):
     c = tf.add(a, b, name="c")
     d = tf.multiply(a, c, name="d")
 
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     sess.run(tf.initialize_all_varialbes())
     stepper = NodeStepper(sess, d)
 
@@ -243,7 +243,7 @@ class NodeStepper(object):
     done = set()  # Keep track of visited graph elements.
 
     # A list of str: Names of the topologically-sorted graph elements.
-    node_inputs = dict()  # New: Input map of nodes in the transitive closure.
+    node_inputs = {}  # New: Input map of nodes in the transitive closure.
 
     elem_stack = copy.copy(elem_list)
 

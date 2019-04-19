@@ -70,9 +70,9 @@ test_suite(
     ],
 )
 
-py_binary(
-    name = "generate_examples",
-    srcs = ["generate_examples.py"],
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
     data = [
         "//tensorflow/lite/toco",
     ],
@@ -81,7 +81,22 @@ py_binary(
         ":generate_examples_report",
         ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:graph_util",
+        "//tensorflow/python:framework",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_binary(
+    name = "generate_examples",
+    srcs = ["generate_examples.py"],
+    data = [
+        "//tensorflow/lite/toco",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_examples_lib",
+        "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -178,7 +193,10 @@ tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],
-    data = ["//tensorflow/lite:testdata/multi_add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add_quantized_int8.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",

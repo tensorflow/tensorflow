@@ -182,8 +182,10 @@ tf_custom_op_library(
         "kernels/lstm_ops.h",
     ],
     deps = [
-        "//tensorflow/core/kernels:eigen_contraction_kernel",
-        "//tensorflow/core/kernels:eigen_helpers",
+        # _lstm_ops.so and _gru_ops.so cannot both be linked to MKL-DNN,
+        # or there will be duplicate thread_local symbols, which can cause
+        # problems in TensorFlow Transform.
+        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
     ],
 )
 
@@ -207,8 +209,10 @@ tf_custom_op_library(
         "kernels/gru_ops.h",
     ],
     deps = [
-        "//tensorflow/core/kernels:eigen_contraction_kernel",
-        "//tensorflow/core/kernels:eigen_helpers",
+        # _lstm_ops.so and _gru_ops.so cannot both be linked to MKL-DNN,
+        # or there will be duplicate thread_local symbols, which can cause
+        # problems in TensorFlow Transform.
+        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
     ],
 )
 

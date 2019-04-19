@@ -21,10 +21,11 @@ from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training.tracking import base as trackable
 
 
-# TODO(reedwm): Make checkpointable?
-class AutoCastVariable(object):
+# TODO(reedwm) Make this subclass AutoCastVariable.
+class AutoCastVariable(trackable.Trackable):
   """Variable that will cast itself to a different dtype in applicable contexts.
 
   This class wraps a floating-point tf.Variable. It emulates the variable
@@ -64,6 +65,10 @@ class AutoCastVariable(object):
       raise ValueError('variable must be a floating point variable but has '
                        'type: %s' % variable.dtype.name)
     self._variable = variable
+
+    # Delegate to the underlying variable for checkpointing.
+    self._gather_saveables_for_checkpoint = (
+        self._variable._gather_saveables_for_checkpoint)  # pylint: disable=protected-access
 
   @property
   def name(self):

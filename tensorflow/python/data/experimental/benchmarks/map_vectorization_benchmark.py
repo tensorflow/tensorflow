@@ -125,7 +125,7 @@ class MapVectorizationBenchmark(test.Benchmark):
         unoptimized_dataset).get_next()
 
     options = dataset_ops.Options()
-    options.experimental_optimization.map_vectorization = True
+    options.experimental_optimization.map_vectorization.enabled = True
     optimized_dataset = unoptimized_dataset.with_options(options)
     optimized_next = dataset_ops.make_one_shot_iterator(
         optimized_dataset).get_next()

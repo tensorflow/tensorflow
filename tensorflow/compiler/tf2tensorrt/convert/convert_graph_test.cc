@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
@@ -220,6 +221,76 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
     EXPECT_EQ(-1, result.first);
     EXPECT_EQ(nullptr, result.second);
   }
+}
+
+class ConvertAfterShapesTest : public ::testing::Test {
+ public:
+  Status RunConvertAfterShape(Scope s, GraphDef* output_graph_def) {
+    // Create GraphProperties.
+    grappler::GrapplerItem item;
+    TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+    grappler::GraphProperties graph_properties(item);
+    TF_EXPECT_OK(graph_properties.InferStatically(true));
+
+    // Construct ConversionParams.
+    const std::vector<string> output_names{"output"};
+    ConversionParams params;
+    params.input_graph_def = &item.graph;
+    params.output_names = &output_names;
+    params.max_workspace_size_bytes = 8 << 20;
+    params.output_graph_def = output_graph_def;
+    params.minimum_segment_size = 2;
+    params.graph_properties = &graph_properties;
+    params.use_calibration = false;
+
+    return ConvertAfterShapes(params);
+  }
+};
+
+TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
+  // Create the graph. There will be two TRTEngineOps after the conversion, and
+  // the upstream TRTEngineOp will have two output connections from the same
+  // node:port inside the op to the downstream TRTEngineOp. Then, if it adds the
+  // downstream TRTEngineOp first, when adding the upstream op it'll need to
+  // update the same output connection twice. This test ensures the correctness
+  // of the conversion under such condition.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 1}));
+  // We purposefully choose the name of the root node of each segment, so it'll
+  // process the segment in the downstream first, then, when it tries to update
+  // the edge between the two TRTEngineOps, it'll try to add the same edge
+  // multiple times.
+  auto segment_root_1 = ops::Identity(s.WithOpName("segment_root_b"), input);
+  auto add1 = ops::Add(s.WithOpName("add1"), segment_root_1, segment_root_1);
+  // Add incompatible reshapes that change the batch dimension.
+  auto incompatible =
+      ops::Reshape(s.WithOpName("reshape1"), add1, Input({1, 2}));
+  incompatible =
+      ops::Reshape(s.WithOpName("reshape2"), incompatible, Input({2, 1}));
+
+  auto add2 = ops::Add(s.WithOpName("add2"), incompatible, add1);
+  auto segment_root_2 = ops::Identity(s.WithOpName("segment_root_a"), add1);
+  auto add3 = ops::Add(s.WithOpName("add3"), add2, segment_root_2);
+  ops::Identity(s.WithOpName("output"), add3);
+
+  GraphDef output_graph_def;
+  TF_EXPECT_OK(RunConvertAfterShape(s, &output_graph_def));
+
+  int num_trt_ops = 0;
+  for (const NodeDef& node : output_graph_def.node()) {
+    if (node.name() == "TRTEngineOp_1") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("input", node.input(0));
+      ++num_trt_ops;
+    } else if (node.name() == "TRTEngineOp_0") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("TRTEngineOp_1", node.input(0));
+      EXPECT_EQ("reshape2", node.input(1));
+      ++num_trt_ops;
+    }
+  }
+  EXPECT_EQ(2, num_trt_ops);
 }
 
 }  // namespace convert

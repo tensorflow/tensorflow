@@ -570,13 +570,10 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
   OperandsMustBeTheSameLayoutAssignment layout_assignment(&computation_layout);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 
-  EXPECT_EQ(HloOpcode::kCopy, concatenate->operand(0)->opcode());
-  EXPECT_THAT(concatenate->operand(0)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(concatenate->operand(1)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(concatenate->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
+  EXPECT_EQ(concatenate->operand(0)->shape().layout().minor_to_major(),
+            concatenate->operand(1)->shape().layout().minor_to_major());
+  EXPECT_EQ(concatenate->shape().layout().minor_to_major(),
+            concatenate->operand(1)->shape().layout().minor_to_major());
 }
 
 // Test layout assignment of a transpose into a bitcast based on its operand.

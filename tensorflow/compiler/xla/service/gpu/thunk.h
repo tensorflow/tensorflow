@@ -85,10 +85,6 @@ class Thunk {
     return Status::OK();
   }
 
-  // Returns true if this kernel will autotune for the stream device the next
-  // time it is run.
-  virtual bool WillAutotuneKernel(se::Stream* /*stream*/) { return false; }
-
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's
   // lifetime. 'stream' and 'profiler' must be non-null.
@@ -98,6 +94,11 @@ class Thunk {
                                  se::Stream* stream,
                                  HloExecutionProfiler* profiler) = 0;
 
+ protected:
+  const HloModuleConfig& GetModuleConfig() const {
+    return hlo_instruction()->GetModule()->config();
+  }
+
  private:
   Kind kind_;
   const HloInstruction* hlo_instruction_;
@@ -106,6 +107,7 @@ class Thunk {
 // A sequence of thunks.
 using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 
+absl::string_view ThunkKindToString(Thunk::Kind);
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 }  // namespace gpu

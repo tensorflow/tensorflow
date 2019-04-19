@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -29,6 +27,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.kernel_tests.random import util as \
+random_test_util
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import stateful_random_ops as \
 random
@@ -52,6 +52,9 @@ def xla_device_name():
 
 class StatefulRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateful random-number generator operators."""
+
+  _ints = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
+  _floats = [dtypes.bfloat16, dtypes.float32]
 
   @test_util.run_v2_only
   def testSimple(self):
@@ -147,7 +150,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
           maxval = 10000000
         return gen.uniform(shape=[2], dtype=dtype, maxval=maxval)
 
-      for dtype in {dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64}:
+      for dtype in self._ints + self._floats:
         self._testRngIsNotConstant(rng, dtype)
 
   @test_util.run_v2_only
@@ -157,37 +160,29 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
       def rng(dtype):
         return gen.normal(shape=[2], dtype=dtype)
 
-      for dtype in {dtypes.float32}:
+      for dtype in self._floats:
         self._testRngIsNotConstant(rng, dtype)
 
   @test_util.run_v2_only
-  def testUniformIntIsInRange(self):
+  def testUniformIsInRange(self):
     minval = 2
     maxval = 33
     size = 1000
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
-      for dtype in {dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64}:
+      for dtype in self._ints + self._floats:
+        gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
         x = gen.uniform(
             shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
         self.assertTrue(np.all(x >= minval))
-        self.assertTrue(np.all(x < maxval))
+        self.assertTrue(np.all(x <= maxval))
 
   @test_util.run_v2_only
   def testNormalIsFinite(self):
     with ops.device(xla_device_name()):
       gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
-      for dtype in {dtypes.float32}:
+      for dtype in self._floats:
         x = gen.normal(shape=[10000], dtype=dtype).numpy()
         self.assertTrue(np.all(np.isfinite(x)))
-
-  def _chi_squared(self, x, bins):
-    """Pearson's Chi-squared test."""
-    x = np.ravel(x)
-    n = len(x)
-    histogram, _ = np.histogram(x, bins=bins, range=(0, 1))
-    expected = n / float(bins)
-    return np.sum(np.square(histogram - expected) / expected)
 
   @test_util.run_v2_only
   def testDistributionOfUniform(self):
@@ -195,7 +190,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
     with ops.device(xla_device_name()):
       n = 1000
       seed = 12
-      for dtype in {dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64}:
+      for dtype in self._ints + self._floats:
         gen = random.Generator(seed=seed, algorithm=random.RNG_ALG_THREEFRY)
         maxval = 1
         if dtype.is_integer:
@@ -208,34 +203,31 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
         # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
         # p=0.05. This test is probabilistic and would be flaky if the random
         # seed were not fixed.
-        val = self._chi_squared(x, 10)
+        val = random_test_util.chi_squared(x, 10)
         self.assertLess(val, 16.92)
-
-  def _normal_cdf(self, x):
-    """Cumulative distribution function for a standard normal distribution."""
-    return 0.5 + 0.5 * np.vectorize(math.erf)(x / math.sqrt(2))
-
-  def _anderson_darling(self, x):
-    """Anderson-Darling test for a standard normal distribution."""
-    x = np.sort(np.ravel(x))
-    n = len(x)
-    i = np.linspace(1, n, n)
-    z = np.sum((2 * i - 1) * np.log(self._normal_cdf(x)) +
-               (2 * (n - i) + 1) * np.log(1 - self._normal_cdf(x)))
-    return -n - z / n
 
   @test_util.run_v2_only
   def testDistributionOfNormal(self):
     """Use Anderson-Darling test to test distribution appears normal."""
     with ops.device(xla_device_name()):
       n = 1000
-      for dtype in {dtypes.float32}:
+      for dtype in self._floats:
         gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
         x = gen.normal(shape=[n], dtype=dtype).numpy()
         # The constant 2.492 is the 5% critical value for the Anderson-Darling
         # test where the mean and variance are known. This test is probabilistic
         # so to avoid flakiness the seed is fixed.
-        self.assertLess(self._anderson_darling(x.astype(float)), 2.492)
+        self.assertLess(
+            random_test_util.anderson_darling(x.astype(float)), 2.492)
+
+  @test_util.run_v2_only
+  def testTruncatedNormal(self):
+    for dtype in self._floats:
+      gen = random.Generator(seed=123)
+      n = 10000000
+      y = gen.truncated_normal(shape=[n], dtype=dtype).numpy()
+      random_test_util.test_truncated_normal(
+          self.assertEqual, self.assertAllClose, dtype, n, y)
 
   @test_util.run_v2_only
   def testErrors(self):

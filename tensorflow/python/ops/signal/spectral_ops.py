@@ -171,7 +171,7 @@ def inverse_stft(stfts,
   ```python
   frame_length = 400
   frame_step = 160
-  waveform = tf.placeholder(dtype=tf.float32, shape=[1000])
+  waveform = tf.compat.v1.placeholder(dtype=tf.float32, shape=[1000])
   stft = tf.signal.stft(waveform, frame_length, frame_step)
   inverse_stft = tf.signal.inverse_stft(
       stft, frame_length, frame_step,
@@ -185,7 +185,7 @@ def inverse_stft(stfts,
   frame_length = 400
   frame_step = 160
   window_fn = functools.partial(window_ops.hamming_window, periodic=True),
-  waveform = tf.placeholder(dtype=tf.float32, shape=[1000])
+  waveform = tf.compat.v1.placeholder(dtype=tf.float32, shape=[1000])
   stft = tf.signal.stft(
       waveform, frame_length, frame_step, window_fn=window_fn)
   inverse_stft = tf.signal.inverse_stft(

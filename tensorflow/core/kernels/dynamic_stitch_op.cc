@@ -138,15 +138,15 @@ class DynamicStitchOpImplBase : public OpKernel {
 template <typename T>
 void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
                           const int32 slice_size, const int32 first_dim_size,
-                          const CudaDeviceArrayStruct<int>& input_indices,
-                          const CudaDeviceArrayStruct<const T*>& input_ptrs,
+                          const GpuDeviceArrayStruct<int>& input_indices,
+                          const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output);
 #define REGISTER_GPU(T)                                           \
   extern template void DynamicStitchGPUImpl(                      \
       const Eigen::GpuDevice& gpu_device, const int32 slice_size, \
       const int32 first_dim_size,                                 \
-      const CudaDeviceArrayStruct<int32>& input_indices,          \
-      const CudaDeviceArrayStruct<const T*>& input_ptrs, T* output);
+      const GpuDeviceArrayStruct<int32>& input_indices,           \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs, T* output);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
@@ -185,8 +185,8 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
       // implicitly using atomics to make sure the last index is the final
       // write.
       const int slice_size = merged->flat_outer_dims<T>().dimension(1);
-      CudaDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
-      CudaDeviceArrayOnHost<const T*> data_flat(c, data_elements_size);
+      GpuDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
+      GpuDeviceArrayOnHost<const T*> data_flat(c, data_elements_size);
       OP_REQUIRES_OK(c, indices_flat.Init());
       OP_REQUIRES_OK(c, data_flat.Init());
       // initialize the indices_flat (-1 represents missing indices)

@@ -35,6 +35,10 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -58,8 +62,11 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("block_length must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    CapturedFunction::Params params;
+    params.lib_def = lib_def_;
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            std::move(params), &captured_func));
 
     *output =
         new Dataset(ctx, input, func_, std::move(captured_func), cycle_length,
@@ -108,29 +115,16 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* cycle_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
       Node* block_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;
@@ -329,6 +323,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),

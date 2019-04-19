@@ -18,6 +18,8 @@ package org.tensorflow.op.core;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+
+import org.tensorflow.Graph;
 import org.tensorflow.Operand;
 import org.tensorflow.Output;
 import org.tensorflow.op.Op;
@@ -77,12 +79,18 @@ public class Gradients implements Op, Iterable<Operand<?>> {
    * @param x inputs of the function for which partial derivatives are computed
    * @param options carries optional attributes values
    * @return a new instance of {@code Gradients}
+   * @throws IllegalArgumentException if execution environment is not a graph
    */
   public static Gradients create(
       Scope scope,
       Iterable<? extends Operand<?>> y,
       Iterable<? extends Operand<?>> x,
       Options... options) {
+    if (!(scope.env() instanceof Graph)) {
+      throw new IllegalArgumentException(
+          "Gradients can be computed only in a graph execution environment");
+    }
+    Graph graph = (Graph) scope.env();
     Output<?>[] dx = null;
     if (options != null) {
       for (Options opts : options) {
@@ -92,10 +100,8 @@ public class Gradients implements Op, Iterable<Operand<?>> {
       }
     }
     Output<?>[] dy =
-        scope
-            .graph()
-            .addGradients(
-                scope.makeOpName("Gradients"), Operands.asOutputs(y), Operands.asOutputs(x), dx);
+        graph.addGradients(
+            scope.makeOpName("Gradients"), Operands.asOutputs(y), Operands.asOutputs(x), dx);
     return new Gradients(Arrays.asList(dy));
   }
 
@@ -110,6 +116,7 @@ public class Gradients implements Op, Iterable<Operand<?>> {
    * @param x inputs of the function for which partial derivatives are computed
    * @param options carries optional attributes values
    * @return a new instance of {@code Gradients}
+   * @throws IllegalArgumentException if execution environment is not a graph
    */
   @SuppressWarnings({"unchecked", "rawtypes"})
   public static Gradients create(

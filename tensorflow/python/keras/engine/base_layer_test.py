@@ -541,11 +541,13 @@ class NestedTrackingTest(test.TestCase):
       inputs = array_ops.ones((3, 1))
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
+      self.assertLen(layer.get_losses_for(None), 3)
     else:
       inputs = keras.Input((1,))
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
       self.assertEqual(len(layer.updates), 3)
+      self.assertLen(layer.get_losses_for(None), 3)
 
   def test_attribute_reassignment(self):
     l = keras.layers.Layer()
@@ -580,6 +582,19 @@ class NestedTrackingTest(test.TestCase):
     layer.build((10, 10))
 
     self.assertEqual([layer.v], layer.variables)
+
+  def test_layer_class_not_tracked_as_sublayer(self):
+    # See https://github.com/tensorflow/tensorflow/issues/27431 for details.
+
+    class LayerWithClassAttribute(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithClassAttribute, self).__init__()
+        self.layer_fn = keras.layers.Dense
+
+    layer = LayerWithClassAttribute()
+    self.assertEmpty(layer.variables)
+    self.assertEmpty(layer.submodules)
 
 
 @test_util.run_all_in_graph_and_eager_modes

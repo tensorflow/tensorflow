@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 
 
@@ -170,12 +171,16 @@ class StringSplitV2OpTest(test.TestCase):
   def testSplitV2(self):
     strings = ["pigs on the wing", "animals"]
 
-    with self.cached_session() as sess:
-      tokens = string_ops.string_split_v2(strings)
-      indices, values, shape = self.evaluate(tokens)
-      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]])
-      self.assertAllEqual(values, [b"pigs", b"on", b"the", b"wing", b"animals"])
-      self.assertAllEqual(shape, [2, 4])
+    tokens = string_ops.string_split_v2(strings)
+    indices, values, shape = self.evaluate(tokens)
+    self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]])
+    self.assertAllEqual(values, [b"pigs", b"on", b"the", b"wing", b"animals"])
+    self.assertAllEqual(shape, [2, 4])
+
+    ragged_tokens = ragged_string_ops.string_split_v2(strings)
+    self.assertAllEqual(ragged_tokens.row_splits, [0, 4, 5])
+    self.assertAllEqual(ragged_tokens.values,
+                        [b"pigs", b"on", b"the", b"wing", b"animals"])
 
   def testSplitV2MultiCharSeparator(self):
     # Match Python behavior:
@@ -185,15 +190,20 @@ class StringSplitV2OpTest(test.TestCase):
     # ['', '', '4', '5', '', '6', '']
     strings = ["1<>2<>3", "<><>4<>5<><>6<>"]
 
-    with self.cached_session() as sess:
-      tokens = string_ops.string_split_v2(strings, sep="<>")
-      indices, values, shape = self.evaluate(tokens)
-      self.assertAllEqual(
-          indices, [[0, 0], [0, 1], [0, 2],
-                    [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]])
-      self.assertAllEqual(values, [b"1", b"2", b"3",
-                                   b"", b"", b"4", b"5", b"", b"6", b""])
-      self.assertAllEqual(shape, [2, 7])
+    tokens = string_ops.string_split_v2(strings, sep="<>")
+    indices, values, shape = self.evaluate(tokens)
+    self.assertAllEqual(indices,
+                        [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [1, 3],
+                         [1, 4], [1, 5], [1, 6]])
+    self.assertAllEqual(
+        values, [b"1", b"2", b"3", b"", b"", b"4", b"5", b"", b"6", b""])
+    self.assertAllEqual(shape, [2, 7])
+
+    ragged_tokens = ragged_string_ops.string_split_v2(strings, sep="<>")
+    self.assertAllEqual(ragged_tokens.row_splits, [0, 3, 10])
+    self.assertAllEqual(
+        ragged_tokens.values,
+        [b"1", b"2", b"3", b"", b"", b"4", b"5", b"", b"6", b""])
 
   def testSplitV2SimpleSeparator(self):
     # Match Python behavior:
@@ -203,30 +213,38 @@ class StringSplitV2OpTest(test.TestCase):
     # ['1', '2', '', '3', '']
     strings = ["1,2,3", "4,5,,6,"]
 
-    with self.cached_session() as sess:
-      tokens = string_ops.string_split_v2(strings, sep=',')
-      indices, values, shape = self.evaluate(tokens)
-      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2],
-                                    [1, 0], [1, 1], [1, 2], [1, 3], [1, 4]])
-      self.assertAllEqual(values, [b"1", b"2", b"3",
-                                   b"4", b"5", b"", b"6", b""])
-      self.assertAllEqual(shape, [2, 5])
+    tokens = string_ops.string_split_v2(strings, sep=",")
+    indices, values, shape = self.evaluate(tokens)
+    self.assertAllEqual(
+        indices,
+        [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [1, 3], [1, 4]])
+    self.assertAllEqual(values, [b"1", b"2", b"3", b"4", b"5", b"", b"6", b""])
+    self.assertAllEqual(shape, [2, 5])
+
+    ragged_tokens = ragged_string_ops.string_split_v2(strings, sep=",")
+    self.assertAllEqual(ragged_tokens.row_splits, [0, 3, 8])
+    self.assertAllEqual(ragged_tokens.values,
+                        [b"1", b"2", b"3", b"4", b"5", b"", b"6", b""])
 
   def testSplitV2EmptySeparator(self):
     # Match Python behavior:
     # >>> '1 2 3'.split()
     # ['1', '2', '3']
-    #>>> '   1   2   3   '.split()
-    #['1', '2', '3']
+    # >>> '   1   2   3   '.split()
+    # ['1', '2', '3']
     strings = ["1 2 3", "  4  5    6  "]
 
-    with self.cached_session() as sess:
-      tokens = string_ops.string_split_v2(strings)
-      indices, values, shape = self.evaluate(tokens)
-      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2],
-                                    [1, 0], [1, 1], [1, 2]])
-      self.assertAllEqual(values, [b"1", b"2", b"3", b"4", b"5", b"6"])
-      self.assertAllEqual(shape, [2, 3])
+    tokens = string_ops.string_split_v2(strings)
+    indices, values, shape = self.evaluate(tokens)
+    self.assertAllEqual(indices,
+                        [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]])
+    self.assertAllEqual(values, [b"1", b"2", b"3", b"4", b"5", b"6"])
+    self.assertAllEqual(shape, [2, 3])
+
+    ragged_tokens = ragged_string_ops.string_split_v2(strings)
+    self.assertAllEqual(ragged_tokens.row_splits, [0, 3, 6])
+    self.assertAllEqual(ragged_tokens.values,
+                        [b"1", b"2", b"3", b"4", b"5", b"6"])
 
   def testSplitV2SimpleSeparatorMaxSplit(self):
     # Match Python behavior:
@@ -236,13 +254,16 @@ class StringSplitV2OpTest(test.TestCase):
     # ['4', '5,,6,']
     strings = ["1,2,3", "4,5,,6,"]
 
-    with self.cached_session() as sess:
-      tokens = string_ops.string_split_v2(strings, sep=',', maxsplit=1)
-      indices, values, shape = self.evaluate(tokens)
-      self.assertAllEqual(indices, [[0, 0], [0, 1],
-                                    [1, 0], [1, 1]])
-      self.assertAllEqual(values, [b"1", b"2,3", b"4", b"5,,6,"])
-      self.assertAllEqual(shape, [2, 2])
+    tokens = string_ops.string_split_v2(strings, sep=",", maxsplit=1)
+    indices, values, shape = self.evaluate(tokens)
+    self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+    self.assertAllEqual(values, [b"1", b"2,3", b"4", b"5,,6,"])
+    self.assertAllEqual(shape, [2, 2])
+
+    ragged_tokens = ragged_string_ops.string_split_v2(
+        strings, sep=",", maxsplit=1)
+    self.assertAllEqual(ragged_tokens.row_splits, [0, 2, 4])
+    self.assertAllEqual(ragged_tokens.values, [b"1", b"2,3", b"4", b"5,,6,"])
 
   def testSplitV2EmptySeparatorMaxSplit(self):
     # Match Python behavior:
@@ -252,13 +273,15 @@ class StringSplitV2OpTest(test.TestCase):
     # ['4', '5    6  ']
     strings = ["1 2 3", "  4  5    6  "]
 
-    with self.cached_session() as sess:
-      tokens = string_ops.string_split_v2(strings, maxsplit=1)
-      indices, values, shape = self.evaluate(tokens)
-      self.assertAllEqual(indices, [[0, 0], [0, 1],
-                                    [1, 0], [1, 1]])
-      self.assertAllEqual(values, [b"1", b"2 3", b"4", b"5    6  "])
-      self.assertAllEqual(shape, [2, 2])
+    tokens = string_ops.string_split_v2(strings, maxsplit=1)
+    indices, values, shape = self.evaluate(tokens)
+    self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+    self.assertAllEqual(values, [b"1", b"2 3", b"4", b"5    6  "])
+    self.assertAllEqual(shape, [2, 2])
+
+    ragged_tokens = ragged_string_ops.string_split_v2(strings, maxsplit=1)
+    self.assertAllEqual(ragged_tokens.row_splits, [0, 2, 4])
+    self.assertAllEqual(ragged_tokens.values, [b"1", b"2 3", b"4", b"5    6  "])
 
 
 if __name__ == "__main__":

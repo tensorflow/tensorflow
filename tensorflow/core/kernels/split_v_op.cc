@@ -366,10 +366,10 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     // reshape to 2D
 
     if (num_split > 16) {
-      CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+      GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
       OP_REQUIRES_OK(context, ptrs.Init());
 
-      CudaDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
+      GpuDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
       OP_REQUIRES_OK(context, offsets.Init());
 
       Tlen offset = 0;

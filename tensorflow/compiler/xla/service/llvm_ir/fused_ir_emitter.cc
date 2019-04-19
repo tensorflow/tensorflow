@@ -121,9 +121,9 @@ Status FusedIrEmitter::HandleGetTupleElement(
     }
 
     // Lookup tuple element pointer.
-    return llvm_ir::EmitGetTupleElement(
-        get_tuple_element->shape(), get_tuple_element->tuple_index(),
-        /*alignment=*/1, tuple_ptr, b_, module_);
+    return llvm_ir::EmitGetTupleElement(get_tuple_element->shape(),
+                                        get_tuple_element->tuple_index(),
+                                        /*alignment=*/1, tuple_ptr, b_);
   };
 
   if (!get_tuple_element->shape().IsTuple()) {

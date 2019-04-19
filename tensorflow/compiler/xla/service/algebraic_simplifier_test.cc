@@ -295,6 +295,47 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   EXPECT_EQ(computation->root_instruction(), zero);
 }
 
+TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      c0 = f32[] constant(2.0)
+      c1 = f32[] constant(3.0)
+      multiply0 = f32[] multiply(p0, c0)
+      ROOT multiply1 = f32[] multiply(multiply0, c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0),
+                                     m::Multiply(m::ConstantScalar(2.0),
+                                                 m::ConstantScalar(3.0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(2.0)
+      c1 = f32[] constant(3.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      multiply0 = f32[4] multiply(p0, b0)
+      ROOT multiply1 = f32[4] multiply(multiply0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          m::Parameter(0), m::Broadcast(m::Multiply(m::ConstantScalar(2.0),
+                                                    m::ConstantScalar(3.0))))));
+}
+
 // Test that select(true, a, b) is simplified to a
 TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
@@ -444,6 +485,27 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   EXPECT_THAT(root, GmockMatch(m::Add(
                         m::Op().Is(param0),
                         m::Add(m::Op().Is(constant1), m::Op().Is(constant2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddReassociateMergeBroadcastedConstants) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(1.0)
+      c1 = f32[] constant(2.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      add0 = f32[4] add(p0, b0)
+      ROOT add1 = f32[4] add(add0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0),
+                                m::Broadcast(m::Add(m::ConstantScalar(1.0),
+                                                    m::ConstantScalar(2.0))))));
 }
 
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
@@ -638,6 +700,25 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
                                       m::Negate(m::Op().Is(constant)))));
+}
+
+// Test that A - Broadcast(Const) is canonicalized to A + Broadcast(-Const).
+TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c = f32[] constant(0.125)
+      b = f32[4] broadcast(c), dimensions={}
+      ROOT sub = f32[4] subtract(p0, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(m::Parameter(0),
+                        m::Broadcast(m::Negate(m::ConstantScalar(0.125))))));
 }
 
 // Test that (A/B)/C is simplified to A/(B*C).
@@ -851,6 +932,26 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Constant())));
+}
+
+// A / Broadcast(Const) => A * Broadcast(InvertedConst)
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcastedConstant) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[4] parameter(0)
+      c = f32[] constant(256.0)
+      b = f32[4] broadcast(c), dimensions={}
+      ROOT d = f32[4] divide(p, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(
+                  m::Parameter(0),
+                  m::Broadcast(m::Op().IsConstantScalar(1.0f / 256.0f)))));
 }
 
 // pow(pow(A, X), Y) => pow(A, X*Y)
@@ -4964,6 +5065,26 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(m::Parameter(1),
                                              m::Sqrt(m::Parameter(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyReshape) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[168,168,48,48]{3,2,1,0} parameter(0)
+      r0 = f32[1,168,168,2304]{3,2,1,0} reshape(p0)
+      ROOT c0 = f32[1,168,168,2304]{3,0,2,1} copy(r0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  Shape result_shape = m->entry_computation()->root_instruction()->shape();
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
+  options.set_is_layout_sensitive(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  LOG(INFO) << "\n" << m->ToString();
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Parameter(0)).WithShapeEqualTo(&result_shape)));
 }
 
 }  // namespace

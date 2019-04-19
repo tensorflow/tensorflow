@@ -134,7 +134,7 @@ class WALSModel(object):
 
       # model_init_op is passed to Supervisor. Chief trainer runs it. Other
       # trainers wait.
-      sv = tf.train.Supervisor(is_chief=is_chief,
+      sv = tf.compat.v1.train.Supervisor(is_chief=is_chief,
                          ...,
                          init_op=tf.group(..., model_init_op, ...), ...)
       ...
@@ -912,7 +912,7 @@ class WALSModel(object):
       total_rhs = (
           self._unobserved_weight * sparse_ops.sparse_tensor_dense_matmul(
               new_sp_input, right, adjoint_a=transpose_input))
-      # TODO(rmlarsen): handle transposing in tf.matrix_solve instead of
+      # TODO(rmlarsen): handle transposing in tf.linalg.solve instead of
       # transposing explicitly.
       # TODO(rmlarsen): multi-thread tf.matrix_solve.
       new_left_values = array_ops.transpose(

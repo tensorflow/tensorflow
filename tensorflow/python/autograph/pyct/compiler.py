@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Converting AST to code.
+"""Converting AST to code and Python entities.
 
 Adapted from Tangent.
 """
+
+# TODO(mdan): Consolidate with parser and rename to parsing.py
 
 from __future__ import absolute_import
 from __future__ import division
@@ -77,7 +79,7 @@ def ast_to_source(node, indentation='  '):
   return code
 
 
-def _source_to_module(source, delete_on_exit):
+def source_to_entity(source, delete_on_exit):
   with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
     module_name = os.path.basename(f.name[:-3])
     f.write(source)
@@ -88,10 +90,10 @@ def _source_to_module(source, delete_on_exit):
   return imp.load_source(module_name, f.name), f.name
 
 
+# TODO(mdan): Rename: ast_to_entity
 def ast_to_object(nodes,
                   indentation='  ',
                   include_source_map=False,
-                  source_prefix=None,
                   delete_on_exit=True):
   """Return the Python objects represented by given AST.
 
@@ -102,45 +104,26 @@ def ast_to_object(nodes,
     nodes: Union[ast.AST, Iterable[ast.AST]], the code to compile, as an AST
         object.
     indentation: Text, the string to use for indentation.
-    include_source_map: bool, whether to attach a source map to the compiled
-        object. Also see origin_info.py.
-    source_prefix: Optional[Text], string to print as-is into the source file.
+    include_source_map: bool, whether return a source map.
     delete_on_exit: bool, whether to delete the temporary file used for
         compilation on exit.
 
   Returns:
-    (module, source): A compiled module, and the source code of the module.
-  Raises:
-    ValueError: If ag_source_map__ is already in the namespace of the compiled
-    nodes.
+    Tuple[module, Text, Dict[LineLocation, OriginInfo]], containing:
+    the module containing the unparsed nodes, the source code corresponding to
+    nodes, and the source map. Is include_source_map is False, the source map
+    will be None.
   """
   if not isinstance(nodes, (list, tuple)):
     nodes = (nodes,)
 
   source = ast_to_source(nodes, indentation=indentation)
-
-  if source_prefix:
-    source = source_prefix + '\n' + source
-
-  module, filename = _source_to_module(source, delete_on_exit)
+  module, filename = source_to_entity(source, delete_on_exit)
 
   if include_source_map:
-    if isinstance(nodes, (list, tuple)):
-      indices = range(-len(nodes), 0)
-    else:
-      indices = (-1,)
+    source_map = origin_info.create_source_map(nodes, source, filename)
+  else:
+    source_map = None
 
-    source_map = origin_info.create_source_map(nodes, source, filename, indices)
-
-    # TODO(znado): Clean this up so we don't need to attach it to the namespace.
-    # We cannot get the rewritten function name until it is too late so
-    # templating is hard, and this cleanly fixes the issues encountered with
-    # nested functions because this is attached to the outermost one.
-    # TODO(mdan): This name should be decided by the caller.
-    source_map_name = 'ag_source_map__'
-    assert source_map_name not in module.__dict__, (
-        'cannot convert %s because is has namespace attribute "%s", which is '
-        'reserved for AutoGraph.') % (module, source_map_name)
-    module.__dict__[source_map_name] = source_map
-
-  return module, source
+  # TODO(mdan): Return a structured object.
+  return module, source, source_map

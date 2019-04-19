@@ -47,6 +47,9 @@ inline void Mean(const tflite::MeanParams& op_params, int32_t multiplier,
   TFLITE_DCHECK_EQ(output_height, 1);
   TFLITE_DCHECK_EQ(output_width, 1);
 
+  static constexpr int32_t kMinInt8 = std::numeric_limits<int8_t>::min();
+  static constexpr int32_t kMaxInt8 = std::numeric_limits<int8_t>::max();
+
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
       int32 acc = 0;
@@ -60,7 +63,7 @@ inline void Mean(const tflite::MeanParams& op_params, int32_t multiplier,
       acc = acc > 0 ? (acc + num_elements_in_axis / 2) / num_elements_in_axis
                     : (acc - num_elements_in_axis / 2) / num_elements_in_axis;
       acc += output_zero_point;
-      acc = std::min(std::max(acc, -128), 127);
+      acc = std::min(std::max(acc, kMinInt8), kMaxInt8);
       output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
           static_cast<int8_t>(acc);
     }

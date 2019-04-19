@@ -959,7 +959,7 @@ class LinearOperator(object):
     ==> [1., 2.]
 
     # Equivalent, but inefficient method
-    tf.matrix_diag_part(my_operator.to_dense())
+    tf.linalg.diag_part(my_operator.to_dense())
     ==> [1., 2.]
     ```
 

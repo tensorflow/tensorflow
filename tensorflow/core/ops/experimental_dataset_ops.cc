@@ -17,6 +17,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("StatsAggregatorSetSummaryWriter")
+    .Input("stats_aggregator: resource")
+    .Input("summary: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("ExperimentalAutoShardDataset")
     .Input("input_dataset: variant")
     .Input("num_workers: int64")
@@ -383,6 +388,12 @@ REGISTER_OP("ExperimentalStatsAggregatorHandle")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''");
 
+REGISTER_OP("StatsAggregatorHandleV2")
+    .Output("handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''");
+
 REGISTER_OP("ExperimentalStatsAggregatorSummary")
     .Input("iterator: resource")
     .Output("summary: string")
@@ -514,6 +525,23 @@ REGISTER_OP("ExperimentalIdentityIndexedDataset")
     .SetIsStateful()
     .SetShapeFn(
         shape_inference::ScalarShape);  // TODO(saeta): check input shapes.
+
+REGISTER_OP("SamplingDataset")
+    .Input("input_dataset: variant")
+    .Input("rate: float32")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // rate, seed, and seed2 should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
 
 ///////////////////////////////////////////////////////////////////////////////
 //     IndexedDataset Internals

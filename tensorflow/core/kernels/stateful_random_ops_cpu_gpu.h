@@ -87,7 +87,7 @@ using GPUDevice = Eigen::GpuDevice;
 template <typename Distribution>
 struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const GPUDevice& device,
-                  int64 output_size, int64 alg_tag_skip,
+                  Distribution dist, int64 output_size, int64 alg_tag_skip,
                   ScopedUnlockUnrefVar* not_used, Tensor* state_tensor,
                   typename Distribution::ResultElementType* output_data);
 };

@@ -58,9 +58,9 @@ class L1L2(Regularizer):
       return K.constant(0.)
     regularization = 0.
     if self.l1:
-      regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
+      regularization += self.l1 * math_ops.reduce_sum(math_ops.abs(x))
     if self.l2:
-      regularization += math_ops.reduce_sum(self.l2 * math_ops.square(x))
+      regularization += self.l2 * math_ops.reduce_sum(math_ops.square(x))
     return regularization
 
   def get_config(self):
@@ -106,8 +106,14 @@ def get(identifier):
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    config = {'class_name': str(identifier), 'config': {}}
-    return deserialize(config)
+    identifier = str(identifier)
+    # We have to special-case functions that return classes.
+    # TODO(omalleyt): Turn these into classes or class aliases.
+    special_cases = ['l1', 'l2', 'l1_l2']
+    if identifier in special_cases:
+      # Treat like a class.
+      return deserialize({'class_name': identifier, 'config': {}})
+    return deserialize(str(identifier))
   elif callable(identifier):
     return identifier
   else:

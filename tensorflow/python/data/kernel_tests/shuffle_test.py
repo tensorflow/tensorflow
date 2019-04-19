@@ -154,29 +154,24 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
-  def testShuffleNoReshuffleEachIteration(self):
+  @parameterized.named_parameters(
+      ("Reshuffle", True),
+      ("NoReshuffle", False),
+  )
+  def testReshuffle(self, reshuffle):
     dataset = dataset_ops.Dataset.range(10).shuffle(
-        10, reshuffle_each_iteration=False).batch(10).repeat(3)
+        10, reshuffle_each_iteration=reshuffle).repeat(2)
     next_element = self.getNext(dataset)
 
-    initial_permutation = self.evaluate(next_element())
-    self.assertAllEqual(initial_permutation, self.evaluate(next_element()))
-    self.assertAllEqual(initial_permutation, self.evaluate(next_element()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(next_element())
+    first_epoch = []
+    for _ in range(10):
+      first_epoch.append(self.evaluate(next_element()))
 
-  def testShuffleReshuffleEachIteration(self):
-    dataset = dataset_ops.Dataset.range(10).shuffle(
-        10, seed=3, reshuffle_each_iteration=True).batch(10).repeat(3)
-    next_element = self.getNext(dataset)
+    second_epoch = []
+    for _ in range(10):
+      second_epoch.append(self.evaluate(next_element()))
 
-    initial_permutation = list(self.evaluate(next_element()))
-    for _ in range(2):
-      next_permutation = list(self.evaluate(next_element()))
-      self.assertNotEqual(initial_permutation, next_permutation)
-      self.assertAllEqual(sorted(initial_permutation), sorted(next_permutation))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(next_element())
+    self.assertEqual(first_epoch == second_epoch, not reshuffle)
 
   @parameterized.named_parameters(
       ("ReshuffleGraphLevelSeed", True, 38, None),
