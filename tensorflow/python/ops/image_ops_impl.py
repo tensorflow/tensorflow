@@ -2915,7 +2915,7 @@ def _ssim_per_channel(img1,
     filter_sigma: width of gaussian filter.
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
+      lower values, so it would be better if we taken the values in range
       of 0< K2 <0.4).
 
   Returns:
@@ -3016,7 +3016,7 @@ def ssim(img1,
     filter_sigma: width of gaussian filter.
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
+      lower values, so it would be better if we taken the values in range
       of 0< K2 <0.4).
 
   Returns:
