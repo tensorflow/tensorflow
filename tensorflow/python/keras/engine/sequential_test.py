@@ -112,7 +112,9 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      len(model.weights)
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
@@ -137,7 +139,9 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      len(model.weights)
     self.assertFalse(model.built)
 
     x = array_ops.ones((num_samples, input_dim))

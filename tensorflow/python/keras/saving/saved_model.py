@@ -150,11 +150,14 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
     if isinstance(model, sequential.Sequential):
       # If input shape is not directly set in the model, the exported model
       # will infer the expected shapes of the input from the model.
-      if not model.built and input_signature is None:
-        raise ValueError(
-            'Sequential model\'s input shape is unknown. Please build the '
-            'model, or use the input_signature argument to specify the '
-            'model inputs.')
+      if not model.built:
+        raise ValueError('Weights for sequential model have not yet been '
+                         'created. Weights are created when the Model is first '
+                         'called on inputs or `build()` is called with an '
+                         '`input_shape`, or the first layer in the model has '
+                         '`input_shape` during construction.')
+      # TODO(kathywu): Build the model with input_signature to create the
+      # weights before _export_model_variables().
     else:
       raise NotImplementedError(
           'Subclassed models can only be exported for serving. Please set '

@@ -348,9 +348,6 @@ class Sequential(training.Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
-    if not model._is_graph_network:
-      # Still needs to be built when passed input data.
-      model.built = False
     return model
 
   @property
