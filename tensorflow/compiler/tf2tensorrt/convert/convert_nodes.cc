@@ -1969,6 +1969,10 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   } else {
     padding = {{0, 0}, {0, 0}};
   }
+
+// TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2, we can only use asymmetric padding in convolutions with 5.1.3+.
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR > 1) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR == 1 && NV_TENSORRT_PATCH >= 3)
+#else
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // Handle asymmetric padding.
@@ -1981,6 +1985,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
+#endif
 
   // Add convolution.
   nvinfer1::ILayer* conv_layer = nullptr;
@@ -1991,7 +1996,21 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR > 1) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR == 1 && NV_TENSORRT_PATCH >= 3)
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      // SAME_UPPER means that post padding is preferred.
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+    // For VALID padding, we need to manually set the padding.
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding()) << " and post-padding to: " << DebugString(layer->getPostPadding());
+#else
+    layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
+#endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     conv_layer = layer;
@@ -2002,7 +2021,21 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
     layer->setStride(stride);
-    layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR > 1) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR == 1 && NV_TENSORRT_PATCH >= 3)
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      // SAME_UPPER means that post padding is preferred.
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+    // For VALID padding, we need to manually set the padding.
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding()) << " and post-padding to: " << DebugString(layer->getPostPadding());
+#else
+    layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
+#endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     layer->setDilation(dilation);
@@ -2748,6 +2781,9 @@ Status ConvertPool(OpConverterParams* params) {
     padding = {{0, 0}, {0, 0}};
   }
 
+// TensorRT 5.1 added support for asymmetric padding.
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#else
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
@@ -2761,6 +2797,7 @@ Status ConvertPool(OpConverterParams* params) {
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
   }
+#endif
 
   nvinfer1::IPoolingLayer* layer =
       params->converter->network()->addPooling(*tensor, type, ksize);
@@ -2772,7 +2809,21 @@ Status ConvertPool(OpConverterParams* params) {
                                                         layer->getOutput(0));
 
   layer->setStride(stride);
-  layer->setPadding({padding[0].first, padding[1].first});
+// TensorRT 5.1.3 added support for padding modes.
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR > 1) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR == 1 && NV_TENSORRT_PATCH >= 3)
+  if (attrs.get<string>("padding") == "SAME") {
+    // SAME_UPPER means that post padding is preferred.
+    layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+#endif
+// TensorRT 5.1 has support for asymmetric padding.
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  // If padding mode is not SAME, then these values will be used instead.
+  layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+  layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
+#else
+  layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+#endif
   layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
