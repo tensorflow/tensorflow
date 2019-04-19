@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/inspecting_placer.h"
+#include "tensorflow/core/common_runtime/placer_inspection_required_ops_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -45,6 +47,8 @@ class Member {
   Status SetAssignedDeviceName(const string& device_name);
   Status SetResourceDeviceName(const Node& node);
   Status SetRequestedDeviceName(const Node& node);
+
+  void FillPossibleDevices(PossibleDevices* possible_device) const;
 
   Status EnsureCompatibilityAcrossResourceEdge(
       const Node& src, const Member& src_root,
@@ -78,6 +82,11 @@ class Member {
 
   Status AssignDevice(const Node& node, bool allow_soft_placement);
 
+  // Limit the possible devices of this (should be a root) to the device
+  // specifications in `devices`.
+  Status LimitToPossibleDevices(const PossibleDevices& devices,
+                                bool allow_soft_placement);
+
   void set_possible_devices(std::vector<Device*>&& devices) {
     possible_devices_ = devices;
   }
@@ -96,6 +105,10 @@ class Member {
   string DebugString() const;
 
  private:
+  // Updates this to contain the intersection of the device types in
+  // this and `other_devices`.
+  bool MergeSupportedDevices(const PrioritizedDeviceTypeVector& other_devices);
+
   // The id of the node that is the parent of this one, or its own
   // id if it is a root. parent <= 0 indicates that this member is invalid.
   int parent_ = -1;
@@ -199,6 +212,11 @@ class ColocationGraph {
 
   const std::vector<Member>& members() const { return members_; }
 
+  // Limit the group containing `node` to the device specifications in
+  // `devices`.
+  Status LimitToPossibleDevices(const Node& node,
+                                const PossibleDevices& devices);
+
   // Limits the possible devices of `node`'s colocation group to the device
   // to which `node` is assigned. This makes sure that all nodes in this
   // colocation group will be assigned to the same device. Without this
@@ -242,9 +260,42 @@ class ColocationGraph {
 
   // Updates this ColocationGraph by making sure that all nodes
   // touching resource and/or ref tensors are colocated.
-  // As it iterates over the edges, fills the `deep_nodes` set with
-  // the nodes that DeepOpsPlacer::IsDeepOp deems deep. This is an optimization.
-  Status ColocateResourceAndRefEdges();
+  // As it iterates over the edges, fills the `inspection_required` set with
+  // the nodes that
+  // PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired
+  // deems as requiring deep inspection by placer. This is an optimization.
+  Status ColocateResourceAndRefEdges(
+      std::unordered_set<Node*>* inspection_required);
+
+  Status AddInspectionConstraints(
+      const std::unordered_set<Node*>& inspection_required);
+
+  // Applies colocation groups for `node`'s inputs and outputs to this
+  // ColocationGraph.
+  // `groups` are the colocation groups to which `nodes`'s inputs and outputs
+  // belong.
+  // `node` is a node requiring deep inspection (e.g. a node calling
+  // a function)
+  //
+  // For example, consider a `node` taking two inputs and producing one output
+  //    a  b
+  //    |  |
+  //    v  v
+  //    node
+  //     |
+  //     v
+  //     c
+  //
+  // `groups` can tell us that `a` and `c` must be colocated and their device
+  // must be a GPU. `b` might be in a group by itself without any device
+  // restrictions.
+  //
+  // ApplyIOColocationGroups will have an effect of calling
+  // ColocateNodes(a, c) and LimitToPossibleDevices(`a`, "GPU"). The colocation
+  // group of the `node` itself is not directly impacted.
+  //
+  Status ApplyIOColocationGroups(const IOColocationGroups& groups,
+                                 const Node& node);
 
   Status ColocateNodeToGroup(
       std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
@@ -289,6 +340,8 @@ class ColocationGraph {
   const Graph& graph_;
   const FunctionLibraryDefinition& flib_def_;
   std::vector<Member> members_;
+  InspectingPlacer inspecting_placer_;
+  PlacerInspectionRequiredOpChecker inspection_required_checker_;
   const DeviceSet& device_set_;
   const std::vector<DeviceType> device_types_;
   const Device* default_device_;

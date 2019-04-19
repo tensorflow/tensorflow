@@ -144,7 +144,8 @@ REGISTER_XLA_OP(Name("Multinomial").CompileTimeConstantInput("num_samples"),
 class StatelessCategoricalOp : public CategoricalOp {
  public:
   explicit StatelessCategoricalOp(OpKernelConstruction* ctx)
-      : CategoricalOp(ctx) {
+      : CategoricalOp(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   }
 
@@ -160,7 +161,7 @@ class StatelessCategoricalOp : public CategoricalOp {
     // * log(-log(0)) is ∞.
     // * log(-log(1)) is -∞.
     xla::XlaOp uniforms = StatelessRngUniform(
-        seed, uniform_shape,
+        device_type_string_, seed, uniform_shape,
         xla::MinPositiveNormalValue(builder, uniform_shape.element_type()),
         xla::One(builder, uniform_shape.element_type()));
     return xla::ConvertElementType(xla::Log(-xla::Log(uniforms)), type);
@@ -176,6 +177,7 @@ class StatelessCategoricalOp : public CategoricalOp {
 
  private:
   DataType dtype_;
+  string device_type_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessCategoricalOp);
 };

@@ -85,9 +85,9 @@ class VariableSynchronization(enum.Enum):
 class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
-  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "replicas") acting data-parallel on different elements
-  of the input batch. When performing some variable-update operation, say
+  `tf.distribute.Strategy` distributes a model by making multiple copies
+  (called "replicas") acting data-parallel on different elements of the input
+  batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
   different values for `x` computed in the different replicas.
 

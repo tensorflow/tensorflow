@@ -221,6 +221,8 @@ def clear_session():
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
+  global _GRAPH
+  _GRAPH = None
   ops.reset_default_graph()
   reset_uids()
   _SESSION.session = None

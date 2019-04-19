@@ -230,6 +230,15 @@ def _make_train_step_fn(model, mode, strategy, output_labels):
   def _step_fn(ctx, inputs):
     """A step fn that returns update ops."""
     inputs, targets = inputs
+
+    # When input feature is a dictionary of tensors, dictionary is flattended
+    # to an array and passed as a model input. This results in input mismatch
+    # when model input layer names are not sorted in alphabetical order as
+    # `nest.flatten()`sorts dictioary elements by keys. As so, transform input
+    # tensors into an array and order it along `model._feed_input_names`.
+    if isinstance(inputs, dict):
+      inputs = [inputs[input_name] for input_name in model._feed_input_names]
+
     _build_model(strategy, model, mode, inputs, targets)
 
     (grouped_inputs, grouped_outputs, grouped_updates,

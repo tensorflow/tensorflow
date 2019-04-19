@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -472,6 +473,45 @@ class MathTest(PForTestCase):
       # pylint: enable=cell-var-from-loop
 
       self._test_loop_fn(loop_fn, 2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinalgTest(PForTestCase):
+
+  def test_cholesky(self):
+    z = random_ops.random_normal([2, 3, 3])
+    x = (math_ops.matmul(z, array_ops.matrix_transpose(z))  # Ensure pos. def.
+         + linalg_ops.eye(3))  # Ensure well-conditioned.
+
+    def loop_fn(i):
+      return linalg_ops.cholesky(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_matrix_triangular_solve(self):
+    for lower in (True, False):
+      for adjoint in (True, False):
+        for stack_a in (True, False):
+          for stack_b in (True, False):
+            shape_a = (2, 4, 3, 3) if stack_a else (4, 3, 3)
+            shape_b = (2, 4, 3, 5) if stack_b else (4, 3, 5)
+            x = array_ops.matrix_band_part(
+                random_ops.random_uniform(shape_a)
+                + linalg_ops.eye(3),  # Ensure well-conditioned.
+                *((-1, 0) if lower else (0, -1)))  # Ensure triangular.
+            y = random_ops.random_uniform(shape_b)
+
+            # pylint: disable=cell-var-from-loop
+            def loop_fn(i):
+              a = array_ops.gather(x, i) if stack_a else x
+              b = array_ops.gather(y, i) if stack_b else y
+              return linalg_ops.matrix_triangular_solve(a, b,
+                                                        lower=lower,
+                                                        adjoint=adjoint)
+
+            # pylint: enable=cell-var-from-loop
+
+            self._test_loop_fn(loop_fn, 2)
 
 
 if __name__ == "__main__":

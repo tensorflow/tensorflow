@@ -15,39 +15,24 @@ limitations under the License.
 
 // XLA-specific Ops for 2D convolution.
 
-#include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
+#include "tensorflow/compiler/xla/client/lib/conv_op_helpers.h"
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/numeric_op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/util/tensor_format.h"
 
-namespace tensorflow {
+namespace xla {
 namespace {
 
 // Returns the expanded size of a filter used for depthwise convolution.
 // If `shape` is [H, W, ..., M, N] returns [H, W, ..., M, M*N].
-xla::Shape ExpandedFilterShapeForDepthwiseConvolution(const xla::Shape& shape) {
+Shape ExpandedFilterShapeForDepthwiseConvolution(const Shape& shape) {
   int num_dims = shape.dimensions_size();
   CHECK_GE(num_dims, 2);  // Crash OK
-  xla::Shape expanded_shape = shape;
+  Shape expanded_shape = shape;
   expanded_shape.set_dimensions(
       num_dims - 1,
       shape.dimensions(num_dims - 2) * shape.dimensions(num_dims - 1));
@@ -55,40 +40,43 @@ xla::Shape ExpandedFilterShapeForDepthwiseConvolution(const xla::Shape& shape) {
 }
 
 // Returns the transposed filter for use in BackpropInput of group convolution.
-xla::XlaOp TransposeFilterForGroupConvolutionBackpropInput(
-    const xla::XlaOp& filter, const xla::Shape& filter_shape, int64 num_groups,
-    int num_spatial_dims) {
+XlaOp TransposeFilterForGroupConvolutionBackpropInput(const XlaOp& filter,
+                                                      const Shape& filter_shape,
+                                                      int64 num_groups,
+                                                      int num_spatial_dims) {
   // 1. Reshape from [H, W, ..., filter_in_depth, out_depth] to [H, W, ...,
   // filter_in_depth, G, out_depth / G]
   int num_dims = filter_shape.dimensions_size();
   CHECK_GE(num_dims, 2);  // Crash OK
-  xla::Shape new_shape = filter_shape;
+  Shape new_shape = filter_shape;
   new_shape.set_dimensions(num_dims - 1, num_groups);
   new_shape.add_dimensions(filter_shape.dimensions(num_dims - 1) / num_groups);
-  xla::XlaOp result = xla::Reshape(filter, new_shape.dimensions());
+  XlaOp result = Reshape(filter, new_shape.dimensions());
 
   // 2. Transpose to [H, W, ..., G, filter_in_depth, out_depth / G]
   std::vector<int64> transpose_dims(num_dims + 1);
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   std::swap(transpose_dims[num_spatial_dims],
             transpose_dims[num_spatial_dims + 1]);
-  result = xla::Transpose(result, transpose_dims);
+  result = Transpose(result, transpose_dims);
 
   // 3. Reshape to [H, W, ..., in_depth, out_depth / G]
-  result = xla::Collapse(result, {num_spatial_dims, num_spatial_dims + 1});
+  result = Collapse(result, {num_spatial_dims, num_spatial_dims + 1});
   return result;
 }
 
 // Returns the transposed input for use in BackpropFilter of group convolution.
-xla::XlaOp TransposeInputForGroupConvolutionBackpropFilter(
-    const xla::XlaOp& input, const xla::Shape& input_shape, int64 num_groups,
-    int batch_dim, int depth_dim) {
+XlaOp TransposeInputForGroupConvolutionBackpropFilter(const XlaOp& input,
+                                                      const Shape& input_shape,
+                                                      int64 num_groups,
+                                                      int batch_dim,
+                                                      int depth_dim) {
   // 1. Reshape the depth_dim C into [G, C/G]
   int num_dims = input_shape.dimensions_size();
   std::vector<int64> reshape_dims = input_shape.dimensions();
   reshape_dims[depth_dim] = reshape_dims[depth_dim] / num_groups;
   reshape_dims.insert(reshape_dims.begin() + depth_dim, num_groups);
-  xla::XlaOp result = xla::Reshape(input, reshape_dims);
+  XlaOp result = Reshape(input, reshape_dims);
 
   // 2. Transpose G to the axis before N, e.g.: [G, N, H, W, C/G]
   std::vector<int64> transpose_dims(num_dims + 1);
@@ -98,10 +86,10 @@ xla::XlaOp TransposeInputForGroupConvolutionBackpropFilter(
   transpose_dims.insert(
       transpose_dims.begin() + batch_dim,
       depth_dim);  // e.g.: [3, 0, 1, 2, 4] -> [G, N, H, W, C/G]
-  result = xla::Transpose(result, transpose_dims);
+  result = Transpose(result, transpose_dims);
 
   // 3. Merge [G, N] to [G*N]
-  result = xla::Collapse(result, {batch_dim, batch_dim + 1});
+  result = Collapse(result, {batch_dim, batch_dim + 1});
   return result;
 }
 
@@ -145,9 +133,8 @@ xla::XlaOp TransposeInputForGroupConvolutionBackpropFilter(
 //
 // Finally compare A and B and return the result at the beginning of the
 // comment.
-xla::XlaOp CreateExpandedFilterMask(const xla::Shape& filter_shape,
-                                    xla::XlaBuilder* builder) {
-  xla::Shape expanded_filter_shape =
+XlaOp CreateExpandedFilterMask(const Shape& filter_shape, XlaBuilder* builder) {
+  Shape expanded_filter_shape =
       ExpandedFilterShapeForDepthwiseConvolution(filter_shape);
   int64 depthwise_multiplier =
       filter_shape.dimensions(filter_shape.dimensions_size() - 1);
@@ -157,61 +144,60 @@ xla::XlaOp CreateExpandedFilterMask(const xla::Shape& filter_shape,
   // with the iota dimension chosen as the expanded output feature dimension.
   std::vector<int64> iota_dimensions(expanded_filter_shape.dimensions().begin(),
                                      expanded_filter_shape.dimensions().end());
-  xla::Shape iota_shape = xla::ShapeUtil::MakeShape(xla::S32, iota_dimensions);
-  xla::XlaOp input_feature_iota = xla::Iota(
-      builder, iota_shape, /*iota_dimension=*/iota_dimensions.size() - 2);
-  xla::XlaOp expanded_feature_iota = xla::Iota(
-      builder, iota_shape, /*iota_dimension=*/iota_dimensions.size() - 1);
+  Shape iota_shape = ShapeUtil::MakeShape(S32, iota_dimensions);
+  XlaOp input_feature_iota =
+      Iota(builder, iota_shape, /*iota_dimension=*/iota_dimensions.size() - 2);
+  XlaOp expanded_feature_iota =
+      Iota(builder, iota_shape, /*iota_dimension=*/iota_dimensions.size() - 1);
 
   // Divide 'expanded_feature_iota' by the depthwise_multiplier to create
   // [0 0 1 1 2 2] ... in the example in the function comment.
-  expanded_feature_iota =
-      xla::Div(expanded_feature_iota,
-               XlaHelpers::IntegerLiteral(builder, DataType::DT_INT32,
-                                          depthwise_multiplier));
+  expanded_feature_iota = Div(
+      expanded_feature_iota,
+      ConstantR0WithType(builder, PrimitiveType::S32, depthwise_multiplier));
 
   // Compare 'input_feature_iota' with 'expanded_feature_iota' to create a
   // diagonal predicate.
-  return xla::Eq(expanded_feature_iota, input_feature_iota);
+  return Eq(expanded_feature_iota, input_feature_iota);
 }
 
 // Reshapes a filter of shape [H, W, ..., M, N] to [H, W, ..., 1, M*N]. Used to
 // build a depthwise convolution.
-xla::XlaOp ReshapeFilterForDepthwiseConvolution(const xla::Shape& filter_shape,
-                                                const xla::XlaOp& filter) {
+XlaOp ReshapeFilterForDepthwiseConvolution(const Shape& filter_shape,
+                                           const XlaOp& filter) {
   int64 input_feature_dim = filter_shape.dimensions_size() - 2;
   int64 output_feature_dim = filter_shape.dimensions_size() - 1;
   int64 depthwise_multiplier = filter_shape.dimensions(output_feature_dim);
   int64 input_feature = filter_shape.dimensions(input_feature_dim);
 
   // Create a [H, W, ..., 1, N*M] reshape of the filter.
-  xla::Shape implicit_broadcast_filter_shape = filter_shape;
+  Shape implicit_broadcast_filter_shape = filter_shape;
   implicit_broadcast_filter_shape.set_dimensions(input_feature_dim, 1);
   implicit_broadcast_filter_shape.set_dimensions(
       output_feature_dim, depthwise_multiplier * input_feature);
-  return xla::Reshape(
-      filter, xla::AsInt64Slice(implicit_broadcast_filter_shape.dimensions()));
+  return Reshape(filter,
+                 AsInt64Slice(implicit_broadcast_filter_shape.dimensions()));
 }
 
 // Reduces the results of the convolution with an expanded filter to the
 // non-expanded filter.
-xla::XlaOp ContractFilterForDepthwiseBackprop(const xla::Shape& filter_shape,
-                                              const xla::XlaOp& filter_backprop,
-                                              xla::XlaBuilder* builder) {
+XlaOp ContractFilterForDepthwiseBackprop(const Shape& filter_shape,
+                                         const XlaOp& filter_backprop,
+                                         XlaBuilder* builder) {
   auto masked_expanded_filter =
-      xla::Select(CreateExpandedFilterMask(filter_shape, builder),
-                  filter_backprop, xla::ZerosLike(filter_backprop));
+      Select(CreateExpandedFilterMask(filter_shape, builder), filter_backprop,
+             ZerosLike(filter_backprop));
 
   auto elem_type = filter_shape.element_type();
-  return xla::Reshape(
+  return Reshape(
       // This reduce does not need inputs to be converted with
       // XlaHelpers::SumAccumulationType() since the select above guarantees
       // that only one element is non zero, so there cannot be accumulated
       // precision error.
-      xla::Reduce(masked_expanded_filter, xla::Zero(builder, elem_type),
-                  CreateScalarAddComputation(elem_type, builder),
-                  {filter_shape.dimensions_size() - 2}),
-      xla::AsInt64Slice(filter_shape.dimensions()));
+      Reduce(masked_expanded_filter, Zero(builder, elem_type),
+             CreateScalarAddComputation(elem_type, builder),
+             {filter_shape.dimensions_size() - 2}),
+      AsInt64Slice(filter_shape.dimensions()));
 }
 
 // Performs some basic checks on ConvOpAttrs that are true for all kinds of XLA
@@ -219,106 +205,189 @@ xla::XlaOp ContractFilterForDepthwiseBackprop(const xla::Shape& filter_shape,
 Status CheckConvAttrs(const ConvOpAttrs& attrs) {
   const int num_dims = attrs.num_spatial_dims + 2;
   if (attrs.strides.size() != num_dims) {
-    return errors::InvalidArgument("Sliding window strides field must specify ",
-                                   num_dims, " dimensions");
+    return InvalidArgument(
+        "Sliding window strides field must specify %d dimensions", num_dims);
   }
-  int batch_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
-  int feature_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
+  int batch_dim = attrs.data_format.input_batch_dimension();
+  int feature_dim = attrs.data_format.input_feature_dimension();
   if (attrs.strides[batch_dim] != 1 || attrs.strides[feature_dim] != 1) {
-    return errors::Unimplemented(
+    return Unimplemented(
         "Current implementation does not yet support strides in the batch and "
         "depth dimensions.");
   }
   if (attrs.dilations.size() != num_dims) {
-    return errors::InvalidArgument("Dilations field must specify ", num_dims,
-                                   " dimensions");
+    return InvalidArgument("Dilations field must specify %d dimensions",
+                           num_dims);
   }
   if (attrs.dilations[batch_dim] != 1 || attrs.dilations[feature_dim] != 1) {
-    return errors::Unimplemented(
+    return Unimplemented(
         "Current implementation does not support dilations in the batch and "
         "depth dimensions.");
   }
   for (int i = 0; i < attrs.num_spatial_dims; ++i) {
-    int input_dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+    int input_dim = attrs.data_format.input_spatial_dimensions(i);
     if (attrs.dilations[input_dim] < 1) {
-      return errors::Unimplemented("Dilation values must be positive; ", i,
-                                   "th spatial dimension had dilation ",
-                                   attrs.dilations[input_dim]);
+      return Unimplemented(
+          "Dilation values must be positive; %dth spatial dimension had "
+          "dilation %d",
+          i, attrs.dilations[input_dim]);
     }
   }
   return Status::OK();
 }
 
-// Wrapper around ConvBackpropComputeDimensions that converts from XLA shapes
-// to TensorShapes.
-Status ConvBackpropComputeDimensionsV2XlaShapes(
-    StringPiece label, int num_spatial_dims, const xla::Shape& input_shape,
-    const xla::Shape& filter_shape, const xla::Shape& out_backprop_shape,
+// Information about a single spatial dimension for a convolution
+// backpropagation.
+struct ConvBackpropSpatialDimension {
+  int64 input_size;
+  int64 filter_size;
+  int64 output_size;
+  int64 stride;
+  int64 dilation;
+  // Output size after scaling by the stride.
+  int64 expanded_output_size;
+  // Number of padding elements to be added before/after this dimension of
+  // the input when computing Conv?DBackpropInput.
+  int64 pad_before, pad_after;
+};
+
+// Computed dimensions for a backwards convolution.
+struct ConvBackpropDimensions {
+  // Information about each spatial dimension.
+  std::vector<ConvBackpropSpatialDimension> spatial_dims;
+  // Batch size.
+  int64 batch_size;
+  // Input and output feature depth.
+  int64 in_depth, out_depth;
+};
+
+Status ConvBackpropExtractAndVerifyDimension(
+    absl::Span<const int64> input_shape, absl::Span<const int64> filter_shape,
+    absl::Span<const int64> output_shape, absl::Span<const int32> dilations,
+    const std::vector<int32>& strides, int64 padding_before,
+    int64 padding_after, int spatial_dim, int filter_spatial_dim,
+    ConvBackpropSpatialDimension* dim) {
+  dim->input_size = input_shape.at(spatial_dim);
+  dim->filter_size = filter_shape.at(filter_spatial_dim);
+  dim->output_size = output_shape.at(spatial_dim);
+  dim->stride = strides[spatial_dim];
+  dim->dilation = dilations[spatial_dim];
+  int64 effective_filter_size = (dim->filter_size - 1) * dim->dilation + 1;
+  int64 out_size = (dim->input_size + padding_before + padding_after -
+                    effective_filter_size + dim->stride) /
+                   dim->stride;
+  if (dim->output_size != out_size) {
+    return InvalidArgument(
+        "ConvBackpropExtractAndVerifyDimension: Size of out_backprop doesn't "
+        "match computed: actual = %ld, "
+        "computed = %ld, spatial_dim: %d, input: %ld, filter: %ld, output: "
+        "%ld, stride: %ld, dilation: %ld",
+        dim->output_size, out_size, spatial_dim, dim->input_size,
+        dim->filter_size, dim->output_size, dim->stride, dim->dilation);
+  }
+
+  dim->expanded_output_size = (dim->output_size - 1) * dim->stride + 1;
+  const auto padded_out_size = dim->input_size + effective_filter_size - 1;
+  dim->pad_before = effective_filter_size - 1 - padding_before;
+  dim->pad_after =
+      padded_out_size - dim->expanded_output_size - dim->pad_before;
+  VLOG(2) << "ConvBackpropExtractAndVerifyDimension: expanded_out = "
+          << dim->expanded_output_size
+          << ", effective_filter_size = " << effective_filter_size
+          << ", padded_out = " << padded_out_size
+          << ", pad_before = " << dim->pad_before
+          << ", pad_after = " << dim->pad_after
+          << ", dilation = " << dim->dilation << ", strides = " << dim->stride;
+  return Status::OK();
+}
+
+// Verifies that the dimensions all match, and computes sizes/padding for the
+// spatial dimensions.
+Status ConvBackpropComputeDimensions(
+    absl::string_view label, int num_spatial_dims,
+    absl::Span<const int64> input_shape, absl::Span<const int64> filter_shape,
+    absl::Span<const int64> out_backprop_shape,
     absl::Span<const int32> dilations, const std::vector<int32>& strides,
-    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims,
-    absl::Span<const int64> explicit_paddings) {
-  TensorShape input_tensor_shape, filter_tensor_shape,
-      out_backprop_tensor_shape;
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(input_shape, &input_tensor_shape));
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(filter_shape, &filter_tensor_shape));
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(out_backprop_shape, &out_backprop_tensor_shape));
-  return ConvBackpropComputeDimensionsV2(
-      label, num_spatial_dims, input_tensor_shape, filter_tensor_shape,
-      out_backprop_tensor_shape, dilations, strides, padding, explicit_paddings,
-      data_format, dims);
+    absl::Span<const int64> explicit_paddings,
+    const ConvolutionDimensionNumbers& data_format,
+    ConvBackpropDimensions* dims) {
+  // The + 2 in the following line is for the batch and feature dimensions.
+  const int num_dims = num_spatial_dims + 2;
+  if (input_shape.size() != num_dims) {
+    return InvalidArgument("%s: input must be %d-dimensional", label, num_dims);
+  }
+  if (filter_shape.size() != num_dims) {
+    return InvalidArgument("%s: filter must be %d-dimensional", label,
+                           num_dims);
+  }
+  if (out_backprop_shape.size() != num_dims) {
+    return InvalidArgument("%s: out_backprop must be %d-dimensional", label,
+                           num_dims);
+  }
+  int batch_dim = data_format.input_batch_dimension();
+  dims->batch_size = input_shape.at(batch_dim);
+  if (dims->batch_size != out_backprop_shape.at(batch_dim)) {
+    return InvalidArgument(
+        "%s: input and out_backprop must have the same batch size, input "
+        "batch: %ld outbackprop batch: %ld batch_dim: %d",
+        label, dims->batch_size, out_backprop_shape.at(batch_dim), batch_dim);
+  }
+
+  int feature_dim = data_format.input_feature_dimension();
+  dims->in_depth = input_shape.at(feature_dim);
+  // The input and output feature dimensions are the second last and last
+  // dimensions of the filter Tensor.
+  VLOG(2) << "input vs filter_in depth " << dims->in_depth << " "
+          << filter_shape.at(num_dims - 2);
+  if (dims->in_depth % filter_shape.at(num_dims - 2)) {
+    return InvalidArgument(
+        "%s: input depth must be evenly divisible by filter depth", label);
+  }
+  dims->out_depth = filter_shape.at(num_dims - 1);
+  if (dims->out_depth != out_backprop_shape.at(feature_dim)) {
+    return InvalidArgument(
+        "%s: filter and out_backprop must have the same out_depth", label);
+  }
+  dims->spatial_dims.resize(num_spatial_dims);
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    int image_dim = data_format.input_spatial_dimensions(i);
+    int64 padding_before = -1, padding_after = -1;
+    padding_before = explicit_paddings[2 * image_dim];
+    padding_after = explicit_paddings[2 * image_dim + 1];
+    TF_RETURN_IF_ERROR(ConvBackpropExtractAndVerifyDimension(
+        input_shape, filter_shape, out_backprop_shape, dilations, strides,
+        padding_before, padding_after, image_dim, i, &dims->spatial_dims[i]));
+  }
+  return Status::OK();
 }
 
 }  // anonymous namespace
 
-xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
-                                               bool depthwise,
-                                               OpKernelConstruction* ctx) {
-  ConvOpAttrs attrs;
-  attrs.num_spatial_dims = num_spatial_dims;
-  attrs.depthwise = depthwise;
-  TF_RETURN_IF_ERROR(ctx->GetAttr("dilations", &attrs.dilations));
-  TF_RETURN_IF_ERROR(ctx->GetAttr("strides", &attrs.strides));
-  TF_RETURN_IF_ERROR(ctx->GetAttr("padding", &attrs.padding));
-  if (attrs.padding == EXPLICIT) {
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("explicit_paddings", &attrs.explicit_paddings));
-  }
-
-  string data_format;
-  TF_RETURN_IF_ERROR(ctx->GetAttr("data_format", &data_format));
-  if (!FormatFromString(data_format, &attrs.data_format)) {
-    return errors::InvalidArgument("Invalid data format: ", data_format);
-  }
-
-  return attrs;
-}
-
-xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
-    StringPiece /*type_string*/, xla::XlaOp conv_input, xla::XlaOp filter,
-    const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
+StatusOr<XlaOp> MakeXlaForwardConvOp(absl::string_view /*type_string*/,
+                                     XlaOp conv_input, XlaOp filter,
+                                     const ConvOpAttrs& attrs,
+                                     const PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = conv_input.builder();
-  TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(conv_input));
+  TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(conv_input));
   // Filter has the form [filter_rows, filter_cols, ..., in_depth, out_depth]
-  TF_ASSIGN_OR_RETURN(xla::Shape filter_shape, builder->GetShape(filter));
+  TF_ASSIGN_OR_RETURN(Shape filter_shape, builder->GetShape(filter));
 
   // For 2D convolution, there should be 4 dimensions.
   int num_dims = attrs.num_spatial_dims + 2;
   if (input_shape.dimensions_size() != num_dims) {
-    return errors::InvalidArgument("input must be ", num_dims, "-dimensional",
-                                   input_shape.DebugString());
+    return InvalidArgument("input must be %d-dimensional: %s", num_dims,
+                           input_shape.DebugString());
   }
   if (filter_shape.dimensions_size() != num_dims) {
-    return errors::InvalidArgument(
-        "filter must be ", num_dims,
-        "-dimensional: ", filter_shape.DebugString());
+    return InvalidArgument("filter must be %d-dimensional: %s", num_dims,
+                           filter_shape.DebugString());
   }
 
   // The last two dimensions of the filter are the input and output shapes.
-  int batch_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
-  int feature_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
+  int batch_dim = attrs.data_format.input_batch_dimension();
+  int feature_dim = attrs.data_format.input_feature_dimension();
 
   int64 filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
         out_depth = filter_shape.dimensions(attrs.num_spatial_dims + 1),
@@ -326,22 +395,22 @@ xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
   // The 'C' dimension for input is in_depth.
   // It must be a multiple of the filter's in_depth.
   if (in_depth % filter_in_depth != 0) {
-    return errors::InvalidArgument(
-        "Depth of input must be a multiple of depth of filter: ", in_depth,
-        " vs ", filter_in_depth);
+    return InvalidArgument(
+        "Depth of input must be a multiple of depth of filter: %d vs %d",
+        in_depth, filter_in_depth);
   }
   int64 feature_group_count = in_depth / filter_in_depth;
   if (out_depth % feature_group_count != 0) {
-    return errors::InvalidArgument(
-        "Depth of output must be a multiple of the number of groups: ",
-        out_depth, " vs ", feature_group_count);
+    return InvalidArgument(
+        "Depth of output must be a multiple of the number of groups: %d vs %d",
+        out_depth, feature_group_count);
   }
 
   if (attrs.depthwise) {
     filter = ReshapeFilterForDepthwiseConvolution(filter_shape, filter);
   }
 
-  xla::ConvolutionDimensionNumbers dims;
+  ConvolutionDimensionNumbers dims;
   std::vector<int64> window_strides(attrs.num_spatial_dims);
   std::vector<int64> lhs_dilation(attrs.num_spatial_dims, 1);
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
@@ -355,66 +424,57 @@ xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
   dims.set_kernel_output_feature_dimension(attrs.num_spatial_dims + 1);
 
   for (int i = 0; i < attrs.num_spatial_dims; ++i) {
-    const int64 dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+    const int64 dim = attrs.data_format.input_spatial_dimensions(i);
     dims.add_input_spatial_dimensions(dim);
     dims.add_kernel_spatial_dimensions(i);
     dims.add_output_spatial_dimensions(dim);
     window_strides[i] = attrs.strides.at(dim);
     rhs_dilation[i] = attrs.dilations.at(dim);
-
-    if (attrs.padding == EXPLICIT) {
-      padding[i] = {attrs.explicit_paddings.at(dim * 2),
-                    attrs.explicit_paddings.at(dim * 2 + 1)};
-    }
-
-    int64 unused_output_size;
-    TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
-        input_shape.dimensions(dim), filter_shape.dimensions(i),
-        rhs_dilation[i], window_strides[i], attrs.padding, &unused_output_size,
-        &padding[i].first, &padding[i].second));
+    padding[i] = {attrs.explicit_paddings.at(dim * 2),
+                  attrs.explicit_paddings.at(dim * 2 + 1)};
   }
 
-  return xla::ConvGeneralDilated(
+  return ConvGeneralDilated(
       conv_input, filter, window_strides, padding, lhs_dilation, rhs_dilation,
       dims,
       /*feature_group_count=*/attrs.depthwise ? in_depth : feature_group_count,
       /*batch_group_count=*/1, precision_config);
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
-    StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
-    xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config) {
+StatusOr<XlaOp> MakeXlaBackpropInputConvOp(
+    absl::string_view type_string, const Shape& input_shape, XlaOp filter,
+    XlaOp out_backprop, const ConvOpAttrs& attrs,
+    const PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
-  int num_dims = attrs.num_spatial_dims + 2;
-  int batch_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
-  int feature_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
+  int batch_dim = attrs.data_format.input_batch_dimension();
+  int feature_dim = attrs.data_format.input_feature_dimension();
 
   auto* builder = filter.builder();
-  TF_ASSIGN_OR_RETURN(xla::Shape filter_shape, builder->GetShape(filter));
-  TF_ASSIGN_OR_RETURN(xla::Shape out_backprop_shape,
+  TF_ASSIGN_OR_RETURN(Shape filter_shape, builder->GetShape(filter));
+  TF_ASSIGN_OR_RETURN(Shape out_backprop_shape,
                       builder->GetShape(out_backprop));
 
   int64 in_depth = input_shape.dimensions(feature_dim),
         filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
         feature_group_count = in_depth / filter_in_depth;
 
-  xla::Shape expanded_filter_shape =
+  Shape expanded_filter_shape =
       attrs.depthwise ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
                       : filter_shape;
   // Reuse dimension computation logic from conv_grad_ops.cc.
   ConvBackpropDimensions dims;
-  TF_RETURN_IF_ERROR(ConvBackpropComputeDimensionsV2XlaShapes(
-      type_string, attrs.num_spatial_dims, input_shape, expanded_filter_shape,
-      out_backprop_shape, attrs.dilations, attrs.strides, attrs.padding,
-      attrs.data_format, &dims, attrs.explicit_paddings));
+  TF_RETURN_IF_ERROR(ConvBackpropComputeDimensions(
+      type_string, attrs.num_spatial_dims, input_shape.dimensions(),
+      expanded_filter_shape.dimensions(), out_backprop_shape.dimensions(),
+      attrs.dilations, attrs.strides, attrs.explicit_paddings,
+      attrs.data_format, &dims));
 
   // The input gradients are computed by a convolution of the output
   // gradients and the filter, with some appropriate padding. See the
   // comment at the top of conv_grad_ops.h for details.
 
-  xla::ConvolutionDimensionNumbers dnums;
+  ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(batch_dim);
   dnums.set_output_batch_dimension(batch_dim);
   dnums.set_input_feature_dimension(feature_dim);
@@ -431,7 +491,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
   std::vector<int64> ones(attrs.num_spatial_dims, 1);
   for (int i = 0; i < attrs.num_spatial_dims; ++i) {
-    int64 dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+    int64 dim = attrs.data_format.input_spatial_dimensions(i);
     dnums.add_input_spatial_dimensions(dim);
     dnums.add_kernel_spatial_dimensions(i);
     dnums.add_output_spatial_dimensions(dim);
@@ -448,11 +508,11 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
         filter, filter_shape, feature_group_count, attrs.num_spatial_dims);
   }
   // Mirror the filter in the spatial dimensions.
-  filter = xla::Rev(filter, kernel_spatial_dims);
+  filter = Rev(filter, kernel_spatial_dims);
 
   // activation gradients
   //   = gradients (with padding and dilation) <conv> mirrored_weights
-  return xla::ConvGeneralDilated(
+  return ConvGeneralDilated(
       out_backprop, filter, /*window_strides=*/ones, padding, lhs_dilation,
       rhs_dilation, dnums,
       /*feature_group_count=*/
@@ -462,28 +522,22 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
       /*batch_group_count=*/1, precision_config);
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
-    StringPiece type_string, xla::XlaOp activations,
-    const xla::Shape& filter_shape, xla::XlaOp gradients,
-    const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
+StatusOr<XlaOp> MakeXlaBackpropFilterConvOp(
+    absl::string_view type_string, XlaOp activations, const Shape& filter_shape,
+    XlaOp out_backprop, const ConvOpAttrs& attrs,
+    const PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = activations.builder();
-  TF_ASSIGN_OR_RETURN(xla::Shape activations_shape,
-                      builder->GetShape(activations));
-  TF_ASSIGN_OR_RETURN(xla::Shape out_backprop_shape,
-                      builder->GetShape(gradients));
-  xla::XlaOp filter_backprop;
+  TF_ASSIGN_OR_RETURN(Shape activations_shape, builder->GetShape(activations));
+  TF_ASSIGN_OR_RETURN(Shape out_backprop_shape,
+                      builder->GetShape(out_backprop));
+  XlaOp filter_backprop;
 
-  xla::Shape input_shape = activations_shape;
-  xla::Shape output_shape = out_backprop_shape;
+  Shape input_shape = activations_shape;
+  Shape output_shape = out_backprop_shape;
 
-  TensorShape input_tensor_shape, filter_tensor_shape, output_tensor_shape;
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(filter_shape, &filter_tensor_shape));
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(input_shape, &input_tensor_shape));
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(output_shape, &output_tensor_shape));
-
-  const xla::Shape expanded_filter_shape =
+  const Shape expanded_filter_shape =
       attrs.depthwise ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
                       : filter_shape;
   // Reuse dimension computation logic from conv_grad_ops.cc.
@@ -491,18 +545,19 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   // The filter gradients are computed by a convolution of the input
   // activations and the output gradients, with some appropriate padding.
   // See the comment at the top of conv_grad_ops.h for details.
-  xla::ConvolutionDimensionNumbers dnums;
+  ConvolutionDimensionNumbers dnums;
 
-  TF_RETURN_IF_ERROR(ConvBackpropComputeDimensionsV2XlaShapes(
-      type_string, attrs.num_spatial_dims, activations_shape,
-      expanded_filter_shape, out_backprop_shape, attrs.dilations, attrs.strides,
-      attrs.padding, attrs.data_format, &dims, attrs.explicit_paddings));
+  TF_RETURN_IF_ERROR(ConvBackpropComputeDimensions(
+      type_string, attrs.num_spatial_dims, activations_shape.dimensions(),
+      expanded_filter_shape.dimensions(), out_backprop_shape.dimensions(),
+      attrs.dilations, attrs.strides, attrs.explicit_paddings,
+      attrs.data_format, &dims));
 
   // Obtain some useful dimensions:
   // The last two dimensions of the filter are the input and output shapes.
   int num_dims = attrs.num_spatial_dims + 2;
-  int n_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
-  int c_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
+  int n_dim = attrs.data_format.input_batch_dimension();
+  int c_dim = attrs.data_format.input_feature_dimension();
   int64 in_depth = input_shape.dimensions(c_dim),
         filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
         feature_group_count = in_depth / filter_in_depth;
@@ -521,7 +576,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   // In the case of depthwise convolution with no multiplier,
   // the computation can be done by the batch_group_count parameter.
   bool use_batch_group_count =
-      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise;
+      filter_shape.dimensions(num_dims - 1) == 1 && attrs.depthwise;
 
   std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
@@ -553,7 +608,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   }
 
   for (int64 i = 0; i < attrs.num_spatial_dims; ++i) {
-    int64 dim = GetTensorSpatialDimIndex(num_dims, attrs.data_format, i);
+    int64 dim = attrs.data_format.input_spatial_dimensions(i);
     dnums.add_input_spatial_dimensions(dim);
     dnums.add_kernel_spatial_dimensions(dim);
     rhs_dilation[i] = dims.spatial_dims[i].stride;
@@ -594,11 +649,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     // In addition, if the padded input size is smaller than the input size,
     // we need to ignore some training elements of the input. We do this by
     // applying negative padding on the right/bottom.
-    const int64 pad_before = attrs.padding == Padding::EXPLICIT
-                                 ? attrs.explicit_paddings[2 * dim]
-                                 : attrs.padding == Padding::SAME
-                                       ? std::max<int64>(pad_total / 2, 0)
-                                       : 0;
+    const int64 pad_before = attrs.explicit_paddings[2 * dim];
     padding[i] = {pad_before, pad_total - pad_before};
   }
 
@@ -611,8 +662,8 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   // This is done by specifying the window dilation factors in the
   // convolution HLO below.
 
-  filter_backprop = xla::ConvGeneralDilated(
-      activations, gradients, window_strides, padding, /*lhs_dilation=*/ones,
+  filter_backprop = ConvGeneralDilated(
+      activations, out_backprop, window_strides, padding, /*lhs_dilation=*/ones,
       rhs_dilation, dnums,
       /*feature_group_count=*/feature_group_count,
       /*batch_group_count=*/use_batch_group_count ? dims.in_depth : 1,
@@ -626,4 +677,4 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   return filter_backprop;
 }
 
-}  // namespace tensorflow
+}  // namespace xla
