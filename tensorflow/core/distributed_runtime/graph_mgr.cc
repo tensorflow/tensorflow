@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
@@ -390,6 +391,17 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
+  ExecuteAsync(handle, step_id, session, opts, collector, response,
+               cancellation_manager, in, nullptr, done);
+}
+void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
+                            WorkerSession* session, const ExecutorOpts& opts,
+                            StepStatsCollector* collector,
+                            MutableRunGraphResponseWrapper* response,
+                            CancellationManager* cancellation_manager,
+                            const NamedTensors& in,
+                            tracing::TraceCollector* trace_collector,
+                            StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -448,7 +460,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   }
 
   StartParallelExecutors(handle, step_id, item, rendezvous, ce_handle,
-                         collector, cost_graph, cancellation_manager,
+                         collector, cost_graph, cancellation_manager, trace_collector,
                          [item, rendezvous, ce_handle, done](const Status& s) {
                            done(s);
                            rendezvous->Unref();
@@ -463,6 +475,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
                                       StepStatsCollector* collector,
                                       CostGraphDef* cost_graph,
                                       CancellationManager* cancellation_manager,
+                                      tracing::TraceCollector* trace_collector,
                                       StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
@@ -489,6 +502,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
   args.stats_collector = collector;
   args.step_container = step_container;
   args.sync_on_finish = sync_on_finish_;
+  args.trace_collector = trace_collector;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

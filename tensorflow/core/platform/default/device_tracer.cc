@@ -157,7 +157,7 @@ class CUPTIManager {
 
     // Mapping tid -> client more than twice 
     if (thread_to_client_.find(tid) != thread_to_client_.end()) {
-      CHECK(thread_to_client_[tid] == client);
+      // CHECK(thread_to_client_[tid] == client);
       return;
     }
 
@@ -328,7 +328,6 @@ void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
 
 void CUPTIManager::ActivityCallback(const CUpti_Activity &record) {
   VLOG(2) << "ActivityCallback " << record.kind;
-
   switch (record.kind) {
     case CUPTI_ACTIVITY_KIND_MEMCPY: {
       auto *memcpy = reinterpret_cast<const CUpti_ActivityMemcpy *>(&record);
@@ -401,8 +400,7 @@ TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_src_dev);
 TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_dst_dev);
 
 class DeviceTracerImpl : public DeviceTracer,
-                         public CUPTIClient,
-                         public tracing::TraceCollector {
+                         public CUPTIClient {
  public:
   DeviceTracerImpl();
   ~DeviceTracerImpl() override;
@@ -431,6 +429,7 @@ class DeviceTracerImpl : public DeviceTracer,
         tls_current_annotation.get() = annotation.c_str();
         tls_current_src_dev.get() = src_device.c_str();
         tls_current_dst_dev.get() = dst_device.c_str();
+        // LOG(INFO) << "src: " << src_device << "dst: " << dst_device;
 
       }
       ~Impl() override {
@@ -574,7 +573,7 @@ Status DeviceTracerImpl::Start() {
   }
 
   // Register as a TraceEngine to receive ScopedAnnotations.
-  tracing::SetTraceCollector(this);
+  // tracing::SetTraceCollector(this);
   
   if (ret != CUPTI_ERROR_MAX_LIMIT_REACHED) {
     subscribed_ = true;
@@ -626,7 +625,7 @@ Status DeviceTracerImpl::Stop() {
   if (subscribed_) {
     CUPTI_CALL(Unsubscribe(subscriber_));
   }
-  tracing::SetTraceCollector(nullptr);
+  // tracing::SetTraceCollector(nullptr);
   TF_RETURN_IF_ERROR(cupti_manager_->DisableTrace(this));
   end_walltime_us_ = NowInUsec();
   CUPTI_CALL(GetTimestamp(&end_timestamp_));

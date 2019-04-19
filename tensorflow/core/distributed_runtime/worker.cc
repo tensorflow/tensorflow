@@ -219,7 +219,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
 
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
-      collector, response, cm, in,
+      collector, response, cm, in, static_cast<tracing::TraceCollector*>(tracer),
       [this, step_id, response, session, cm, out, token, tracer, collector, opts,
        done](Status s) {
         if (s.ok()) {

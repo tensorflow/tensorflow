@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -103,6 +104,7 @@ class Executor {
                                  const Tensor* tensor, const bool is_ref,
                                  OpKernelContext* ctx)>
         NodeOutputsCallback;
+    tracing::TraceCollector* trace_collector = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
