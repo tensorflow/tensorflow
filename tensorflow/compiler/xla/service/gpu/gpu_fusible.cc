@@ -179,5 +179,33 @@ bool IsFusible(const HloInstruction& instr) {
   return IsInputFusible(instr) || IsLoopFusible(instr);
 }
 
+bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
+                                   const HloInstruction& consumer) {
+  return (IsLoopFusible(producer) &&
+          (IsLoopFusible(consumer) || IsInputFusible(consumer)));
+}
+
+bool IsSiblingFusionLegal(const HloInstruction& instr1,
+                          const HloInstruction& instr2) {
+  if (!IsLoopFusible(instr1) && !IsInputFusibleReduction(instr1)) return false;
+  if (!IsLoopFusible(instr2) && !IsInputFusibleReduction(instr2)) return false;
+  if (instr1.opcode() == HloOpcode::kReduce ||
+      instr2.opcode() == HloOpcode::kReduce) {
+    if (!LayoutsAreReduceInputFusionFriendly(instr1, instr2)) return false;
+  }
+  return ShapesCompatibleForMultiOutputFusion(instr1, instr2);
+}
+
+bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
+                                              const HloInstruction& consumer) {
+  if (!(IsLoopFusible(producer) &&
+        (IsLoopFusible(consumer) || IsInputFusibleReduction(consumer))))
+    return false;
+  if (consumer.opcode() == HloOpcode::kReduce &&
+      !LayoutsAreReduceInputFusionFriendly(producer, consumer))
+    return false;
+  return ShapesCompatibleForMultiOutputFusion(producer, consumer);
+}
+
 }  // namespace gpu
 }  // namespace xla
