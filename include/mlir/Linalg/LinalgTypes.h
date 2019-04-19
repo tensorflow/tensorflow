@@ -27,7 +27,8 @@ class MLIRContext;
 enum LinalgTypes {
   Buffer = Type::FIRST_LINALG_TYPE,
   Range,
-  LAST_USED_LINALG_TYPE = Range,
+  View,
+  LAST_USED_LINALG_TYPE = View,
 };
 
 class LinalgDialect : public Dialect {
@@ -51,9 +52,8 @@ public:
   static BufferType get(MLIRContext *context, Type elementType);
   /// Used to implement llvm-style cast.
   static bool kindof(unsigned kind) { return kind == LinalgTypes::Buffer; }
-  //////////////////////////////////////////////////////////////////////////////
+
   // Type-specific functionality.
-  //////////////////////////////////////////////////////////////////////////////
   Type getElementType();
 };
 
@@ -69,6 +69,37 @@ public:
   }
   /// Used to implement llvm-style cast.
   static bool kindof(unsigned kind) { return kind == LinalgTypes::Range; }
+};
+
+/// A ViewType represents a multi-dimensional range abstraction on top of an
+/// underlying storage type. It is parameterizable by the underlying element
+/// type and the rank of the view.
+/// A new value of ViewType is constructed from a buffer with a base_view op and
+/// passing it ranges:
+///
+/// ```{.mlir}
+///    %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
+///    %3 = linalg.base_view %1[%2, %2] : !linalg.view<?x?xf32>
+/// ```
+class ViewTypeStorage;
+class ViewType
+    : public mlir::Type::TypeBase<ViewType, mlir::Type, ViewTypeStorage> {
+public:
+  // Used for generic hooks in TypeBase.
+  using Base::Base;
+  /// Construction hook.
+  static ViewType get(mlir::MLIRContext *context, mlir::Type elementType,
+                      unsigned rank);
+  // Used to implement llvm-style cast.
+  static bool kindof(unsigned kind) { return kind == LinalgTypes::View; }
+
+  // Type-specific functionality.
+  /// Return the underlying elemental type.
+  mlir::Type getElementType();
+  /// Return the rank of the view.
+  /// This is the number of indexings needed to reach an underlying element.
+  unsigned getRank();
 };
 
 } // namespace mlir

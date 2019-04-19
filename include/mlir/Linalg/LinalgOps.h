@@ -24,6 +24,50 @@
 
 namespace mlir {
 
+/// A `BaseViewOp` produces a `ViewType` which is a multi-dimensional range
+/// abstraction on top of an underlying linalg.buffer. A BaseViewOp gives a
+/// buffer an indexing structure.
+///
+/// A new value of ViewType is constructed from a buffer with a base_view op and
+/// ranges:
+///
+/// ```{.mlir}
+///    %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
+///    %3 = linalg.base_view %1[%2, %2] : !linalg.view<?x?xf32>
+/// ```
+class BaseViewOp : public mlir::Op<BaseViewOp, mlir::OpTrait::VariadicOperands,
+                                   mlir::OpTrait::OneResult,
+                                   mlir::OpTrait::HasNoSideEffect> {
+  enum { FirstIndexingOperand = 1 };
+
+public:
+  using Op::Op;
+
+  // Hooks to customize the behavior of this op.
+  static llvm::StringRef getOperationName() { return "linalg.base_view"; }
+  static void build(mlir::Builder *b, mlir::OperationState *result,
+                    mlir::Value *buffer,
+                    llvm::ArrayRef<mlir::Value *> indexings);
+  mlir::LogicalResult verify();
+  static bool parse(mlir::OpAsmParser *parser, mlir::OperationState *result);
+  void print(mlir::OpAsmPrinter *p);
+
+  // Op-specific functionality.
+  unsigned getRank() { return getViewType().getRank(); }
+  mlir::Type getElementType() { return getViewType().getElementType(); }
+  ViewType getViewType() { return getType().cast<ViewType>(); }
+  mlir::Value *getSupportingBuffer() { return getOperand(0); }
+  // Get the underlying indexing at a given rank.
+  mlir::Value *getIndexing(unsigned rank) {
+    return *(getIndexings().begin() + rank);
+  }
+  // Get all the indexings in this view.
+  mlir::Operation::operand_range getIndexings() {
+    return {operand_begin() + BaseViewOp::FirstIndexingOperand, operand_end()};
+  }
+};
+
 /// A BufferAllocOp is used to create a 1-D !linalg.buffer upon which a base
 /// view can be laid out. The size argument is an `i64` (and not an index), so
 /// that we can
