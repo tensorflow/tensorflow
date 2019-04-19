@@ -181,31 +181,134 @@ bool IsFusible(const HloInstruction& instr) {
 
 bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
                                    const HloInstruction& consumer) {
+
+  // Other output fusions are not currently supported on GPUs.
+  if (producer.opcode() == HloOpcode::kFusion) {
+    return false;
+  }
+
+  // Do not fuse into reduce input fusions if the resulting kernel would suffer
+  // from poor data locality (due to unfriendly input layouts).
+  if (IsInputFusibleReduction(consumer) &&
+      !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+    return false;
+  }
+
+  // We can't fuse library calls, so if a user of such an op could become a
+  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
+  // further rationale.
+  if (producer.CouldBeBitcast() &&
+      ImplementedAsLibraryCall(*producer.operand(0))) {
+    return false;
+  }
+
+  // Fuse scalar constants into loop fusion nodes. This reduces the number of
+  // parameters and makes matching scalar broadcasts easier.
+  //
+  // Don't fuse other constants: Unfused constants in GPU land can be
+  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
+  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // in the IR/PTX.  The external constant representation makes for faster
+  // compiles and significantly smaller assembly code.
+  if (producer.opcode() == HloOpcode::kConstant) {
+    if (!(ShapeUtil::IsEffectiveScalar(producer.shape()) &&
+           consumer.opcode() == HloOpcode::kFusion))
+      return false;
+  }
+
   return (IsLoopFusible(producer) &&
           (IsLoopFusible(consumer) || IsInputFusible(consumer)));
 }
 
-bool IsSiblingFusionLegal(const HloInstruction& instr1,
+bool IsMultiOutputFusionLegal(const HloInstruction& instr1,
                           const HloInstruction& instr2) {
+
   if (!IsLoopFusible(instr1) && !IsInputFusibleReduction(instr1)) return false;
+
   if (!IsLoopFusible(instr2) && !IsInputFusibleReduction(instr2)) return false;
+
+  // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
+  // merge into bigger loop fusions and input (reduce) fusions become fusions
+  // with multiple reduce outputs. We could fuse reduce and loop fusions
+  // together too (the result being an input fusion) if we find cases where this
+  // improves things. Also disable fusing standalone input-fusible reduces into
+  // loop fusions.
+  if ((instr1.opcode() == HloOpcode::kFusion && instr2.opcode() == HloOpcode::kFusion &&
+       instr1.fusion_kind() != instr2.fusion_kind()) ||
+      (IsReductionToVector(instr2) && instr1.IsLoopFusion())) {
+    return false;
+  }
+
+  // Do not fuse into reduce input fusions if the resulting kernel would suffer
+  // from poor data locality (due to unfriendly input layouts).
   if (instr1.opcode() == HloOpcode::kReduce ||
       instr2.opcode() == HloOpcode::kReduce) {
     if (!LayoutsAreReduceInputFusionFriendly(instr1, instr2)) return false;
   }
-  return ShapesCompatibleForMultiOutputFusion(instr1, instr2);
+
+  if (!ShapesCompatibleForMultiOutputFusion(instr1, instr2)) return false;
+
+  // Do this check last, as it may be expensive.
+  return !FusionWouldBeTooLarge(&instr1, &instr2);
 }
 
 bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
-  if (!(IsLoopFusible(producer) &&
-        (IsLoopFusible(consumer) || IsInputFusibleReduction(consumer))))
-    return false;
-  if (consumer.opcode() == HloOpcode::kReduce &&
-      !LayoutsAreReduceInputFusionFriendly(producer, consumer))
-    return false;
-  return ShapesCompatibleForMultiOutputFusion(producer, consumer);
+
+  return (IsProducerConsumerFusionLegal(producer, consumer) &&
+          IsMultiOutputFusionLegal(producer, consumer));
 }
 
+// This function limits the maximum number of operands to a fusion.
+//
+// There's a cap on how many parameters we can pass to a CUDA kernel, but
+// exactly what that limit is hazy, as it depends on (among other things) how
+// much GPU constant memory is in use for other purposes.
+//
+// Moreover, we don't even know at the point that we're running fusion how many
+// arguments the CUDA kernel for a fusion node will have: It depends on buffer
+// assignment, where we will decide which of the fusion's operands live in XLA's
+// big temp buffer versus in other allocations.
+//
+// As a heuristic, we simply cap the number of fusion operands plus outputs at
+// kMaxOperandsAndOutputsPerFusion.  This puts an upper bound on the number of
+// parameters to the kernel, working around the correctness problem.
+//
+// This limit is also often good for performance.  In a fusion with many
+// operands, each GPU thread likely has to do a lot of work, and so possibly
+// uses a lot of registers, thus limiting occupancy.
+bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b) {
+
+  constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+  // Compute the number of outputs of the (possibly multi-output) fusion node
+  // we're considering creating.
+  //
+  // This isn't precise; we may be off by one if
+  //  - We're creating a multi-output fusion out of two non-MOFs.  Creating a
+  //    MOF adds a new buffer, namely, the tuple buffer.
+  //  - We're merging two MOFs.  In this case, we should count the tuple buffer
+  //    only once.
+  //  - WLOG there's an edge from `a` to `b` and `b` is the only consumer of
+  //    `a`.  In this case the result of `a` is not part of the output of the
+  //    fusion.
+  //
+  // But because this is a heuristic and our limit
+  // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
+  // big difference), we ignore this small inaccuracy in favor of simplicity.
+  int64 num_output_buffers = ShapeUtil::SubshapeCount(a->shape()) +
+                             ShapeUtil::SubshapeCount(b->shape());
+
+  // The new fusion will have no more operands and outputs than
+  //   producer_operands + consumer_operands - 1 + num_output_buffers
+  // (minus one because we may be fusing a producer->consumer edge between `a`
+  // and `b`).
+  //
+  // This fact may be enough to let us avoid having to compute the true total
+  // number of operands, which can be expensive.
+  if (a->operand_count() + b->operand_count() - 1 + num_output_buffers <=
+      kMaxOperandsAndOutputsPerFusion) {
+    return false;
+  }
+}
 }  // namespace gpu
 }  // namespace xla
