@@ -12034,6 +12034,44 @@ func OutfeedDequeue(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ..
 	return op.Output(0)
 }
 
+// Batch normalization.
+//
+// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
+//
+// This op is deprecated. Prefer `tf.nn.batch_normalization`.
+//
+// Arguments:
+//	t: A 4D input Tensor.
+//	m: A 1D mean Tensor with size matching the last dimension of t.
+// This is the first output from tf.nn.moments,
+// or a saved moving average thereof.
+//	v: A 1D variance Tensor with size matching the last dimension of t.
+// This is the second output from tf.nn.moments,
+// or a saved moving average thereof.
+//	beta: A 1D beta Tensor with size matching the last dimension of t.
+// An offset to be added to the normalized tensor.
+//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
+// If "scale_after_normalization" is true, this tensor will be multiplied
+// with the normalized tensor.
+//	variance_epsilon: A small float number to avoid dividing by 0.
+//	scale_after_normalization: A bool indicating whether the resulted tensor
+// needs to be multiplied with gamma.
+func BatchNormWithGlobalNormalization(scope *Scope, t tf.Output, m tf.Output, v tf.Output, beta tf.Output, gamma tf.Output, variance_epsilon float32, scale_after_normalization bool) (result tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
+	opspec := tf.OpSpec{
+		Type: "BatchNormWithGlobalNormalization",
+		Input: []tf.Input{
+			t, m, v, beta, gamma,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RandomPoissonAttr is an optional argument to RandomPoisson.
 type RandomPoissonAttr func(optionalAttr)
 
@@ -16970,31 +17008,6 @@ func ResourceApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.Output,
 	return scope.AddOperation(opspec)
 }
 
-// Read an element from the TensorArray into output `value`.
-//
-// Arguments:
-//	handle: The handle to a TensorArray.
-//
-//	flow_in: A float scalar that enforces proper chaining of operations.
-//	dtype: The type of the elem that is returned.
-//
-// Returns The tensor that is read from the TensorArray.
-func TensorArrayReadV3(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayReadV3",
-		Input: []tf.Input{
-			handle, index, flow_in,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // OrderedMapStageAttr is an optional argument to OrderedMapStage.
 type OrderedMapStageAttr func(optionalAttr)
 
@@ -18870,44 +18883,6 @@ func Conv3DBackpropFilterV2(scope *Scope, input tf.Output, filter_sizes tf.Outpu
 	return op.Output(0)
 }
 
-// Batch normalization.
-//
-// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
-//
-// This op is deprecated. Prefer `tf.nn.batch_normalization`.
-//
-// Arguments:
-//	t: A 4D input Tensor.
-//	m: A 1D mean Tensor with size matching the last dimension of t.
-// This is the first output from tf.nn.moments,
-// or a saved moving average thereof.
-//	v: A 1D variance Tensor with size matching the last dimension of t.
-// This is the second output from tf.nn.moments,
-// or a saved moving average thereof.
-//	beta: A 1D beta Tensor with size matching the last dimension of t.
-// An offset to be added to the normalized tensor.
-//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
-// If "scale_after_normalization" is true, this tensor will be multiplied
-// with the normalized tensor.
-//	variance_epsilon: A small float number to avoid dividing by 0.
-//	scale_after_normalization: A bool indicating whether the resulted tensor
-// needs to be multiplied with gamma.
-func BatchNormWithGlobalNormalization(scope *Scope, t tf.Output, m tf.Output, v tf.Output, beta tf.Output, gamma tf.Output, variance_epsilon float32, scale_after_normalization bool) (result tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
-	opspec := tf.OpSpec{
-		Type: "BatchNormWithGlobalNormalization",
-		Input: []tf.Input{
-			t, m, v, beta, gamma,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SdcaOptimizerV2Attr is an optional argument to SdcaOptimizerV2.
 type SdcaOptimizerV2Attr func(optionalAttr)
 
@@ -20115,6 +20090,108 @@ func StringToHashBucket(scope *Scope, string_tensor tf.Output, num_buckets int64
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// ShuffleDatasetAttr is an optional argument to ShuffleDataset.
+type ShuffleDatasetAttr func(optionalAttr)
+
+// ShuffleDatasetReshuffleEachIteration sets the optional reshuffle_each_iteration attribute to value.
+//
+// value: If true, each iterator over this dataset will be given
+// a different pseudorandomly generated seed, based on a sequence seeded by the
+// `seed` and `seed2` inputs. If false, each iterator will be given the same
+// seed, and repeated iteration over this dataset will yield the exact same
+// sequence of results.
+// If not specified, defaults to true
+func ShuffleDatasetReshuffleEachIteration(value bool) ShuffleDatasetAttr {
+	return func(m optionalAttr) {
+		m["reshuffle_each_iteration"] = value
+	}
+}
+
+// Creates a dataset that shuffles elements from `input_dataset` pseudorandomly.
+//
+// Arguments:
+//
+//	buffer_size: The number of output elements to buffer in an iterator over
+// this dataset. Compare with the `min_after_dequeue` attr when creating a
+// `RandomShuffleQueue`.
+//	seed: A scalar seed for the random number generator. If either `seed` or
+// `seed2` is set to be non-zero, the random number generator is seeded
+// by the given seed.  Otherwise, a random seed is used.
+//	seed2: A second scalar seed to avoid seed collision.
+//
+//
+func ShuffleDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ShuffleDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ShuffleDataset",
+		Input: []tf.Input{
+			input_dataset, buffer_size, seed, seed2,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// SparseReduceMaxSparseAttr is an optional argument to SparseReduceMaxSparse.
+type SparseReduceMaxSparseAttr func(optionalAttr)
+
+// SparseReduceMaxSparseKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func SparseReduceMaxSparseKeepDims(value bool) SparseReduceMaxSparseAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the max of elements across dimensions of a SparseTensor.
+//
+// This Op takes a SparseTensor and is the sparse counterpart to
+// `tf.reduce_max()`.  In contrast to SparseReduceMax, this Op returns a
+// SparseTensor.
+//
+// Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+// with length 1.
+//
+// If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+// with a single element is returned.  Additionally, the axes can be negative,
+// which are interpreted according to the indexing rules in Python.
+//
+// Arguments:
+//	input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, possibly not in canonical ordering.
+//	input_values: 1-D.  `N` non-empty values corresponding to `input_indices`.
+//	input_shape: 1-D.  Shape of the input SparseTensor.
+//	reduction_axes: 1-D.  Length-`K` vector containing the reduction axes.
+func SparseReduceMaxSparse(scope *Scope, input_indices tf.Output, input_values tf.Output, input_shape tf.Output, reduction_axes tf.Output, optional ...SparseReduceMaxSparseAttr) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseReduceMaxSparse",
+		Input: []tf.Input{
+			input_indices, input_values, input_shape, reduction_axes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // SkipgramAttr is an optional argument to Skipgram.
@@ -29001,6 +29078,31 @@ func Div(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Read an element from the TensorArray into output `value`.
+//
+// Arguments:
+//	handle: The handle to a TensorArray.
+//
+//	flow_in: A float scalar that enforces proper chaining of operations.
+//	dtype: The type of the elem that is returned.
+//
+// Returns The tensor that is read from the TensorArray.
+func TensorArrayReadV3(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayReadV3",
+		Input: []tf.Input{
+			handle, index, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Deserialize bucket boundaries and ready flag into current QuantileAccumulator.
 //
 // An op that deserializes bucket boundaries and are boundaries ready flag into current QuantileAccumulator.
@@ -31180,6 +31282,50 @@ func TensorForestCreateTreeVariable(scope *Scope, tree_handle tf.Output, tree_co
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// DecodePaddedRawAttr is an optional argument to DecodePaddedRaw.
+type DecodePaddedRawAttr func(optionalAttr)
+
+// DecodePaddedRawLittleEndian sets the optional little_endian attribute to value.
+//
+// value: Whether the input `input_bytes` is in little-endian order. Ignored for
+// `out_type` values that are stored in a single byte, like `uint8`
+// If not specified, defaults to true
+func DecodePaddedRawLittleEndian(value bool) DecodePaddedRawAttr {
+	return func(m optionalAttr) {
+		m["little_endian"] = value
+	}
+}
+
+// Reinterpret the bytes of a string as a vector of numbers.
+//
+// Arguments:
+//	input_bytes: Tensor of string to be decoded.
+//	fixed_length: Length in bytes for each element of the decoded output. Must be a multiple
+// of the size of the output type.
+//
+//
+// Returns A Tensor with one more dimension than the input `bytes`. The added dimension
+// will have size equal to the length of the elements of `bytes` divided by the
+// number of bytes to represent `out_type`.
+func DecodePaddedRaw(scope *Scope, input_bytes tf.Output, fixed_length tf.Output, out_type tf.DataType, optional ...DecodePaddedRawAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"out_type": out_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodePaddedRaw",
+		Input: []tf.Input{
+			input_bytes, fixed_length,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // MergeV2CheckpointsAttr is an optional argument to MergeV2Checkpoints.
@@ -39976,108 +40122,6 @@ func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output,
 		Type: "RangeDataset",
 		Input: []tf.Input{
 			start, stop, step,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// SparseReduceMaxSparseAttr is an optional argument to SparseReduceMaxSparse.
-type SparseReduceMaxSparseAttr func(optionalAttr)
-
-// SparseReduceMaxSparseKeepDims sets the optional keep_dims attribute to value.
-//
-// value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to false
-func SparseReduceMaxSparseKeepDims(value bool) SparseReduceMaxSparseAttr {
-	return func(m optionalAttr) {
-		m["keep_dims"] = value
-	}
-}
-
-// Computes the max of elements across dimensions of a SparseTensor.
-//
-// This Op takes a SparseTensor and is the sparse counterpart to
-// `tf.reduce_max()`.  In contrast to SparseReduceMax, this Op returns a
-// SparseTensor.
-//
-// Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
-// with length 1.
-//
-// If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-// with a single element is returned.  Additionally, the axes can be negative,
-// which are interpreted according to the indexing rules in Python.
-//
-// Arguments:
-//	input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, possibly not in canonical ordering.
-//	input_values: 1-D.  `N` non-empty values corresponding to `input_indices`.
-//	input_shape: 1-D.  Shape of the input SparseTensor.
-//	reduction_axes: 1-D.  Length-`K` vector containing the reduction axes.
-func SparseReduceMaxSparse(scope *Scope, input_indices tf.Output, input_values tf.Output, input_shape tf.Output, reduction_axes tf.Output, optional ...SparseReduceMaxSparseAttr) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseReduceMaxSparse",
-		Input: []tf.Input{
-			input_indices, input_values, input_shape, reduction_axes,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// ShuffleDatasetAttr is an optional argument to ShuffleDataset.
-type ShuffleDatasetAttr func(optionalAttr)
-
-// ShuffleDatasetReshuffleEachIteration sets the optional reshuffle_each_iteration attribute to value.
-//
-// value: If true, each iterator over this dataset will be given
-// a different pseudorandomly generated seed, based on a sequence seeded by the
-// `seed` and `seed2` inputs. If false, each iterator will be given the same
-// seed, and repeated iteration over this dataset will yield the exact same
-// sequence of results.
-// If not specified, defaults to true
-func ShuffleDatasetReshuffleEachIteration(value bool) ShuffleDatasetAttr {
-	return func(m optionalAttr) {
-		m["reshuffle_each_iteration"] = value
-	}
-}
-
-// Creates a dataset that shuffles elements from `input_dataset` pseudorandomly.
-//
-// Arguments:
-//
-//	buffer_size: The number of output elements to buffer in an iterator over
-// this dataset. Compare with the `min_after_dequeue` attr when creating a
-// `RandomShuffleQueue`.
-//	seed: A scalar seed for the random number generator. If either `seed` or
-// `seed2` is set to be non-zero, the random number generator is seeded
-// by the given seed.  Otherwise, a random seed is used.
-//	seed2: A second scalar seed to avoid seed collision.
-//
-//
-func ShuffleDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ShuffleDatasetAttr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ShuffleDataset",
-		Input: []tf.Input{
-			input_dataset, buffer_size, seed, seed2,
 		},
 		Attrs: attrs,
 	}
