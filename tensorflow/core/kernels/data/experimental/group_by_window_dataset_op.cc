@@ -31,107 +31,58 @@ namespace {
 // description of the following op.
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
-  using KeyFunction =
-      std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
-                           const std::vector<Tensor>&, std::vector<Tensor>*)>;
-
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        lib_def_(std::make_shared<FunctionLibraryDefinition>(
-            ctx->function_library()
-                ->GetFunctionLibraryDefinition()
-                ->default_registry(),
-            FunctionDefLibrary{})) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size_func", &window_size_func_));
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", /*params=*/{},
+                                                 &key_func_metadata_));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "reduce_func", /*params=*/{},
+                                            &reduce_func_metadata_));
+    OP_REQUIRES_OK(
+        ctx, FunctionMetadata::Create(ctx, "window_size_func", /*params=*/{},
+                                      &window_size_func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-
-    for (const auto& func : {key_func_, reduce_func_, window_size_func_}) {
-      std::shared_ptr<FunctionLibraryDefinition> result;
-      OP_REQUIRES_OK(
-          ctx, CreateFunctionLibraryDefinition(
-                   ctx->function_library()->GetFunctionLibraryDefinition(),
-                   func.name(), &result));
-      OP_REQUIRES_OK(ctx, lib_def_->AddLibrary(*result));
-    }
-
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(
-                            ctx, key_func_, &key_short_circuit_indices_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    CapturedFunction::Params params;
-    params.lib_def = lib_def_;
-
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, key_func_metadata_,
                                                  "key_func_other_arguments",
-                                                 params, &captured_key_func));
+                                                 &captured_key_func));
+
     std::unique_ptr<CapturedFunction> captured_reduce_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            reduce_func_, ctx, "reduce_func_other_arguments",
-                            params, &captured_reduce_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, reduce_func_metadata_,
+                                                 "reduce_func_other_arguments",
+                                                 &captured_reduce_func));
+
     std::unique_ptr<CapturedFunction> captured_window_size_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(window_size_func_, ctx,
-                                      "window_size_func_other_arguments",
-                                      params, &captured_window_size_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(ctx, window_size_func_metadata_,
+                                            "window_size_func_other_arguments",
+                                            &captured_window_size_func));
 
-    KeyFunction key_fn;
-    if (key_short_circuit_indices_.empty()) {
-      key_fn = [](IteratorContext* ctx,
-                  InstantiatedCapturedFunction* inst_captured_key_func,
-                  const std::vector<Tensor>& args,
-                  std::vector<Tensor>* out_tensors) {
-        return inst_captured_key_func->RunWithBorrowedArgs(ctx, args,
-                                                           out_tensors);
-      };
-    } else {
-      int key_index = key_short_circuit_indices_[0];
-      key_fn = [key_index](IteratorContext* ctx,
-                           InstantiatedCapturedFunction* inst_captured_key_func,
-                           const std::vector<Tensor>& args,
-                           std::vector<Tensor>* out_tensors) {
-        const Tensor& key = args[key_index];
-        if (key.dtype() != DT_INT64 || key.NumElements() != 1) {
-          return errors::InvalidArgument(
-              "Key function `f` must return a scalar int64.");
-        }
-        out_tensors->push_back(key);
-        return Status::OK();
-      };
-    }
-
-    *output = new Dataset(ctx, input, key_func_, reduce_func_,
-                          window_size_func_, std::move(captured_key_func),
+    *output = new Dataset(ctx, input, std::move(captured_key_func),
                           std::move(captured_reduce_func),
-                          std::move(captured_window_size_func),
-                          std::move(key_fn), output_types_, output_shapes_);
+                          std::move(captured_window_size_func), output_types_,
+                          output_shapes_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& key_func, const NameAttrList& reduce_func,
-            const NameAttrList& window_size_func,
             std::unique_ptr<CapturedFunction> captured_key_func,
             std::unique_ptr<CapturedFunction> captured_reduce_func,
             std::unique_ptr<CapturedFunction> captured_window_size_func,
-            KeyFunction key_fn, const DataTypeVector& output_types,
+            const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          key_func_(key_func),
-          reduce_func_(reduce_func),
-          window_size_func_(window_size_func),
           captured_key_func_(std::move(captured_key_func)),
           captured_reduce_func_(std::move(captured_reduce_func)),
           captured_window_size_func_(std::move(captured_window_size_func)),
-          key_fn_(std::move(key_fn)),
           output_types_(output_types),
           output_shapes_(output_shapes) {
       input_->Ref();
@@ -182,11 +133,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           &window_size_func_other_arguments_types));
 
       AttrValue key_func;
-      b->BuildAttrValue(key_func_, &key_func);
+      b->BuildAttrValue(captured_key_func_->func(), &key_func);
       AttrValue reduce_func;
-      b->BuildAttrValue(reduce_func_, &reduce_func);
+      b->BuildAttrValue(captured_reduce_func_->func(), &reduce_func);
       AttrValue window_size_func;
-      b->BuildAttrValue(window_size_func_, &window_size_func);
+      b->BuildAttrValue(captured_window_size_func_->func(), &window_size_func);
 
       AttrValue key_func_other_arguments_types_attr;
       b->BuildAttrValue(key_func_other_arguments_types,
@@ -266,9 +217,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // Run the key function on the input element to identify its
               // group.
               std::vector<Tensor> key_func_output;
-              TF_RETURN_IF_ERROR(
-                  dataset()->key_fn_(ctx, instantiated_key_func_.get(),
-                                     next_input_element, &key_func_output));
+              TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
+                  ctx, next_input_element, &key_func_output));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -540,24 +490,18 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const NameAttrList key_func_;
-    const NameAttrList reduce_func_;
-    const NameAttrList window_size_func_;
     const std::unique_ptr<CapturedFunction> captured_key_func_;
     const std::unique_ptr<CapturedFunction> captured_reduce_func_;
     const std::unique_ptr<CapturedFunction> captured_window_size_func_;
-    const KeyFunction key_fn_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
+  std::shared_ptr<FunctionMetadata> key_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> reduce_func_metadata_ = nullptr;
+  std::shared_ptr<FunctionMetadata> window_size_func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList key_func_;
-  NameAttrList reduce_func_;
-  NameAttrList window_size_func_;
-  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
-  std::vector<int> key_short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(
