@@ -581,15 +581,16 @@ DeviceNameUtils::ParsedName Member::GetPreferredSoftDeviceName() const {
   return soft_device_name;
 }
 
-ColocationGraph::ColocationGraph(const Graph* graph,
+ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
                                  const FunctionLibraryDefinition* flib_def,
                                  const DeviceSet* device_set,
                                  const Device* default_device,
                                  bool allow_soft_placement,
                                  bool log_device_placement)
     : graph_(*graph),
+      stack_(stack),
       flib_def_(*flib_def),
-      inspecting_placer_(graph, flib_def, device_set, default_device,
+      inspecting_placer_(graph, stack, flib_def, device_set, default_device,
                          allow_soft_placement, log_device_placement),
       inspection_required_checker_(graph, flib_def),
       device_set_(*device_set),

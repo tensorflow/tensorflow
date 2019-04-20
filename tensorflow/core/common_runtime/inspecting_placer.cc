@@ -109,12 +109,14 @@ class ColocationGraphToIOColocationGroups {
 };
 
 InspectingPlacer::InspectingPlacer(const Graph* graph,
+                                   const FunctionStack& stack,
                                    const FunctionLibraryDefinition* flib_def,
                                    const DeviceSet* device_set,
                                    const Device* default_device,
                                    bool allow_soft_placement,
                                    bool log_device_placement)
     : graph_(*graph),
+      stack_(stack),
       flib_def_(*flib_def),
       device_set_(*device_set),
       default_device_(default_device),
@@ -133,10 +135,19 @@ Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
 
   TF_RETURN_IF_ERROR(
       IsolatePlacerInspectionRequiredOps(flib_def_, fbody->graph));
-  // TODO(iga): Detect recursive function calls and raise an error.
-  ColocationGraph colocation_graph(fbody->graph, &flib_def_, &device_set_,
-                                   default_device_, allow_soft_placement_,
-                                   log_device_placement_);
+  if (stack_.HasFunction(func.name())) {
+    return errors::Unimplemented(
+        "Recursive function calls are not supported. Node ",
+        FormatNodeForError(node), " inside the body of ",
+        errors::FormatFunctionForError(stack_.current_function_name()),
+        " calls function ", errors::FormatFunctionForError(func.name()),
+        " which is already present in the call stack:\n  ",
+        stack_.FormatForError());
+  }
+
+  ColocationGraph colocation_graph(
+      fbody->graph, stack_.Push(&node, func.name()), &flib_def_, &device_set_,
+      default_device_, allow_soft_placement_, log_device_placement_);
   TF_RETURN_IF_ERROR(colocation_graph.Initialize());
 
   ColocationGraphToIOColocationGroups converter(&colocation_graph);

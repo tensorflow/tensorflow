@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/placer_inspection_required_ops_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -68,7 +69,7 @@ class InspectingPlacer {
   // TODO(iga): Add a "stack trace" to detect recursion and improve log
   // messages. Currently, we will enter an infinite loop for recursive
   // functions.
-  InspectingPlacer(const Graph* graph,
+  InspectingPlacer(const Graph* graph, const FunctionStack& stack,
                    const FunctionLibraryDefinition* flib_def,
                    const DeviceSet* device_set, const Device* default_device,
                    bool allow_soft_placement, bool log_device_placement);
@@ -80,6 +81,7 @@ class InspectingPlacer {
 
  private:
   const Graph& graph_;
+  const FunctionStack stack_;
   const FunctionLibraryDefinition& flib_def_;
   const DeviceSet& device_set_;
   const Device* default_device_;
