@@ -3100,6 +3100,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
 
 
 @tf_export(v1=["squeeze"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "squeeze_dims")
 def squeeze(input, axis=None, name=None, squeeze_dims=None):
@@ -3125,12 +3126,18 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
 
+  Note: When it comes to squeezing ragged tensors, it has O(number of elements).
+
+  Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
+  time, where `N` is the number of elements in the squeezed dimensions.
+
   Args:
     input: A `Tensor`. The `input` to squeeze.
     axis: An optional list of `ints`. Defaults to `[]`. If specified, only
       squeezes the dimensions listed. The dimension index starts at 0. It is an
       error to squeeze a dimension that is not 1. Must be in the range
       `[-rank(input), rank(input))`.
+      Must be specified if `input` is a `RaggedTensor`.
     name: A name for the operation (optional).
     squeeze_dims: Deprecated keyword argument that is now axis.
 
@@ -3150,6 +3157,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
 
 @tf_export("squeeze", v1=[])
+@dispatch.add_dispatch_support
 def squeeze_v2(input, axis=None, name=None):
   # pylint: disable=redefined-builtin
   return squeeze(input, axis, name)

@@ -34,6 +34,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:take_dataset_op",
@@ -123,18 +124,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
-    name = "indexed_dataset_op",
-    srcs = ["indexed_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels/data:dataset_utils",
         "//third_party/eigen3",
     ],
 )
@@ -451,7 +440,6 @@ tf_kernel_library(
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",
-        ":indexed_dataset_op",
         ":lmdb_dataset_op",
         ":map_and_batch_dataset_op",
         ":matching_files_dataset_op",

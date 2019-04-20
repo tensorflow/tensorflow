@@ -56,16 +56,15 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit NumaMapAndBatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    FunctionMetadata::Params params;
+    params.use_inter_op_parallelism = false;
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     // TODO(saeta): Implement support for preserve_cardinality logic.
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
-    OP_REQUIRES_OK(ctx,
-                   CreateFunctionLibraryDefinition(
-                       ctx->function_library()->GetFunctionLibraryDefinition(),
-                       func_.name(), &lib_def_));
   }
 
  protected:
@@ -90,16 +89,13 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    CapturedFunction::Params params;
-    params.use_inter_op_parallelism = false;
-    params.lib_def = lib_def_;
-    OP_REQUIRES_OK(ctx,
-                   CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            std::move(params), &captured_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
 
-    *output = new Dataset(ctx, input, batch_size, num_parallel_calls,
-                          drop_remainder, output_types_, output_shapes_, func_,
-                          std::move(captured_func));
+    *output =
+        new Dataset(ctx, input, batch_size, num_parallel_calls, drop_remainder,
+                    output_types_, output_shapes_, std::move(captured_func));
   }
 
  private:
@@ -109,7 +105,6 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             int64 num_parallel_calls, bool drop_remainder,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
@@ -118,7 +113,6 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           drop_remainder_(drop_remainder),
           output_types_(output_types),
           output_shapes_(output_shapes),
-          func_(func),
           captured_func_(std::move(captured_func)) {
       input_->Ref();
     }
@@ -172,7 +166,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
                                                     &other_arguments_types));
       AttrValue f;
-      b->BuildAttrValue(func_, &f);
+      b->BuildAttrValue(captured_func_->func(), &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
 
@@ -1134,15 +1128,13 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const bool drop_remainder_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
-    const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
   };
 
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
   bool preserve_cardinality_;
-  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(

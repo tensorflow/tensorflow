@@ -291,7 +291,7 @@ class MathTest(PForTestCase):
             self._test_loop_fn(loop_fn, 2)
 
   def test_batch_matmul_broadcast(self):
-    if not compat.forward_compatible(2019, 4, 18):
+    if not compat.forward_compatible(2019, 4, 25):
       self.skipTest("Skipping test for future functionality.")
     for broadcast_a in (True, False):
       for broadcast_b in (True, False):

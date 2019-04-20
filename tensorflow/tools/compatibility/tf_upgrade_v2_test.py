@@ -1955,6 +1955,13 @@ def _log_prob(self, x):
     self.assertEqual(expected, new_text)
     self.assertIn("tf.contrib.distribute.* have been migrated", report)
 
+  def test_decode_raw(self):
+    text = "tf.io.decode_raw(bytes=[1,2,3], output_dtype=tf.int32)"
+    expected_text = (
+        "tf.io.decode_raw(input_bytes=[1,2,3], output_dtype=tf.int32)")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

@@ -65,7 +65,7 @@ class CompositeTensor(object):
       A nested structure of metadata that can be used to reconstruct this
       composite tensor (along with the tensors returned by `_to_components`).
     """
-    return ()
+    return None
 
   @abc.abstractmethod
   def _from_components(cls, components, metadata):  # pylint: disable=no-self-argument

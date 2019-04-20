@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -101,6 +102,113 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   int64 processing_time_ GUARDED_BY(mu_) = 0;
 };
 
+Status RunShortCircuit(const ShortCircuitInfo& info,
+                       const std::vector<Tensor>& args,
+                       const std::vector<Tensor>& captured_inputs,
+                       std::vector<Tensor>* rets) {
+  size_t num_args = args.size();
+  for (size_t i = 0; i < info.indices.size(); ++i) {
+    if (info.indices[i] < num_args) {
+      rets->push_back(args[info.indices[i]]);
+    } else {
+      rets->push_back(captured_inputs[info.indices[i] - num_args]);
+    }
+  }
+  return Status::OK();
+}
+
+Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
+                       const std::vector<Tensor>& captured_inputs,
+                       std::vector<Tensor>* rets) {
+  size_t num_args = args.size();
+  for (size_t i = 0; i < info.indices.size(); ++i) {
+    if (info.indices[i] < num_args) {
+      if (info.can_move[i]) {
+        rets->push_back(std::move(args[info.indices[i]]));
+      } else {
+        rets->push_back(args[info.indices[i]]);
+      }
+    } else {
+      rets->push_back(captured_inputs[info.indices[i] - num_args]);
+    }
+  }
+  return Status::OK();
+}
+
+Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
+                              const NameAttrList& func,
+                              ShortCircuitInfo* info) {
+  auto& indices = info->indices;
+
+  FunctionLibraryRuntime::Handle fn_handle;
+  TF_RETURN_IF_ERROR(ctx->function_library()->Instantiate(
+      func.name(), AttrSlice(&func.attr()), &fn_handle));
+  auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
+    Status s = ctx->function_library()->ReleaseHandle(fn_handle);
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to release handle: " << s.error_message();
+    }
+  });
+
+  // If the function contains any stateful operations, we conservatively execute
+  // the entire function.
+  if (ctx->function_library()->IsStateful(func.name())) {
+    return Status::OK();
+  }
+
+  const FunctionBody* fn_body =
+      ctx->function_library()->GetFunctionBody(fn_handle);
+  indices.resize(fn_body->ret_nodes.size());
+
+  for (size_t i = 0; i < fn_body->ret_nodes.size(); ++i) {
+    Node* ret_node = fn_body->ret_nodes[i];
+    Node* ret_input_node;
+    TF_RETURN_IF_ERROR(ret_node->input_node(0, &ret_input_node));
+
+    while (ret_input_node->def().op() == "Identity") {
+      TF_RETURN_IF_ERROR(ret_input_node->input_node(0, &ret_input_node));
+    }
+
+    if (ret_input_node->def().op() == FunctionLibraryDefinition::kArgOp) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(ret_input_node->def(), "index", &(indices[i])));
+    } else {
+      indices.clear();
+      break;
+    }
+  }
+
+  // Compute the `can_move` vector.
+  if (!indices.empty()) {
+    auto& can_move = info->can_move;
+    std::map<int, int> last_use;
+    for (size_t i = 0; i < indices.size(); ++i) {
+      last_use[indices[i]] = i;
+    }
+    can_move.resize(indices.size());
+    for (size_t i = 0; i < indices.size(); ++i) {
+      can_move[i] = last_use[indices[i]] == i;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CreateFunctionLibraryDefinition(
+    const FunctionLibraryDefinition* lib_def, const string& func_name,
+    std::unique_ptr<FunctionLibraryDefinition>* result) {
+  DCHECK(lib_def != nullptr);
+  const FunctionDef* fdef = lib_def->Find(func_name);
+  if (TF_PREDICT_FALSE(fdef == nullptr)) {
+    return errors::FailedPrecondition(strings::StrCat(
+        "Could not find required function definition ", func_name));
+  }
+  *result = absl::make_unique<FunctionLibraryDefinition>(
+      lib_def->ReachableDefinitions(*fdef));
+  TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));
+  return Status::OK();
+}
+
 }  // namespace
 
 Status MakeIteratorFromInputElement(
@@ -129,31 +237,46 @@ Status MakeIteratorFromInputElement(
 }
 
 /* static */
-Status CapturedFunction::Create(
-    const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
-    Params params, std::unique_ptr<CapturedFunction>* out_function) {
-  OpInputList inputs;
-  TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
-  std::vector<Tensor> captured_inputs(inputs.begin(), inputs.end());
-  return Create(func, ctx, std::move(captured_inputs), std::move(params),
-                out_function);
+Status FunctionMetadata::Create(
+    OpKernelConstruction* ctx, const string& func_name, Params params,
+    std::shared_ptr<FunctionMetadata>* out_metadata) {
+  NameAttrList func;
+  TF_RETURN_IF_ERROR(ctx->GetAttr(func_name, &func));
+  return Create(ctx, std::move(func), params, out_metadata);
+}
+
+Status FunctionMetadata::Create(
+    OpKernelConstruction* ctx, NameAttrList&& func, Params params,
+    std::shared_ptr<FunctionMetadata>* out_metadata) {
+  out_metadata->reset(new FunctionMetadata(std::move(func), params));
+  TF_RETURN_IF_ERROR(CreateFunctionLibraryDefinition(
+      ctx->function_library()->GetFunctionLibraryDefinition(),
+      (*out_metadata)->func_.name(), &(*out_metadata)->lib_def_));
+  TF_RETURN_IF_ERROR(CreateShortCircuitInfo(
+      ctx, (*out_metadata)->func_, &(*out_metadata)->short_circuit_info_));
+  return Status::OK();
 }
 
 /* static */
 Status CapturedFunction::Create(
-    const NameAttrList& func, OpKernelContext* ctx,
-    std::vector<Tensor>&& captured_inputs, Params params,
+    OpKernelContext* ctx,
+    const std::shared_ptr<const FunctionMetadata> metadata,
+    const string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
-  if (params.lib_def == nullptr)
-    return errors::Internal(
-        "After cl/242905426 the CapturedFunction factories require the "
-        "FunctionLibraryDefinition parameter to be set. The expectation is "
-        "that any tf.data op kernel that uses the CapturedFunction mechanism "
-        "to invoke user-defined functions will create an instance of "
-        "FunctionLibraryDefinition in its constructor. See map_dataset_op.cc "
-        "for a code example.");
-  *out_function = absl::WrapUnique(new CapturedFunction(
-      func, std::move(captured_inputs), std::move(params)));
+  OpInputList inputs;
+  TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
+  std::vector<Tensor> captured_inputs(inputs.begin(), inputs.end());
+  return Create(ctx, metadata, std::move(captured_inputs), out_function);
+}
+
+/* static */
+Status CapturedFunction::Create(
+    OpKernelContext* ctx,
+    const std::shared_ptr<const FunctionMetadata> metadata,
+    std::vector<Tensor>&& captured_inputs,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  *out_function = absl::WrapUnique(
+      new CapturedFunction(metadata, std::move(captured_inputs)));
   return Status::OK();
 }
 
@@ -175,9 +298,8 @@ Status CapturedFunction::AddToGraph(
     other_arguments->emplace_back(node);
     other_arguments_types->emplace_back(t.dtype());
   }
-
-  TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name(), *lib_def_));
-
+  TF_RETURN_IF_ERROR(
+      b->AddFunction(ctx, metadata_->func().name(), *metadata_->lib_def()));
   return Status::OK();
 }
 
@@ -187,27 +309,28 @@ Status CapturedFunction::Instantiate(
   // The context's runtime will be used for all subsequent calls.
   FunctionLibraryRuntime* lib = ctx->flr();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  inst_opts.lib_def = lib_def_.get();
+  inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
-  if (!use_inter_op_parallelism_) {
+  if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
-  inst_opts.is_multi_device_function = is_multi_device_function_;
+  inst_opts.is_multi_device_function = metadata_->is_multi_device_function();
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
   inst_opts.target = lib->device()->name();
 
-  if (is_multi_device_function_) {
+  if (metadata_->is_multi_device_function()) {
     // Compute devices of non-captured inputs.
     //
     // We infer the number of non-captured inputs by subtracting the number
     // of captured inputs from the number of input arguments and we infer the
     // input devices from the function library runtime.
-    const FunctionDef* fdef = lib_def_->Find(func_.name());
+    const FunctionDef* fdef =
+        metadata_->lib_def()->Find(metadata_->func().name());
     if (fdef == nullptr) {
       return errors::InvalidArgument(
-          "Failed to find function ", func_.name(),
+          "Failed to find function ", metadata_->func().name(),
           " in function library: ", lib->GetFunctionLibraryDefinition());
     }
     size_t num_non_captured_inputs =
@@ -235,7 +358,8 @@ Status CapturedFunction::Instantiate(
 
   FunctionLibraryRuntime::Handle f_handle;
   TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
-      func_.name(), AttrSlice(&func_.attr()), inst_opts, &f_handle));
+      metadata_->func().name(), AttrSlice(&metadata_->func().attr()), inst_opts,
+      &f_handle));
 
   DataTypeVector ret_types;
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
@@ -381,6 +505,12 @@ InstantiatedCapturedFunction::~InstantiatedCapturedFunction() {}
 Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                                          std::vector<Tensor>&& args,
                                          std::vector<Tensor>* rets) const {
+  auto& info = captured_func_->short_circuit_info();
+  if (!info.indices.empty()) {
+    return RunShortCircuit(info, std::move(args),
+                           captured_func_->captured_inputs(), rets);
+  }
+
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
@@ -418,6 +548,11 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     IteratorContext* ctx, const std::vector<Tensor>& args,
     std::vector<Tensor>* rets) const {
+  auto& info = captured_func_->short_circuit_info();
+  if (!info.indices.empty()) {
+    return RunShortCircuit(info, args, captured_func_->captured_inputs(), rets);
+  }
+
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
@@ -454,6 +589,11 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
 
 Status InstantiatedCapturedFunction::RunInstantiated(
     const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
+  auto& info = captured_func_->short_circuit_info();
+  if (!info.indices.empty()) {
+    return RunShortCircuit(info, args, captured_func_->captured_inputs(), rets);
+  }
+
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
@@ -491,6 +631,13 @@ Status InstantiatedCapturedFunction::RunInstantiated(
 void InstantiatedCapturedFunction::RunAsync(
     IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done, const string& prefix) const {
+  auto& info = captured_func_->short_circuit_info();
+  if (!info.indices.empty()) {
+    done(RunShortCircuit(info, std::move(args),
+                         captured_func_->captured_inputs(), rets));
+    return;
+  }
+
   // NOTE(mrry): This method does not transfer ownership of `ctx`, and it may
   // be deleted before `done` is called. Take care not to capture `ctx` in any
   // code that may execute asynchronously in this function.
@@ -567,14 +714,10 @@ void InstantiatedCapturedFunction::RunAsync(
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
 }
 
-CapturedFunction::CapturedFunction(const NameAttrList& func,
-                                   std::vector<Tensor> captured_inputs,
-                                   Params params)
-    : func_(func),
-      captured_inputs_(std::move(captured_inputs)),
-      use_inter_op_parallelism_(params.use_inter_op_parallelism),
-      is_multi_device_function_(params.is_multi_device_function),
-      lib_def_(std::move(params.lib_def)) {}
+CapturedFunction::CapturedFunction(
+    const std::shared_ptr<const FunctionMetadata> metadata,
+    std::vector<Tensor> captured_inputs)
+    : metadata_(metadata), captured_inputs_(std::move(captured_inputs)) {}
 
 }  // namespace data
 }  // namespace tensorflow

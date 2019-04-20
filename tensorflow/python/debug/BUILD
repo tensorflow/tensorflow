@@ -156,27 +156,11 @@ py_library(
 )
 
 py_library(
-    name = "stepper",
-    srcs = ["lib/stepper.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":debug_data",
-        ":debug_graphs",
-        ":debug_utils",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:session_ops",
-        "@six_archive//:six",
-    ],
-)
-
-py_library(
     name = "framework",
     srcs = ["wrappers/framework.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
-        ":stepper",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
@@ -286,21 +270,6 @@ py_library(
 )
 
 py_library(
-    name = "stepper_cli",
-    srcs = ["cli/stepper_cli.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":cli_shared",
-        ":command_parser",
-        ":debugger_cli_common",
-        ":stepper",
-        ":tensor_format",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-    ],
-)
-
-py_library(
     name = "base_ui",
     srcs = ["cli/base_ui.py"],
     srcs_version = "PY2AND3",
@@ -389,7 +358,6 @@ py_library(
         ":debugger_cli_common",
         ":framework",
         ":profile_analyzer_cli",
-        ":stepper_cli",
         ":tensor_format",
         ":ui_factory",
     ],
@@ -405,7 +373,6 @@ py_library(
         ":framework",
         ":grpc_wrapper",
         ":local_cli_wrapper",
-        ":stepper",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:training",
     ],
@@ -663,24 +630,6 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
-)
-
-cuda_py_test(
-    name = "stepper_test",
-    size = "small",
-    srcs = ["lib/stepper_test.py"],
-    additional_deps = [
-        ":stepper",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -1026,33 +975,6 @@ py_test(
 )
 
 cuda_py_test(
-    name = "stepper_cli_test",
-    size = "small",
-    srcs = ["cli/stepper_cli_test.py"],
-    additional_deps = [
-        ":stepper",
-        ":stepper_cli",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-    ],
-    tags = [
-        "manual",
-        "no_pip",
-        "no_windows",
-        "notap",
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
-)
-
-cuda_py_test(
     name = "session_debug_grpc_test",
     size = "medium",
     srcs = ["lib/session_debug_grpc_test.py"],
@@ -1145,7 +1067,6 @@ py_test(
         ":dumping_wrapper",
         ":framework",
         ":hooks",
-        ":stepper",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",

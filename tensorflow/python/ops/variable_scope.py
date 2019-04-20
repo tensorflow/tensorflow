@@ -996,7 +996,7 @@ class _VariableStore(object):
 
 
 # To stop regularization, use this regularizer
-@tf_export("no_regularizer")
+@tf_export(v1=["no_regularizer"])
 def no_regularizer(_):
   """Use this function to prevent regularization of variables."""
   return None

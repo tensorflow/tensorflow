@@ -2392,7 +2392,7 @@ class LSTM(RNN):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
    Note that this cell is not optimized for performance on GPU. Please use
-  `tf.keras.layers.CuDNNLSTM` for better performance on GPU.
+  `tf.compat.v1.keras.layers.CuDNNLSTM` for better performance on GPU.
 
   Arguments:
     units: Positive integer, dimensionality of the output space.

@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
-namespace xla_python {
 
 // Registers a 'fn_capsule' as a CPU custom call target.
 // 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
@@ -74,20 +73,20 @@ class PyLocalClient {
 // Represents a reference to literals that live in a device-allocated buffer via
 // XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
 // literal to device via the local client.
-class LocalShapedBuffer {
+class PyLocalBuffer {
  public:
-  static StatusOr<LocalShapedBuffer> FromPython(
-      const pybind11::object& argument, PyLocalClient* client,
-      int device_ordinal);
+  static StatusOr<PyLocalBuffer> FromPython(const pybind11::object& argument,
+                                            PyLocalClient* client,
+                                            int device_ordinal);
 
   // Converts multiple (python object, device ordinal) pairs into
-  // LocalShapedBuffers in parallel.
-  static StatusOr<std::vector<LocalShapedBuffer>> FromPythonValues(
+  // PyLocalBuffers in parallel.
+  static StatusOr<std::vector<PyLocalBuffer>> FromPythonValues(
       const std::vector<std::pair<pybind11::object, int>>& argument,
       PyLocalClient* client);
 
-  LocalShapedBuffer() = default;
-  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer, PyLocalClient* client);
+  PyLocalBuffer() = default;
+  PyLocalBuffer(ScopedShapedBuffer shaped_buffer, PyLocalClient* client);
   StatusOr<pybind11::object> ToPython() const;
   const Shape& shape() const;
   const ScopedShapedBuffer* shaped_buffer() const;
@@ -101,9 +100,8 @@ class LocalShapedBuffer {
     client_ = nullptr;
   }
 
-  // Destructures a tuple-valued LocalShapedBuffer into its constituent
-  // elements in LocalShapedBufferTuple form.
-  StatusOr<std::vector<LocalShapedBuffer>> DestructureTuple();
+  // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
+  StatusOr<std::vector<PyLocalBuffer>> DestructureTuple();
 
  private:
   absl::optional<ScopedShapedBuffer> shaped_buffer_;
@@ -133,14 +131,14 @@ class PyLocalExecutable {
     return device_assignment_;
   }
 
-  StatusOr<LocalShapedBuffer> Execute(
-      absl::Span<LocalShapedBuffer* const> argument_handles);
+  StatusOr<PyLocalBuffer> Execute(
+      absl::Span<PyLocalBuffer* const> argument_handles);
 
   // Execute on many replicas. Takes a sequence of argument lists (one argument
   // list per replica) and returns a tuple of results (one result per replica).
   // The number of argument lists must be equal to the replica count.
-  StatusOr<std::vector<LocalShapedBuffer>> ExecutePerReplica(
-      absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles);
+  StatusOr<std::vector<PyLocalBuffer>> ExecutePerReplica(
+      absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
   void Delete() { executable_ = nullptr; }
 
@@ -150,18 +148,6 @@ class PyLocalExecutable {
   PyLocalClient* const client_;
 };
 
-// Converts a computation to a serialized HloModuleProto
-StatusOr<pybind11::bytes> GetComputationSerializedProto(
-    const XlaComputation& computation);
-
-// Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation);
-
-// Converts a computation to HLO dot graph form.
-StatusOr<std::string> GetComputationHloDotGraph(
-    const XlaComputation& computation);
-
-}  // namespace xla_python
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_CLIENT_H_

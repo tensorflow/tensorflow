@@ -42,8 +42,8 @@ int32 DefaultNumInterOpThreads() {
     return env_num_threads;
   }
 
-  // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
+  // Default to the maximum parallelism for the current process.
+  return port::MaxParallelism();
 #else
   // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
   // used (regardless of what was chosen here); instead, all work was done on
