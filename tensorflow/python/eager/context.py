@@ -961,11 +961,22 @@ class Context(object):
 
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
     gpu_count = self._config.device_count.get("GPU", None)
-    if gpu_count == 0:
-      self.set_visible_devices([], "GPU")
-    elif gpu_count is not None:
-      # TODO(gjn): Handle importing existing virtual GPU configuration
-      self.set_visible_devices(gpus[:gpu_count], "GPU")
+
+    visible_gpus = []
+    # TODO(gjn): Handle importing existing virtual GPU configuration
+    visible_indices = self._config.gpu_options.visible_device_list
+    if visible_indices:
+      for index in visible_indices.split(","):
+        if int(index) >= len(gpus):
+          raise ValueError("Invalid visible device index: %s" % index)
+        visible_gpus.append(gpus[int(index)])
+    else:
+      visible_gpus = gpus
+
+    if gpu_count is not None:
+      visible_gpus = visible_gpus[:gpu_count]
+
+    self.set_visible_devices(visible_gpus, "GPU")
 
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
