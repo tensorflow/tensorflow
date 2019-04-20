@@ -2925,8 +2925,8 @@ def _ssim_per_channel(img1,
       maximum the and minimum allowed values).
     size: size of gaussian filter.
     sigma: width of gaussian filter.
-    filter_size: size of gaussian filter.
-    filter_sigma: width of gaussian filter.
+    filter_size: Default value 11 (size of gaussian filter).
+    filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
       lower values, so it would be better if we taken the values in range
@@ -3097,8 +3097,8 @@ def ssim_multiscale(img1,
       resolution's weight and each increasing scale corresponds to the image
       being downsampled by 2.  Defaults to (0.0448, 0.2856, 0.3001, 0.2363,
       0.1333), which are the values obtained in the original paper.
-    filter_size: size of gaussian filter.
-    filter_sigma: width of gaussian filter.
+    filter_size: Default value 11 (size of gaussian filter).
+    filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
       lower values, so it would be better if we taken the values in range
