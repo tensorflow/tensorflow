@@ -184,6 +184,7 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kReshape ||
           instr.opcode() == HloOpcode::kReverse ||
           instr.opcode() == HloOpcode::kSlice ||
+          instr.opcode() == HloOpcode::kConstant ||
           instr.opcode() == HloOpcode::kTranspose);
 }
 
@@ -194,28 +195,12 @@ bool IsFusible(const HloInstruction& instr) {
 bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
                                    const HloInstruction& consumer) {
 
-  if (!IsFusible(producer) || !IsFusible(consumer)) return false;
+  if (!IsLoopFusible(producer) || !IsFusible(consumer)) return false;
 
   // Other output fusions are not currently supported on GPUs.
-  if (producer.opcode() == HloOpcode::kFusion) {
+  /*if (producer.opcode() == HloOpcode::kFusion) {
     return false;
-  }
-
-  // RNG operations are not currently parallel-friendly on GPU.
-  if (producer.opcode() == HloOpcode::kRng) {
-    return false;
-  }
-
-  // Do not fuse to-vector reduction into other consumers. They should be
-  // unfused or the root of a kInput fusion.
-  if (IsReductionFromOrToContiguousDimensions(producer)) {
-    return false;
-  }
-
-  // Scatter is only supported at the root of a kInput fusion.
-  if (producer.opcode() == HloOpcode::kScatter) {
-    return false;
-  }
+  }*/
 
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
@@ -241,13 +226,10 @@ bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
   // in the IR/PTX.  The external constant representation makes for faster
   // compiles and significantly smaller assembly code.
   if (producer.opcode() == HloOpcode::kConstant) {
-    if (!(ShapeUtil::IsEffectiveScalar(producer.shape()) &&
-           consumer.opcode() == HloOpcode::kFusion))
-      return false;
+    return ShapeUtil::IsEffectiveScalar(producer.shape()) &&
+           consumer.opcode() == HloOpcode::kFusion;
   }
 
-/*  return (IsLoopFusible(producer) &&
-          (IsLoopFusible(consumer) || IsInputFusible(consumer)));*/
   return true;
 }
 
@@ -264,13 +246,13 @@ bool IsSiblingMultiOutputFusionLegal(const HloInstruction& instr1,
 bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
 
-  if (!IsInputFusibleReduction(consumer)) return false;
+  if (!producer.IsFusible() || !IsInputFusibleReduction(consumer)) return false;
 
+  // Never multi-output fuse constants.  To the extent that we want to fuse
+  // constants, that should be handled by the regular fusion pass.
   if (producer.opcode() == HloOpcode::kConstant) return false;
 
   if (!producer.IsElementwise() && !producer.IsLoopFusion()) return false;
-
-  if (!producer.IsFusible()) return false;
 
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) return false;
 

@@ -101,7 +101,8 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
-  return IsSiblingMultiOutputFusionLegal(*instr1, *instr2);
+  // Do this check last, as it may be expensive.
+  return !FusionWouldBeTooLarge(instr1, instr2);
 }
 
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
