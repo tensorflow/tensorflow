@@ -32,9 +32,12 @@ from __future__ import print_function as _print_function
 
 import distutils as _distutils
 import inspect as _inspect
+import logging as _logging
 import os as _os
 import site as _site
 import sys as _sys
+
+from tensorflow.python.tools import module_util as _module_util
 
 # API IMPORTS PLACEHOLDER
 
@@ -49,25 +52,26 @@ if not hasattr(_current_module, '__path__'):
 elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
-# pylint: disable=g-bad-import-order
-from tensorflow.python.tools import component_api_helper as _component_api_helper
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorboard.summary._tf.summary'),
-    error_msg="Limited tf.summary API due to missing TensorBoard installation")
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=(
-        'tensorflow_estimator.python.estimator.api._v2.estimator'))
+# Hook external TensorFlow modules.
+try:
+  from tensorboard.summary._tf import summary
+  _current_module.__path__.append(_module_util.get_parent_dir(summary))
+except ImportError:
+  _logging.warning(
+      "Limited tf.summary API due to missing TensorBoard installation.")
 
-if not hasattr(_current_module, 'estimator'):
-  _component_api_helper.package_hook(
-      parent_package_str=__name__,
-      child_package_str=(
-          'tensorflow_estimator.python.estimator.api.estimator'))
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorflow.python.keras.api._v2.keras'))
+try:
+  from tensorflow_estimator.python.estimator.api._v2 import estimator
+  _current_module.__path__.append(_module_util.get_parent_dir(estimator))
+except ImportError:
+  pass
+
+try:
+  from tensorflow.python.keras.api._v2 import keras
+  _current_module.__path__.append(_module_util.get_parent_dir(keras))
+except ImportError:
+  pass
+
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
