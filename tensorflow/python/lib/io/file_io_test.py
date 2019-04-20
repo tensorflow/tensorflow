@@ -611,7 +611,7 @@ class FileIoTest(test.TestCase):
   def testFileSeekableWithZip(self):
     # Note: Test case for GitHub issue 27276, issue only exposed in python 3.7+.
     filename = os.path.join(self._base_dir, "a.npz")
-    np.savez_compressed(filename, { "a": 1, "b": 2 })
+    np.savez_compressed(filename, {"a": 1, "b": 2})
     with gfile.GFile(filename, "rb") as f:
       info = np.load(f)
     _ = [i for i in info.items()]
