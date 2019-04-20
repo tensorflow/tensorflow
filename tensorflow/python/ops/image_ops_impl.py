@@ -2923,8 +2923,6 @@ def _ssim_per_channel(img1,
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
-    size: size of gaussian filter.
-    sigma: width of gaussian filter.
     filter_size: Default value 11 (size of gaussian filter).
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
