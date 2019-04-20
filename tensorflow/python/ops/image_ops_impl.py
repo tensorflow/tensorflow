@@ -2798,19 +2798,13 @@ def psnr(a, b, max_val, name=None):
     with ops.control_dependencies(checks):
       return array_ops.identity(psnr_val)
 
-_SSIM_K1 = 0.01
-_SSIM_K2 = 0.03
-_SSIM_FILTER_SIZE = 11
-_SSIM_SIGMA = 1.5
-
-
 def _ssim_helper(x,
                  y,
                  reducer,
                  max_val,
                  compensation=1.0,
-                 k1=_SSIM_K1,
-                 k2=_SSIM_K2):
+                 k1=0.01,
+                 k2=0.03):
   r"""Helper function for computing SSIM.
 
   SSIM estimates covariances with weighted sums.  The default parameters
@@ -2889,10 +2883,10 @@ def _fspecial_gauss(size, sigma):
 def _ssim_per_channel(img1,
                       img2,
                       max_val=1.0,
-                      filter_size=_SSIM_FILTER_SIZE,
-                      filter_sigma=_SSIM_SIGMA,
-                      k1=_SSIM_K1,
-                      k2=_SSIM_K2):
+                      filter_size=11,
+                      filter_sigma=1.5,
+                      k1=0.01,
+                      k2=0.03):
   """Computes SSIM index between img1 and img2 per color channel.
 
   This function matches the standard SSIM implementation from:
@@ -2968,10 +2962,10 @@ def _ssim_per_channel(img1,
 def ssim(img1,
          img2,
          max_val,
-         filter_size=_SSIM_FILTER_SIZE,
-         filter_sigma=_SSIM_SIGMA,
-         k1=_SSIM_K1,
-         k2=_SSIM_K2):
+         filter_size=11,
+         filter_sigma=1.5,
+         k1=0.01,
+         k2=0.03):
   """Computes SSIM index between img1 and img2.
 
   This function is based on the standard SSIM implementation from:
@@ -3012,8 +3006,8 @@ def ssim(img1,
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
-    filter_size: size of gaussian filter.
-    filter_sigma: width of gaussian filter.
+    filter_size: Default value 11 (size of gaussian filter).
+    filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for
       lower values, so it would be better if we taken the values in range
@@ -3049,10 +3043,10 @@ def ssim_multiscale(img1,
                     img2,
                     max_val,
                     power_factors=_MSSSIM_WEIGHTS,
-                    filter_size=_SSIM_FILTER_SIZE,
-                    filter_sigma=_SSIM_SIGMA,
-                    k1=_SSIM_K1,
-                    k2=_SSIM_K2):
+                    filter_size=11,
+                    filter_sigma=1.5,
+                    k1=0.01,
+                    k2=0.03):
   """Computes the MS-SSIM between img1 and img2.
 
   This function assumes that `img1` and `img2` are image batches, i.e. the last
