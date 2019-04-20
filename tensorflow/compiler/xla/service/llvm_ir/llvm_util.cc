@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -499,24 +500,25 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (fast_math_enabled) {
-    // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros,
-    // AllowReciprocal, AllowContract, and ApproxFunc.
-    flags.setFast();
+  if (!module_config.debug_options().xla_cpu_enable_fast_math()) {
+    return flags;
   }
-  return flags;
-}
 
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options) {
-  // In LLVM backend flags, UnsafeFPMath does not explicitly imply
-  // NoInfs, etc.
-  target_options->UnsafeFPMath = fast_math_enabled;
-  target_options->NoInfsFPMath = fast_math_enabled;
-  target_options->NoNaNsFPMath = fast_math_enabled;
-  target_options->NoSignedZerosFPMath = fast_math_enabled;
+  // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
+  // AllowContract, and ApproxFunc.
+  flags.setFast();
+
+  if (module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
+    flags.setNoNaNs(false);
+  }
+
+  if (module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
+    flags.setNoInfs(false);
+  }
+
+  return flags;
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(
@@ -603,10 +605,11 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   }
 }
 
-llvm::Function* CreateFunction(llvm::FunctionType* function_type,
-                               llvm::GlobalValue::LinkageTypes linkage,
-                               bool enable_fast_math, bool optimize_for_size,
-                               absl::string_view name, llvm::Module* module) {
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name,
+                                  llvm::Module* module) {
   llvm::Function* function =
       llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
   function->setCallingConv(llvm::CallingConv::C);
@@ -616,17 +619,23 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
-  if (enable_fast_math) {
+  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
     function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-infs-fp-math", "true");
-    function->addFnAttr("no-nans-fp-math", "true");
     function->addFnAttr("no-signed-zeros-fp-math", "true");
+
+    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
+      function->addFnAttr("no-nans-fp-math", "true");
+    }
+
+    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
+      function->addFnAttr("no-infs-fp-math", "true");
+    }
   }
 
   // Add the optize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
-  if (optimize_for_size) {
+  if (cpu::options::OptimizeForSizeRequested(module_config)) {
     function->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 

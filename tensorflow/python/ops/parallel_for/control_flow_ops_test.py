@@ -337,7 +337,6 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
     if test.is_gpu_available():
@@ -387,6 +386,28 @@ class NNTest(PForTestCase):
         # pylint: enable=cell-var-from-loop
 
         self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 6)
+
+  def test_log_softmax(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      return (nn.log_softmax(logits_i),
+              nn.log_softmax(logits_i, axis=0),
+              nn.log_softmax(logits_i, axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  def test_softmax(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      return (nn.softmax(logits_i),
+              nn.softmax(logits_i, axis=0),
+              nn.softmax(logits_i, axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_softmax_cross_entropy_with_logits(self):
     with backprop.GradientTape(persistent=True) as g:

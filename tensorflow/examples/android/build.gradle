@@ -94,7 +94,7 @@ android {
             }
             externalNativeBuild {
                 cmake {
-                    arguments '-DANDROID_TOOLCHAIN=gcc', '-DANDROID_STL=gnustl_static'
+                    arguments '-DANDROID_STL=c++_static'
                 }
             }
         }

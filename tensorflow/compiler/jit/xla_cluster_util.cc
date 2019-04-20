@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -226,28 +226,6 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
 
 void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
 
-Status AdjustCycleDetectionGraphForResourceOps(
-    const Graph* graph, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
-    GraphCycles* cycles) {
-  std::vector<std::pair<int, int>> unsafe_deps;
-  TF_RETURN_IF_ERROR(ComputeIncompatibleResourceOperationPairs(
-      *graph, flib_def, resource_ops_to_ignore, &unsafe_deps));
-
-  // An edge {P,Q} in `unsafe_deps` denotes that P and Q, both of which are
-  // operations that interact with resource variables, must not be put in the
-  // same cluster.  We enforce this constraint by creating a phantom node, X,
-  // and adding edges P->X and X->Q.  MarkForCompilation then cannot cluster P
-  // and Q together since that would create a cycle with X.
-
-  for (std::pair<int, int> unsafe_dep : unsafe_deps) {
-    int phantom_node_id = cycles->NewNode();
-    CHECK(cycles->InsertEdge(unsafe_dep.first, phantom_node_id));
-    CHECK(cycles->InsertEdge(phantom_node_id, unsafe_dep.second));
-  }
-  return Status::OK();
-}
-
 Status PickDeviceForXlaImpl(absl::Span<const string> device_names,
                             bool allow_mixing_unknown_and_cpu,
                             bool* out_can_pick_device,
@@ -350,24 +328,101 @@ Status CanPickDeviceForXla(absl::Span<const string> device_names,
                               /*out_device_picked=*/nullptr);
 }
 
-OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+namespace {
+struct XlaGlobalJitLevel {
+  OptimizerOptions::GlobalJitLevel single_gpu;
+  OptimizerOptions::GlobalJitLevel general;
+};
+
+XlaGlobalJitLevel GetXlaGlobalJitLevel(
     const GraphOptimizationPassOptions& options) {
-  OptimizerOptions::GlobalJitLevel global_jit_level =
+  XlaGlobalJitLevel result;
+
+  OptimizerOptions::GlobalJitLevel jit_level_in_session_opts =
       options.session_options->config.graph_options()
           .optimizer_options()
           .global_jit_level();
-  if (global_jit_level == OptimizerOptions::DEFAULT) {
+  if (jit_level_in_session_opts == OptimizerOptions::DEFAULT) {
     // To set compilation to be on by default, change the following line.
-    global_jit_level = OptimizerOptions::OFF;
+    result.single_gpu = result.general = OptimizerOptions::OFF;
+  } else {
+    result.single_gpu = result.general = jit_level_in_session_opts;
   }
+
+  // If the flag tf_xla_auto_jit is a valid, non-DEFAULT setting, it overrides
+  // the setting in ConfigProto.
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  if (flags->tf_xla_auto_jit != OptimizerOptions::DEFAULT) {
-    // If the flag tf_xla_auto_jit is a valid, non-DEFAULT setting, it overrides
-    // the setting in ConfigProto.
-    global_jit_level =
-        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
+  if (flags->xla_auto_jit_flag.optimization_level_single_gpu !=
+      OptimizerOptions::DEFAULT) {
+    result.single_gpu = static_cast<OptimizerOptions::GlobalJitLevel>(
+        flags->xla_auto_jit_flag.optimization_level_single_gpu);
   }
-  return global_jit_level;
+  if (flags->xla_auto_jit_flag.optimization_level_general !=
+      OptimizerOptions::DEFAULT) {
+    result.general = static_cast<OptimizerOptions::GlobalJitLevel>(
+        flags->xla_auto_jit_flag.optimization_level_general);
+  }
+
+  return result;
 }
 
+int GetGpuNumber(const string& device_name) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return -1;
+  }
+
+  return parsed_name.type == DEVICE_GPU ? parsed_name.id : -1;
+}
+}  // namespace
+
+bool IsSingleGpuGraph(const Graph& g) {
+  int gpus_seen = 0;
+  absl::flat_hash_set<string> devices_seen;
+
+  for (Node* n : g.op_nodes()) {
+    if (devices_seen.contains(n->assigned_device_name())) {
+      continue;
+    }
+
+    int gpu_number = GetGpuNumber(n->assigned_device_name());
+    if (gpu_number != -1) {
+      if (++gpus_seen > 1) {
+        return false;
+      }
+    }
+
+    devices_seen.insert(n->assigned_device_name());
+  }
+
+  return gpus_seen == 1;
+}
+
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(
+    const GraphOptimizationPassOptions& options) {
+  XlaGlobalJitLevel xla_global_jit_level = GetXlaGlobalJitLevel(options);
+  if (xla_global_jit_level.single_gpu == xla_global_jit_level.general) {
+    VLOG(4) << "GetGlobalJitLevelForGraph returning "
+            << xla_global_jit_level.single_gpu;
+    return xla_global_jit_level.single_gpu;
+  }
+  OptimizerOptions::GlobalJitLevel result =
+      IsSingleGpuGraph(**options.graph) ? xla_global_jit_level.single_gpu
+                                        : xla_global_jit_level.general;
+  VLOG(4) << "GetGlobalJitLevelForGraph returning " << result;
+  return result;
+}
+
+bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def) {
+  if (flib_def->Contains(n.type_string())) {
+    return true;
+  }
+
+  // This is a conservative check: there may be nodes with a `func`
+  // attribute that do not make function calls.
+  return absl::c_any_of(n.def().attr(),
+                        [](const std::pair<string, AttrValue>& name_attr_pair) {
+                          return name_attr_pair.second.has_func();
+                        });
+}
 }  // namespace tensorflow

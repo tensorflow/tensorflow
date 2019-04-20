@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits>
+#include "tensorflow/core/framework/allocator.h"
 
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA
@@ -196,18 +197,19 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
                                    const TensorList& input_list,
                                    TensorList** output_list) {
   // Attempt to forward the input tensor to the output if possible.
-  AllocatorAttributes attr;
-  attr.set_on_host(true);
-  std::unique_ptr<Tensor> maybe_output =
-      c->forward_input(input_index, output_index, DT_VARIANT, TensorShape{},
-                       c->input_memory_type(input_index), attr);
+  std::unique_ptr<Tensor> maybe_output = c->forward_input(
+      input_index, output_index, DT_VARIANT, TensorShape{},
+      c->input_memory_type(input_index), AllocatorAttributes());
   Tensor* output_tensor;
   if (maybe_output != nullptr) {
     // Woohoo, forwarding succeeded!
     output_tensor = maybe_output.get();
+    c->set_output(output_index, *output_tensor);
   } else {
     // If forwarding is not possible allocate a new output tensor and copy
     // the `input_list` to it.
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
     TF_RETURN_IF_ERROR(
         c->allocate_output(output_index, {}, &output_tensor, attr));
     output_tensor->scalar<Variant>()() = input_list;
@@ -425,15 +427,17 @@ class TensorListResize : public OpKernel {
         errors::InvalidArgument(
             "TensorListSlice expects size to be non-negative. Got: ", size));
 
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    std::unique_ptr<Tensor> maybe_result = c->forward_input(
-        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    std::unique_ptr<Tensor> maybe_result =
+        c->forward_input(0, 0, DT_VARIANT, TensorShape{},
+                         c->input_memory_type(0), AllocatorAttributes());
     if (maybe_result != nullptr) {
       maybe_result->scalar<Variant>()().get<TensorList>()->tensors.resize(
           size, Tensor(DT_INVALID));
+      c->set_output(0, *maybe_result);
     } else {
       Tensor* result;
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
       OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
       TensorList output_list;
       output_list.element_shape = input_list->element_shape;

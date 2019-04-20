@@ -163,17 +163,24 @@ class AutoTuneSingleton {
 };
 
 // Logs convolution results to customized back-storage.
-void LogConvAutotuneResults(const NodeDef& node, const Tensor& input,
-                            const Tensor& filter, const Tensor& output,
+void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
+                            se::dnn::DataType element_type,
+                            const se::dnn::BatchDescriptor& input_desc,
+                            const se::dnn::FilterDescriptor& filter_desc,
+                            const se::dnn::BatchDescriptor& output_desc,
+                            const se::dnn::ConvolutionDescriptor& conv_desc,
                             se::StreamExecutor* stream_exec,
                             absl::Span<const AutotuneResult> results);
 
 // Logs fused convolution results to customized back-storage.
-void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
-                                 const Tensor& filter, const Tensor& output,
-                                 const Tensor& bias, const Tensor* side_input,
-                                 se::StreamExecutor* stream_exec,
-                                 absl::Span<const AutotuneResult> results);
+void LogFusedConvAutotuneResults(
+    se::dnn::ConvolutionKind kind, se::dnn::DataType element_type,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
+    double side_value_scale, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scracth space. Unsuccessful autotuning results are

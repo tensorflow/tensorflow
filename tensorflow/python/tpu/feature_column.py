@@ -61,8 +61,8 @@ def embedding_column(categorical_column,
       `tf.feature_column.embedding_column`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
-      `1/sqrt(dimension)`.
+      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
+      standard deviation `1/sqrt(dimension)`.
 
   Returns:
     A  _TPUEmbeddingColumn.

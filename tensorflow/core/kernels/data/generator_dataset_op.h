@@ -35,6 +35,7 @@ class GeneratorDatasetOp : public DatasetOpKernel {
   NameAttrList init_func_;
   NameAttrList next_func_;
   NameAttrList finalize_func_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 }  // namespace data

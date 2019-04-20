@@ -80,18 +80,16 @@ class FileIO(object):
       if not self._read_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._read_buf = pywrap_tensorflow.CreateBufferedInputStream(
-            compat.as_bytes(self.__name), 1024 * 512, status)
+      self._read_buf = pywrap_tensorflow.CreateBufferedInputStream(
+          compat.as_bytes(self.__name), 1024 * 512)
 
   def _prewrite_check(self):
     if not self._writable_file:
       if not self._write_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for writing")
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._writable_file = pywrap_tensorflow.CreateWritableFile(
-            compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
+      self._writable_file = pywrap_tensorflow.CreateWritableFile(
+          compat.as_bytes(self.__name), compat.as_bytes(self.__mode))
 
   def _prepare_value(self, val):
     if self._binary_mode:
@@ -106,9 +104,8 @@ class FileIO(object):
   def write(self, file_content):
     """Writes file_content to the file. Appends to the end of the file."""
     self._prewrite_check()
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.AppendToFile(
-          compat.as_bytes(file_content), self._writable_file, status)
+    pywrap_tensorflow.AppendToFile(
+        compat.as_bytes(file_content), self._writable_file)
 
   def read(self, n=-1):
     """Returns the contents of a file as a string.
@@ -123,13 +120,12 @@ class FileIO(object):
       string if in string (regular) mode.
     """
     self._preread_check()
-    with errors.raise_exception_on_not_ok_status() as status:
-      if n == -1:
-        length = self.size() - self.tell()
-      else:
-        length = n
-      return self._prepare_value(
-          pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
+    if n == -1:
+      length = self.size() - self.tell()
+    else:
+      length = n
+    return self._prepare_value(
+        pywrap_tensorflow.ReadFromStream(self._read_buf, length))
 
   @deprecation.deprecated_args(
       None,
@@ -202,8 +198,7 @@ class FileIO(object):
     else:
       self._prewrite_check()
 
-      with errors.raise_exception_on_not_ok_status() as status:
-        return pywrap_tensorflow.TellFile(self._writable_file, status)
+      return pywrap_tensorflow.TellFile(self._writable_file)
 
   def __enter__(self):
     """Make usable with "with" statement."""
@@ -246,6 +241,11 @@ class FileIO(object):
         pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
+  @property
+  def seekable(self):
+    """Returns True as FileIO supports random access ops of seek()/tell()"""
+    return True
+
 
 @tf_export(v1=["gfile.Exists"])
 def file_exists(filename):
@@ -255,7 +255,7 @@ def file_exists(filename):
     filename: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:
@@ -272,15 +272,14 @@ def file_exists_v2(path):
     path: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:
     errors.OpError: Propagates any errors reported by the FileSystem API.
   """
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.FileExists(compat.as_bytes(path), status)
+    pywrap_tensorflow.FileExists(compat.as_bytes(path))
   except errors.NotFoundError:
     return False
   return True
@@ -311,8 +310,7 @@ def delete_file_v2(path):
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
     NotFoundError if the path does not exist.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.DeleteFile(compat.as_bytes(path), status)
+  pywrap_tensorflow.DeleteFile(compat.as_bytes(path))
 
 
 def read_file_to_string(filename, binary_mode=False):
@@ -380,22 +378,21 @@ def get_matching_files_v2(pattern):
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    if isinstance(pattern, six.string_types):
-      return [
-          # Convert the filenames to string from bytes.
-          compat.as_str_any(matching_filename)
-          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-              compat.as_bytes(pattern), status)
-      ]
-    else:
-      return [
-          # Convert the filenames to string from bytes.
-          compat.as_str_any(matching_filename)
-          for single_filename in pattern
-          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-              compat.as_bytes(single_filename), status)
-      ]
+  if isinstance(pattern, six.string_types):
+    return [
+        # Convert the filenames to string from bytes.
+        compat.as_str_any(matching_filename)
+        for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+            compat.as_bytes(pattern))
+    ]
+  else:
+    return [
+        # Convert the filenames to string from bytes.
+        compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
+        for single_filename in pattern
+        for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+            compat.as_bytes(single_filename))
+    ]
 
 
 @tf_export(v1=["gfile.MkDir"])
@@ -429,8 +426,7 @@ def create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.CreateDir(compat.as_bytes(path), status)
+  pywrap_tensorflow.CreateDir(compat.as_bytes(path))
 
 
 @tf_export(v1=["gfile.MakeDirs"])
@@ -460,8 +456,7 @@ def recursive_create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(path), status)
+  pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(path))
 
 
 @tf_export(v1=["gfile.Copy"])
@@ -493,9 +488,8 @@ def copy_v2(src, dst, overwrite=False):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.CopyFile(
-        compat.as_bytes(src), compat.as_bytes(dst), overwrite, status)
+  pywrap_tensorflow.CopyFile(
+      compat.as_bytes(src), compat.as_bytes(dst), overwrite)
 
 
 @tf_export(v1=["gfile.Rename"])
@@ -527,9 +521,8 @@ def rename_v2(src, dst, overwrite=False):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.RenameFile(
-        compat.as_bytes(src), compat.as_bytes(dst), overwrite, status)
+  pywrap_tensorflow.RenameFile(
+      compat.as_bytes(src), compat.as_bytes(dst), overwrite)
 
 
 def atomic_write_string_to_file(filename, contents, overwrite=True):
@@ -579,8 +572,7 @@ def delete_recursively_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.DeleteRecursively(compat.as_bytes(path), status)
+  pywrap_tensorflow.DeleteRecursively(compat.as_bytes(path))
 
 
 @tf_export(v1=["gfile.IsDirectory"])
@@ -650,14 +642,13 @@ def list_directory_v2(path):
         node_def=None,
         op=None,
         message="Could not find directory {}".format(path))
-  with errors.raise_exception_on_not_ok_status() as status:
-    # Convert each element to string, since the return values of the
-    # vector of string should be interpreted as strings, not bytes.
-    return [
-        compat.as_str_any(filename)
-        for filename in pywrap_tensorflow.GetChildren(
-            compat.as_bytes(path), status)
-    ]
+
+  # Convert each element to string, since the return values of the
+  # vector of string should be interpreted as strings, not bytes.
+  return [
+      compat.as_str_any(filename)
+      for filename in pywrap_tensorflow.GetChildren(compat.as_bytes(path))
+  ]
 
 
 @tf_export(v1=["gfile.Walk"])
@@ -758,9 +749,8 @@ def stat_v2(path):
     errors.OpError: If the operation fails.
   """
   file_statistics = pywrap_tensorflow.FileStatistics()
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.Stat(compat.as_bytes(path), file_statistics, status)
-    return file_statistics
+  pywrap_tensorflow.Stat(compat.as_bytes(path), file_statistics)
+  return file_statistics
 
 
 def filecmp(filename_a, filename_b):

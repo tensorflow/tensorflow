@@ -111,6 +111,9 @@ FunctionDef EmptyBodySwap();
 // x:float, y:resource -> y:resource, 2*x:float.
 FunctionDef ResourceOutput();
 
+// x:resource -> x:resource
+FunctionDef ResourceIdentity();
+
 // x:resource -> y:float.
 FunctionDef ReadResourceVariable();
 
@@ -125,6 +128,12 @@ FunctionDef XPlusOneXTimesY();
 
 // x:T, y:T -> x <= N
 FunctionDef XYXLessThanOrEqualToN(int64 N);
+
+// x: T -> bool
+FunctionDef RandomUniformLess();
+
+// x:T -> y: TensorSliceDatasetOp::Dataset
+FunctionDef MakeTensorSliceDataset();
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 

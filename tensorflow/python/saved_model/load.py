@@ -21,7 +21,9 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import init_ops
@@ -66,7 +68,8 @@ class _Loader(object):
     for node in self._nodes:
       if isinstance(node, tracking.TrackableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
-        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+        if not context.executing_eagerly():
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _setup_functions_structures(self):
     """Setup structure for inputs and outputs of restored functions."""
@@ -126,17 +129,52 @@ class _Loader(object):
 
   def _load_all(self):
     """Load all saved objects and wire their properties."""
-    self._nodes = []
-    node_setters = []
+    # Maps from node ids to recreated objects
+    nodes = {}
+    # Maps from node ids to setter functions (same signature as setattr) for
+    # setting dependencies.
+    node_setters = {}
+
+    # Figure out which objects are slot variables. These objects are created
+    # with Optimizer.add_slot rather than _recreate_variable.
+    slot_variable_node_ids = set()
     for proto in self._proto.nodes:
+      for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_ids.add(slot_variable_proto.slot_variable_node_id)
+
+    # Re-create everything except slot variables.
+    for node_id, proto in enumerate(self._proto.nodes):
+      if node_id in slot_variable_node_ids:
+        # Defer recreating slot variables so we can use the public Optimizer
+        # interface.
+        continue
       node, setter = self._recreate(proto)
-      self._nodes.append(node)
-      node_setters.append(setter)
+      nodes[node_id] = node
+      node_setters[node_id] = setter
+
+    # Now that we have created the variables being optimized, we have enough
+    # information to re-create slot variables for them.
+    for node_id, proto in enumerate(self._proto.nodes):
+      optimizer_object = nodes[node_id]
+      for slot_variable_proto in proto.slot_variables:
+        optimized_variable = nodes[
+            slot_variable_proto.original_variable_node_id]
+        slot_variable = optimizer_object.add_slot(
+            var=optimized_variable,
+            slot_name=slot_variable_proto.slot_name)
+        nodes[slot_variable_proto.slot_variable_node_id] = slot_variable
+        node_setters[slot_variable_proto.slot_variable_node_id] = setattr
+
+    self._nodes = []
+
     # After creating the objects, construct the edges between the objects.
-    for obj, object_proto, setter in zip(self._nodes, self._proto.nodes,
-                                         node_setters):
+    for node_id, object_proto in enumerate(self._proto.nodes):
+      obj = nodes[node_id]
+      setter = node_setters[node_id]
+      self._nodes.append(obj)
+
       for reference in object_proto.children:
-        setter(obj, reference.local_name, self._nodes[reference.node_id])
+        setter(obj, reference.local_name, nodes[reference.node_id])
         # Note: if an object has an attribute `__call__` add a class method
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
@@ -149,7 +187,8 @@ class _Loader(object):
     # TODO(andresp): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
-    saver._file_prefix_placeholder = constant_op.constant(variables_path)
+    with ops.device("CPU"):
+      saver._file_prefix_placeholder = constant_op.constant(variables_path)
     load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
@@ -225,12 +264,30 @@ class _Loader(object):
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
-    return variables.Variable(dummy_value, trainable=proto.trainable), setattr
+    name = proto.name if proto.name else None
+    if name is not None:
+      dbg_name = name
+    else:
+      dbg_name = "<variable loaded from saved model>"
+    synchronization, aggregation, trainable = (
+        variables.validate_synchronization_aggregation_trainable(
+            proto.synchronization, proto.aggregation, proto.trainable,
+            name=dbg_name))
+    return variables.Variable(
+        dummy_value,
+        name=name,
+        trainable=trainable,
+        synchronization=synchronization,
+        aggregation=aggregation), setattr
 
   def _recreate_constant(self, proto):
     tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
-    imported_constant = constant_op.constant(
-        tensor_util.MakeNdarray(tensor_proto))
+    ndarray = tensor_util.MakeNdarray(tensor_proto)
+    if dtypes.as_dtype(tensor_proto.dtype) == dtypes.string:
+      with ops.device("CPU"):
+        imported_constant = constant_op.constant(ndarray)
+    else:
+      imported_constant = constant_op.constant(ndarray)
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):

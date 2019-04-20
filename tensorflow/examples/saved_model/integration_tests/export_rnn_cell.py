@@ -60,5 +60,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-  tf.enable_v2_behavior()
   app.run(main)

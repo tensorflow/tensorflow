@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
 #include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
 
@@ -133,6 +134,8 @@ AcquireFlexDelegate() {
 }
 
 std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "Created TensorFlow Lite delegate for select TF ops.");
   return std::unique_ptr<FlexDelegate>(new FlexDelegate());
 }
 

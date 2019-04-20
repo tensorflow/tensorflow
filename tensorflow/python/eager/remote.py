@@ -38,7 +38,7 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
   follows:
   ```python
   # Enable eager execution, and connect to the remote host.
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
   tf.contrib.eager.connect_to_remote_host("exampleaddr.com:9876")
 
   with ops.device("job:worker/replica:0/task:1/device:CPU:0"):

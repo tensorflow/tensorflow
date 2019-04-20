@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/summary/schema.h"
@@ -146,6 +147,43 @@ class WriteSummaryOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("WriteSummary").Device(DEVICE_CPU),
                         WriteSummaryOp);
+
+class WriteRawProtoSummaryOp : public OpKernel {
+ public:
+  explicit WriteRawProtoSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    SummaryWriterInterface* s;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
+    core::ScopedUnref unref(s);
+    const Tensor* tmp;
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("step must be scalar, got shape ",
+                                        tmp->shape().DebugString()));
+    const int64 step = tmp->scalar<int64>()();
+    const Tensor* t;
+    OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
+    std::unique_ptr<Event> event{new Event};
+    event->set_step(step);
+    event->set_wall_time(static_cast<double>(ctx->env()->NowMicros()) / 1.0e6);
+    // Each Summary proto contains just one repeated field "value" of Value
+    // messages with the actual data, so repeated Merge() is equivalent to
+    // concatenating all the Value entries together into a single Event.
+    const auto summary_pbs = t->flat<string>();
+    for (int i = 0; i < summary_pbs.size(); ++i) {
+      if (!event->mutable_summary()->MergeFromString(summary_pbs(i))) {
+        ctx->CtxFailureWithWarning(errors::DataLoss(
+            "Bad tf.compat.v1.Summary binary proto tensor string at index ",
+            i));
+        return;
+      }
+    }
+    OP_REQUIRES_OK(ctx, s->WriteEvent(std::move(event)));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("WriteRawProtoSummary").Device(DEVICE_CPU),
+                        WriteRawProtoSummaryOp);
 
 class ImportEventOp : public OpKernel {
  public:

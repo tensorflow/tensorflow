@@ -108,7 +108,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
-      # Note: First tf.Event is always file_version.
+      # Note: First tf.compat.v1.Event is always file_version.
       self.assertEqual(1, get_total())
       sess.run(summary_ops.all_summary_ops())
       self.assertEqual(1, get_total())
@@ -126,7 +126,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
-      # Note: First tf.Event is always file_version.
+      # Note: First tf.compat.v1.Event is always file_version.
       self.assertEqual(1, get_total())
       sess.run(summary_ops.all_summary_ops())
       self.assertEqual(1, get_total())

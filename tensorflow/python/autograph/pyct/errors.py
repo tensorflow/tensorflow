@@ -25,6 +25,18 @@ class AutoGraphError(Exception):
   pass
 
 
+class ExecutionError(AutoGraphError):
+  """Raised by AutoGraph during various execution stages."""
+
+  def __init__(self, stage, message):
+    super(ExecutionError, self).__init__()
+    self.stage = stage
+    self.message = message
+
+  def __str__(self):
+    return 'Runtime error during {} stage: {}'.format(self.stage, self.message)
+
+
 class InternalError(AutoGraphError):
   """Raised when AutoGraph finds an unexpected error."""
 

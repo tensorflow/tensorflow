@@ -45,6 +45,8 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
+# Also update tensorflow/tensorflow.bzl and
+# tensorflow/core/public/version.h
 _VERSION = '1.13.1'
 
 REQUIRED_PACKAGES = [
@@ -60,6 +62,7 @@ REQUIRED_PACKAGES = [
     'tensorboard >= 1.13.0, < 1.14.0',
     'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
     'termcolor >= 1.1.0',
+    'wrapt >= 1.11.1',
 ]
 
 if sys.byteorder == 'little':
@@ -235,7 +238,8 @@ else:
 headers = (
     list(find_files('*.h', 'tensorflow/core')) + list(
         find_files('*.h', 'tensorflow/stream_executor')) +
-    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+    list(find_files('*.h', 'google/protobuf_archive/src')) +
+    list(find_files('*.inc', 'google/protobuf_archive/src')) + list(
         find_files('*', 'third_party/eigen3')) + list(
             find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +

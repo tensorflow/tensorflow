@@ -22,8 +22,10 @@ We also provide <a href="example_applications">example applications</a> you can
 use to get started.
 
 If you are using a platform other than Android or iOS, or you are already
-familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
-download our starter image classification model and the accompanying labels.
+familiar with the
+<a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite
+APIs</a>, you can download our starter image classification model and the
+accompanying labels.
 
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
 starter model and labels</a>
@@ -32,13 +34,6 @@ Once you have the starter model running on your target device, you can
 experiment with different models to find the optimal balance between
 performance, accuracy, and model size. For guidance, see
 <a href="#choose_a_different_model">Choose a different model</a>.
-
-If you are using a platform other than Android or iOS, or you are already
-familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
-download our starter image classification model and the accompanying labels.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
-starter model and labels</a>
 
 ### Example applications
 
@@ -216,9 +211,9 @@ performance, accuracy, and model size. For guidance, see
 ## Choose a different model
 
 There are a large number of image classification models available on our
-<a href="../../guide/hosted_models.md">List of hosted models</a>. You should aim to choose the
-optimal model for your application based on performance, accuracy and model
-size. There are trade-offs between each of them.
+<a href="../../guide/hosted_models.md">List of hosted models</a>. You should aim
+to choose the optimal model for your application based on performance, accuracy
+and model size. There are trade-offs between each of them.
 
 ### Performance
 
@@ -239,11 +234,11 @@ We measure accuracy in terms of how often the model correctly classifies an
 image. For example, a model with a stated accuracy of 60% can be expected to
 classify an image correctly an average of 60% of the time.
 
-Our <a href="../../guide/hosted_models.md">list of hosted models</a> provides Top-1 and Top-5
-accuracy statistics. Top-1 refers to how often the correct label appears as the
-label with the highest probability in the model’s output. Top-5 refers to how
-often the correct label appears in the top 5 highest probabilities in the
-model’s output.
+Our <a href="../../guide/hosted_models.md">list of hosted models</a> provides
+Top-1 and Top-5 accuracy statistics. Top-1 refers to how often the correct label
+appears as the label with the highest probability in the model’s output. Top-5
+refers to how often the correct label appears in the top 5 highest probabilities
+in the model’s output.
 
 Our quantized Mobilenet models’ Top-5 accuracy ranges from 64.4 to 89.9%.
 
@@ -258,8 +253,9 @@ Our quantized Mobilenet models’ size ranges from 0.5 to 3.4 Mb.
 ### Architecture
 
 There are several different architectures of models available on
-<a href="../../guide/hosted_models.md">List of hosted models</a>, indicated by the model’s name.
-For example, you can choose between Mobilenet, Inception, and others.
+<a href="../../guide/hosted_models.md">List of hosted models</a>, indicated by
+the model’s name. For example, you can choose between Mobilenet, Inception, and
+others.
 
 The architecture of a model impacts its performance, accuracy, and size. All of
 our hosted models are trained on the same data, meaning you can use the provided

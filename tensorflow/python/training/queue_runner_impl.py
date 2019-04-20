@@ -434,14 +434,14 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
 
   Raises:
     ValueError: if `sess` is None and there isn't any default session.
-    TypeError: if `sess` is not a `tf.Session` object.
+    TypeError: if `sess` is not a `tf.compat.v1.Session` object.
 
   Returns:
     A list of threads.
 
   Raises:
     RuntimeError: If called with eager execution enabled.
-    ValueError: If called without a default `tf.Session` registered.
+    ValueError: If called without a default `tf.compat.v1.Session` registered.
 
   @compatibility(eager)
   Not compatible with eager execution. To ingest data under eager execution,

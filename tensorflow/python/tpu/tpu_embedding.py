@@ -28,7 +28,6 @@ from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as elc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -60,8 +59,8 @@ class TableConfig(
       dimension: The embedding dimension.
       initializer: A variable initializer function to be used in embedding
         variable initialization. If not specified, defaults to
-        `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
-        `1/sqrt(dimension)`.
+        `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and standard
+        deviation `1/sqrt(dimension)`.
       combiner: A string specifying how to reduce if there are multiple entries
         in a single row. Currently 'mean', 'sqrtn', 'sum' and None are
         supported, with 'mean' the default. 'sqrtn' often achieves good
@@ -97,6 +96,104 @@ class TableConfig(
                                            initializer, combiner)
 
 
+class FeatureConfig(
+    collections.namedtuple(
+        'FeatureConfig',
+        ['table_id', 'max_sequence_length'])):
+  """Feature configuration."""
+
+  def __new__(cls,
+              table_id,
+              max_sequence_length=0):
+    """Feature configuration.
+
+    Args:
+      table_id: Which table the feature is uses for embedding lookups.
+      max_sequence_length: If positive, the feature is a sequence feature with
+        the corresponding maximum sequence length. If the sequence is longer
+        than this, it will be truncated. If 0, the feature is not a sequence
+        feature.
+
+    Returns:
+      `FeatureConfig`.
+
+    Raises:
+      ValueError: if `max_sequence_length` non-negative.
+    """
+    if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
+      raise ValueError('Invalid max_sequence_length {}.'.format(
+          max_sequence_length))
+
+    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length)
+
+
+class EnqueueData(
+    collections.namedtuple(
+        'EnqueueData',
+        ['embedding_indices', 'sample_indices', 'aggregation_weights'])):
+  """Data to be enqueued through generate_enqueue_ops()."""
+
+  def __new__(cls,
+              embedding_indices,
+              sample_indices=None,
+              aggregation_weights=None):
+    """Data to be enqueued through generate_enqueue_ops().
+
+    Args:
+      embedding_indices: A rank 1 Tensors, indices into the embedding tables. It
+        corresponds to sp_ids.values in embedding_lookup_sparse(). Both int32
+        and int64 are allowed and will be converted to int32 internally.
+      sample_indices: A rank 2 Tensors specifying the training example to which
+        the corresponding embedding_indices and aggregation_weights values
+        belong. It corresponds to sp_ids.indices in embedding_lookup_sparse().
+        If it is None, we assume each embedding_indices belongs to a different
+        sample. Both int32 and int64 are allowed and will be converted to int32
+        internally.
+      aggregation_weights: A rank 1 Tensors containing per training example
+        aggregation weights. It corresponds to sp_weights.values in
+        embedding_lookup_sparse(). If it is None, we assume all weights are 1.
+        Both float32 and float64 are allowed and will be converted to float32
+        internally.
+
+    Returns:
+      An EnqueueData tuple.
+
+    """
+    return super(EnqueueData, cls).__new__(cls, embedding_indices,
+                                           sample_indices, aggregation_weights)
+
+  @staticmethod
+  def from_sparse_tensor(sp_tensor, weights=None):
+    return EnqueueData(
+        sp_tensor.values,
+        sp_tensor.indices,
+        aggregation_weights=weights.values if weights is not None else None)
+
+
+def get_enqueue_datas_list_from_sparse_tensors_list(sp_tensors_list):
+  """Convenient function for generate_enqueue_ops().
+
+  Args:
+    sp_tensors_list: a list of dictionary mapping from string of feature names
+      to SparseTensor. Each dictionary is for one TPU core. Dictionaries for the
+      same host should be contiguous on the list.
+
+  Returns:
+    enqueue_datas_list: a list of dictionary mapping from string
+      of feature names to EnqueueData. Each dictionary is for one
+      TPU core. Dictionaries for the same host should be contiguous
+      on the list.
+
+  """
+  enqueue_datas_list = []
+  for sp_tensors in sp_tensors_list:
+    enqueue_datas = collections.OrderedDict(
+        (k, EnqueueData.from_sparse_tensor(v))
+        for k, v in six.iteritems(sp_tensors))
+    enqueue_datas_list.append(enqueue_datas)
+  return enqueue_datas_list
+
+
 AdamSlotVariableNames = collections.namedtuple(
     'AdamSlotVariableNames', ['m', 'v'])
 
@@ -119,16 +216,23 @@ VariablesAndOps = collections.namedtuple(
 class _OptimizationParameters(object):
   """Parameters common to all optimizations."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation):
+  def __init__(self, learning_rate, use_gradient_accumulation,
+               clip_weight_min, clip_weight_max):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
+    self.clip_weight_min = clip_weight_min
+    self.clip_weight_max = clip_weight_max
 
 
 class AdagradParameters(_OptimizationParameters):
   """Optimization parameters for Adagrad."""
 
-  def __init__(self, learning_rate, initial_accumulator=0.1,
-               use_gradient_accumulation=True):
+  def __init__(self,
+               learning_rate,
+               initial_accumulator=0.1,
+               use_gradient_accumulation=True,
+               clip_weight_min=None,
+               clip_weight_max=None):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -138,9 +242,12 @@ class AdagradParameters(_OptimizationParameters):
         gradients calculation less accurate but faster. Please see
         `optimization_parameters.proto` for details.
         for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
     """
-    super(AdagradParameters, self).__init__(learning_rate,
-                                            use_gradient_accumulation)
+    super(AdagradParameters,
+          self).__init__(learning_rate, use_gradient_accumulation,
+                         clip_weight_min, clip_weight_max)
     if initial_accumulator <= 0:
       raise ValueError('Adagrad initial_accumulator must be positive')
     self.initial_accumulator = initial_accumulator
@@ -149,13 +256,16 @@ class AdagradParameters(_OptimizationParameters):
 class AdamParameters(_OptimizationParameters):
   """Optimization parameters for Adam."""
 
-  def __init__(self, learning_rate,
+  def __init__(self,
+               learning_rate,
                beta1=0.9,
                beta2=0.999,
                epsilon=1e-08,
                lazy_adam=True,
                sum_inside_sqrt=True,
-               use_gradient_accumulation=True):
+               use_gradient_accumulation=True,
+               clip_weight_min=None,
+               clip_weight_max=None):
     """Optimization parameters for Adam.
 
     Args:
@@ -173,9 +283,12 @@ class AdamParameters(_OptimizationParameters):
         gradients calculation less accurate but faster. Please see
         `optimization_parameters.proto` for details.
         for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
     """
-    super(AdamParameters, self).__init__(learning_rate,
-                                         use_gradient_accumulation)
+    super(AdamParameters,
+          self).__init__(learning_rate, use_gradient_accumulation,
+                         clip_weight_min, clip_weight_max)
     if beta1 < 0. or beta1 >= 1.:
       raise ValueError('beta1 must be between 0. and 1; got {}.'.format(beta1))
     if beta2 < 0. or beta2 >= 1.:
@@ -194,15 +307,19 @@ class AdamParameters(_OptimizationParameters):
 
 
 class StochasticGradientDescentParameters(_OptimizationParameters):
-  """Optimization parameters for stochastic gradient descent.
+  """Optimization parameters for stochastic gradient descent."""
 
-  Args:
-    learning_rate: a floating point value. The learning rate.
-  """
+  def __init__(self, learning_rate, clip_weight_min=None,
+               clip_weight_max=None):
+    """Optimization parameters for stochastic gradient descent.
 
-  def __init__(self, learning_rate):
-    super(StochasticGradientDescentParameters, self).__init__(
-        learning_rate, False)
+    Args:
+      learning_rate: a floating point value. The learning rate.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+    """
+    super(StochasticGradientDescentParameters,
+          self).__init__(learning_rate, False, clip_weight_min, clip_weight_max)
 
 
 class TPUEmbedding(object):
@@ -215,15 +332,15 @@ class TPUEmbedding(object):
         initializer=initializer, combiner='mean')
     table_to_config_dict = {'video': table_config_video,
                           'user': table_config_user}
-    feature_to_table_dict = {'watched': 'video',
-                             'favorited': 'video',
-                             'friends': 'user'}
+    feature_to_config_dict = {'watched': tpu_embedding.FeatureConfig('video'),
+                              'favorited': tpu_embedding.FeatureConfig('video'),
+                              'friends': tpu_embedding.FeatureConfig('user')}
     batch_size = 4
     num_hosts = 1
     optimization_parameters = tpu_embedding.AdagradParameters(1., 1.)
     mode = tpu_embedding.TRAINING
     embedding = tpu_embedding.TPUEmbedding(
-        table_to_config_dict, feature_to_table_dict,
+        table_to_config_dict, feature_to_config_dict,
         batch_size, num_hosts, mode, optimization_parameters)
 
     batch_size_per_core = embedding.batch_size_per_core
@@ -270,17 +387,16 @@ class TPUEmbedding(object):
     ```
   """
 
-  # TODO(shizhiw): Instead of `feature_to_table_dict` which maps to table
-  # name, consider `feature_to_config_dict` which maps to `FeatureConfig`.
-  # `FeatureConfig` could have fields other than table name. For example, it
-  # could have a field to indicate that the feature should not be used to
-  # update embedding table (cr/204852758, cr/204940540). Also, this can support
-  # different combiners for different features within the same table.
+  # TODO(shizhiw): Consider addign a field to FeatureConfig that indicates that
+  # the feature should not be used to update embedding table (cr/204852758,
+  # cr/204940540). Also, this can support different combiners for different
+  # features within the same table.
   # TODO(shizhiw, b/118512626): Remove `batch_size` from `__init__` and move it
   # to `FeatureConfig`?
 
   # TODO(shizhiw): will it be cleaner to make `table_to_config_dict` and
-  # `feature_to_table_dict` lists of `TableSpec` and `FeatureSpec` respectively?
+  # `feature_to_config_dict` lists of `TableSpec` and `FeatureSpec`
+  # respectively?
 
   # TODO(shizhiw): Consider adding `input_fn` as an option to remove boilerplate
   # for-loops around construction of inputs.
@@ -290,22 +406,22 @@ class TPUEmbedding(object):
   # global setting.
   def __init__(self,
                table_to_config_dict,
-               feature_to_table_dict,
+               feature_to_config_dict,
                batch_size,
                mode,
                master,
                optimization_parameters=None,
                cluster_def=None,
-               pipeline_execution_with_tensor_core=True):
+               pipeline_execution_with_tensor_core=False):
     """API for using TPU for embedding lookups.
 
     Args:
       table_to_config_dict: A dictionary mapping from string of table name to
         `TableConfig`. Table refers to an embedding table, e.g. `params`
         argument to `tf.nn.embedding_lookup_sparse()`.
-      feature_to_table_dict: A dictionary mapping from string of feature name
-        to string of table name. Feature refers to ids to lookup in embedding
-        table, e.g. `sp_ids` argument to `tf.nn.embedding_lookup_sparse()`.
+      feature_to_config_dict: A dictionary mapping from string of feature name
+        to `FeatureConfig`. Feature refers to ids to lookup in embedding table,
+        e.g. `sp_ids` argument to `tf.nn.embedding_lookup_sparse()`.
       batch_size: An `int` representing the global batch size.
       mode: `TRAINING` or `INFERENCE`.
       master: A `string` representing the TensorFlow master to use.
@@ -315,7 +431,7 @@ class TPUEmbedding(object):
       cluster_def: A ClusterDef object describing the TPU cluster.
       pipeline_execution_with_tensor_core: setting this to `True` makes training
         faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
+        involve the same set of embedding IDs. Please see
         `tpu_embedding_configuration.proto` for details.
 
     Raises:
@@ -325,10 +441,12 @@ class TPUEmbedding(object):
     # Avoid nondeterminism from `Dict` iteration order by using `OrderedDict`.
     self._table_to_config_dict = _create_ordered_dict(table_to_config_dict)
 
-    _validate_feature_to_table_dict(table_to_config_dict, feature_to_table_dict)
-    self._feature_to_table_dict = _create_ordered_dict(feature_to_table_dict)
-    self._table_to_features_dict = _create_table_to_features_dict(
-        self._feature_to_table_dict)
+    _validate_feature_to_config_dict(table_to_config_dict,
+                                     feature_to_config_dict)
+    self._feature_to_config_dict = _create_ordered_dict(feature_to_config_dict)
+    self._table_to_features_dict, self._table_to_num_features_dict = (
+        _create_table_to_features_and_num_features_dicts(
+            self._feature_to_config_dict))
     self._combiners = _create_combiners(self._table_to_config_dict,
                                         self._table_to_features_dict)
 
@@ -438,8 +556,8 @@ class TPUEmbedding(object):
     return copy.copy(self._table_to_config_dict)
 
   @property
-  def feature_to_table_dict(self):
-    return copy.copy(self._feature_to_table_dict)
+  def feature_to_config_dict(self):
+    return copy.copy(self._feature_to_config_dict)
 
   @property
   def table_to_features_dict(self):
@@ -460,8 +578,7 @@ class TPUEmbedding(object):
       table_descriptor.vocabulary_size = table_config.vocabulary_size
       table_descriptor.dimension = table_config.dimension
 
-      features_for_table = self._table_to_features_dict[table]
-      table_descriptor.num_features = len(features_for_table)
+      table_descriptor.num_features = self._table_to_num_features_dict[table]
 
       table_descriptor.optimization_parameters.learning_rate.constant = (
           self._optimization_parameters.learning_rate)
@@ -469,6 +586,12 @@ class TPUEmbedding(object):
           optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
           if self._optimization_parameters.use_gradient_accumulation else
           optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
+      if self._optimization_parameters.clip_weight_min is not None:
+        table_descriptor.optimization_parameters.clipping_limits.lower.value = (
+            self._optimization_parameters.clip_weight_min)
+      if self._optimization_parameters.clip_weight_max is not None:
+        table_descriptor.optimization_parameters.clipping_limits.upper.value = (
+            self._optimization_parameters.clip_weight_max)
       self._optimizer_handler.set_optimization_parameters(table_descriptor)
 
     config_proto.mode = self._mode
@@ -564,127 +687,151 @@ class TPUEmbedding(object):
                            slot_variables_by_table,
                            load_ops, retrieve_ops)
 
-  def generate_enqueue_ops(self, sparse_features_list):
+  def generate_enqueue_ops(self, enqueue_datas_list):
     """Generate enqueue ops.
 
     Args:
-      sparse_features_list: a list of dictionary mapping from string
-        of feature names to sparse tensor. Each dictionary is for one
+      enqueue_datas_list: a list of dictionary mapping from string
+        of feature names to EnqueueData. Each dictionary is for one
         TPU core. Dictionaries for the same host should be contiguous
         on the list.
 
     Returns:
       Ops to enqueue to TPU for embedding.
     """
-    self._validate_generate_enqueue_ops_sparse_features_list(
-        sparse_features_list)
+    self._validate_generate_enqueue_ops_enqueue_datas_list(enqueue_datas_list)
     return [
         self._generate_enqueue_op(
-            sparse_features, device_ordinal=i % self._num_cores_per_host)
-        for i, sparse_features in enumerate(sparse_features_list)
+            enqueue_datas, device_ordinal=i % self._num_cores_per_host)
+        for i, enqueue_datas in enumerate(enqueue_datas_list)
     ]
 
-  def _validate_generate_enqueue_ops_sparse_features_list(
-      self, sparse_features_list):
-    """Validate `sparse_features_list`."""
-    if len(sparse_features_list) != self._num_cores:
-      raise ValueError('Length of `sparse_features_list` should match the '
-                       'number of cores; '
-                       '`len(sparse_features_list)` is {}, '
-                       'number of cores is {}.'.format(
-                           len(sparse_features_list), self._num_cores))
-
-    feature_set = set(self._feature_to_table_dict.keys())
+  def _validate_generate_enqueue_ops_enqueue_datas_list(self,
+                                                        enqueue_datas_list):
+    """Validate `enqueue_datas_list`."""
+    feature_set = set(self._feature_to_config_dict.keys())
     contiguous_device = None
-    for i, sparse_features in enumerate(sparse_features_list):
-      used_feature_set = set(sparse_features.keys())
+    for i, enqueue_datas in enumerate(enqueue_datas_list):
+      used_feature_set = set(enqueue_datas.keys())
 
       # Check features are valid.
       missing_feature_set = feature_set - used_feature_set
       if missing_feature_set:
-        raise ValueError('`sparse_features_list[{}]` misses a feature that is '
+        raise ValueError('`enqueue_datas_list[{}]` misses a feature that is '
                          'in `feature_to_config_dict`: {}.'.format(
                              i, missing_feature_set))
 
       extra_feature_set = used_feature_set - feature_set
       if extra_feature_set:
-        raise ValueError('`sparse_features_list[{}]` has a feature that is not '
+        raise ValueError('`enqueue_datas_list[{}]` has a feature that is not '
                          'in `feature_to_config_dict`: {}.'.format(
                              i, extra_feature_set))
 
       device = None
       device_feature = None
-      for feature, tensor in six.iteritems(sparse_features):
+      for feature, enqueue_data in six.iteritems(enqueue_datas):
         combiner = self._table_to_config_dict[
-            self._feature_to_table_dict[feature]].combiner
-        if not isinstance(tensor, sparse_tensor.SparseTensor) and combiner:
-          raise ValueError('`sparse_features_list[{}]` has a feature that is '
-                           'not mapped to `SparseTensor` and has a combiner. '
-                           '`feature`: {}, combiner: {}'.format(
+            self._feature_to_config_dict[feature].table_id].combiner
+        if not isinstance(enqueue_data, EnqueueData):
+          raise ValueError('`enqueue_datas_list[{}]` has a feature that is '
+                           'not mapped to `EnqueueData`. `feature`: {}'.format(
+                               i, feature))
+
+        if enqueue_data.sample_indices is None and combiner:
+          raise ValueError('`enqueue_datas_list[{}]` has a feature that has '
+                           'neither `EnqueueData` or `combiner`.'
+                           '`feature`: {}, combiner: {}.'.format(
                                i, feature, combiner))
 
+        if (enqueue_data.sample_indices is not None and
+            enqueue_data.sample_indices.op.device !=
+            enqueue_data.embedding_indices.op.device):
+          raise ValueError(
+              'Device of sample_indices does not agree with '
+              'that of emebdding_indices for feature {}.'.format(feature))
+        if (enqueue_data.aggregation_weights is not None and
+            enqueue_data.aggregation_weights.op.device !=
+            enqueue_data.embedding_indices.op.device):
+          raise ValueError(
+              'Device of aggregation_weights does not agree with '
+              'that of emebdding_indices for feature {}.'.format(feature))
         # Check all features are on the same device.
         if device is None:
-          device = tensor.op.device
+          device = enqueue_data.embedding_indices.op.device
           device_feature = feature
         else:
-          if device != tensor.op.device:
+          if device != enqueue_data.embedding_indices.op.device:
             raise ValueError('Devices are different between features in '
-                             '`sparse_features_list[{}]`; '
+                             '`enqueue_datas_list[{}]`; '
                              'devices: {}, {}; features: {}, {}.'.format(
-                                 i, device, tensor.op.device, feature,
-                                 device_feature))
+                                 i, device,
+                                 enqueue_data.embedding_indices.op.device,
+                                 feature, device_feature))
 
       if i % self._num_cores_per_host:
         if device != contiguous_device:
-          raise ValueError('We expect the `sparse_features` which are on the '
+          raise ValueError('We expect the `enqueue_datas` which are on the '
                            'same host to be contiguous in '
-                           '`sparse_features_list`, '
-                           '`sparse_features_list[{}]` is on device {}, '
+                           '`enqueue_datas_list`, '
+                           '`enqueue_datas_list[{}]` is on device {}, '
                            'but is expected to be on device {}.'.format(
                                i, device, contiguous_device))
       else:
         contiguous_device = device
 
-  def _generate_enqueue_op(self, sparse_features, device_ordinal):
-    with ops.colocate_with(list(sparse_features.values())[0]):
-      sample_idcs, embedding_idcs, aggregation_weights, table_ids = (
-          self._format_for_tpu_embedding_sparse_tensor_batch(sparse_features))
+  def _generate_enqueue_op(self, enqueue_datas, device_ordinal):
+    enqueue_data0 = list(enqueue_datas.values())[0]
+    with ops.colocate_with(enqueue_data0.embedding_indices):
+      (sample_indices_list, embedding_indices_list, aggregation_weights_list,
+       table_ids, max_sequence_lengths) = (
+           self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas))
       return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
-          sample_idcs,
-          embedding_idcs,
-          aggregation_weights,
+          sample_indices_list,
+          embedding_indices_list,
+          aggregation_weights_list,
           table_ids,
           device_ordinal=device_ordinal,
-          combiners=self._combiners)
+          combiners=self._combiners,
+          max_sequence_lengths=max_sequence_lengths)
 
-  def _format_for_tpu_embedding_sparse_tensor_batch(self, sparse_features):
+  def _format_for_tpu_embedding_sparse_tensor_batch(self, enqueue_datas):
     """Format sparse features for `enqueue_tpu_embedding_sparse_tensor_batch()`.
 
     Args:
-      sparse_features: a `Dict` of tensors for embedding. Can be sparse or
+      enqueue_datas: a `Dict` of tensors for embedding. Can be sparse or
       dense.
 
     Returns:
       Arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
     """
 
-    sample_idcs, embedding_idcs, aggregation_weights, table_ids = (
-        list(), list(), list(), list())
+    (sample_indices_list, embedding_indices_list, aggregation_weights_list,
+     table_ids, max_sequence_lengths) = [], [], [], [], []
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:
-        tensor = sparse_features[feature]
-        if not isinstance(tensor, sparse_tensor.SparseTensor):
-          sample_idcs.append(array_ops.zeros([0], dtype=dtypes.int32))
-          embedding_idcs.append(tensor)
-        else:
-          sample_idcs.append(tensor.indices)
-          embedding_idcs.append(tensor.values)
-        aggregation_weights.append(array_ops.zeros([0]))
-        table_ids.append(table_id)
+        enqueue_data = enqueue_datas[feature]
 
-    return sample_idcs, embedding_idcs, aggregation_weights, table_ids
+        sample_indices = (
+            enqueue_data.sample_indices
+            if enqueue_data.sample_indices is not None else array_ops.zeros(
+                (0,), dtype=dtypes.int32))
+        sample_indices_list.append(sample_indices)
+
+        aggregation_weights = (
+            enqueue_data.aggregation_weights if
+            enqueue_data.aggregation_weights is not None else array_ops.zeros(
+                (0,), dtype=dtypes.float32))
+        aggregation_weights_list.append(aggregation_weights)
+
+        embedding_indices_list.append(enqueue_data.embedding_indices)
+
+        table_ids.append(table_id)
+        max_sequence_lengths.append(
+            self._feature_to_config_dict[feature].max_sequence_length)
+
+    return (sample_indices_list, embedding_indices_list,
+            aggregation_weights_list, table_ids, max_sequence_lengths)
 
   def get_activations(self):
     """Get activations for features.
@@ -703,9 +850,21 @@ class TPUEmbedding(object):
     activations = collections.OrderedDict()
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
-      for lookup_id, feature in enumerate(features):
-        stride = len(self._table_to_features_dict[table])
-        activations[feature] = recv_activations[table_id][lookup_id::stride, :]
+      num_features = self._table_to_num_features_dict[table]
+      feature_index = 0
+      table_activations = array_ops.reshape(
+          recv_activations[table_id],
+          [self.batch_size_per_core, num_features, -1])
+      for feature in features:
+        seq_length = self._feature_to_config_dict[feature].max_sequence_length
+        if not seq_length:
+          activations[feature] = table_activations[:, feature_index, :]
+          feature_index = feature_index + 1
+        else:
+          activations[feature] = (
+              table_activations[:, feature_index:(feature_index+seq_length), :])
+          feature_index = feature_index + seq_length
+
     return activations
 
   def generate_send_gradients_op(self, feature_to_gradient_dict):
@@ -728,12 +887,16 @@ class TPUEmbedding(object):
     gradients = []
     for table in self._table_to_features_dict:
       features = self._table_to_features_dict[table]
-      table_gradients = [
-          feature_to_gradient_dict[feature] for feature in features
-      ]
+      table_gradients = []
+      for feature in features:
+        gradient = feature_to_gradient_dict[feature]
+        # Expand dims for non-sequence feature to match sequence features.
+        if gradient.shape.ndims == 2:
+          gradient = array_ops.expand_dims(gradient, 1)
+        table_gradients.append(gradient)
       interleaved_table_grads = array_ops.reshape(
-          array_ops.stack(table_gradients, axis=1),
-          [-1, table_gradients[0].shape[1]])
+          array_ops.concat(table_gradients, axis=1),
+          [-1, table_gradients[0].shape[-1]])
       gradients.append(interleaved_table_grads)
     return tpu_ops.send_tpu_embedding_gradients(
         inputs=gradients, config=self.config_proto.SerializeToString())
@@ -747,21 +910,22 @@ def _validate_table_to_config_dict(table_to_config_dict):
                        '`TableConfig`, got {} for {}.'.format(type(v), k))
 
 
-def _validate_feature_to_table_dict(table_to_config_dict,
-                                    feature_to_table_dict):
-  """Validate `feature_to_table_dict`."""
-  used_table_set = set(feature_to_table_dict.values())
+def _validate_feature_to_config_dict(table_to_config_dict,
+                                     feature_to_config_dict):
+  """Validate `feature_to_config_dict`."""
+  used_table_set = set([feature.table_id
+                        for feature in feature_to_config_dict.values()])
   table_set = set(table_to_config_dict.keys())
 
   unused_table_set = table_set - used_table_set
   if unused_table_set:
     raise ValueError('`table_to_config_dict` specifies table that is not '
-                     'used in `feature_to_table_dict`: {}.'
+                     'used in `feature_to_config_dict`: {}.'
                      .format(unused_table_set))
 
   extra_table_set = used_table_set - table_set
   if extra_table_set:
-    raise ValueError('`feature_to_table_dict` refers to a table that is not '
+    raise ValueError('`feature_to_config_dict` refers to a table that is not '
                      'specified in `table_to_config_dict`: {}.'
                      .format(extra_table_set))
 
@@ -1048,19 +1212,30 @@ def _create_combiners(table_to_config_dict, table_to_features_dict):
   return combiners
 
 
-def _create_table_to_features_dict(feature_to_table_dict):
+def _create_table_to_features_and_num_features_dicts(feature_to_config_dict):
   """Create mapping from table to a list of its features."""
   table_to_features_dict_tmp = {}
-  for feature, table in six.iteritems(feature_to_table_dict):
-    if table in table_to_features_dict_tmp:
-      table_to_features_dict_tmp[table].append(feature)
+  table_to_num_features_dict_tmp = {}
+  for feature, feature_config in six.iteritems(feature_to_config_dict):
+    if feature_config.table_id in table_to_features_dict_tmp:
+      table_to_features_dict_tmp[feature_config.table_id].append(feature)
     else:
-      table_to_features_dict_tmp[table] = [feature]
+      table_to_features_dict_tmp[feature_config.table_id] = [feature]
+      table_to_num_features_dict_tmp[feature_config.table_id] = 0
+    if feature_config.max_sequence_length == 0:
+      table_to_num_features_dict_tmp[feature_config.table_id] = (
+          table_to_num_features_dict_tmp[feature_config.table_id] + 1)
+    else:
+      table_to_num_features_dict_tmp[feature_config.table_id] = (
+          table_to_num_features_dict_tmp[feature_config.table_id] +
+          feature_config.max_sequence_length)
 
   table_to_features_dict = collections.OrderedDict()
+  table_to_num_features_dict = collections.OrderedDict()
   for table in sorted(table_to_features_dict_tmp):
     table_to_features_dict[table] = sorted(table_to_features_dict_tmp[table])
-  return table_to_features_dict
+    table_to_num_features_dict[table] = table_to_num_features_dict_tmp[table]
+  return table_to_features_dict, table_to_num_features_dict
 
 
 def _create_device_fn(hosts):

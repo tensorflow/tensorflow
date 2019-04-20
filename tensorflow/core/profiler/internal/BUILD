@@ -399,11 +399,24 @@ tf_cuda_cc_test(
 
 tf_cuda_library(
     name = "profiler_interface",
+    srcs = [
+        "profiler_interface.cc",
+    ],
     hdrs = [
         "profiler_interface.h",
     ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/synchronization",
     ],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "profiler_interface.cc",
+        "profiler_interface.h",
+    ],
+    visibility = ["//visibility:public"],
 )

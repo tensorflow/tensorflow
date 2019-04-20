@@ -17,13 +17,13 @@
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/contrib/resampler/kernels/resampler_ops.h"
-
 #include <stdio.h>
+
 #include <cmath>
 
+#include "tensorflow/contrib/resampler/kernels/resampler_ops.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
