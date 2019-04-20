@@ -710,12 +710,10 @@ static bool isDialectTypeSimpleEnoughForPrettyForm(StringRef typeName) {
 
   // Ignore all the characters that are valid in an identifier in the type
   // name.
-  while (isalpha(typeName.front()) || isdigit(typeName.front()) ||
-         typeName.front() == '.') {
-    typeName = typeName.drop_front();
-    if (typeName.empty())
-      return true;
-  }
+  typeName =
+      typeName.drop_while([](char c) { return llvm::isAlnum(c) || c == '.'; });
+  if (typeName.empty())
+    return true;
 
   // If we got to an unexpected character, then it must be a <>.  Check those
   // recursively.
