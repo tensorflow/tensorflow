@@ -29,7 +29,7 @@ class GpuInstructionFusion : public InstructionFusion {
 
   // Maximum number of operands plus outputs allowed on a single fusion node.
   // Exposed publicly mainly for tests.
-  static constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+//  static constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
 
   static bool IsExpensive(const HloInstruction& instruction);
 

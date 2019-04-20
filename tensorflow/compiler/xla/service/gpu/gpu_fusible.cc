@@ -28,6 +28,8 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -245,7 +247,7 @@ bool IsMultiOutputFusionLegal(const HloInstruction& instr1,
   // loop fusions.
   if ((instr1.opcode() == HloOpcode::kFusion && instr2.opcode() == HloOpcode::kFusion &&
        instr1.fusion_kind() != instr2.fusion_kind()) ||
-      (IsReductionToVector(instr2) && instr1.IsLoopFusion())) {
+      (IsReductionFromOrToContiguousDimensions(instr2) && instr1.IsLoopFusion())) {
     return false;
   }
 
@@ -287,7 +289,7 @@ bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
 // This limit is also often good for performance.  In a fusion with many
 // operands, each GPU thread likely has to do a lot of work, and so possibly
 // uses a lot of registers, thus limiting occupancy.
-bool GpuInstructionFusion::FusionWouldBeTooLarge(
+bool FusionWouldBeTooLarge(
     const HloInstruction* a, const HloInstruction* b) {
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.

@@ -24,6 +24,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+
 // Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
 // for being fused. Note that further restrictions apply, e.g. Scatter must
 // be the root of an input fusion.
