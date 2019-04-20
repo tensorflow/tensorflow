@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -31,55 +33,438 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+namespace {
+
+using ::testing::ElementsAre;
+namespace m = match;
 
 class SliceDelayingTest : public HloTestBase {
- protected:
-  SliceDelayingTest() {}
 };
 
 TEST_F(SliceDelayingTest, Basic) {
-  // Verify that no dead code is removed from a computation with no dead code.
-  auto builder = HloComputation::Builder(TestName());
-  Shape param_shape = ShapeUtil::MakeShape(F32, {20, 10});
-  auto param_0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, param_shape, "param_0"));
-  auto param_1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, param_shape, "param_1"));
-  Shape slice_shape_0 = ShapeUtil::MakeShape(F32, {12, 10});
-  Shape slice_shape_1 = ShapeUtil::MakeShape(F32, {8, 10});
-  auto slice_00 = builder.AddInstruction(
-      HloInstruction::CreateSlice(slice_shape_0, param_0,
-      /*start_indices=*/{0, 0}, /*limit_indices=*/{12, 10},
-      /*strides=*/{1, 1}));
-  auto slice_01 = builder.AddInstruction(
-      HloInstruction::CreateSlice(slice_shape_1, param_0,
-      /*start_indices=*/{12, 0}, /*limit_indices=*/{20, 10},
-      /*strides=*/{1, 1}));
-  auto slice_10 = builder.AddInstruction(
-      HloInstruction::CreateSlice(slice_shape_0, param_1,
-      /*start_indices=*/{0, 0}, /*limit_indices=*/{12, 10},
-      /*strides=*/{1, 1}));
-  auto slice_11 = builder.AddInstruction(
-      HloInstruction::CreateSlice(slice_shape_1, param_1,
-      /*start_indices=*/{12, 0}, /*limit_indices=*/{20, 10},
-      /*strides=*/{1, 1}));
-  auto add_0 = builder.AddInstruction(HloInstruction::CreateBinary(
-      slice_shape_0, HloOpcode::kAdd, slice_00, slice_10));
-  auto add_1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      slice_shape_1, HloOpcode::kAdd, slice_01, slice_11));
-  builder.AddInstruction(HloInstruction::CreateTuple({add_0, add_1}));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_EQ(9, computation->instruction_count());
-
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[6,8] slice(f32[8,8] p1), slice={[2:8], [0:8]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      add1 = f32[6,8] add(f32[6,8] s01, f32[6,8] s11)
+      ROOT tuple = (f32[2,8], f32[6,8]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
   SliceDelaying slice_delaying;
-  EXPECT_TRUE(slice_delaying.Run(module.get()).ValueOrDie());
-  HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
-
-  EXPECT_EQ(6, computation->instruction_count());
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(6, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
 }
 
+TEST_F(SliceDelayingTest, SliceDualDimension) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      s02 = f32[8,4] slice(f32[8,8] p0), slice={[0:8], [0:4]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[6,8] slice(f32[8,8] p1), slice={[2:8], [0:8]}
+      s12 = f32[8,4] slice(f32[8,8] p1), slice={[0:8], [0:4]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      add1 = f32[6,8] add(f32[6,8] s01, f32[6,8] s11)
+      add2 = f32[8,4] add(f32[8,4] s02, f32[8,4] s12)
+      ROOT tuple = (f32[2,8], f32[6,8], f32[8,4]) tuple(add0, add1, add2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(12, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(7, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, SplitDualDimension) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      s02 = f32[8,2] slice(f32[8,8] p0), slice={[0:8], [0:2]}
+      s03 = f32[8,6] slice(f32[8,8] p0), slice={[0:8], [2:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[6,8] slice(f32[8,8] p1), slice={[2:8], [0:8]}
+      s12 = f32[8,2] slice(f32[8,8] p1), slice={[0:8], [0:2]}
+      s13 = f32[8,6] slice(f32[8,8] p1), slice={[0:8], [2:8]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      add1 = f32[6,8] add(f32[6,8] s01, f32[6,8] s11)
+      mul0 = f32[8,2] multiply(f32[8,2] s02, f32[8,2] s12)
+      mul1 = f32[8,6] multiply(f32[8,6] s03, f32[8,6] s13)
+      ROOT tuple = (f32[2,8], f32[6,8], f32[8,2], f32[8,6]) tuple(add0, add1, mul0, mul1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(15, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, OverlapSlice) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[5,8] slice(f32[8,8] p0), slice={[3:8], [0:8]}
+      s02 = f32[3,8] slice(f32[8,8] p0), slice={[2:5], [0:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[5,8] slice(f32[8,8] p1), slice={[3:8], [0:8]}
+      s12 = f32[3,8] slice(f32[8,8] p1), slice={[2:5], [0:8]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      add1 = f32[5,8] add(f32[5,8] s01, f32[5,8] s11)
+      add2 = f32[3,8] add(f32[3,8] s02, f32[3,8] s12)
+      ROOT tuple = (f32[2,8], f32[5,8], f32[3,8]) tuple(add0, add1, add2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(12, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(7, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, PartialSplit) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[5,8] slice(f32[8,8] p0), slice={[2:7], [0:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[5,8] slice(f32[8,8] p1), slice={[2:7], [0:8]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      add1 = f32[5,8] add(f32[5,8] s01, f32[5,8] s11)
+      ROOT tuple = (f32[2,8], f32[5,8]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))),
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, PartialSlice) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,7] slice(f32[8,8] p0), slice={[0:2], [0:7]}
+      s01 = f32[6,7] slice(f32[8,8] p0), slice={[2:8], [0:7]}
+      s10 = f32[2,7] slice(f32[8,8] p1), slice={[0:2], [0:7]}
+      s11 = f32[6,7] slice(f32[8,8] p1), slice={[2:8], [0:7]}
+      add0 = f32[2,7] add(f32[2,7] s00, f32[2,7] s10)
+      add1 = f32[6,7] add(f32[6,7] s01, f32[6,7] s11)
+      ROOT tuple = (f32[2,7], f32[6,7]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))),
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, OperantDisorder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,7] slice(f32[8,8] p0), slice={[0:2], [0:7]}
+      s01 = f32[6,7] slice(f32[8,8] p0), slice={[2:8], [0:7]}
+      s10 = f32[2,7] slice(f32[8,8] p1), slice={[0:2], [0:7]}
+      s11 = f32[6,7] slice(f32[8,8] p1), slice={[2:8], [0:7]}
+      add0 = f32[2,7] add(f32[2,7] s00, f32[2,7] s10)
+      add1 = f32[6,7] add(f32[6,7] s11, f32[6,7] s01)
+      ROOT tuple = (f32[2,7], f32[6,7]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))),
+          m::Add(m::Slice(m::Parameter(1)), m::Slice(m::Parameter(0))))));
+}
+
+TEST_F(SliceDelayingTest, SliceDisorder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[4,8] slice(f32[8,8] p0), slice={[0:4], [0:8]}
+      s01 = f32[4,8] slice(f32[8,8] p0), slice={[4:8], [0:8]}
+      s10 = f32[4,8] slice(f32[8,8] p1), slice={[0:4], [0:8]}
+      s11 = f32[4,8] slice(f32[8,8] p1), slice={[4:8], [0:8]}
+      add0 = f32[4,8] add(f32[4,8] s01, f32[4,8] s10)
+      add1 = f32[4,8] add(f32[4,8] s00, f32[4,8] s11)
+      ROOT tuple = (f32[4,8], f32[4,8]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))),
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, DifferentOperator) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[6,8] slice(f32[8,8] p1), slice={[2:8], [0:8]}
+      mul = f32[2,8] multiply(f32[2,8] s00, f32[2,8] s10)
+      add = f32[6,8] add(f32[6,8] s01, f32[6,8] s11)
+      ROOT tuple = (f32[2,8], f32[6,8]) tuple(mul, add)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Multiply(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))),
+          m::Add(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, MultiUsers) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[6,8] slice(f32[8,8] p1), slice={[2:8], [0:8]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      add1 = f32[6,8] add(f32[6,8] s01, f32[6,8] s11)
+      mul0 = f32[2,8] multiply(f32[2,8] s00, f32[2,8] s10)
+      mul1 = f32[6,8] multiply(f32[6,8] s01, f32[6,8] s11)
+      ROOT tuple = (f32[2,8], f32[6,8]) tuple(add0, add1, mul0, mul1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(11, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Multiply(m::Parameter(0), m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, NonElementWise) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8] parameter(0)
+      s00 = f32[2] slice(f32[8] p0), slice={[0:2]}
+      s01 = f32[6] slice(f32[8] p0), slice={[2:8]}
+      bc0 = f32[2,8] broadcast(f32[2] s00), dimensions={0}
+      bc1 = f32[6,8] broadcast(f32[6] s01), dimensions={0}
+      ROOT tuple = (f32[2,8], f32[6,8]) tuple(bc0, bc1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(6, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(6, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Broadcast(m::Slice(m::Parameter(0))),
+          m::Broadcast(m::Slice(m::Parameter(0))))));
+}
+
+TEST_F(SliceDelayingTest, Stride) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      s00 = f32[4,8] slice(f32[8,8] p0), slice={[0:7:2], [0:8]}
+      s01 = f32[4,8] slice(f32[8,8] p0), slice={[1:8:2], [0:8]}
+      s10 = f32[4,8] slice(f32[8,8] p1), slice={[0:7:2], [0:8]}
+      s11 = f32[4,8] slice(f32[8,8] p1), slice={[1:8:2], [0:8]}
+      add0 = f32[4,8] add(f32[4,8] s00, f32[4,8] s10)
+      add1 = f32[4,8] add(f32[4,8] s01, f32[4,8] s11)
+      ROOT tuple = (f32[4,8], f32[4,8]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(9, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(6, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))))));
+}
+
+TEST_F(SliceDelayingTest, NotAllSliceOperand) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[2,8] parameter(1)
+      p2 = f32[6,8] parameter(2)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      abs0 = f32[2,8] abs(f32[2,8] p1)
+      abs1 = f32[6,8] abs(f32[6,8] p2)
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] abs0)
+      add1 = f32[6,8] add(f32[6,8] s01, f32[6,8] abs1)
+      ROOT tuple = (f32[2,8], f32[6,8]) tuple(add0, add1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(10, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(10, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Add(m::Slice(m::Parameter(0)), m::Abs(m::Parameter(1))),
+          m::Add(m::Slice(m::Parameter(0)), m::Abs(m::Parameter(2))))));
+}
+
+TEST_F(SliceDelayingTest, Cascade) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      p2 = f32[8,8] parameter(2)
+      s00 = f32[2,8] slice(f32[8,8] p0), slice={[0:2], [0:8]}
+      s01 = f32[6,8] slice(f32[8,8] p0), slice={[2:8], [0:8]}
+      s10 = f32[2,8] slice(f32[8,8] p1), slice={[0:2], [0:8]}
+      s11 = f32[6,8] slice(f32[8,8] p1), slice={[2:8], [0:8]}
+      add0 = f32[2,8] add(f32[2,8] s00, f32[2,8] s10)
+      s21 = f32[6,8] slice(f32[8,8] p2), slice={[2:8], [0:8]}
+      abs1 = f32[6,8] abs(f32[6,8] s21)
+      add3 = f32[6,8] add(f32[6,8] s01, f32[6,8] abs1)
+      add1 = f32[6,8] add(f32[6,8] s01, f32[6,8] s11)
+      s20 = f32[2,8] slice(f32[8,8] p2), slice={[0:2], [0:8]}
+      abs0 = f32[2,8] abs(f32[2,8] s20)
+      add2 = f32[2,8] add(f32[2,8] s00, f32[2,8] abs0)
+      ROOT tuple = (f32[2,8], f32[6,8]) tuple(add0, add1, add2, add3)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(16, module->entry_computation()->instruction_count());
+  SliceDelaying slice_delaying;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&slice_delaying, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(11, module->entry_computation()->instruction_count());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Parameter(1))),
+          m::Slice(m::Add(m::Parameter(0), m::Abs(m::Parameter(2)))),
+          m::Slice(m::Add(m::Parameter(0), m::Abs(m::Parameter(2)))))));
+}
+
+}  // namespace
 }  // namespace xla

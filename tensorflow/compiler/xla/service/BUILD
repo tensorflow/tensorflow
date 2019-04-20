@@ -4029,6 +4029,8 @@ tf_cc_test(
         ":slice_delaying",
         ":hlo_dce",
         ":hlo_pass",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
