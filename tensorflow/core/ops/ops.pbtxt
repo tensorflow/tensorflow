@@ -3141,6 +3141,13 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
@@ -22165,6 +22172,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "Toutput_types"
