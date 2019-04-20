@@ -563,6 +563,11 @@ class Layer(base_layer.Layer):
     # By-pass the automatic dependency tracking performed by the parent Layer.
     super(trackable.Trackable, self).__setattr__(value, name)
 
+  @property
+  def _is_legacy_layer(self):
+    """Used by keras to check compatibility. This should not be overridden."""
+    return True
+
 
 def _add_elements_to_collection(elements, collection_list):
   if context.executing_eagerly():

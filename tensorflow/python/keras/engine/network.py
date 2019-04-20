@@ -150,6 +150,8 @@ class Network(base_layer.Layer):
       # Subclassed network
       self._init_subclassed_network(**kwargs)
 
+    tf_utils.assert_no_legacy_layers(self.layers)
+
   # Several Network methods have "no_automatic_dependency_tracking"
   # annotations. Since Network does automatic dependency tracking on attribute
   # assignment, including for common data structures such as lists, by default
@@ -1676,6 +1678,7 @@ class Network(base_layer.Layer):
       ValueError: If the layers depend on `Input`s not found in this Model.
     """
     layers = nest.flatten(layers)
+    tf_utils.assert_no_legacy_layers(layers)
     node_to_depth = {}
     for depth, nodes in self._nodes_by_depth.items():
       node_to_depth.update({node: depth for node in nodes})

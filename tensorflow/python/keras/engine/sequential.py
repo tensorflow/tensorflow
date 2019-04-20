@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -104,6 +105,7 @@ class Sequential(training.Model):
 
     # Add to the model any layers passed to the constructor.
     if layers:
+      tf_utils.assert_no_legacy_layers(layers)
       for layer in layers:
         self.add(layer)
 
@@ -150,6 +152,9 @@ class Sequential(training.Model):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))
+
+    tf_utils.assert_no_legacy_layers([layer])
+
     self.built = False
     set_inputs = False
     if not self._layers:
