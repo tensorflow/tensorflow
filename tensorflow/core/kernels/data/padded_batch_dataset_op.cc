@@ -35,7 +35,9 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
   explicit PaddedBatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
         op_version_(ctx->def().op() == "PaddedBatchDataset" ? 1 : 2) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("parallel_copy", &parallel_copy_));
+    if (ctx->HasAttr("parallel_copy")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("parallel_copy", &parallel_copy_));
+    }
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
