@@ -78,6 +78,11 @@ RUN cd $HOME && git clone -b roc-2.3.x https://github.com/ROCm-Developer-Tools/H
     git cherry-pick --no-commit 4b7177ac4225c32ed0b02096a83b78fab0b9347a && \
     mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
+# Roll back OpenCL toolset to ROCm2.2 base
+RUN cd $HOME && wget http://repo.radeon.com/rocm/apt/2.2/pool/main/r/rocm-opencl/rocm-opencl_1.2.0-2019030702_amd64.deb && \
+    wget http://repo.radeon.com/rocm/apt/2.2/pool/main/r/rocm-opencl-dev/rocm-opencl-dev_1.2.0-2019030702_amd64.deb && \
+    dpkg -i rocm-opencl*.deb && rm -rf rocm-rocm*.deb
+
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
