@@ -80,7 +80,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
 bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
                                    const HloInstruction& consumer);
 
-bool IsMultiOutputFusionLegal(const HloInstruction& instr1,
+bool IsSiblingMultiOutputFusionLegal(const HloInstruction& instr1,
                           const HloInstruction& instr2);
 
 bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,

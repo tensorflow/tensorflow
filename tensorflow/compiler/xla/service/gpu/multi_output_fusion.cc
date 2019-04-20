@@ -75,7 +75,19 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
+  // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
+  // merge into bigger loop fusions and input (reduce) fusions become fusions
+  // with multiple reduce outputs. We could fuse reduce and loop fusions
+  // together too (the result being an input fusion) if we find cases where this
+  // improves things. Also disable fusing standalone input-fusible reduces into
+  // loop fusions.
   CHECK(instr1->opcode() == HloOpcode::kFusion);
+  if ((instr2->opcode() == HloOpcode::kFusion &&
+       instr1->fusion_kind() != instr2->fusion_kind()) ||
+      (IsReductionFromOrToContiguousDimensions(*instr2) &&
+       instr1->IsLoopFusion())) {
+    return false;
+  }
 
   // The emitter only supports in-place DUS for fusions with a single DUS at the
   // root. Don't sibling fuse DUS for now.
@@ -89,7 +101,7 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
-  return IsMultiOutputFusionLegal(*instr1, *instr2);
+  return IsSiblingMultiOutputFusionLegal(*instr1, *instr2);
 }
 
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {

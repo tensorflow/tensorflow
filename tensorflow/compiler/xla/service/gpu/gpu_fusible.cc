@@ -194,8 +194,26 @@ bool IsFusible(const HloInstruction& instr) {
 bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
                                    const HloInstruction& consumer) {
 
+  if (!IsFusible(producer) || !IsFusible(consumer)) return false;
+
   // Other output fusions are not currently supported on GPUs.
   if (producer.opcode() == HloOpcode::kFusion) {
+    return false;
+  }
+
+  // RNG operations are not currently parallel-friendly on GPU.
+  if (producer.opcode() == HloOpcode::kRng) {
+    return false;
+  }
+
+  // Do not fuse to-vector reduction into other consumers. They should be
+  // unfused or the root of a kInput fusion.
+  if (IsReductionFromOrToContiguousDimensions(producer)) {
+    return false;
+  }
+
+  // Scatter is only supported at the root of a kInput fusion.
+  if (producer.opcode() == HloOpcode::kScatter) {
     return false;
   }
 
@@ -228,47 +246,37 @@ bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
       return false;
   }
 
-  return (IsLoopFusible(producer) &&
-          (IsLoopFusible(consumer) || IsInputFusible(consumer)));
+/*  return (IsLoopFusible(producer) &&
+          (IsLoopFusible(consumer) || IsInputFusible(consumer)));*/
+  return true;
 }
 
-bool IsMultiOutputFusionLegal(const HloInstruction& instr1,
+bool IsSiblingMultiOutputFusionLegal(const HloInstruction& instr1,
                           const HloInstruction& instr2) {
 
   if (!IsLoopFusible(instr1) && !IsInputFusibleReduction(instr1)) return false;
 
   if (!IsLoopFusible(instr2) && !IsInputFusibleReduction(instr2)) return false;
 
-  // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
-  // merge into bigger loop fusions and input (reduce) fusions become fusions
-  // with multiple reduce outputs. We could fuse reduce and loop fusions
-  // together too (the result being an input fusion) if we find cases where this
-  // improves things. Also disable fusing standalone input-fusible reduces into
-  // loop fusions.
-  if ((instr1.opcode() == HloOpcode::kFusion && instr2.opcode() == HloOpcode::kFusion &&
-       instr1.fusion_kind() != instr2.fusion_kind()) ||
-      (IsReductionFromOrToContiguousDimensions(instr2) && instr1.IsLoopFusion())) {
-    return false;
-  }
-
-  // Do not fuse into reduce input fusions if the resulting kernel would suffer
-  // from poor data locality (due to unfriendly input layouts).
-  if (instr1.opcode() == HloOpcode::kReduce ||
-      instr2.opcode() == HloOpcode::kReduce) {
-    if (!LayoutsAreReduceInputFusionFriendly(instr1, instr2)) return false;
-  }
-
-  if (!ShapesCompatibleForMultiOutputFusion(instr1, instr2)) return false;
-
-  // Do this check last, as it may be expensive.
-  return !FusionWouldBeTooLarge(&instr1, &instr2);
+  return FusionWouldBeTooLarge(&instr1, &instr2);
 }
 
 bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
 
-  return (IsProducerConsumerFusionLegal(producer, consumer) &&
-          IsMultiOutputFusionLegal(producer, consumer));
+  if (!IsInputFusibleReduction(consumer)) return false;
+
+  if (producer.opcode() == HloOpcode::kConstant) return false;
+
+  if (!producer.IsElementwise() && !producer.IsLoopFusion()) return false;
+
+  if (!producer.IsFusible()) return false;
+
+  if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) return false;
+
+  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) return false;
+
+  return true;
 }
 
 // This function limits the maximum number of operands to a fusion.
