@@ -139,7 +139,7 @@ Module:
 You can reproduce this result and play with the example in the `examples/toy/Ch1/`
 directory, try running `path/to/BUILD/bin/toyc-ch1 test/ast.toy -emit=ast`.
 
-The code for the lexer is fairly straighforward, it is all in a single header:
+The code for the lexer is fairly straightforward, it is all in a single header:
 `examples/toy/Ch1/include/toy/Lexer.h`. The parser can be found in
 `examples/toy/Ch1/include/toy/Parser.h`, it is a recursive descent parser. If
 you are not familiar with such Lexer/Parser, these are very similar to the LLVM

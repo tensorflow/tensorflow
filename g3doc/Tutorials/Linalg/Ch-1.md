@@ -243,7 +243,7 @@ multiple registrations of the same symbols. At that point, the constructor needs
 to be statically aware of all the types and ops. Since our code structure
 chooses to isolate independent portions of the tutorial, and certain ops are
 introduced in later parts, we explicitly separate `DialectConstruction.cpp` in
-its separate library. Linking with the proper library enables the types that
+its' separate library. Linking with the proper library enables the types that
 have been declared so far.
 
 ## Putting it all together

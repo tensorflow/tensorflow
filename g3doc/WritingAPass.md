@@ -271,7 +271,7 @@ benefits:
     touching a single function at a time, instead of traversing the entire
     program.
 *   This improves multi-threading performance by reducing the number of jobs
-    that need to be scheduled, as well as increasing the efficency of each job.
+    that need to be scheduled, as well as increasing the efficiency of each job.
     An entire function pipeline can be run on each function asynchronously.
 
 As an example, the above pass manager would contain the following pipeline
@@ -394,7 +394,7 @@ llvm::errs() << "DominanceInfo was computed " << domInfoCount << " times!\n";
 ### Standard Instrumentations
 
 MLIR utilizes the pass instrumentation framework to provide a few useful
-developer tools and utilites. Each of these instrumentations are immediately
+developer tools and utilities. Each of these instrumentations are immediately
 available to all users of the MLIR pass framework.
 
 #### Pass Timing

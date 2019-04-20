@@ -7,7 +7,7 @@ differs significantly from other polyhedral frameworks.
 **Disclaimer / Warning**
 
 This document is a very early design proposal (which has since been accepted)
-that explored the tradeoffs of using this simplified form vs the tranditional
+that explored the tradeoffs of using this simplified form vs the traditional
 polyhedral schedule list form. At some point, this document could be dusted off
 and written as a proper academic paper, but until now, it is better to included
 it in this crufty form than not to. Beware that this document uses archaic

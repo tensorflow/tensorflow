@@ -144,7 +144,7 @@ In these operations, `<struct>` must be a value of wrapped LLVM IR structure
 type and `<value>` must be a value that corresponds to one of the (nested)
 structure element types.
 
-Note the use of integer literals to designate subscripts, which is made possbile
+Note the use of integer literals to designate subscripts, which is made possible
 by `extractvalue` and `insertvalue` must have constant subscripts. Internally,
 they are modeled as array attributes.
 

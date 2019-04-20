@@ -891,7 +891,7 @@ and operands) as well as matching a DAG pattern of multiple input operations to
 single output.
 
 1.  Matchers can be partially specified on the input (e.g., not all arguments
-    contrained) and so multiple matchers can match the same set of nodes. The
+    constrained) and so multiple matchers can match the same set of nodes. The
     most discriminative matcher (as determined by the number of
     constrained/matching terms) will be selected, if two patterns are equally
     discriminative then an error will be reported.

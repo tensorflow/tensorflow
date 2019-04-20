@@ -30,7 +30,7 @@ methods defined in `DialectConversion`:
     function type and the conversion generates a new prototype for the converted
     function. The default implementation will call into the type conversion for
     the returned values and for each of the parameters.
--   Operations convertions: each pattern is expected to generate new results
+-   Operations conversions: each pattern is expected to generate new results
     matching the current operations' in the new function. This may involve
     generating one or multiple new operations, or possibly just remapping
     existing operands (folding).

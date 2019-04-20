@@ -12,19 +12,19 @@ we can teach the MLIR verifier to enforce some invariants on the IR.
 ```c++
 /// This is the definition of the Toy dialect. A dialect inherits from
 /// mlir::Dialect and registers custom operations and types (in its constructor).
-/// It can also overridde general behavior of dialects exposed as virtual
+/// It can also override general behavior of dialects exposed as virtual
 /// methods, for example regarding verification and parsing/printing.
 class ToyDialect : public mlir::Dialect {
  public:
   explicit ToyDialect(mlir::MLIRContext *ctx);
 
-  /// Parse a type registered to this dialect. Overridding this method is
+  /// Parse a type registered to this dialect. Overriding this method is
   /// required for dialects that have custom types.
   /// Technically this is only needed to be able to round-trip to textual IR.
   mlir::Type parseType(llvm::StringRef tyData,
                        mlir::Location loc) const override;
 
-  /// Print a type registered to this dialect. Overridding this method is
+  /// Print a type registered to this dialect. Overriding this method is
   /// only required for dialects that have custom types.
   /// Technically this is only needed to be able to round-trip to textual IR.
   void printType(mlir::Type type, llvm::raw_ostream &os) const override;
