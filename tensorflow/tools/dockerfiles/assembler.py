@@ -583,17 +583,6 @@ def main(argv):
       image, logs = None, []
       if not FLAGS.dry_run:
         try:
-          # image, logs = dock.images.build(
-          #     timeout=FLAGS.hub_timeout,
-          #     path='.',
-          #     nocache=FLAGS.nocache,
-          #     dockerfile=dockerfile,
-          #     buildargs=tag_def['cli_args'],
-          #     tag=repo_tag)
-
-          # Print logs after finishing
-          # log_lines = [l.get('stream', '') for l in logs]
-          # eprint(''.join(log_lines))
           resp = dock.api.build(
               timeout=FLAGS.hub_timeout,
               path='.',
@@ -601,6 +590,7 @@ def main(argv):
               dockerfile=dockerfile,
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
+          last_event = None
           while True:
             try:
               output = next(resp).decode('utf-8')
@@ -613,6 +603,8 @@ def main(argv):
                 )
                 if match:
                   image_id = match.group(2)
+                last_event = json_output['stream']
+                logs.append(last_event)
             except StopIteration:
               eprint('Docker image build complete.')
               break
@@ -621,7 +613,7 @@ def main(argv):
           if image_id:
             image = dock.images.get(image_id)
           else:
-            raise docker.errors.BuildError
+            raise docker.errors.BuildError(last_event or 'Unknown', logs)
 
           # Run tests if requested, and dump output
           # Could be improved by backgrounding, but would need better
