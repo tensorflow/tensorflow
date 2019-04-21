@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import object_identity
@@ -289,6 +290,43 @@ class TimeDistributedTest(test.TestCase):
     # Custom layers are not whitelisted for the fast reshape implementation.
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_TimeDistributed_output_shape_return_types(self):
+
+    class TupleOutputShapeLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_output_shape(self, input_shape):
+          return (input_shape[0], input_shape[1])
+
+    class ListOutputShape(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_output_shape(self, input_shape):
+          return [input_shape[0], input_shape[1]]
+
+    class TensorShapeOutputShapeLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_output_shape(self, input_shape):
+          return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
+
+    test_layers = [TupleOutputShapeLayer, ListOutputShapeLayer,
+                   TensorShapeOutputShapeLayer]
+    # Custom layers can specify output shape as a list, tuple, or TensorShape
+    for layer in test_layers:
+      td = layer()
+      ph = keras.backend.placeholder(shape=(None, 1, 13))
+      out = td(ph)
+      # all output shapes are exposed in the end as TensorShape instances
+      self.assertEqual(isinstance(out, tensor_shape.TensorShape), True)
 
 
 class BidirectionalTest(test.TestCase):
