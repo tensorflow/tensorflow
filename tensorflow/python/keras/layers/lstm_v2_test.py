@@ -734,9 +734,9 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
             predict: y_train
         })
         if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
+          self.assertEqual(runtime_value, b'cudnn')
         else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
+          self.assertEqual(runtime_value, b'cpu')
         # Make sure the loss is updated for every epoch
         # (layer weights properly updated).
         self.assertNotEqual(existing_loss, loss_value)
@@ -771,7 +771,8 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
           dtypes.float32, shape=(None, output_shape), name='predict')
 
       zeros = array_ops.zeros([batch, output_shape])
-      dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
+      dummy_runtime = constant_op.constant(
+          'unknown', dtype=dtypes.string, name='runtime')
       a = constant_op.constant(0)
       b = constant_op.constant(1)
       # Will always run the lstm layer.
@@ -792,9 +793,9 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
             predict: y_train
         })
         if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
+          self.assertEqual(runtime_value, b'cudnn')
         else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
+          self.assertEqual(runtime_value, b'cpu')
         # Make sure the loss is updated for every epoch
         # (layer weights properly updated).
         self.assertNotEqual(existing_loss, loss_value)
