@@ -13,7 +13,9 @@ load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
-])
+]) + [
+   "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate"
+]
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
@@ -262,6 +264,8 @@ tflite_jni_binary(
     name = "libtensorflowlite_jni.so",
     deps = [
         "//tensorflow/lite/java/src/main/native",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/nnapi/java/src/main/native:native",
     ],
 )
 
