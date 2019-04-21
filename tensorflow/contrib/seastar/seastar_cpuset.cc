@@ -15,7 +15,7 @@ const char* ROOT_PATH = "/tmp_tf";
 const char* DEFAULT_ROOT_PATH = "/tmp";
 const char* CPUSET_FILE_PATH = "/cpuset";
 const size_t CORES_PER_FILE = 1;
-const size_t INIT_CPU_ID = 16;
+const size_t INIT_CPU_ID = 0;
 }
 
 class FileLocker {

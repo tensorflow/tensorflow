@@ -231,6 +231,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:master_session",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_master_service",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
     alwayslink = 1,
 )

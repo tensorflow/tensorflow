@@ -32,7 +32,13 @@
 
 namespace tensorflow {
 
+namespace {
 const char* kEndpointMapFile = ".endpoint_map";
+
+RendezvousMgrInterface* NewSeastarRendezvousMgr(const WorkerEnv* env) {
+  return new SeastarRendezvousMgr(env);
+}
+} // namespace
 
 class SeastarPortMgr {
 public:
@@ -151,7 +157,7 @@ SeastarServer::~SeastarServer() {
   delete seastar_port_mgr_;
 }
 
-Status SeastarServer::Init() {
+Status SeastarServer::Init(const GrpcServerOptions& opts) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -171,7 +177,9 @@ Status SeastarServer::Init() {
   worker_env_.device_mgr = new DeviceMgr(std::move(devices));
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
-  worker_env_.rendezvous_mgr = new SeastarRendezvousMgr(&worker_env_);
+  worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
+                               ? new SeastarRendezvousMgr(&worker_env_)
+                               : opts.rendezvous_mgr_func(&worker_env_);
 
   string unused;
   string default_worker_name;
@@ -254,7 +262,7 @@ Status SeastarServer::Init() {
   // master intialize
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
-  StatsPublisherFactory stats_factory;
+  StatsPublisherFactory stats_factory = opts.stats_factory;
   master_env_.master_session_factory =
     [config, stats_factory](
         SessionOptions options, const MasterEnv* env,
@@ -438,7 +446,13 @@ Status SeastarServer::Create(const ServerDef& server_def, Env* env,
 
   std::unique_ptr<SeastarServer> ret(
       new SeastarServer(server_def, env == nullptr ? Env::Default() : env));
-  TF_RETURN_IF_ERROR(ret->Init());
+  GrpcServerOptions options;
+  options.rendezvous_mgr_func = NewSeastarRendezvousMgr;
+  Status s = ret->Init(options);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }

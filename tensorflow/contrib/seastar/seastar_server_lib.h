@@ -6,6 +6,7 @@
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -35,7 +36,7 @@ public:
   Status Join() override;
   const string target() const;
 
-  Status Init();
+  Status Init(const GrpcServerOptions& opts);
 
 protected:
   Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
