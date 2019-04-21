@@ -38,6 +38,7 @@ import platform
 import re
 import shutil
 import sys
+import json
 
 from absl import app
 from absl import flags
@@ -582,17 +583,45 @@ def main(argv):
       image, logs = None, []
       if not FLAGS.dry_run:
         try:
-          image, logs = dock.images.build(
+          # image, logs = dock.images.build(
+          #     timeout=FLAGS.hub_timeout,
+          #     path='.',
+          #     nocache=FLAGS.nocache,
+          #     dockerfile=dockerfile,
+          #     buildargs=tag_def['cli_args'],
+          #     tag=repo_tag)
+
+          # Print logs after finishing
+          # log_lines = [l.get('stream', '') for l in logs]
+          # eprint(''.join(log_lines))
+          resp = dock.api.build(
               timeout=FLAGS.hub_timeout,
               path='.',
               nocache=FLAGS.nocache,
               dockerfile=dockerfile,
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
-
-          # Print logs after finishing
-          log_lines = [l.get('stream', '') for l in logs]
-          eprint(''.join(log_lines))
+          while True:
+            try:
+              output = next(resp).decode('utf-8')
+              json_output = json.loads(output.strip('\r\n'))
+              if 'stream' in json_output:
+                eprint(json_output['stream'], end='')
+                match = re.search(
+                    r'(^Successfully built |sha256:)([0-9a-f]+)$',
+                    json_output['stream']
+                )
+                if match:
+                  image_id = match.group(2)
+            except StopIteration:
+              eprint('Docker image build complete.')
+              break
+            except ValueError:
+              eprint('Error parsing from docker image build: {}'.format(output))
+          if image_id:
+            image = dock.images.get(image_id)
+          else:
+            raise docker.errors.BuildError
 
           # Run tests if requested, and dump output
           # Could be improved by backgrounding, but would need better
