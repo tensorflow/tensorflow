@@ -583,6 +583,7 @@ def main(argv):
       image, logs = None, []
       if not FLAGS.dry_run:
         try:
+          # Use low level APIClient in order to stream log output
           resp = dock.api.build(
               timeout=FLAGS.hub_timeout,
               path='.',
@@ -591,6 +592,8 @@ def main(argv):
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
           last_event = None
+          # Manually process log output extracting build success and image id
+          # in order to get built image
           while True:
             try:
               output = next(resp).decode('utf-8')
@@ -604,12 +607,15 @@ def main(argv):
                 if match:
                   image_id = match.group(2)
                 last_event = json_output['stream']
+                # collect all log lines into the logs object
                 logs.append(last_event)
             except StopIteration:
               eprint('Docker image build complete.')
               break
             except ValueError:
               eprint('Error parsing from docker image build: {}'.format(output))
+          # If Image ID is not set, the image failed to built properly. Raise
+          # an error in this case with the last log line and all logs
           if image_id:
             image = dock.images.get(image_id)
           else:
