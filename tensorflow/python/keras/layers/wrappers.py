@@ -207,7 +207,10 @@ class TimeDistributed(Wrapper):
     child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
                                                  input_shape[2:])
     child_output_shape = self.layer.compute_output_shape(
-        child_input_shape).as_list()
+        child_input_shape)
+    if not isinstance(child_output_shape, tensor_shape.TensorShape):
+      child_output_shape = tensor_shape.TensorShape(child_output_shape)
+    child_output_shape = child_output_shape.as_list()
     timesteps = input_shape[1]
     return tensor_shape.TensorShape([child_output_shape[0], timesteps] +
                                     child_output_shape[1:])
