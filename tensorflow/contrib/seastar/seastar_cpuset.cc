@@ -1,4 +1,5 @@
 #include "tensorflow/contrib/seastar/seastar_cpuset.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
@@ -121,13 +122,12 @@ std::vector<std::string> CpusetAllocator::LockFiles(size_t core_number) {
   return locked_files;
 }
 
-std::string CpusetAllocator::ToCpuset(const std::vector<std::string>& locked_files) {
+std::string CpusetAllocator::ToCpuset(
+    const std::vector<std::string>& locked_files) {
   if (locked_files.empty())
     return std::string();
-  std::string cpuset("--cpuset=");
-  for (auto file : locked_files) {
-    cpuset += file + ",";
-  }
+  const std::string& cpuset =
+    strings::StrCat("--cpuset=", str_util::Join(locked_files, ","));
   return cpuset.substr(0, cpuset.size() - 1);
 }
 }
