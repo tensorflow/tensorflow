@@ -32,7 +32,8 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.tensorboard.plugins import projector
+from tensorboard.plugins import projector
+from tensorflow.python.platform import app
 
 data_index = 0
 
@@ -354,4 +355,4 @@ def main(unused_argv):
   word2vec_basic(flags.log_dir)
 
 if __name__ == '__main__':
-  tf.app.run()
+  app.run()
