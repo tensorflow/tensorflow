@@ -35,7 +35,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
@@ -50,10 +49,10 @@ namespace label_image {
 
 double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
-#if defined(__ANDROID__)
 using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
 using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
 
+#if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   TfLiteGpuDelegateOptions options;
   options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
@@ -74,6 +73,7 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 }
+#endif  // defined(__ANDROID__)
 
 TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   TfLiteDelegatePtrMap delegates;
@@ -81,19 +81,18 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
 #if defined(__ANDROID__)
     delegates.emplace("GPU", CreateGPUDelegate(s));
 #else
-    TFLITE_LOG(WARN) << "GPU acceleration is unsupported on this platform.";
+    LOG(INFO) << "GPU acceleration is unsupported on this platform.";
 #endif
   }
   if (s->accel) {
 #if defined(__ANDROID__)
     delegates.emplace("NNAPI", CreateNNAPIDelegate());
 #else
-    TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
+    LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
 #endif
   }
   return delegates;
 }
-#endif  // defined(__ANDROID__)
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -202,30 +201,8 @@ void RunInference(Settings* s) {
     LOG(INFO) << "number of inputs: " << inputs.size() << "\n";
     LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
   }
-#if 0
-#if defined(ANDROID) || defined(__ANDROID__)
-  TfLiteGpuDelegateOptions kMyOptions = {
-      .metadata = nullptr,
-      .compile_options =
-          {
-              .precision_loss_allowed = 0,
-              .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
-              .dynamic_batch_enabled = 0,
-          },
-  };
-  if (s->allow_fp16) kMyOptions.compile_options.precision_loss_allowed = 1;
 
-  TfLiteDelegate* delegate;
-  if (s->gl_backend) {
-    delegate = TfLiteGpuDelegateCreate(&kMyOptions);
-    if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return;
-  } else {
-#endif
-#if defined(ANDROID) || defined(__ANDROID__)
-  }
-#endif
-#endif
-
+#if defined(__ANDROID__)
   auto delegates_ = GetDelegates(s);
   for (const auto& delegate : delegates_) {
     if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
@@ -235,6 +212,7 @@ void RunInference(Settings* s) {
       LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
+#endif
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
     LOG(FATAL) << "Failed to allocate tensors!";
