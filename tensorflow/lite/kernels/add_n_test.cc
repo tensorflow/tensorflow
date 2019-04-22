@@ -88,6 +88,77 @@ TEST(IntegerAddNOpModel, AddMultipleTensors) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-9, -1, 11, 11}));
 }
 
+class QuantizedAddNOpModel : public BaseAddNOpModel {
+ public:
+   using BaseAddNOpModel::BaseAddNOpModel;
+
+  template <typename integer_dtype>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<integer_dtype>(ExtractVector<integer_dtype>(output_),
+                                     GetScale(output_), GetZeroPoint(output_));
+  }
+};
+
+// for quantized Add, the error shouldn't exceed step
+float GetTolerance(float min, float max) {
+  float kQuantizedStep = (max - min) / 255.0;
+  return kQuantizedStep;
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void QuantizedTestsAddN() {
+  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+
+  std::vector<std::vector<float>> inputs1 = {
+                                              {0.1, 0.1, 0.3, 0.4},
+                                              {-0.8, 0.2, 0.4, 0.7},
+                                              {-0.8, 0.2, 0.7, 0.3}
+                                             };
+  std::vector<std::vector<float>> inputs2 = {
+                                              {0.2, 0.4, 0.3, 0.1},
+                                              {0.6, 0.4, 0.2, -0.8},
+                                              {0.6, 0.4, -0.8, 0.5}
+                                             };
+  std::vector<std::vector<float>> inputs3 = {
+                                              {0.3, 0.2, 0.1, -0.1},
+                                              {0.2, 0.3, 0.1, 0.8},
+                                              {0.2, 0.3, 0.1, 0.1}
+                                             };
+
+  std::vector<std::vector<float>> results = {
+                                              {0.6, 0.7, 0.7, 0.4},
+                                              {0.0, 0.9, 0.7, 0.7},
+                                              {-0.0, 0.9, -0.0, 0.9}
+                                             };
+
+  for (size_t i = 0; i < inputs1.size(); ++i) {
+
+    QuantizedAddNOpModel m({{tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
+                            {tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
+                            {tensor_type, {1, 2, 2, 1}, -1.0, 1.0}},
+                            {tensor_type, {}, -1.0, 1.0});
+
+    m.QuantizeAndPopulate<integer_dtype>(m.input(0), inputs1[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input(1), inputs2[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input(2), inputs3[i]);
+    m.Invoke();
+    std::vector<float> x = m.GetDequantizedOutput<integer_dtype>();
+
+    EXPECT_THAT(
+        m.GetDequantizedOutput<integer_dtype>(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
+        << "With test number " << i;
+  }
+}
+
+TEST(QuantizedAddNOpModel, QuantizedTestsAddNUInt8) {
+  QuantizedTestsAddN<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedAddNOpModel, QuantizedTestsAddNInt8) {
+  QuantizedTestsAddN<TensorType_INT8, int8_t>();
+}
+
 }  // namespace
 }  // namespace tflite
 
