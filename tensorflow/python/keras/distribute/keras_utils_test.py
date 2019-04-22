@@ -31,6 +31,7 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rms_prop_keras
@@ -380,6 +381,18 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
           '`input_shape`/`input_dim` set in its first layer or '
           'a subclassed model.'):
         model.compile('sgd')
+
+  @combinations.generate(
+      keras_test_lib.all_strategy_combinations_minus_default())
+  def test_standalone_loss_without_loss_reduction(self, distribution):
+    with distribution.scope():
+      loss_object = losses.MeanSquaredError()
+
+      with self.assertRaisesRegexp(
+          ValueError, 'Please use `tf.keras.losses.Reduction.SUM` or '
+          '`tf.keras.losses.Reduction.NONE`'):
+        y = np.asarray([1, 0])
+        loss_object(y, y)
 
 
 class TestDistributionStrategyWithLossMasking(test.TestCase,

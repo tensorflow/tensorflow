@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -29,15 +31,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
-namespace xla_python {
 
 namespace py = pybind11;
+
+namespace {
 
 struct Uniquer {
   absl::Mutex mu;
@@ -54,6 +61,46 @@ static string UniquifyName(const string& name) {
   absl::MutexLock lock(&uniquer->mu);
   return uniquer->name_uniquer.GetUniqueName(name);
 }
+
+// Converts a computation to a serialized HloModuleProto.
+StatusOr<py::bytes> GetComputationSerializedProto(
+    const XlaComputation& computation) {
+  std::string result;
+  if (!computation.proto().SerializeToString(&result)) {
+    return Unknown("Failed to serialize the HloModuleProto.");
+  }
+  return py::bytes(result);
+}
+
+// Converts a computation to textual HLO form.
+StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  HloPrintOptions options;
+  options = HloPrintOptions::ShortParsable();
+  options.set_print_large_constants(false);
+  return hlo_module->ToString(options);
+}
+
+// Converts a computation to HLO dot graph form.
+StatusOr<std::string> GetComputationHloDotGraph(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
+                     hlo_module->config().debug_options(),
+                     RenderedGraphFormat::kDot);
+}
+
+}  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
   // Types
@@ -167,13 +214,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
       .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
 
-  py::class_<LocalShapedBuffer>(m, "LocalShapedBuffer")
-      .def_static("FromPython", &LocalShapedBuffer::FromPython)
-      .def_static("FromPythonValues", &LocalShapedBuffer::FromPythonValues)
-      .def("Delete", &LocalShapedBuffer::Delete)
-      .def("DestructureTuple", &LocalShapedBuffer::DestructureTuple)
-      .def("ToPython", &LocalShapedBuffer::ToPython)
-      .def("shape", &LocalShapedBuffer::shape);
+  py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
+      .def_static("FromPython", &PyLocalBuffer::FromPython)
+      .def_static("FromPythonValues", &PyLocalBuffer::FromPythonValues)
+      .def("Delete", &PyLocalBuffer::Delete)
+      .def("DestructureTuple", &PyLocalBuffer::DestructureTuple)
+      .def("ToPython", &PyLocalBuffer::ToPython)
+      .def("shape", &PyLocalBuffer::shape);
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
@@ -433,5 +480,4 @@ PYBIND11_MODULE(xla_extension, m) {
   tensorflow::AddXrtSubmodule(&m);
 }
 
-}  // namespace xla_python
 }  // namespace xla

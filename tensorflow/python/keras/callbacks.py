@@ -953,7 +953,7 @@ class ModelCheckpoint(Callback):
         # that.
         file_handle, temp_file_name = tempfile.mkstemp()
         extension = os.path.splitext(self.filepath)[1]
-        filepath = temp_file_name + '.' + extension
+        filepath = temp_file_name + extension
 
       if self.save_best_only:
         current = logs.get(self.monitor)

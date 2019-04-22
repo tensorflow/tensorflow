@@ -89,12 +89,12 @@ tf_module {
     argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'noise\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'uniform\', \'None\'], "
   }
   member_method {
-    name: "extract_image_patches"
-    argspec: "args=[\'images\', \'sizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "extract_jpeg_shape"
     argspec: "args=[\'contents\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "extract_patches"
+    argspec: "args=[\'images\', \'sizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "flip_left_right"
@@ -181,7 +181,7 @@ tf_module {
     argspec: "args=[\'images\', \'size\', \'method\', \'preserve_aspect_ratio\', \'antialias\', \'name\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'False\', \'False\', \'None\'], "
   }
   member_method {
-    name: "resize_image_with_crop_or_pad"
+    name: "resize_with_crop_or_pad"
     argspec: "args=[\'image\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

@@ -43,7 +43,7 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(all_combinations,
                          combinations.combine(fused=[True, False])))
-  def testBNWithZeroBatchInput(self, distribution, fused):
+  def disabled_testBNWithZeroBatchInput(self, distribution, fused):
     with distribution.scope(), self.cached_session() as sess:
       bn_list = []
       inputs = np.random.random((0, 4, 4, 3)) + 100

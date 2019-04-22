@@ -38,7 +38,9 @@ manual_symbol_renames = {
     "tf.estimator.inputs":
         "tf.compat.v1.estimator.inputs",
     "tf.extract_image_patches":
-        "tf.image.extract_image_patches",
+        "tf.image.extract_patches",
+    "tf.image.extract_image_patches":
+        "tf.image.extract_patches",
     "tf.gfile.Copy":
         "tf.io.gfile.copy",
     "tf.gfile.DeleteRecursively":
@@ -199,14 +201,24 @@ manual_symbol_renames = {
         "tf.sort",
     "tf.contrib.framework.argsort":
         "tf.argsort",
+    "tf.contrib.summary.always_record_summaries":
+        "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.audio":
         "tf.compat.v2.summary.audio",
+    "tf.contrib.summary.create_file_writer":
+        "tf.compat.v2.summary.create_file_writer",
+    "tf.contrib.summary.flush":
+        "tf.compat.v2.summary.flush",
+    "tf.contrib.summary.generic":
+        "tf.compat.v2.summary.write",
     "tf.contrib.summary.histogram":
         "tf.compat.v2.summary.histogram",
     "tf.contrib.summary.image":
         "tf.compat.v2.summary.image",
     "tf.contrib.summary.initialize":
         "tf.compat.v1.summary.initialize",
+    "tf.contrib.summary.never_record_summaries":
+        "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.scalar":
         "tf.compat.v2.summary.scalar",
     "tf.contrib.tpu.CrossShardOptimizer":

@@ -25,26 +25,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-TEST(DatasetUtilsTest, ComputeMoveVector) {
-  struct TestCase {
-    std::vector<int> indices;
-    std::vector<bool> expected;
-  };
-
-  TestCase test_cases[] = {
-      TestCase{{}, {}},
-      TestCase{{1}, {true}},
-      TestCase{{1, 1}, {false, true}},
-      TestCase{{1, 2}, {true, true}},
-      TestCase{{1, 1, 2}, {false, true, true}},
-      TestCase{{1, 2, 2}, {true, false, true}},
-  };
-
-  for (auto& test_case : test_cases) {
-    EXPECT_EQ(test_case.expected, ComputeMoveVector(test_case.indices));
-  }
-}
-
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   VariantTensorData data;
   VariantTensorDataWriter writer(&data);

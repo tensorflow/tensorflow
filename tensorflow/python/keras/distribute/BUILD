@@ -270,28 +270,6 @@ cuda_py_test(
     ],
 )
 
-distribute_py_test(
-    name = "keras_two_input_layers_correctness_test",
-    size = "medium",
-    srcs = ["keras_two_input_layers_correctness_test.py"],
-    full_precision = True,
-    main = "keras_two_input_layers_correctness_test.py",
-    # Shard count is set to an odd number to distribute tasks across
-    # shards more evenly.
-    shard_count = 5,
-    tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_windows_gpu",
-        "notsan",
-    ],
-    deps = [
-        ":keras_correctness_test_lib",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-    ],
-)
-
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
@@ -308,24 +286,28 @@ py_library(
     srcs = ["multi_worker_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:optimizers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

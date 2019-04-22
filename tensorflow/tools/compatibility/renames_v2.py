@@ -441,12 +441,14 @@ renames = {
         'tf.compat.v1.image.resize_bicubic',
     'tf.image.resize_bilinear':
         'tf.compat.v1.image.resize_bilinear',
+    'tf.image.resize_image_with_crop_or_pad':
+        'tf.image.resize_with_crop_or_pad',
     'tf.image.resize_image_with_pad':
         'tf.compat.v1.image.resize_image_with_pad',
     'tf.image.resize_nearest_neighbor':
         'tf.compat.v1.image.resize_nearest_neighbor',
     'tf.image.transpose_image':
-        'tf.compat.v1.image.transpose_image',
+        'tf.image.transpose',
     'tf.initialize_all_tables':
         'tf.compat.v1.initialize_all_tables',
     'tf.initialize_all_variables':
@@ -877,6 +879,8 @@ renames = {
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
     'tf.parse_single_sequence_example':

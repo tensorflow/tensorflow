@@ -66,7 +66,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  tril = tf.random_normal(shape=[2, 3, 4, 4])
+  tril = tf.random.normal(shape=[2, 3, 4, 4])
   operator = LinearOperatorLowerTriangular(tril)
   ```
 

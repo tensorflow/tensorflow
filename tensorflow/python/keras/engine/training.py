@@ -1681,23 +1681,24 @@ class Model(network.Network):
                       mask, None, sample_weight))
               sample_weight *= mask
 
-          # Reset reduction on the loss so that we can get the per sample loss
-          # value. We use this to get both the stateless and stateful loss
-          # values without having to compute the underlying loss function
-          # twice.
           weighted_losses = None
           if hasattr(loss_fn, 'reduction'):
-            current_loss_reduction = loss_fn.reduction
-            loss_fn.reduction = losses_utils.ReductionV2.NONE
-            weighted_losses = loss_fn(
-                y_true, y_pred, sample_weight=sample_weight)
-            loss_fn.reduction = current_loss_reduction
+            per_sample_losses = loss_fn.call(y_true, y_pred)
+            weighted_losses = losses_utils.compute_weighted_loss(
+                per_sample_losses,
+                sample_weight=sample_weight,
+                reduction=losses_utils.ReductionV2.NONE)
+            loss_reduction = loss_fn.reduction
+
+            # `AUTO` loss reduction defaults to `SUM_OVER_BATCH_SIZE` for all
+            # compile use cases.
+            if loss_reduction == losses_utils.ReductionV2.AUTO:
+              loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
-                weighted_losses, reduction=current_loss_reduction)
-            if (current_loss_reduction ==
-                losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+                weighted_losses, reduction=loss_reduction)
+            if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
               output_loss = losses_utils.scale_loss_for_distribution(
                   output_loss)
           else:
@@ -2775,10 +2776,12 @@ class DistributedCallbackModel(Model):
   def __getattr__(self, item):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
-    if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + ' of the '
-                      'DistributedCallbackModel that may not have been set '
-                      'correctly.')
+    if item in ('_setattr_tracking', '_layers'):
+      return super(DistributedCallbackModel, self).__getattr__(item)
+
+    logging.warning('You are accessing attribute ' + item + ' of the '
+                    'DistributedCallbackModel that may not have been set '
+                    'correctly.')
 
 
 def _is_symbolic_tensor(x):

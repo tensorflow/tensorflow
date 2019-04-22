@@ -561,7 +561,11 @@ class Strategy(object):
           raise ValueError(
               "`axis` = %r out of range for `value` with rank %d" %
               (axis, v.shape.rank))
-        if v.shape[axis] is not None:
+        # TODO(anjalisridhar): Added a second condition to handle the case of
+        # dynamic shapes when using tf.functions. We might want to remove this
+        # static shape case and always calculate the shape of v.
+        if (v.shape[axis] is not None and
+            [x for x in v.get_shape().as_list() if x]):
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
           return numer, v.shape[axis]
@@ -980,13 +984,13 @@ class StrategyExtendedV2(object):
     for `d`
   * `with d.extended.colocate_vars_with(v)`: in replica/cross-replica context,
     variables will be created with locality V(`v`). That is, if we write
-    `with d.extended.colocate_vars_with(v1): v2 = tf.get_variable(...)`,
-    then `v2` will have locality V(`v1`), i.e. locality V(`v2`) will equal
-    V(`v1`).
+    `with d.extended.colocate_vars_with(v1):
+    v2 = tf.Variable(...)`, then `v2` will have locality V(`v1`),
+    i.e. locality V(`v2`) will equal V(`v1`).
   * `with d.extended.colocate_vars_with(d.extended.non_slot_devices(...))`: in
     replica/cross-replica context, variables will be created with locality N
-  * `v = tf.get_variable(...)`: in replica/cross-replica context, creates
-    a variable (which by definition will have locality V(`v`), though
+  * `v = tf.Variable(...)`: in replica/cross-replica context,
+    creates a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
   * `d.make_dataset_iterator(dataset)`: in cross-replica
@@ -1124,7 +1128,7 @@ class StrategyExtendedV2(object):
     No operations should be added to the graph inside this scope, it
     should only be used when creating variables (some implementations
     work by changing variable creation, others work by using a
-    tf.colocate_with() scope).
+    tf.compat.v1.colocate_with() scope).
 
     This may only be used inside `self.scope()`.
 
@@ -1132,11 +1136,11 @@ class StrategyExtendedV2(object):
 
     ```
     with strategy.scope():
-      var1 = tf.get_variable(...)
+      var1 = tf.Variable(...)
       with strategy.extended.colocate_vars_with(var1):
         # var2 and var3 will be created on the same device(s) as var1
-        var2 = tf.get_variable(...)
-        var3 = tf.get_variable(...)
+        var2 = tf.Variable(...)
+        var3 = tf.Variable(...)
 
       def fn(v1, v2, v3):
         # operates on v1 from var1, v2 from var2, and v3 from var3

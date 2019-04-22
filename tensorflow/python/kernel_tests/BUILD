@@ -131,6 +131,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:client_testlib",
@@ -235,7 +236,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
     ],
     shard_count = 5,
-    tags = ["no_gpu"],
+    tags = ["no_windows_gpu"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2271,7 +2272,6 @@ cuda_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,

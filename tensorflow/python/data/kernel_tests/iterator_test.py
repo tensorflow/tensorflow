@@ -732,7 +732,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     with ops.device("/job:localhost/replica:0/task:0/device:GPU:0"):
       target_placeholder = array_ops.placeholder(dtypes.string, shape=[])
       iterator_3_handle_uint8 = parsing_ops.decode_raw(
-          bytes=iterator_3_handle, out_type=dtypes.uint8)
+          input_bytes=iterator_3_handle, out_type=dtypes.uint8)
       remote_op = functional_ops.remote_call(
           args=[iterator_3_handle_uint8],
           Tout=[dtypes.int32],

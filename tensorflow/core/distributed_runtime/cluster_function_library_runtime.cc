@@ -17,6 +17,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -135,13 +136,21 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   }
 
   // Make RPC and obtain a graph handle.
-  const FunctionDef* fdef = lib_def.Find(function_name);
-  const OpDef& sig = fdef->signature();
   GraphDef gdef;
   std::vector<string> send_keys, recv_keys;
-  TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, &gdef,
-                                            &send_keys, &recv_keys));
-  *gdef.mutable_library() = lib_def.ToProto();
+  auto construct_graph_fn = [&](const FunctionLibraryDefinition* lib_def) {
+    const FunctionDef* fdef = lib_def->Find(function_name);
+    const OpDef& sig = fdef->signature();
+    TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, &gdef,
+                                              &send_keys, &recv_keys));
+    *gdef.mutable_library() = lib_def->ToProto();
+    return Status::OK();
+  };
+  if (options.lib_def) {
+    TF_RETURN_IF_ERROR(construct_graph_fn(options.lib_def));
+  } else {
+    TF_RETURN_IF_ERROR(construct_graph_fn(&lib_def));
+  }
 
   RegisterGraphRequest req;
   req.set_session_handle(worker_session_->session_name);

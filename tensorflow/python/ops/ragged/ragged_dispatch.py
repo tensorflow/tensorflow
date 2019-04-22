@@ -36,10 +36,12 @@ from tensorflow.python.ops.ragged import ragged_batch_gather_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_squeeze_op
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import ragged_where_op
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
@@ -432,6 +434,11 @@ def _ragged_size_v1(input, name=None, out_type=dtypes.int32):  # pylint: disable
   return ragged_array_ops.size(input=input, out_type=out_type, name=name)
 
 
+def _ragged_squeeze_v1(input, axis=None, name=None, squeeze_dims=None):  # pylint: disable=redefined-builtin
+  axis = deprecation.deprecated_argument_lookup('axis', axis, 'squeeze_dims',
+                                                squeeze_dims)
+  return ragged_squeeze_op.squeeze(input, axis, name)
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_batch_gather_ops.batch_gather,
@@ -442,11 +449,13 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.gather, _ragged_gather_v1, ['params', 'indices']),
     (array_ops.gather_v2, ragged_gather_ops.gather, ['params', 'indices']),
     (array_ops.gather_nd, _ragged_gather_nd_v1, ['params', 'indices']),
-    (array_ops.gather_nd_v2, ragged_gather_ops.gather_nd,
-     ['params', 'indices']),
+    (array_ops.gather_nd_v2, ragged_gather_ops.gather_nd, ['params',
+                                                           'indices']),
     (array_ops.rank, ragged_array_ops.rank, ['input']),
     (array_ops.size, _ragged_size_v1, ['input']),
     (array_ops.size_v2, ragged_array_ops.size, ['input']),
+    (array_ops.squeeze, _ragged_squeeze_v1, ['input']),
+    (array_ops.squeeze_v2, ragged_squeeze_op.squeeze, ['input']),
     (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),

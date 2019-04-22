@@ -478,5 +478,28 @@ void BackgroundWorker::WorkerLoop() {
   }
 }
 
+namespace {
+class RunnerImpl : public Runner {
+ public:
+  void Run(const std::function<void()>& f) override {
+    f();
+
+    // NOTE: We invoke a virtual function to prevent `f` being tail-called, and
+    // thus ensure that this function remains on the stack until after `f`
+    // returns.
+    PreventTailCall();
+  }
+
+ private:
+  virtual void PreventTailCall() {}
+};
+}  // namespace
+
+/* static */
+Runner* Runner::get() {
+  static Runner* singleton = new RunnerImpl;
+  return singleton;
+}
+
 }  // namespace data
 }  // namespace tensorflow

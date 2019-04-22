@@ -125,6 +125,41 @@ class InputWorkers(object):
         self.__class__.__name__, debug_repr, self._device_map)
 
 
+def _get_next_as_optional(iterator, name=None):
+  """Returns an empty dataset indicator and the next input from the iterator."""
+  replicas = []
+  worker_has_values = []
+  for i, worker in enumerate(iterator._input_workers.worker_devices):  # pylint: disable=protected-access
+    if name is not None:
+      d = tf_device.DeviceSpec.from_string(worker)
+      new_name = "%s_%s_%d" % (name, d.job, d.task)
+    else:
+      new_name = None
+
+    with ops.device(worker):
+      worker_has_value, next_element = (
+          iterator._iterators[i].get_next_as_list(new_name))  # pylint: disable=protected-access
+      worker_has_values.append(worker_has_value)
+      # Make `replicas` a flat list of values across all replicas.
+      replicas.append(next_element)
+
+  # `global_has_value` indicates whether there is data in this global batch.
+  # We do a all-reduce across all the workers in the multi-worker case.
+  # TODO(b/126259107): Do strategy.reduce for CollectiveAllReduceStrategy.
+  if len(worker_has_values) > 1:
+    with ops.device(iterator._input_workers.compute_devices_for_worker(0)[0]):  # pylint: disable=protected-access
+      # Place the tf.reduce_any op in device 0 to minimize communication
+      # cost.
+      # TODO(b/128545270): Investigate why placing it on worker 0 will cause
+      # the entire data to copy back from device to host.
+      # TODO(anjalisridhar): Use strategy.reduce because you can reduce values
+      # in a single graph or multiple graphs using low level communication ops.
+      global_has_value = math_ops.reduce_any(worker_has_values)
+  else:
+    global_has_value = worker_has_values[0]
+  return global_has_value, replicas
+
+
 class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
@@ -174,23 +209,7 @@ class DistributedIterator(object):
               self._iterators[i].get_next_as_list_deprecated(new_name))
       return values.regroup(self._input_workers.device_map, replicas)
 
-    replicas = []
-    worker_has_values = []
-    for i, worker in enumerate(self._input_workers.worker_devices):
-      if name is not None:
-        d = tf_device.DeviceSpec.from_string(worker)
-        new_name = "%s_%s_%d" % (name, d.job, d.task)
-      else:
-        new_name = None
-      with ops.device(worker):
-        worker_has_value, next_element = (
-            self._iterators[i].get_next_as_list(new_name))
-        worker_has_values.append(worker_has_value)
-        # Make `replicas` a flat list of values across all replicas.
-        replicas.append(next_element)
-
     out_of_range_replicas = []
-
     def out_of_range_fn(worker_index, device):
       """This function will throw an OutOfRange error."""
       # As this will be only called when there is no data left, so calling
@@ -199,19 +218,7 @@ class DistributedIterator(object):
       out_of_range_replicas.append(data)
       return data
 
-    # `global_has_value` indicates whether there is data in this global batch.
-    # We do a all-reduce across all the workers in the multi-worker case.
-    # TODO(b/126259107): Do strategy.reduce for CollectiveAllReduceStrategy.
-    if len(worker_has_values) > 1:
-      with ops.device(self._input_workers.compute_devices_for_worker(0)[0]):
-        # Place the tf.reduce_any op in device 0 to minimize communication
-        # cost.
-        # TODO(b/128545270): Investigate why placing it on worker 0 will cause
-        # the entire data to copy back from device to host.
-        global_has_value = math_ops.reduce_any(worker_has_values)
-    else:
-      global_has_value = worker_has_values[0]
-
+    global_has_value, replicas = _get_next_as_optional(self)
     results = []
     for i, worker in enumerate(self._input_workers.worker_devices):
       with ops.device(worker):
@@ -355,6 +362,57 @@ class DistributedDataset(object):
                                    **self._kwargs)
     iterator._element_structure = self._element_structure  # pylint: disable=protected-access
     return iterator
+
+  def _autograph_for_loop(self, extra_test, body, init_state):
+    """Overload of for..in statement that iterates over a DistributedDataset."""
+
+    if extra_test is not None:
+      raise NotImplementedError(
+          "break and return statements are not yet supported in "
+          "for/DistributedDataset loops.")
+
+    def reduce_body(state, iterate):
+      new_state = body(iterate, *state)
+      return new_state
+
+    if init_state:
+      return self.reduce(init_state, reduce_body)
+
+    # TODO(anjalisridhar): This is a workaround for Dataset.reduce not allowing
+    # empty state tensors - create a dummy state variable that remains unused.
+    # Identify if we need this workaround and remove if unnecessary.
+    def reduce_body_with_dummy_state(state, iterate):
+      reduce_body((), iterate)
+      return state
+    self.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
+    return ()
+
+  def reduce(self, initial_state, reduce_fn):
+    """Execute a `reduce_fn` over all the elements of a dataset."""
+    iterator = self.__iter__()
+    has_data, data = _get_next_as_optional(iterator)
+
+    def cond(has_data, data, state):  # pylint: disable=unused-argument
+      return has_data
+
+    def loop_body(has_data, data, state):
+      """Executes `reduce_fn` in a loop till the dataset is empty."""
+      # data is list of lists here. where each list corresponds to one worker.
+      # TODO(b/130570614): Add support for the multiworker and TPU pods use
+      # case.
+      if self._input_workers.num_workers == 1:
+        data = data[0]
+      else:
+        raise ValueError("Dataset iteration within a tf.function is"
+                         " not supported for multiple workers.")
+      per_replica_data = values.regroup(self._input_workers.device_map, data)
+      state = reduce_fn(state, per_replica_data)
+      has_data, data = _get_next_as_optional(iterator)
+      return has_data, data, state
+
+    has_data, data, final_state = control_flow_ops.while_loop(
+        cond, loop_body, [has_data, data, initial_state])
+    return final_state
 
 
 class DistributedDatasetV1(DistributedDataset):
