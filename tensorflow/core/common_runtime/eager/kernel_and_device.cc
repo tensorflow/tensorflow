@@ -322,18 +322,13 @@ Status KernelAndDeviceFunc::Run(
   FunctionLibraryRuntime::Options opts;
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
-  // of the same multi-device function concurrently. Instead, we ask the
-  // function library runtime to create a new for this call. We could have
-  // created one here but it requires more state to be kept in
-  // KernelAndDeviceFunc.
+  // of the same multi-device function concurrently.
   Rendezvous* rendezvous = new IntraProcessRendezvous(pflr_->device_mgr());
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
   opts.cancellation_manager = &cm_;
   cm_.Reset();
-  // eager runtime does not yet support collective ops.
-  opts.collective_executor = nullptr;
   opts.allow_dead_tensors = true;
   opts.step_container = step_container;
   opts.collective_executor =
