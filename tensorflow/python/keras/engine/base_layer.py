@@ -65,6 +65,9 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
+# Prefix that is added to the TF op layer names.
+_TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
+
 
 @keras_export('keras.layers.Layer')
 class Layer(module.Module):
@@ -2150,7 +2153,7 @@ class TensorFlowOpLayer(Layer):
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
-        name=name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
     # Layer uses original op unless it is called on new inputs.
