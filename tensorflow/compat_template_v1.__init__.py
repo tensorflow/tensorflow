@@ -31,15 +31,13 @@ from tensorflow.python.tools import module_util as _module_util
 _current_module = _sys.modules[__name__]
 try:
   from tensorflow_estimator.python.estimator.api._v1 import estimator
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  _current_module.__path__.append(_module_util.get_parent_dir(estimator))
 except ImportError:
   pass
 
 try:
   from tensorflow.python.keras.api._v1 import keras
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  _current_module.__path__.append(_module_util.get_parent_dir(keras))
 except ImportError:
   pass
 

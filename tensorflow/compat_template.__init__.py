@@ -32,8 +32,7 @@ from tensorflow.python.tools import module_util as _module_util
 _current_module = _sys.modules[__name__]
 try:
   from tensorboard.summary._tf import summary
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
+  _current_module.__path__.append(_module_util.get_parent_dir(summary))
 except ImportError:
   _logging.warning(
       "Limited tf.compat.v2.summary API due to missing TensorBoard "
@@ -41,15 +40,13 @@ except ImportError:
 
 try:
   from tensorflow_estimator.python.estimator.api._v2 import estimator
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  _current_module.__path__.append(_module_util.get_parent_dir(estimator))
 except ImportError:
   pass
 
 try:
   from tensorflow.python.keras.api._v2 import keras
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  _current_module.__path__.append(_module_util.get_parent_dir(keras))
 except ImportError:
   pass
 
