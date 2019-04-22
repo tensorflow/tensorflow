@@ -357,7 +357,14 @@ those newer ops to the equivalent older form.
 
 ### flatten_atrous_conv
 
-Args: None \
+Args:
+
+*   padding: Padding method used for the flattened atrous convolution. The
+    padding is always "VALID" in the GraphDef for an atrous convolution
+    regardless of how it was originally defined. Use this argument to set the
+    padding mode in the flattened convolution operator (assuming all atrous
+    convolutions in the graph use the same padding mode). Defaults to "SAME".
+
 Prerequisites: [fold_constants](#fold_constants)
 
 This transform flattens atrous convolution, corresponding to a sequence of

@@ -27,6 +27,9 @@ Status FlattenAtrousConv(const GraphDef& input_graph_def,
                          const TransformFuncContext& context,
                          GraphDef* output_graph_def) {
   GraphDef replaced_graph_def;
+  string padding;
+  TF_RETURN_IF_ERROR(
+      context.GetOneStringParameter("padding", "SAME", &padding));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
       {"BatchToSpaceND",
@@ -47,9 +50,9 @@ Status FlattenAtrousConv(const GraphDef& input_graph_def,
               {"*"}                           // crops
           }
       },  // clang-format on
-      [](const NodeMatch& match, const std::set<string>& input_nodes,
-         const std::set<string>& output_nodes,
-         std::vector<NodeDef>* new_nodes) {
+      [&padding](const NodeMatch& match, const std::set<string>& input_nodes,
+                 const std::set<string>& output_nodes,
+                 std::vector<NodeDef>* new_nodes) {
         // Find all the nodes we expect in the subgraph.
         const NodeDef& batch_to_space_node = match.node;
         const NodeDef& conv_node = match.inputs[0].node;
@@ -114,7 +117,7 @@ Status FlattenAtrousConv(const GraphDef& input_graph_def,
 
         CopyNodeAttr(conv_node, "T", "T", &flattened_conv_node);
         CopyNodeAttr(conv_node, "strides", "strides", &flattened_conv_node);
-        SetNodeAttr("padding", "SAME", &flattened_conv_node);
+        SetNodeAttr("padding", padding, &flattened_conv_node);
         CopyNodeAttr(conv_node, "data_format", "data_format",
                      &flattened_conv_node);
 
