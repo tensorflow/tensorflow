@@ -57,8 +57,8 @@ static Twine getBoundSymbol(const StringRef &symbol) {
 namespace {
 // A class for resolving symbols bound in patterns.
 //
-// Symbols can be bound to op arguments/results in the source pattern and op
-// results in result patterns. For example, in
+// Symbols can be bound to op arguments and ops in the source pattern and ops
+// in result patterns. For example, in
 //
 // ```
 // def : Pattern<(SrcOp:$op1 $arg0, %arg1),
@@ -72,7 +72,7 @@ namespace {
 // values.
 //
 // Note that we also generate local variables for unnamed DAG nodes, like
-// `(ResOp3)` in the above. Since we don't bind a symbol to the result, the
+// `(ResOp3)` in the above. Since we don't bind a symbol to the op, the
 // generated local variable will be implicitly named. Those implicit names are
 // not tracked in this class.
 class PatternSymbolResolver {

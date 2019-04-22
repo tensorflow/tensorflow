@@ -777,14 +777,14 @@ def outs;
 // The signature of the builder is always
 //
 // ```c++
-// static void build(Builder *builder, OperationState *result,
+// static void build(Builder *builder, OperationState *state,
 //                   <other-parameters>...) {
 //   <body>...
 // }
 // ```
 //
 // To define a custom builder, the parameter list (*including* the `Builder
-// *builder, OperationState *result` part) and body should be passed in
+// *builder, OperationState *state` part) and body should be passed in
 // as separate template arguments to this class. This is because we generate
 // op declaration and definition into separate files. If an empty string is
 // passed in for `body`, then *only* the builder declaration will be
@@ -942,21 +942,21 @@ def addBenefit;
 //
 // In the result pattern, `argN` can be used to refer to a previously bound
 // name, with potential transformations (e.g., using tAttr, etc.). `argN` can
-// itself be nested DAG node. We can also bound names to op results to reference
+// itself be nested DAG node. We can also bound names to ops to reference
 // them later in other result patterns.
 //
 // For example,
 //
 // ```
-// def : Pattern<(OneResultOp1:$res1 $arg0, $arg1),
-//               [(OneResultOp2:$res2 $arg0, $arg1),
-//                (OneResultOp3 $res2 (OneResultOp4))],
-//               [(IsStaticShapeTensorTypePred $res1)]>;
+// def : Pattern<(OneResultOp1:$op1 $arg0, $arg1),
+//               [(OneResultOp2:$op2 $arg0, $arg1),
+//                (OneResultOp3 $op2 (OneResultOp4))],
+//               [(IsStaticShapeTensorTypePred $op1)]>;
 // ```
 //
 // `$argN` is bound to the `OneResultOp1`'s N-th argument and used later to
-// build `OneResultOp2`. `$res1` is bound to `OneResultOp1`'s result and used to
-// check whether the result's shape is static. `$res2` is bound to the result of
+// build `OneResultOp2`. `$op1` is bound to `OneResultOp1` and used to
+// check whether the result's shape is static. `$op2` is bound to
 // `OneResultOp2` and used to build `OneResultOp3`.
 class Pattern<dag source, list<dag> results, list<dag> preds = [],
   dag benefitAdded = (addBenefit 0)> {
@@ -1009,8 +1009,8 @@ class NativeCodeCall<string expr> {
 // Common directives
 //===----------------------------------------------------------------------===//
 
-// Directive used in result pattern to indicate that no new result op are
-// generated, so to replace the matched DAG with an existing SSA value.
+// Directive used in result pattern to indicate that no new op are generated,
+// so to replace the matched DAG with an existing SSA value.
 def replaceWithValue;
 
 // Directive used in result pattern to indicate that no replacement is generated
