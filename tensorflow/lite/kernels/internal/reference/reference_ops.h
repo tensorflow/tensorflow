@@ -2466,6 +2466,28 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
   Tanh(input_shape, input_data, output_shape, output_data);
 }
 
+inline void softplus(const float threshhold, const RuntimeShape& input_shape,
+                     const float* input_data, const RuntimeShape& output_shape,
+                     float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  float x = 0.0f;
+  for (int i = 0; i < flat_size; ++i) {
+    x = input_data[i];
+    // Check if the input is withn the Range
+    if (x < -threshhold && x > threshhold) {
+      output_data[i] = std::log(1 + std::exp(x));
+    }
+    // Check if input is more than the threshold in that case output tends to x
+    else if (x > -threshhold) {
+      output_data[i] = x;
+    }
+    // Check if input is less than the threshold in that case output tends to
+    // exp(x)
+    else if (x < threshhold) {
+      output_data[i] = std::exp(x);
+    }
+  }
+}
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const int16* input_data, const RuntimeShape& output_shape,

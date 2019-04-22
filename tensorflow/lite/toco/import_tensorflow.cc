@@ -19,19 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "google/protobuf/map.h"
-#include "google/protobuf/text_format.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
-#include "tensorflow/lite/toco/tensorflow_util.h"
-#include "tensorflow/lite/toco/tooling_util.h"
+#include "google/protobuf/map.h"
+#include "google/protobuf/text_format.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -48,6 +43,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
+#include "tensorflow/lite/toco/tensorflow_util.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
@@ -528,7 +528,7 @@ tensorflow::Status CheckInputsCount(
 
 template <ArrayDataType T>
 string CreateConstArray(Model* model, string const& name,
-                        std::vector<typename toco::DataType<T> > const& data) {
+                        std::vector<typename toco::DataType<T>> const& data) {
   // Utility function to create a const 1D array, useful for input parameters.
   string array_name = toco::AvailableArrayName(*model, name);
   auto& array = model->GetOrCreateArray(array_name);
@@ -2561,6 +2561,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Sin", ConvertSimpleOperator<SinOperator, 1, 1>},
       {"Slice", ConvertSimpleOperator<SliceOperator, 3, 1>},
       {"Softmax", ConvertSoftmaxOperator},
+      {"SoftPlus", ConvertSimpleOperator<TensorFlowSoftPlusOperator, 1, 1>},
       {"SpaceToBatchND", ConvertSpaceToBatchNDOperator},
       {"SpaceToDepth", ConvertSpaceToDepthOperator},
       {"SparseToDense", ConvertSparseToDenseOperator},

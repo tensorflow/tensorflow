@@ -41,6 +41,7 @@ bool IsElementwiseOperator(OperatorType optype) {
     case OperatorType::kTanh:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
+    case OperatorType::kSoftPlus:
       return true;
     default:
       return false;

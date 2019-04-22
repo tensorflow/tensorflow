@@ -3905,6 +3905,12 @@ def make_sqrt_tests(options):
 
 
 @register_make_test_function()
+def make_softplus_tests(options):
+  """Make a set of tests to do softplus."""
+  return _make_elementwise_tests(tf.nn.softplus)(options)
+
+
+@register_make_test_function()
 def make_rsqrt_tests(options):
   """Make a set of tests to do 1/sqrt."""
   return _make_elementwise_tests(tf.rsqrt)(options)

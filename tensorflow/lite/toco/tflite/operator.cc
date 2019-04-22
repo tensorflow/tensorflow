@@ -2584,6 +2584,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
   ops.push_back(MakeUnique<FloorDiv>());
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowSoftPlusOperator>>(
+      "SOFTPLUS", OperatorType::kSoftPlus));
   ops.emplace_back(new SimpleOperator<FloorModOperator>(
       "FLOOR_MOD", OperatorType::kFloorMod));
   ops.emplace_back(

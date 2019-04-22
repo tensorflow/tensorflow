@@ -77,6 +77,7 @@ enum class OperatorType : uint8 {
   kPRelu,
   kHardSwish,
   kSoftmax,
+  kSoftPlus,
   kLogSoftmax,
   kSub,
   kTanh,
@@ -1380,6 +1381,16 @@ struct TensorFlowSqrtOperator : Operator {
 // TensorFlow equivalent: Square
 struct TensorFlowSquareOperator : Operator {
   TensorFlowSquareOperator() : Operator(OperatorType::kSquare) {}
+};
+
+// Element-wise SoftPlus operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Square
+struct TensorFlowSoftPlusOperator : Operator {
+  TensorFlowSoftPlusOperator() : Operator(OperatorType::kSoftPlus) {}
 };
 
 // Element-wise squared difference ((x-y)*(x-y)) operator.

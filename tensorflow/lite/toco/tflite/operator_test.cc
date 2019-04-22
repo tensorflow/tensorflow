@@ -148,6 +148,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorDivOperator>("FLOOR_DIV", OperatorType::kFloorDiv);
   CheckSimpleOperator<TensorFlowSquareOperator>("SQUARE",
                                                 OperatorType::kSquare);
+  CheckSimpleOperator<TensorFlowSoftPlusOperator>("SOFTPLUS",
+                                                OperatorType::kSoftPlus);
   CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
                                                    OperatorType::kZerosLike);
   CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);

@@ -1123,6 +1123,16 @@ void ConvertSqrtOperator(const TensorFlowSqrtOperator& src_op,
   (*sqrt_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertSoftPlusOperator(const TensorFlowSoftPlusOperator& src_op,
+                             GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* softplus_op = tensorflow_graph->add_node();
+  softplus_op->set_op("SoftPlus");
+  softplus_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *softplus_op->add_input() = src_op.inputs[0];
+  (*softplus_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertRsqrtOperator(const Model& model,
                           const TensorFlowRsqrtOperator& src_op,
                           GraphDef* tensorflow_graph) {
@@ -2188,6 +2198,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kSquare) {
     ConvertSquareOperator(static_cast<const TensorFlowSquareOperator&>(src_op),
                           tensorflow_graph);
+  } else if (src_op.type == OperatorType::kSoftPlus) {
+    ConvertSoftPlusOperator(
+        static_cast<const TensorFlowSoftPlusOperator&>(src_op),
+        tensorflow_graph);
   } else if (src_op.type == OperatorType::kSqrt) {
     ConvertSqrtOperator(static_cast<const TensorFlowSqrtOperator&>(src_op),
                         tensorflow_graph);

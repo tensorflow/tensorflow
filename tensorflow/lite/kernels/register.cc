@@ -111,6 +111,7 @@ TfLiteRegistration* Register_EXPAND_DIMS();
 TfLiteRegistration* Register_SPARSE_TO_DENSE();
 TfLiteRegistration* Register_EQUAL();
 TfLiteRegistration* Register_NOT_EQUAL();
+TfLiteRegistration* Register_SOFTPLUS();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
@@ -341,6 +342,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL(),
              /* min_version */ 1,
              /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_SOFTPLUS, Register_SOFTPLUS());
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());

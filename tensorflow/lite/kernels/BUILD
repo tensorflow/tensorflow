@@ -387,6 +387,7 @@ cc_library(
         "shape.cc",
         "skip_gram.cc",
         "slice.cc",
+        "softplus.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
         "sparse_to_dense.cc",
@@ -891,6 +892,18 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "softplus_test",
+    size = "small",
+    srcs = ["softplus_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
 )

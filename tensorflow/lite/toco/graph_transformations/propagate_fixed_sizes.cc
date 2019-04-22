@@ -2138,6 +2138,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kPRelu:
     case OperatorType::kLeakyRelu:
     case OperatorType::kSoftmax:
+    case OperatorType::kSoftPlus:
     case OperatorType::kLogSoftmax:
     case OperatorType::kLog:
     case OperatorType::kLogistic:

@@ -178,6 +178,7 @@ class OpOptionData {
     op_to_option_["TANH"] = "";
     op_to_option_["PRELU"] = "";
     op_to_option_["SIN"] = "";
+    op_to_option_["SOFTPLUS"] = "";
     op_to_option_["LOG"] = "";
     op_to_option_["SQRT"] = "";
     op_to_option_["RSQRT"] = "";
