@@ -101,6 +101,16 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
+  def test_broadcast_to(self):
+    x = random_ops.random_uniform([3, 2, 1, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.broadcast_to(x1, [2, 2, 3]),
+              array_ops.broadcast_to(x1, [1, 2, 1, 3]))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+
   def test_expand_dims(self):
     x = random_ops.random_uniform([3, 2, 3])
 
