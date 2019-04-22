@@ -296,24 +296,15 @@ class TimeDistributedTest(test.TestCase):
 
     class TupleOutputShapeLayer(keras.layers.Layer):
 
-      def call(self, inputs):
-        return inputs
-
       def compute_output_shape(self, input_shape):
           return (input_shape[0], input_shape[1])
 
-    class ListOutputShape(keras.layers.Layer):
-
-      def call(self, inputs):
-        return inputs
+    class ListOutputShapeLayer(keras.layers.Layer):
 
       def compute_output_shape(self, input_shape):
           return [input_shape[0], input_shape[1]]
 
     class TensorShapeOutputShapeLayer(keras.layers.Layer):
-
-      def call(self, inputs):
-        return inputs
 
       def compute_output_shape(self, input_shape):
           return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
@@ -323,10 +314,12 @@ class TimeDistributedTest(test.TestCase):
     # Custom layers can specify output shape as a list, tuple, or TensorShape
     for layer in test_layers:
       time_distributed = keras.layers.TimeDistributed(layer())
-      placeholder = keras.backend.placeholder(shape=(None, 1, 13))
-      out = time_distributed(placeholder)
+      input_shape = (None, 1, 13)
+      output_shape = time_distributed.compute_output_shape(input_shape)
       # all output shapes are exposed in the end as TensorShape instances
-      self.assertEqual(isinstance(out, tensor_shape.TensorShape), True)
+      self.assertIsInstance(output_shape, tensor_shape.TensorShape)
+      # verify the expected shapes from our passthrough layers
+      self.assertListEqual(list(input_shape), output_shape.as_list())
 
 
 class BidirectionalTest(test.TestCase):
