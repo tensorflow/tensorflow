@@ -130,8 +130,8 @@ def StreamingFilesDataset(files,
   if sloppy is None:
     sloppy = True
 
-  if file_reader_job == 'cordinator':
-    file_reader_device = '/job:%s/task:0' % file_reader_job
+  if file_reader_job == 'coordinator':
+    file_reader_device = '/job:coordinator/task:0'
   else:
     file_reader_device = '/job:%s' % file_reader_job
 
