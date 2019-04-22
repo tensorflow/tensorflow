@@ -8,6 +8,8 @@ package(
     default_visibility = ["//visibility:private"],
 )
 
+load(":ruy_visibility.bzl", "ruy_visibility")
+
 cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
@@ -127,6 +129,7 @@ cc_library(
     hdrs = [
         "thread_pool.h",
     ],
+    visibility = ruy_visibility(),
     deps = [
         ":blocking_counter",
         ":check_macros",
@@ -174,6 +177,7 @@ cc_library(
     hdrs = [
         "context.h",
     ],
+    visibility = ruy_visibility(),
     deps = [
         ":allocator",
         ":check_macros",
@@ -244,8 +248,6 @@ cc_library(
         "@gemmlowp//:profiler",
     ],
 )
-
-load(":ruy_visibility.bzl", "ruy_visibility")
 
 # The main library.
 cc_library(
