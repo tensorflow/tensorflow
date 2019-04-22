@@ -22,14 +22,11 @@ from __future__ import division
 from __future__ import print_function
 
 import textwrap
-import threading
 
 import gast
 
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
-
-
-_parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
 
 
 STANDARD_PREAMBLE = textwrap.dedent("""
@@ -53,8 +50,7 @@ def parse_entity(entity, future_features):
     generate the AST (including any prefixes that this function may have added).
   """
   try:
-    with _parse_lock:
-      source = tf_inspect.getsource_no_unwrap(entity)
+    source = inspect_utils.getimmediatesource(entity)
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'
