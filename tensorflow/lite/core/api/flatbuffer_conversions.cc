@@ -349,6 +349,11 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_ADD_N: {
+      auto* params = allocator->AllocatePOD<TfLiteAddNParams>();
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DIV: {
       auto* params = allocator->AllocatePOD<TfLiteDivParams>();
       if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
@@ -758,7 +763,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_REVERSE_V2:
-    case BuiltinOperator_ADD_N:
     case BuiltinOperator_GATHER_ND:
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:

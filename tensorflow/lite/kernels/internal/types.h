@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 #include <initializer_list>
+#include <vector>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -757,6 +758,19 @@ struct ArithmeticParams {
   // broadcast_shape[1] = a3; b3 = 1.
   // broadcast_shape[0] = b4 = a4.
   int broadcast_shape[5];
+};
+
+// For AddN
+struct AddNParams {
+  struct OpDataParams {
+    // These field is used in the general 8-bit -> 8bit quantized path
+    int shift;
+    int32 multiplier;
+    int32 offset;
+  };
+  std::vector<struct OpDataParams> inputs;
+  struct OpDataParams output;
+  int left_shift;
 };
 
 struct ConcatenationParams {

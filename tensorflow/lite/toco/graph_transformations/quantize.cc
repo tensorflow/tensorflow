@@ -41,6 +41,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kFullyConnected ||
          type == OperatorType::kConcatenation ||
          type == OperatorType::kL2Normalization || type == OperatorType::kAdd ||
+         type == OperatorType::kAddN ||
          type == OperatorType::kAveragePool || type == OperatorType::kMaxPool ||
          type == OperatorType::kMinimum || type == OperatorType::kMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||

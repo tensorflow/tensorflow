@@ -361,6 +361,7 @@ cc_library(
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
         "reference/integer_ops/add.h",
+        "reference/integer_ops/add_n.h",
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",

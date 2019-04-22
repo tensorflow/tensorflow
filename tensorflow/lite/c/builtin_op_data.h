@@ -161,6 +161,10 @@ typedef struct {
 
 typedef struct {
   EmptyStructPlaceholder placeholder;
+} TfLiteAddNParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteSpaceToBatchNDParams;
 
 typedef struct {
