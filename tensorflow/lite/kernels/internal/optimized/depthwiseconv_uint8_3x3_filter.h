@@ -5680,9 +5680,9 @@ inline void DepthwiseConv3x3Filter(
   }
 
   for (int32 b = batch_start; b < batch_end; ++b) {
+    // input_ptr and output_ptr point to the start of each batch
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size +
-                        row_start * params.output_width * params.output_depth;
+    uint8* output_ptr = output_data + b * output_batch_size;
 
     int32 out_x = 0;
     int32 out_y = row_start;
@@ -5698,12 +5698,18 @@ inline void DepthwiseConv3x3Filter(
       end_x = params.output_width - 1;
       out_y = std::max(1, out_y);
       end_y = std::min(params.output_height - 1, end_y);
-      const int in_x = (out_x * stride_width) - pad_width;
-      const int in_y = (out_y * stride_height) - pad_height;
-      input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
-      output_ptr +=
-          out_y * params.output_row_size + out_x * params.output_depth;
     }
+
+    // pad_width and pad_height can both be 0 or 1, depending on padding option,
+    // such as Padding_VALID / Padding_SAME.
+    const int in_x = (out_x * stride_width) - pad_width;
+    const int in_y = (out_y * stride_height) - pad_height;
+
+    // input_ptr and output_ptr point to (in_y, in_x) and (out_y, out_x),
+    // respectively. (in_y, in_x) and (out_y, out_x) change along with
+    // row_start.
+    input_ptr += in_y * params.input_row_size + in_x * params.input_depth;
+    output_ptr += out_y * params.output_row_size + out_x * params.output_depth;
 
     // Shuffling shapes that maximize width over the shuffle workspace size
     // perform better since the inputs are closer together, minimizing
