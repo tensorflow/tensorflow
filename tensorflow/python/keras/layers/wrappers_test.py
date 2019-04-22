@@ -322,9 +322,9 @@ class TimeDistributedTest(test.TestCase):
                    TensorShapeOutputShapeLayer]
     # Custom layers can specify output shape as a list, tuple, or TensorShape
     for layer in test_layers:
-      td = layer()
-      ph = keras.backend.placeholder(shape=(None, 1, 13))
-      out = td(ph)
+      time_distributed = keras.layers.TimeDistributed(layer())
+      placeholder = keras.backend.placeholder(shape=(None, 1, 13))
+      out = time_distributed(placeholder)
       # all output shapes are exposed in the end as TensorShape instances
       self.assertEqual(isinstance(out, tensor_shape.TensorShape), True)
 
