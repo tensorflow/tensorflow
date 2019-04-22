@@ -158,9 +158,10 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(x, name="tensor")
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
 
+  @test_util.run_gpu_only
   def testEagerCopy(self):
     with context.eager_mode():
-      var = variables.Variable([[0.0], [0.0], [0.0], [0.0], [0.0]], name='tensor')
+      var = variables.Variable([[0.0], [0.0], [0.0], [0.0]], name='tensor')
       with backprop.GradientTape() as tape:
         a = array_ops.gather(array_ops.gather(var, [0, 1]), [0, 1])
         b = array_ops.gather(array_ops.gather(var, [2, 3]), [0, 1])
