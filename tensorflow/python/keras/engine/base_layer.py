@@ -1357,7 +1357,8 @@ class Layer(module.Module):
     """
     if not self.built:
       if self.__class__.__name__ == 'Sequential':
-        self.build()  # pylint: disable=no-value-for-parameter
+        with tf_utils.maybe_init_scope(self):
+          self.build()  # pylint: disable=no-value-for-parameter
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1821,7 +1822,11 @@ class Layer(module.Module):
       input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
-      self.build(input_shapes)
+      # Any setup work performed only once should happen in an `init_scope`
+      # to avoid creating symbolic Tensors that will later pollute any eager
+      # operations.
+      with tf_utils.maybe_init_scope(self):
+        self.build(input_shapes)
     # We must set self.built since user defined build functions are not
     # constrained to set self.built.
     self.built = True
@@ -2261,4 +2266,3 @@ def default(method):
 # Avoid breaking users who directly import this symbol from this file.
 # TODO(fchollet): remove this.
 InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name
-
