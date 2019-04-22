@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -177,7 +179,8 @@ class FunctionInstantiationHelper {
       } else {
         gnode->set_op(FunctionLibraryDefinition::kArgOp);
       }
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
@@ -343,7 +346,8 @@ class FunctionInstantiationHelper {
         gnode->set_op(FunctionLibraryDefinition::kRetOp);
       }
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = ret_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", (*ret_index)++, gnode);
       result_.ret_types.push_back(dtypes[i]);
     }
@@ -907,6 +911,18 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(strings::StrCat(
         "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
   }
+  for (const auto& iter : options.input_tensor_shapes) {
+    entries.push_back(
+        strings::StrCat("_input_tensor_shape", iter.first, "=",
+                        str_util::CEscape(iter.second.DebugString())));
+  }
+  for (const auto& iter : options.input_resource_dtypes_and_shapes) {
+    entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
+                                      DataTypeString(iter.second.first)));
+    entries.push_back(
+        strings::StrCat("_input_resource_shape", iter.first, "=",
+                        str_util::CEscape(iter.second.second.DebugString())));
+  }
   if (options.lib_def) {
     entries.push_back(strings::StrCat(
         "_lib_def", "=", reinterpret_cast<uintptr_t>(options.lib_def)));
@@ -1056,12 +1072,6 @@ bool FunctionLibraryDefinition::Contains(const string& func) const {
   return function_defs_.find(func) != function_defs_.end();
 }
 
-bool FunctionLibraryDefinitionOverlay::Contains(const string& func) const {
-  tf_shared_lock l(mu_);
-  return function_defs_.find(func) != function_defs_.end() ||
-         base_lib_def_->Contains(func);
-}
-
 const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
   tf_shared_lock l(mu_);
   return FindHelper(func);
@@ -1075,15 +1085,6 @@ const FunctionDef* FunctionLibraryDefinition::FindHelper(
   } else {
     return &iter->second->fdef;
   }
-}
-
-const FunctionDef* FunctionLibraryDefinitionOverlay::FindHelper(
-    const string& func) const {
-  const FunctionDef* result = FunctionLibraryDefinition::FindHelper(func);
-  if (result != nullptr) {
-    return result;
-  }
-  return base_lib_def_->FindHelper(func);
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
@@ -1116,21 +1117,6 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
   entry->reset(new FunctionDefAndOpRegistration(fdef));
   *added = true;
   return Status::OK();
-}
-
-Status FunctionLibraryDefinitionOverlay::AddFunctionDefHelper(
-    const FunctionDef& fdef, bool* added) {
-  const FunctionDef* f = base_lib_def_->Find(fdef.signature().name());
-  if (f != nullptr) {
-    if (!FunctionDefsEqual(fdef, *f)) {
-      return errors::InvalidArgument(
-          "Cannot add function '", fdef.signature().name(),
-          "' because a different function with the same name already exists.");
-    }
-    // Ignore duplicate FunctionDefs.
-    return Status::OK();
-  }
-  return FunctionLibraryDefinition::AddFunctionDefHelper(fdef, added);
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
@@ -1261,16 +1247,6 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   return Status::OK();
 }
 
-Status FunctionLibraryDefinitionOverlay::RemoveFunctionHelper(
-    const string& func) {
-  if (base_lib_def_->Contains(func)) {
-    return errors::InvalidArgument(
-        "Cannot remove function '", func,
-        "' because it is part of the immutable base of an overlay.");
-  }
-  return FunctionLibraryDefinition::RemoveFunctionHelper(func);
-}
-
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {
@@ -1314,35 +1290,11 @@ Status FunctionLibraryDefinition::LookUp(
   return default_registry_->LookUp(op, op_reg_data);
 }
 
-Status FunctionLibraryDefinitionOverlay::LookUp(
-    const string& op, const OpRegistrationData** op_reg_data) const {
-  tf_shared_lock l(mu_);
-  auto iter = function_defs_.find(op);
-  if (iter != function_defs_.end()) {
-    *op_reg_data = &iter->second->op_registration_data;
-    return Status::OK();
-  }
-  return base_lib_def_->LookUp(op, op_reg_data);
-}
-
 string FunctionLibraryDefinition::UniqueFunctionName(StringPiece prefix) const {
   tf_shared_lock l(mu_);
   int index = 0;
   string name = strings::StrCat(prefix, index);
   while (function_defs_.find(name) != function_defs_.end()) {
-    ++index;
-    name = strings::StrCat(prefix, index);
-  }
-  return name;
-}
-
-string FunctionLibraryDefinitionOverlay::UniqueFunctionName(
-    StringPiece prefix) const {
-  tf_shared_lock l(mu_);
-  int index = 0;
-  string name = strings::StrCat(prefix, index);
-  while (function_defs_.find(name) != function_defs_.end() ||
-         base_lib_def_->Contains(name)) {
     ++index;
     name = strings::StrCat(prefix, index);
   }
@@ -1387,34 +1339,9 @@ std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
   return function_names;
 }
 
-std::vector<string> FunctionLibraryDefinitionOverlay::ListFunctionNames()
-    const {
-  tf_shared_lock l(mu_);
-  std::vector<string> function_names = base_lib_def_->ListFunctionNames();
-  function_names.reserve(function_names.size() + function_defs_.size());
-  for (const auto& it : function_defs_) {
-    function_names.emplace_back(it.first);
-  }
-  return function_names;
-}
-
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   tf_shared_lock l(mu_);
-  for (const auto& f : function_defs_) {
-    *lib.add_function() = f.second->fdef;
-  }
-  for (const auto& g : func_grad_) {
-    GradientDef* gd = lib.add_gradient();
-    gd->set_function_name(g.first);
-    gd->set_gradient_func(g.second);
-  }
-  return lib;
-}
-
-FunctionDefLibrary FunctionLibraryDefinitionOverlay::ToProto() const {
-  tf_shared_lock l(mu_);
-  FunctionDefLibrary lib = base_lib_def_->ToProto();
   for (const auto& f : function_defs_) {
     *lib.add_function() = f.second->fdef;
   }
@@ -1576,6 +1503,24 @@ FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
   return reachable_flib;
 }
 
+string AllocatorAttributesToString(
+    const std::vector<AllocatorAttributes>& attrs) {
+  string result("[");
+  // AllocatorAttribute::DebugString produces around 85 bytes now.
+  result.reserve(100 * attrs.size());
+  for (const AllocatorAttributes& attr : attrs) {
+    result.append(attr.DebugString());
+    result.append(", ");
+  }
+  if (!attrs.empty()) {
+    result.resize(result.size() - 2);
+  }
+  result.append("]");
+  return result;
+}
+
+const char* IsSet(void* ptr) { return ptr == nullptr ? "unset" : "set"; }
+
 }  // namespace
 
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
@@ -1583,29 +1528,23 @@ FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
   return ReachableFunctionLibraryDefinition(*this, graph.node());
 }
 
-FunctionLibraryDefinition
-FunctionLibraryDefinitionOverlay::ReachableDefinitions(
-    const GraphDef& graph) const {
-  // TODO(jsimsa): Figure out whether we can avoid computing the reachable
-  // definitions without having to use `ToProto` and `FunctionLibraryDefinition`
-  // constructor to merge the overlay and the base.
-  FunctionLibraryDefinition flib(default_registry_, ToProto());
-  return ReachableFunctionLibraryDefinition(flib, graph.node());
-}
-
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const FunctionDef& func) const {
   return ReachableFunctionLibraryDefinition(*this, func.node_def());
 }
 
-FunctionLibraryDefinition
-FunctionLibraryDefinitionOverlay::ReachableDefinitions(
-    const FunctionDef& func) const {
-  // TODO(jsimsa): Figure out whether we can avoid computing the reachable
-  // definitions without having to use `ToProto` and `FunctionLibraryDefinition`
-  // constructor to merge the overlay and the base.
-  FunctionLibraryDefinition flib(default_registry_, ToProto());
-  return ReachableFunctionLibraryDefinition(flib, func.node_def());
+string FunctionLibraryRuntime::Options::DebugString() const {
+  return absl::StrCat(
+      "FLR::Options(step_id=", step_id, " rendezvous=", IsSet(rendezvous),
+      " cancellation_manager=", IsSet(cancellation_manager),
+      " collective_executor=", IsSet(collective_executor),
+      " step_container=", IsSet(step_container),
+      " stats_collector=", IsSet(stats_collector), " runner=", IsSet(runner),
+      " remote_execution=", remote_execution, " source_device=", source_device,
+      " create_rendezvous=", create_rendezvous,
+      " allow_dead_tensors=", allow_dead_tensors,
+      " args_alloc_attrs=", AllocatorAttributesToString(args_alloc_attrs),
+      " rets_alloc_attrs=", AllocatorAttributesToString(rets_alloc_attrs), ")");
 }
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {

@@ -259,13 +259,15 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
                                    const bool use_aggressive_shape_inference,
                                    Cluster* cluster,
-                                   ReadyNodeManager* ready_nodes)
+                                   ReadyNodeManager* ready_nodes,
+                                   std::unique_ptr<VirtualPlacer> placer)
     : ready_nodes_(ready_nodes),
       graph_costs_(Costs::ZeroCosts()),
       cluster_(cluster),
       use_static_shapes_(use_static_shapes),
       use_aggressive_shape_inference_(use_aggressive_shape_inference),
-      placer_(cluster) {
+      placer_(std::move(placer)) {
+  DCHECK(placer_);  // check if the pointer is valid.
   graph_costs_.num_ops_total = 0;
   initialized_ = false;
   track_mem_usage_snapshot_ = VLOG_IS_ON(1);
@@ -524,13 +526,13 @@ bool VirtualScheduler::IsPersistentNode(const NodeDef* node) const {
 }
 
 string VirtualScheduler::DeviceName(const NodeDef* node) const {
-  return placer_.get_canonical_device_name(*node);
+  return placer_->get_canonical_device_name(*node);
 }
 
 string VirtualScheduler::SanitizedDeviceName(const NodeDef* node) const {
   // Replace the ":" characters that may be present in the device name with "_".
   // This makes it possible to then use the resulting string in a node name.
-  return str_util::StringReplace(placer_.get_canonical_device_name(*node), ":",
+  return str_util::StringReplace(placer_->get_canonical_device_name(*node), ":",
                                  "_", true);
 }
 
@@ -620,7 +622,7 @@ OpContext VirtualScheduler::GetCurrNode() const {
 
   // Get the device from the placer.
   DeviceProperties device;
-  device = placer_.get_device(*node);
+  device = placer_->get_device(*node);
 
   // Special case for _Send op.
   if (IsSend(*node)) {

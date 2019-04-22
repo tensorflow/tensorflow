@@ -693,6 +693,114 @@ class Conv2DTest(test.TestCase):
         dilations=[2, 3],
         test_grappler_layout_optimizer=True)
 
+  def _VerifyGroupConvFwd(self, tensor_in_sizes, filter_in_sizes, dilations,
+                          strides, padding, data_format, dtype):
+    """Verify the output of group convolution is equal to a for-loop implementation.
+
+    Args:
+      tensor_in_sizes: Input tensor dimensions in [batch, input_rows,
+        input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in [kernel_rows, kernel_cols,
+        input_depth, output_depth].
+      dilations: Dilated rate: [col_dilation, row_dilation]
+      strides: Stride: [col_stride, row_stride]
+      padding: Padding type.
+      data_format: Format of the data tensors.
+      dtype: Data type for inputs and outputs.
+    """
+    tensor_in = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    num_groups = tensor_in_sizes[3] // filter_in_sizes[2]
+    assert num_groups > 1 and \
+        filter_in_sizes[2] * num_groups == tensor_in_sizes[3]
+    with test_util.device(True):
+      t1 = constant_op.constant(tensor_in, dtype=dtype)
+      t2 = constant_op.constant(filter_in, dtype=dtype)
+      strides = [1] + strides + [1]
+      dilations = [1] + dilations + [1]
+      if data_format == "NCHW":
+        t1 = test_util.NHWCToNCHW(t1)
+        strides = test_util.NHWCToNCHW(strides)
+        dilations = test_util.NHWCToNCHW(dilations)
+        t1_splits = array_ops.split(t1, num_groups, axis=1)
+      else:
+        t1_splits = array_ops.split(t1, num_groups, axis=3)
+      t2_splits = array_ops.split(t2, num_groups, axis=3)
+
+      def MakeConv2d(inputs, filters):
+        return nn_ops.conv2d(
+            inputs,
+            filters,
+            strides,
+            padding,
+            dilations=dilations,
+            data_format=data_format)
+
+      group_conv = MakeConv2d(t1, t2)
+      group_conv_loop = array_ops.concat(
+          [MakeConv2d(t1s, t2s) for t1s, t2s in zip(t1_splits, t2_splits)],
+          axis=1 if data_format == "NCHW" else 3)
+
+      results = self.evaluate([group_conv, group_conv_loop])
+      tol_to_use = 1e-5
+      self.assertAllClose(
+          results[0], results[1], atol=tol_to_use, rtol=tol_to_use)
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_cuda_only
+  def testConv2DGroupConvFwd(self):
+    for data_format in ["NHWC", "NCHW"]:
+      for dilation in [1, 2]:
+        for stride in [1, 2]:
+          self._VerifyGroupConvFwd([10, 32, 32, 16], [3, 3, 4, 8],
+                                   dilations=[dilation, dilation],
+                                   strides=[stride, stride],
+                                   padding="SAME",
+                                   data_format=data_format,
+                                   dtype=dtypes.float32)
+
+  @test_util.deprecated_graph_mode_only
+  @test_util.run_cuda_only
+  def testInputGradientGroupConv(self):
+    for data_format in ["NCHW", "NHWC"]:
+      for test_input in [True, False]:
+        self.ConstructAndTestGradient(
+            batch=2,
+            input_rows=5,
+            input_cols=4,
+            filter_rows=3,
+            filter_cols=3,
+            num_groups=2,
+            padding="VALID",
+            in_depth=4,
+            out_depth=6,
+            stride_rows=1,
+            stride_cols=1,
+            test_input=test_input,
+            data_format=data_format,
+            use_gpu=True)
+
+  @test_util.deprecated_graph_mode_only
+  @test_util.run_cuda_only
+  def testFilterGradientGroupConv(self):
+    for data_format in ["NCHW", "NHWC"]:
+      for test_input in [True, False]:
+        self.ConstructAndTestGradient(
+            batch=2,
+            input_rows=5,
+            input_cols=4,
+            filter_rows=3,
+            filter_cols=3,
+            num_groups=2,
+            padding="VALID",
+            in_depth=4,
+            out_depth=6,
+            stride_rows=1,
+            stride_cols=1,
+            test_input=test_input,
+            data_format=data_format,
+            use_gpu=True,
+            max_err=0.005)
   # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
   #                   filter_in_sizes=[2, 2, 1, 1],
@@ -1635,12 +1743,25 @@ class Conv2DTest(test.TestCase):
             dilations=[2, 1])
 
   # Gradient checkers
-  def ConstructAndTestGradient(self, batch, input_rows, input_cols, filter_rows,
-                               filter_cols, in_depth, out_depth, stride_rows,
-                               stride_cols, padding, test_input, data_format,
-                               use_gpu, max_err=0.002):
+  def ConstructAndTestGradient(self,
+                               batch,
+                               input_rows,
+                               input_cols,
+                               filter_rows,
+                               filter_cols,
+                               in_depth,
+                               out_depth,
+                               stride_rows,
+                               stride_cols,
+                               padding,
+                               test_input,
+                               data_format,
+                               use_gpu,
+                               num_groups=1,
+                               max_err=0.002):
+    assert in_depth % num_groups == 0 and out_depth % num_groups == 0
     input_shape = [batch, input_rows, input_cols, in_depth]
-    filter_shape = [filter_rows, filter_cols, in_depth, out_depth]
+    filter_shape = [filter_rows, filter_cols, in_depth // num_groups, out_depth]
     # TODO(yangke): re-factor the computation of output shape.
     if padding == "VALID":
       output_rows = (input_rows - filter_rows + stride_rows) // stride_rows
@@ -2274,6 +2395,14 @@ class Conv2DTest(test.TestCase):
               dtypes.float32, shape=[4, 4, 2, 2]),
           strides=[1, 1, 1, 1],
           padding="SAME")
+
+    # Input depth divisible by filter depth (group convolution).
+    # No exceptions should appear.
+    nn_ops.conv2d(
+        array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 8]),
+        array_ops.placeholder(dtypes.float32, shape=[4, 4, 2, 16]),
+        strides=[1, 1, 1, 1],
+        padding="SAME")
 
     # Negative padding.
     with self.assertRaises(ValueError):

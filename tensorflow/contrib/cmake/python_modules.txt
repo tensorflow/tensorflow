@@ -119,11 +119,6 @@ tensorflow/contrib/cloud/python/ops
 tensorflow/contrib/cluster_resolver
 tensorflow/contrib/cluster_resolver/python
 tensorflow/contrib/cluster_resolver/python/training
-tensorflow/contrib/coder
-tensorflow/contrib/coder/kernels
-tensorflow/contrib/coder/ops
-tensorflow/contrib/coder/python
-tensorflow/contrib/coder/python/ops
 tensorflow/contrib/compiler
 tensorflow/contrib/constrained_optimization
 tensorflow/contrib/constrained_optimization/python

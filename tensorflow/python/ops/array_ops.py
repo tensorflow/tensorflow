@@ -24,6 +24,7 @@ import sys
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -284,6 +285,26 @@ def broadcast_static_shape(shape_x, shape_y):
 @tf_export("shape", v1=[])
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
+  """Returns the shape of a tensor.
+
+  This operation returns a 1-D integer tensor representing the shape of `input`.
+
+  For example:
+
+  ```python
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  tf.shape(t)  # [2, 2, 3]
+  ```
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    out_type: (Optional) The specified output type of the operation (`int32` or
+      `int64`). Defaults to `tf.int32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `out_type`.
+  """
   return shape(input, name, out_type)
 
 
@@ -534,11 +555,11 @@ def _slice_helper(tensor, slice_spec, var=None):
   Some useful examples:
 
   ```python
-  # strip leading and trailing 2 elements
+  # Strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
   print(foo[2:-2].eval())  # => [3,4]
 
-  # skip every row and reverse every column
+  # Skip every other row and reverse the order of the columns
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
   print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
 
@@ -558,7 +579,7 @@ def _slice_helper(tensor, slice_spec, var=None):
   print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
 
-  # masks
+  # Masks
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
   print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
   ```
@@ -841,22 +862,36 @@ def strided_slice(input_,
       """Closure that holds all the arguments to create an assignment."""
 
       if var is None:
-        raise ValueError("Sliced assignment is only supported for variables")
+        if name is None:
+          name = parent_name + "_strided_slice_update"
 
-      if name is None:
-        name = parent_name + "_assign"
+        return gen_array_ops.tensor_strided_slice_update(
+            input=var,
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=val,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
+      else:
+        if name is None:
+          name = parent_name + "_assign"
 
-      return var._strided_slice_assign(
-          begin=begin,
-          end=end,
-          strides=strides,
-          value=val,
-          name=name,
-          begin_mask=begin_mask,
-          end_mask=end_mask,
-          ellipsis_mask=ellipsis_mask,
-          new_axis_mask=new_axis_mask,
-          shrink_axis_mask=shrink_axis_mask)
+        return var._strided_slice_assign(
+            begin=begin,
+            end=end,
+            strides=strides,
+            value=val,
+            name=name,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            ellipsis_mask=ellipsis_mask,
+            new_axis_mask=new_axis_mask,
+            shrink_axis_mask=shrink_axis_mask)
 
     op.assign = assign
   return op
@@ -1439,7 +1474,7 @@ def sparse_mask(a, mask_indices, name=None):
   """
   with ops.name_scope(name, "sparse_mask", [a, mask_indices]) as name:
     indices = a.indices
-    out_indices, to_gather = setdiff1d(indices, mask_indices)
+    out_indices, to_gather = gen_array_ops.list_diff(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 
@@ -1585,7 +1620,7 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
                     [10, 11, 12]]])
 
   # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `linalg.transpose`)
+  # (this common operation has a shorthand `linalg.matrix_transpose`)
   tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
                                    #   [2,  5],
                                    #   [3,  6]],
@@ -1653,7 +1688,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
                     [10, 11, 12]]])
 
   # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `linalg.transpose`)
+  # (this common operation has a shorthand `linalg.matrix_transpose`)
   tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
                                    #   [2,  5],
                                    #   [3,  6]],
@@ -1697,8 +1732,10 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
 
 # pylint: disable=invalid-name
-@tf_export("linalg.transpose", v1=["linalg.transpose", "matrix_transpose"])
-@deprecation.deprecated_endpoints("matrix_transpose")
+@tf_export(
+    "linalg.matrix_transpose",
+    v1=["linalg.transpose", "linalg.matrix_transpose", "matrix_transpose"])
+@deprecation.deprecated_endpoints("matrix_transpose", "linalg.transpose")
 def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   """Transposes last two dimensions of tensor `a`.
 
@@ -1706,19 +1743,19 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
   ```python
   x = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.linalg.transpose(x)  # [[1, 4],
-                          #  [2, 5],
-                          #  [3, 6]]
+  tf.linalg.matrix_transpose(x)  # [[1, 4],
+                                 #  [2, 5],
+                                 #  [3, 6]]
 
   x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
                    [4 + 4j, 5 + 5j, 6 + 6j]])
-  tf.linalg.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
-                                          #  [2 - 2j, 5 - 5j],
-                                          #  [3 - 3j, 6 - 6j]]
+  tf.linalg.matrix_transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
+                                                 #  [2 - 2j, 5 - 5j],
+                                                 #  [3 - 3j, 6 - 6j]]
 
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
-  # tf.linalg.transpose(x) is shape [1, 2, 4, 3]
+  # tf.linalg.matrix_transpose(x) is shape [1, 2, 4, 3]
   ```
 
   Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
@@ -1729,22 +1766,22 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   tf.matmul(matrix, b, transpose_b=True)
 
   # Inefficient!
-  tf.matmul(matrix, tf.linalg.transpose(b))
+  tf.matmul(matrix, tf.linalg.matrix_transpose(b))
   ```
 
   @compatibility(numpy)
   In `numpy` transposes are memory-efficient constant time operations as they
   simply return a new view of the same data with adjusted `strides`.
 
-  TensorFlow does not support strides, `linalg.transposes` return a new tensor
-  with the items permuted.
+  TensorFlow does not support strides, `linalg.matrix_transpose` returns a new
+  tensor with the items permuted.
   @end_compatibility
 
   Args:
     a: A `Tensor` with `rank >= 2`.
     name: A name for the operation (optional).
     conjugate: Optional bool. Setting it to `True` is mathematically equivalent
-      to tf.conj(tf.linalg.transpose(input)).
+      to tf.conj(tf.linalg.matrix_transpose(input)).
 
   Returns:
     A transposed batch matrix `Tensor`.
@@ -1971,7 +2008,7 @@ def ones_like_v2(
   """Creates a tensor with all elements set to zero.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
-  same type and shape as `tensor` with all elements set to zero. Optionally,
+  same type and shape as `tensor` with all elements set to 1. Optionally,
   you can use `dtype` to specify a new type for the returned tensor.
 
   For example:
@@ -3429,7 +3466,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
     ValueError: if `indices` has an unknown shape.
   """
   if batch_dims is not None and not isinstance(batch_dims, int):
-    raise TypeError("batch_dims must be an int; got %r" % batch_dims)
+    raise TypeError("batch_dims must be an int; got %r" % (batch_dims,))
   indices = ops.convert_to_tensor(indices, name="indices")
   params = ops.convert_to_tensor(params, name="params")
 
@@ -3522,6 +3559,258 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   final_shape = final_shape.concatenate(params.get_shape()[batch_dims + 1:])
   result.set_shape(final_shape)
   return result
+
+
+@tf_export(v1=["gather_nd", "manip.gather_nd"])
+@dispatch.add_dispatch_support
+@deprecated_endpoints("manip.gather_nd")
+def gather_nd(params, indices, name=None, batch_dims=0):
+  r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
+
+  `indices` is an K-dimensional integer tensor, best thought of as a
+  (K-1)-dimensional tensor of indices into `params`, where each element defines
+  a slice of `params`:
+
+      output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
+
+  Whereas in `tf.gather` `indices` defines slices into the first
+  dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+  first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+  The last dimension of `indices` can be at most the rank of
+  `params`:
+
+      indices.shape[-1] <= params.rank
+
+  The last dimension of `indices` corresponds to elements
+  (if `indices.shape[-1] == params.rank`) or slices
+  (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+  of `params`.  The output tensor has shape
+
+      indices.shape[:-1] + params.shape[indices.shape[-1]:]
+
+  Additionally both 'params' and 'indices' can have M leading batch
+  dimensions that exactly match. In this case 'batch_dims' must be M.
+
+  Note that on CPU, if an out of bound index is found, an error is returned.
+  On GPU, if an out of bound index is found, a 0 is stored in the
+  corresponding output value.
+
+  Some examples below.
+
+  Simple indexing into a matrix:
+
+  ```python
+      indices = [[0, 0], [1, 1]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = ['a', 'd']
+  ```
+
+  Slice indexing into a matrix:
+
+  ```python
+      indices = [[1], [0]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = [['c', 'd'], ['a', 'b']]
+  ```
+
+  Indexing into a 3-tensor:
+
+  ```python
+      indices = [[1]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[['a1', 'b1'], ['c1', 'd1']]]
+
+
+      indices = [[0, 1], [1, 0]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['c0', 'd0'], ['a1', 'b1']]
+
+
+      indices = [[0, 0, 1], [1, 0, 1]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = ['b0', 'b1']
+  ```
+
+  The examples below are for the case when only indices have leading extra
+  dimensions. If both 'params' and 'indices' have leading batch dimensions, use
+  the 'batch_dims' parameter to run gather_nd in batch mode.
+
+  Batched indexing into a matrix:
+
+  ```python
+      indices = [[[0, 0]], [[0, 1]]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = [['a'], ['b']]
+  ```
+
+  Batched slice indexing into a matrix:
+
+  ```python
+      indices = [[[1]], [[0]]]
+      params = [['a', 'b'], ['c', 'd']]
+      output = [[['c', 'd']], [['a', 'b']]]
+  ```
+
+  Batched indexing into a 3-tensor:
+
+  ```python
+      indices = [[[1]], [[0]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[[['a1', 'b1'], ['c1', 'd1']]],
+                [[['a0', 'b0'], ['c0', 'd0']]]]
+
+      indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[['c0', 'd0'], ['a1', 'b1']],
+                [['a0', 'b0'], ['c1', 'd1']]]
+
+
+      indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['b0', 'b1'], ['d0', 'c1']]
+  ```
+
+  Examples with batched 'params' and 'indices':
+
+  ```python
+      batch_dims = 1
+      indices = [[1], [0]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['c0', 'd0'], ['a1', 'b1']]
+
+      batch_dims = 1
+      indices = [[[1]], [[0]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [[['c0', 'd0']], [['a1', 'b1']]]
+
+      batch_dims = 1
+      indices = [[[1, 0]], [[0, 1]]]
+      params = [[['a0', 'b0'], ['c0', 'd0']],
+                [['a1', 'b1'], ['c1', 'd1']]]
+      output = [['c0'], ['b1']]
+  ```
+
+  See also `tf.gather`.
+
+  Args:
+    params: A `Tensor`. The tensor from which to gather values.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      Index tensor.
+    name: A name for the operation (optional).
+    batch_dims: An integer or a scalar 'Tensor'. The number of batch dimensions.
+
+  Returns:
+    A `Tensor`. Has the same type as `params`.
+  """
+  batch_dims_ = tensor_util.constant_value(batch_dims)
+  if batch_dims_ is not None:
+    batch_dims = int(batch_dims_)
+  if batch_dims == 0:
+    if compat.forward_compatible(2019, 4, 29):
+      try:
+        # TODO(apassos) find a less bad way of detecting resource variables
+        # without introducing a circular dependency.
+        return params.gather_nd(indices, name=name)
+      except AttributeError:
+        return gen_array_ops.gather_nd(params, indices, name=name)
+    else:
+      return gen_array_ops.gather_nd(params, indices, name=name)
+  else:
+    return batch_gather_nd(
+        params, indices, batch_dims=batch_dims, name=name)
+
+
+@tf_export("gather_nd", v1=[])
+@dispatch.add_dispatch_support
+def gather_nd_v2(params, indices, batch_dims=0, name=None):
+  return gather_nd(params, indices, name=name, batch_dims=batch_dims)
+
+
+gather_nd_v2.__doc__ = gather_nd.__doc__
+
+
+def batch_gather_nd(params, indices, batch_dims, name=None):
+  """gather_nd implementation with batch support."""
+  with ops.name_scope(name, "BatchGatherND", [params, indices]):
+    indices = ops.convert_to_tensor(indices, name="indices")
+    params = ops.convert_to_tensor(params, name="params")
+
+    if not isinstance(batch_dims, int):
+      raise TypeError("batch_dims must be an int; got %r" % (batch_dims,))
+    if batch_dims < 0:
+      raise ValueError("tf.gather_nd does not allow negative batch_dims.")
+    params_ndims = params.shape.ndims
+    indices_ndims = indices.shape.ndims
+    if indices_ndims is not None and batch_dims >= indices_ndims:
+      raise ValueError("batch_dims = %d must be less than rank(indices) = %d" %
+                       (batch_dims, indices_ndims))
+    if params_ndims is not None and batch_dims >= params_ndims:
+      raise ValueError("batch_dims = %d must be less than rank(params) = %d" %
+                       (batch_dims, params_ndims))
+
+    expand = batch_dims == 0
+    if expand:
+      # Normally gather_nd will be called when batch_dims == 0.
+      # But if this function is called with batch_dims = 0, e.g. for testing
+      # purposes, this adds a dummy batch dimension to make batch_dims = 1.
+      params = expand_dims(params, axis=0)
+      indices = expand_dims(indices, axis=0)
+      batch_dims = 1
+
+    params_shape = shape(params)
+    indices_shape = shape(indices)
+    batch_shape = params_shape[:batch_dims]
+    batch_size = gen_math_ops.prod(batch_shape, [0])
+    index_internal_ndims = rank(indices) - batch_dims - 1
+    indices_internal_shape = indices_shape[batch_dims:-1]
+
+    # Assuming a 'params' with shape [b1, ..., bM, g1, ..., gN] and an 'indices'
+    # with shape [b1, ..., bM, i1, ..., iK, C], where C <= N, we need to modify
+    # 'indices' s.t. it has shape [i1, ..., iK, D], where D <= M + N and slices
+    # to the entire 'params' tensor.
+    # Assuming we have a batch of shape [B1, B2], we use meshgrid to create a
+    # grid of size B1 x B2.
+    batch_dim_list = unstack(batch_shape, axis=0)
+    dim_ranges = [
+        gen_math_ops.cast(gen_math_ops._range(0, x, 1), indices.dtype)
+        for x in batch_dim_list]
+    mesh_list = meshgrid(*dim_ranges, indexing="ij") if dim_ranges else []
+    # Then we flatten and stack the tensors to form a (B1.B2) by 2 matrix.
+    flat_list = [reshape(x, shape=(-1,)) for x in mesh_list]
+    index_grid = transpose(stack(flat_list, axis=0))
+    # We need to concatenate these batch coordinates with the internal indices.
+    # concat -> index_grid [B1.B2, 2] with indices [i1, ..., iK, C]
+    # So we reshape them both to [(B1.B2), i1, ..., iK, *]
+    index_grid_shape = shape(index_grid)
+    index_grid = reshape(index_grid,
+                         concat([index_grid_shape[:1],
+                                 ones(index_internal_ndims, dtype=dtypes.int32),
+                                 index_grid_shape[1:]], axis=0))
+    tile_shape = concat(((1,), indices_internal_shape, (1,)), axis=0)
+    index_grid = tile(index_grid, multiples=tile_shape)
+    # index_grid now has shape [(B1.B2), i1, ..., iK, 2]
+    flat_shape = concat(([batch_size], indices_shape[batch_dims:]), axis=0)
+    flat_indices = reshape(indices, shape=flat_shape)
+    # flat_indices now has shape [(B1.B2), i1, ..., iK, C]
+    indices = concat((index_grid, flat_indices), axis=-1)
+    # indices has shape [(B1.B2), i1, ..., iK, 2+C]
+    out = gen_array_ops.gather_nd(params, indices)
+    # out has shape [(B1.B2), i1, ..., iK, N-C]. Now we reshape batch to
+    # its original form.
+    out_shape = shape(out)
+    out = reshape(out, shape=concat((batch_shape, out_shape[1:]), axis=0))
+    if expand:
+      out = squeeze(out, axis=0)
+  return out
 
 
 # Define quantize_v2 here in order to make name the second-to-last attribute,

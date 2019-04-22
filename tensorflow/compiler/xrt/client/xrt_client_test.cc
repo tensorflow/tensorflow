@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xrt/client/xrt_client.h"
+
 #include <memory>
 
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xrt/client/xrt_grpc_eager_client.h"
@@ -51,6 +55,9 @@ class XrtClientTest : public ::testing::Test {
     job->set_name("localhost");
     (*job->mutable_tasks())[0] = cluster_->targets()[0];
   }
+
+  xla::StatusOr<std::shared_ptr<XrtContext>> MakeContext();
+
   std::unique_ptr<test::TestCluster> cluster_;
   ClusterDef cluster_def_;
 };
@@ -134,6 +141,164 @@ TEST_F(XrtClientTest, XrtTfClientWorks) {
   // TODO(phawkins): handle endian conversion.
   EXPECT_EQ(out[0], -54);
   EXPECT_EQ(out[1], 50);
+}
+
+xla::StatusOr<std::shared_ptr<XrtContext>> XrtClientTest::MakeContext() {
+  ChannelCreationFunction channel_func =
+      ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<GrpcChannelCache> channel_cache,
+                      GetGrpcChannelCache(cluster_def_, channel_func));
+
+  auto client = std::make_shared<XrtTfClient>(cluster_def_, channel_cache);
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<XrtTfContext> tf_context,
+      XrtTfContext::Create(XrtTfContext::Options(), client, /*job=*/"localhost",
+                           /*task=*/0));
+
+  TF_ASSIGN_OR_RETURN(auto context, XrtContext::Create(tf_context, "XLA_CPU"));
+
+  // There should be exactly one XLA_CPU device.
+  TF_RET_CHECK(context->device_count() == 1);
+  return context;
+}
+
+// Tests that we can use the XRT client to perform some simple operations.
+TEST_F(XrtClientTest, XrtClientWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
+
+  ASSERT_TRUE(context->tf_context() != nullptr);
+
+  EXPECT_EQ(context->tf_device_ids().size(), 1);
+
+  ASSERT_EQ(context->device_mesh_coordinates().size(), 1);
+  ASSERT_EQ(context->device_mesh_coordinates()[0].value_size(), 1);
+  EXPECT_EQ(context->device_mesh_coordinates()[0].value(0), 0);
+
+  // Tests sending a literal to and from the device.
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {3, 4, 5});
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a,
+                          xla::LiteralUtil::CreateRandomLiteral<xla::F32>(
+                              shape,
+                              /*mean=*/7.0, /*stddev=*/13.5));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer, XrtBuffer::FromLiteral(context, 0, a));
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal b, buffer->ToLiteral());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(a, b));
+
+  // Run a simple computation, fetch its output, and check it is what we expect.
+  auto build_computation = [&]() {
+    xla::XlaBuilder builder("test_computation");
+    xla::XlaOp p = xla::Parameter(&builder, 0, shape, "param");
+    xla::Add(p, p);
+    return builder.Build();
+  };
+  TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation computation, build_computation());
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::DeviceAssignment assignment,
+                          xla::ComputationPlacer().AssignDevices(1, 1));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          XrtExecutable::Compile(context, computation.proto(),
+                                                 {shape}, shape, assignment));
+  EXPECT_EQ(executable->device_assignment(), assignment);
+  TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, executable->Execute({buffer}));
+
+  xla::Literal expected = a.Clone();
+  for (float& elem : expected.data<float>()) {
+    elem *= 2;
+  }
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal out, c_buffer->ToLiteral());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected, out));
+
+  // Explicitly delete the executable, and then compile and run a different
+  // computation.
+  executable->Delete();
+
+  auto build_sub_computation = [&]() {
+    xla::XlaBuilder builder("test_computation");
+    xla::XlaOp p = xla::Parameter(&builder, 0, shape, "p");
+    xla::XlaOp q = xla::Parameter(&builder, 1, shape, "q");
+    xla::Sub(p, q);
+    return builder.Build();
+  };
+  TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation sub_computation,
+                          build_sub_computation());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto sub_executable,
+      XrtExecutable::Compile(context, sub_computation.proto(), {shape, shape},
+                             shape, assignment));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_out,
+                          sub_executable->Execute({c_buffer, buffer}));
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal sub_out, buffer_out->ToLiteral());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(a, sub_out));
+}
+
+TEST_F(XrtClientTest, ErrorsPropagateCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {3, 4, 5});
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a,
+                          xla::LiteralUtil::CreateRandomLiteral<xla::F32>(
+                              shape,
+                              /*mean=*/7.0, /*stddev=*/13.5));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer, XrtBuffer::FromLiteral(context, 0, a));
+
+  auto build_computation = [&]() {
+    xla::XlaBuilder builder("test_computation");
+    xla::XlaOp p = xla::Parameter(&builder, 0, shape, "p");
+    xla::XlaOp q = xla::Parameter(&builder, 1, shape, "q");
+    xla::Add(p, q);
+    return builder.Build();
+  };
+  TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation computation, build_computation());
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::DeviceAssignment assignment,
+                          xla::ComputationPlacer().AssignDevices(1, 1));
+  // Call Compile() with an arity mismatch.
+  TF_ASSERT_OK_AND_ASSIGN(auto sub_executable,
+                          XrtExecutable::Compile(context, computation.proto(),
+                                                 {shape}, shape, assignment));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_out, sub_executable->Execute({buffer}));
+
+  // The compilation error should be reported when we consumer the computation's
+  // output.
+  EXPECT_FALSE(buffer_out->ToLiteral().ok());
+
+  // Further, we expect a clean shutdown at this point.
+  context = nullptr;
+}
+
+TEST_F(XrtClientTest, TupleDestructuringAndDelete) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
+
+  // Tests sending a literal to and from the device.
+  xla::Shape a_shape = xla::ShapeUtil::MakeShape(xla::F32, {3, 4, 5});
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a,
+                          xla::LiteralUtil::CreateRandomLiteral<xla::F32>(
+                              a_shape,
+                              /*mean=*/7.0, /*stddev=*/13.5));
+
+  xla::Shape b_shape = xla::ShapeUtil::MakeShape(xla::F64, {2, 7});
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal b,
+                          xla::LiteralUtil::CreateRandomLiteral<xla::F64>(
+                              b_shape,
+                              /*mean=*/3.15, /*stddev=*/-2.1));
+  xla::Literal tuple = xla::LiteralUtil::MakeTuple({&a, &b});
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
+                          XrtBuffer::FromLiteral(context, 0, tuple));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<XrtBuffer>> pieces,
+                          buffer->DestructureTuple());
+
+  // Explicitly delete the tuple, which should have no effect on its
+  // constituents.
+  buffer->Delete();
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a_out, pieces[0]->ToLiteral());
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal b_out, pieces[1]->ToLiteral());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(a, a_out));
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(b, b_out));
+
+  // Explicitly delete one of the pieces, use RAII to delete the other.
+  pieces[1]->Delete();
 }
 
 }  // namespace tensorflow

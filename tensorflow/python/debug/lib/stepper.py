@@ -97,7 +97,7 @@ class NodeStepper(object):
     c = tf.add(a, b, name="c")
     d = tf.multiply(a, c, name="d")
 
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     sess.run(tf.initialize_all_varialbes())
     stepper = NodeStepper(sess, d)
 

@@ -271,7 +271,7 @@ class DeviceFunctionsTest(test.TestCase):
     return sess.run(
         output_tensors, feed_dict=dict(zip(input_tensors, input_data)))
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only("Incompatible with TF 2.0")
   def testConvertVariablesToConstsWithEmbeddings(self):
     """Freezes a graph with embeddings."""
     input_data = np.array(np.random.random_sample([1, 1]), dtype=np.int32)

@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 from collections import OrderedDict
 import contextlib
+import functools
 import gc
 import itertools
 import math
@@ -32,6 +33,7 @@ import tempfile
 import threading
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -68,6 +70,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -174,11 +178,11 @@ def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
 
 def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   if not isinstance(actual, graph_pb2.GraphDef):
-    raise TypeError(
-        "Expected tf.GraphDef for actual, got %s" % type(actual).__name__)
+    raise TypeError("Expected tf.GraphDef for actual, got %s" %
+                    type(actual).__name__)
   if not isinstance(expected, graph_pb2.GraphDef):
-    raise TypeError(
-        "Expected tf.GraphDef for expected, got %s" % type(expected).__name__)
+    raise TypeError("Expected tf.GraphDef for expected, got %s" %
+                    type(expected).__name__)
 
   if checkpoint_v2:
     _strip_checkpoint_v2_randomized(actual)
@@ -870,14 +874,14 @@ def generate_combinations_with_testcase_name(**kwargs):
   for combination in combinations:
     assert isinstance(combination, OrderedDict)
     name = "".join([
-        "_{}_{}".format("".join(filter(str.isalnum, key)), "".join(
-            filter(str.isalnum, str(value))))
+        "_{}_{}".format("".join(filter(str.isalnum, key)),
+                        "".join(filter(str.isalnum, str(value))))
         for key, value in combination.items()
     ])
     named_combinations.append(
         OrderedDict(
-            list(combination.items()) + [("testcase_name",
-                                          "_test{}".format(name))]))
+            list(combination.items()) +
+            [("testcase_name", "_test{}".format(name))]))
 
   return named_combinations
 
@@ -894,6 +898,58 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def build_as_function_and_v1_graph(func=None):
+  """Run a test case in v1 graph mode and inside tf.function in eager mode.
+
+  WARNING: This decorator can only be used in test cases that statically checks
+  generated graph. Attempting to evaluate graph or function results via.
+  session.run() or self.evaluate() will fail.
+
+  WARNING: This decorator can only be used for test cases that inherit from
+  absl.testing.parameterized.TestCase.
+
+  Args:
+    func: Test case function to be decorated.
+
+  Returns:
+    Decorated test case function.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError(
+          "`run_in_graph_mode_and_function` only supports test methods.")
+
+    @parameterized.named_parameters(("_v1_graph", "v1_graph"),
+                                    ("_function", "function"))
+    @functools.wraps(f)
+    def decorated(self, run_mode, *args, **kwargs):
+      if run_mode == "v1_graph":
+        with ops.Graph().as_default():
+          f(self, *args, **kwargs)
+      elif run_mode == "function":
+
+        @def_function.function
+        def function_in_eager():
+          f(self, *args, **kwargs)
+
+        # Create a new graph for the eagerly executed version of this test for
+        # better isolation.
+        graph_for_eager_test = ops.Graph()
+        with graph_for_eager_test.as_default(), context.eager_mode():
+          function_in_eager()
+        ops.dismantle_graph(graph_for_eager_test)
+      else:
+        return ValueError("Unknown run mode %s" % run_mode)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
@@ -905,7 +961,7 @@ def run_in_graph_and_eager_modes(func=None,
   a `tf.test.TestCase` class. Doing so will cause the contents of the test
   method to be executed twice - once normally, and once with eager execution
   enabled. This allows unittests to confirm the equivalence between eager
-  and graph execution (see `tf.enable_eager_execution`).
+  and graph execution (see `tf.compat.v1.enable_eager_execution`).
 
   For example, consider the following unittest:
 
@@ -1051,8 +1107,10 @@ def also_run_as_tf_function(f):
   """
 
   def decorated(*args, **kwds):
+
     def bound_f():
       f(*args, **kwds)
+
     with context.eager_mode():
       # Running in eager mode
       bound_f()
@@ -1134,27 +1192,33 @@ def run_v1_only(reason, func=None):
   Returns:
     Returns a decorator that will conditionally skip the decorated test method.
   """
+  if not isinstance(reason, str):
+    raise ValueError("'reason' should be string, got {}".format(type(reason)))
 
   def decorator(f):
     if tf_inspect.isclass(f):
-      setup = f.__dict__.get("setUp")
-      if setup is not None:
-        setattr(f, "setUp", decorator(setup))
-
-      for name, value in f.__dict__.copy().items():
-        if (callable(value) and
-            name.startswith(unittest.TestLoader.testMethodPrefix)):
-          setattr(f, name, decorator(value))
+      # To skip an entire test suite class, we only decorate the setUp method
+      # to skip all tests. There are cases when setUp is not defined (not
+      # overridden in subclasses of TestCase, so not available in f.__dict__
+      # below). For those cases, we walk the method resolution order list and
+      # pick the first setUp method we find (usually this should be the one in
+      # the parent class since that's the TestCase class).
+      for cls in type.mro(f):
+        setup = cls.__dict__.get("setUp")
+        if setup is not None:
+          setattr(f, "setUp", decorator(setup))
+          break
 
       return f
+    else:
+      # If f is just a function, just create a decorator for it and return it
+      def decorated(self, *args, **kwargs):
+        if tf2.enabled():
+          self.skipTest(reason)
 
-    def decorated(self, *args, **kwargs):
-      if tf2.enabled():
-        self.skipTest(reason)
+        return f(self, *args, **kwargs)
 
-      return f(self, *args, **kwargs)
-
-    return decorated
+      return decorated
 
   if func is not None:
     return decorator(func)
@@ -1538,6 +1602,9 @@ class TensorFlowTestCase(googletest.TestCase):
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    # Reset summary writer in case another test used set_as_default() with their
+    # summary writer.
+    context.context().summary_writer = None
 
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):
@@ -1694,10 +1761,14 @@ class TensorFlowTestCase(googletest.TestCase):
           return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
                                                  tensor.values.numpy(),
                                                  tensor.dense_shape.numpy())
+        elif ragged_tensor.is_ragged(tensor):
+          return ragged_tensor_value.RaggedTensorValue(
+              tensor.values.numpy(), tensor.row_splits.numpy())
         elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(values=tensor.values.numpy(),
-                                        indices=tensor.indices.numpy(),
-                                        dense_shape=tensor.dense_shape.numpy())
+          return ops.IndexedSlicesValue(
+              values=tensor.values.numpy(),
+              indices=tensor.indices.numpy(),
+              dense_shape=tensor.dense_shape.numpy())
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
@@ -2481,8 +2552,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError(
-            "Exception of type %s: %s" % (str(type(e)), str(e)))
+        raise AssertionError("Exception of type %s: %s" %
+                             (str(type(e)), str(e)))
 
   # pylint: enable=g-doc-return-or-yield
 
@@ -2639,11 +2710,25 @@ def create_local_cluster(num_workers,
                          ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
+  "PS" stands for "parameter server": a task responsible for storing and
+  updating the model's parameters. Other tasks send updates to these parameters
+  as they work on optimizing the parameters. This particular division of labor
+  between tasks is not required, but is common for distributed training.
+
+  Read more at https://www.tensorflow.org/guide/extend/architecture
+
+  ![components](https://www.tensorflow.org/images/diag1.svg "components")
+
+
+  Figure illustrates the interaction of these components.
+  "/job:worker/task:0" and "/job:ps/task:0" are both tasks with worker services.
+
+
   Example:
   ```python
   workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
 
-  worker_sessions = [tf.Session(w.target) for w in workers]
+  worker_sessions = [tf.compat.v1.Session(w.target) for w in workers]
 
   with tf.device("/job:ps/task:0"):
     ...
@@ -2660,15 +2745,16 @@ def create_local_cluster(num_workers,
   Args:
     num_workers: Number of worker servers to start.
     num_ps: Number of PS servers to start.
-    protocol: Communication protocol.  Allowed values are documented in the
-      documentation of `tf.train.Server`.
-    worker_config: (optional) ConfigProto to initialize workers. Can be used to
-      instantiate multiple devices etc.
-    ps_config: (optional) ConfigProto to initialize PS servers.
+    protocol: Communication protocol. Allowed values are documented in the
+      documentation of `tf.distribute.Server`.
+    worker_config: (optional) `tf.ConfigProto` to initialize workers. Can be
+      used to instantiate multiple devices etc.
+    ps_config: (optional) `tf.ConfigProto` to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
-    of `num_workers` objects of type `tf.train.Server` (all running locally);
+    of `num_workers` objects of type `tf.distribute.Server` (all running
+    locally);
     and `ps_servers` is a list of `num_ps` objects of similar type.
 
   Raises:

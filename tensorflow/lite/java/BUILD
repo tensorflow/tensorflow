@@ -30,6 +30,14 @@ aar_with_jni(
     android_library = ":tensorflowlite_flex",
 )
 
+# EXPERIMENTAL: AAR target for GPU acceleration. Note that this .aar contains
+# *only* the GPU delegate; clients must also include the core `tensorflow-lite`
+# runtime.
+aar_with_jni(
+    name = "tensorflow-lite-gpu",
+    android_library = ":tensorflowlite_gpu",
+)
+
 android_library(
     name = "tensorflowlite",
     srcs = JAVA_SRCS,
@@ -49,6 +57,21 @@ android_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflowlite_native_flex",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# EXPERIMENTAL: Android target target for GPU acceleration. Note that this
+# library contains *only* the GPU delegate and its Java wrapper; clients must
+# also include the core `tensorflowlite` runtime.
+android_library(
+    name = "tensorflowlite_gpu",
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/experimental:gpu_delegate"],
+    manifest = "AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tensorflowlite_java",
+        ":tensorflowlite_native_gpu",
         "@org_checkerframework_qual",
     ],
 )
@@ -229,6 +252,12 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "tensorflowlite_native_gpu",
+    srcs = ["libtensorflowlite_gpu_jni.so"],
+    visibility = ["//visibility:public"],
+)
+
 tflite_jni_binary(
     name = "libtensorflowlite_jni.so",
     deps = [
@@ -243,5 +272,13 @@ tflite_jni_binary(
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:init_tensorflow",
+    ],
+)
+
+# EXPERIMENTAL: Native target that supports GPU acceleration.
+tflite_jni_binary(
+    name = "libtensorflowlite_gpu_jni.so",
+    deps = [
+        "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],
 )

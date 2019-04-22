@@ -14,11 +14,10 @@ tf_cuda_library(
     srcs = [
         "eager_profiler.cc",
     ],
-    hdrs = [
-        "eager_profiler.h",
-    ],
     deps = [
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        # "//tensorflow/stream_executor/lib",
     ],
+    alwayslink = True,
 )

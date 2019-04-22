@@ -102,7 +102,6 @@ py_test(
     srcs = ["lite_v2_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",
         "no_windows",
     ],
     deps = [
@@ -137,6 +136,7 @@ py_library(
     ],
     deps = [
         ":lite_constants",
+        ":op_hint",
         "//tensorflow/python:tf_optimizer",
     ],
 )
@@ -146,7 +146,6 @@ py_test(
     srcs = ["util_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",
         "no_windows",
     ],
     deps = [
@@ -190,7 +189,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],

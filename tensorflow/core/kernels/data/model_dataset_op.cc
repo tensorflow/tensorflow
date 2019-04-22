@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
+constexpr int64 kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMillis;
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -159,31 +159,32 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
+        int64 current_time_ms =
+            ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
         while (true) {
           {
             mutex_lock l(mu_);
             while (!cancelled_ &&
-                   last_optimization_ms + optimization_period_ms >=
-                       ctx->env()->NowMicros() / EnvTime::kMillisToMicros) {
-              cond_var_.wait_for(
-                  l, std::chrono::milliseconds(
-                         last_optimization_ms + optimization_period_ms -
-                         ctx->env()->NowMicros() / EnvTime::kMillisToMicros));
+                   last_optimization_ms + optimization_period_ms >
+                       current_time_ms) {
+              auto wait_ms = last_optimization_ms + optimization_period_ms -
+                             current_time_ms;
+              VLOG(2) << "Waiting for " << wait_ms << " ms.";
+              cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
+              current_time_ms =
+                  ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
             }
             if (cancelled_) return;
           }
           model_->Optimize(dataset()->cpu_budget_);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
-          if (optimization_period_ms < kOptimizationPeriodThresholdMs) {
-            if (optimization_period_ms << 1 < kOptimizationPeriodThresholdMs) {
-              optimization_period_ms <<= 1;
-            } else {
-              optimization_period_ms = kOptimizationPeriodThresholdMs;
-            }
+          if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
+            optimization_period_ms = std::min(optimization_period_ms << 1,
+                                              kOptimizationPeriodThresholdMs);
           }
-          last_optimization_ms =
-              ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          current_time_ms = ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          last_optimization_ms = current_time_ms;
         }
       }
 

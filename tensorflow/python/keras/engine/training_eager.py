@@ -56,8 +56,22 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   outputs = nest.flatten(outputs)
   targets = nest.flatten(targets)
   # TODO(psv): Consider supporting skip target indices in eager mode?
-  metric_results = model._handle_metrics(
-      outputs, targets=targets, sample_weights=sample_weights, masks=masks)
+  # Invoke all(weighted and unweighted) metrics.
+  metric_results = []
+  if targets:
+    metric_results = model._handle_metrics(
+        outputs,
+        return_weighted_and_unweighted_metrics=True,
+        targets=targets,
+        sample_weights=sample_weights,
+        masks=masks)
+
+  # Add metric results from the `add_metric` metrics.
+  metric_results.extend([
+      m.result()
+      for m in model.metrics
+      if m not in model._compile_metric_functions
+  ])
   return [backend.mean(t) for t in metric_results]
 
 
@@ -113,7 +127,10 @@ def _model_loss(model,
   output_losses = []
 
   with backend.name_scope('loss'):
-    for i, loss_fn in enumerate(model.loss_functions):
+    loss_fns = [
+        loss_fn for loss_fn in model.loss_functions if loss_fn is not None
+    ]
+    for i, loss_fn in enumerate(loss_fns):
       weights = sample_weights[i] if sample_weights else None
       mask = masks[i]
       with backend.name_scope(model.output_names[i] + '_loss'):
@@ -166,7 +183,8 @@ def _model_loss(model,
 
       total_loss += model.loss_weights_list[i] * output_loss
 
-    total_loss = backend.mean(total_loss)
+    if loss_fns:
+      total_loss = backend.mean(total_loss)
     # Add regularization losses
     custom_losses = model.losses
     if custom_losses:
@@ -250,12 +268,14 @@ def train_on_batch(model,
   if isinstance(inputs, collections.Sequence):
     if len(inputs) and tensor_util.is_tensor(inputs[0]):
       inputs = training_utils.cast_if_floating_dtype(inputs)
-      targets = training_utils.cast_if_floating_dtype(targets)
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(targets)
     else:
       inputs = training_utils.cast_if_floating_dtype(
           [ops.convert_to_tensor(val) for val in inputs])
-      targets = training_utils.cast_if_floating_dtype(
-          [ops.convert_to_tensor(val) for val in targets])
+      if targets:
+        targets = training_utils.cast_if_floating_dtype(
+            [ops.convert_to_tensor(val) for val in targets])
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))

@@ -31,14 +31,18 @@ namespace tensorflow {
 
 static constexpr const char* const kNoInlineAttr = "_noinline";
 
+// Get default customizable kernel creator if set
+const CustomKernelCreator* GetDefaultCustomKernelCreator();
+
 // Registers a default customizable kernel creator for a function call.
 //
-// If 'cb()' returns a non-OK, we still fall back to an executor-based
-// interpreter op kernel to execute a function. If 'cb()' returns OK,
-// takes ownership of the returned OpKernel.
+// If c->CanCreateKernel returns false, we still fall back to an executor-based
+// interpreter op kernel to execute a function. Else c->CreateKernel() can be
+// used to create a kernel that will compile the function with XLA and run the
+// resulting program.
 //
 // TODO(zhifengc/phawkins): b/32379046
-void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c);
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
 // defined in "lib_def" and executes functions on the "device".
@@ -57,16 +61,7 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator,
-    ProcessFunctionLibraryRuntime* parent);
-
-// Same as above except that the returned runtime consults with the
-// global default custom kernel creator registered by
-// RegisterDefaultCustomKernelCreator.
-std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, Device* device,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
+    const CustomKernelCreator* custom_kernel_creator,
     ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
@@ -77,7 +72,11 @@ struct FunctionBody {
   Graph* graph = nullptr;  // owned.
   DataTypeVector arg_types;
   DataTypeVector ret_types;
+  // arg_nodes[i] contains the i'th function input. In other words,
+  // GetNodeAttr(arg_nodes[i]->attrs(), "index") == i.
   gtl::InlinedVector<Node*, 4> arg_nodes;
+  // ret_nodes[i] contains the i'th function output. In other words,
+  // GetNodeAttr(ret_nodes[i]->attrs(), "index") == i.
   gtl::InlinedVector<Node*, 4> ret_nodes;
   gtl::InlinedVector<Node*, 4> control_ret_nodes;
 
@@ -89,7 +88,7 @@ struct FunctionBody {
 
 // Debugging facility.  Returns a debug string for a graph
 // representing an instantiated function.
-string DebugString(const Graph* instantiated_func_graph);
+string DebugString(const Graph* g);
 
 // A few hand-crafted optimization on the instantiated function body
 // (a Graph*).
@@ -168,6 +167,10 @@ struct InlineFunctionBodyOptions {
   //   b) data returns               (`ret` field in FunctionDef)
   enum class OutputControlSource { kDataOutputs, kControlOutputs };
 
+  // If 'true' function inlining is completely disabled. This allows to control
+  // function inlining for different types of function calls (see
+  // 'ExpandInlineFunctionsOptions' below).
+  bool disable_inlining = false;
   // Ignore '_noinline' function attribute.
   bool ignore_noinline = false;
   // If 'true' function inlining will override explicitly specified devices
@@ -288,7 +291,7 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
 // `call_def` can be a native function call (where the op type is the function
 // name) or a call through PartitionedCall/StatefulPartitionedCall.
 Status InstantiateFunctionCall(const NodeDef& call_def,
-                               FunctionLibraryRuntime& flr,
+                               FunctionLibraryRuntime* flr,
                                FunctionLibraryRuntime::Handle* handle);
 
 // Returns true iff `n` represents a function call. `n` can be a native

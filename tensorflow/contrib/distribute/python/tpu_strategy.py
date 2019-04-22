@@ -22,5 +22,5 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.python.distribute.tpu_strategy import TPUStrategy
+from tensorflow.python.distribute.tpu_strategy import TPUStrategyV1 as TPUStrategy
 from tensorflow.python.tpu.tpu_strategy_util import initialize_tpu_system

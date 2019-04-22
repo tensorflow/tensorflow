@@ -56,6 +56,18 @@ py_library(
 )
 
 py_library(
+    name = "preempted_hook_py",
+    srcs = ["preempted_hook.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session_run_hook",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+    ],
+)
+
+py_library(
     name = "tpu_estimator",
     srcs = [
         "_tpu_estimator_embedding.py",
@@ -70,6 +82,7 @@ py_library(
         ":async_checkpoint",
         ":feature_column",
         ":functional",
+        ":preempted_hook_py",
         ":tpu_embedding",
         ":tpu_lib",
         "//tensorflow/core:protos_all_py",
@@ -120,6 +133,20 @@ py_library(
 )
 
 py_library(
+    name = "tpu_noestimator",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column",
+        ":preempted_hook_py",
+        ":tpu_embedding",
+        ":tpu_lib",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
@@ -136,7 +163,6 @@ py_library(
         "tpu_strategy_util.py",
         "tpu_system_metadata.py",
         "training_loop.py",
-        "xla.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -163,6 +189,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/compiler/xla",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu/profiler",
     ],

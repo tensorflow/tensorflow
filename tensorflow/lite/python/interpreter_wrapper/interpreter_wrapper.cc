@@ -125,7 +125,16 @@ PyObject* InterpreterWrapper::AllocateTensors() {
 
 PyObject* InterpreterWrapper::Invoke() {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_CHECK(interpreter_->Invoke());
+
+  // Release the GIL so that we can run multiple interpreters in parallel
+  TfLiteStatus status_code = kTfLiteOk;
+  Py_BEGIN_ALLOW_THREADS;  // To return can happen between this and end!
+  status_code = interpreter_->Invoke();
+  Py_END_ALLOW_THREADS;
+
+  TFLITE_PY_CHECK(
+      status_code);  // don't move this into the Py_BEGIN/Py_End block
+
   Py_RETURN_NONE;
 }
 

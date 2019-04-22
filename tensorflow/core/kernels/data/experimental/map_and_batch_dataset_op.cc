@@ -60,6 +60,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(ctx,
+                   CreateFunctionLibraryDefinition(
+                       ctx->function_library()->GetFunctionLibraryDefinition(),
+                       func_.name(), &lib_def_));
     OP_REQUIRES_OK(
         ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
@@ -86,9 +90,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
+    data::CapturedFunction::Params params;
+    params.lib_def = lib_def_;
     OP_REQUIRES_OK(ctx,
                    CapturedFunction::Create(func_, ctx, "other_arguments",
-                                            /*params=*/{}, &captured_func));
+                                            std::move(params), &captured_func));
 
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
@@ -199,7 +205,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* batch_size_node;
@@ -209,23 +214,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
       Node* drop_remainder_node;
       TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder_node));
-
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;
@@ -401,7 +393,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           stats_aggregator->AddScalar(
               stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
               static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value));
+                  static_cast<float>(num_parallel_calls_->value),
+              num_elements());
         }
         cond_var_->notify_all();
       }
@@ -647,7 +640,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 stats_utils::ThreadUtilizationScalarName(
                     dataset()->node_name()),
                 static_cast<float>(num_calls_) /
-                    static_cast<float>(num_parallel_calls_->value));
+                    static_cast<float>(num_parallel_calls_->value),
+                num_elements());
           }
           for (const auto& call : new_calls) {
             CallFunction(ctx, call.first, call.second);
@@ -822,6 +816,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList func_;
   bool preserve_cardinality_;
   std::vector<int> short_circuit_indices_;
+  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 REGISTER_KERNEL_BUILDER(

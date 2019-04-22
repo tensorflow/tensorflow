@@ -158,13 +158,13 @@ class _CheckpointRestoreCoordinator(object):
         raise AssertionError(
             ("Saveable keys changed when validating. Got back %s, was "
              "expecting %s") % (tensor_saveables.keys(), validated_names))
-      new_restore_ops = functional_saver.restore_from_saveable_objects(
-          self.save_path_tensor, validated_saveables)
+      new_restore_ops = functional_saver.MultiDeviceSaver(
+          validated_saveables).restore(self.save_path_tensor)
       if not context.executing_eagerly():
-        restore_ops.extend(new_restore_ops)
-        for saveable, restore_op in zip(validated_saveables, new_restore_ops):
-          assert saveable.name not in self.restore_ops_by_name
-          self.restore_ops_by_name[saveable.name] = restore_op
+        for name, restore_op in sorted(new_restore_ops.items()):
+          restore_ops.append(restore_op)
+          assert name not in self.restore_ops_by_name
+          self.restore_ops_by_name[name] = restore_op
     return restore_ops
 
 
@@ -289,11 +289,11 @@ def _default_getter(name, shape, dtype, initializer=None,
 
 
 def add_variable(trackable, name, shape=None, dtype=dtypes.float32,
-                 initializer=None):
+                 initializer=None, trainable=True):
   """Add a variable to a Trackable with no scope influence."""
   return trackable._add_variable_with_custom_getter(  # pylint: disable=protected-access
       name=name, shape=shape, dtype=dtype,
-      initializer=initializer, getter=_default_getter)
+      initializer=initializer, getter=_default_getter, trainable=trainable)
 
 
 def object_metadata(save_path):
@@ -923,9 +923,11 @@ class TrackableSaver(object):
         # var_list.
         or context.executing_eagerly()
         or ops.inside_function()):
-      saver = functional_saver.Saver(named_saveable_objects)
+      saver = functional_saver.MultiDeviceSaver(named_saveable_objects)
+      save_op = saver.save(file_prefix)
       with ops.device("/cpu:0"):
-        self._cached_save_operation = saver.save(file_prefix)
+        with ops.control_dependencies([save_op]):
+          self._cached_save_operation = array_ops.identity(file_prefix)
       self._last_save_object_graph = graph_proto
     return self._cached_save_operation, feed_additions
 
@@ -1124,7 +1126,7 @@ def frozen_saver(root_trackable):
   """
   named_saveable_objects = graph_view_lib.ObjectGraphView(
       root_trackable).frozen_saveable_objects()
-  return functional_saver.Saver(named_saveable_objects)
+  return functional_saver.MultiDeviceSaver(named_saveable_objects)
 
 
 def saver_with_op_caching(obj):
@@ -1226,6 +1228,11 @@ class CheckpointV1(tracking.AutoTrackable):
   `Regress` using `tf.train.Checkpoint` will also save all the variables created
   by the `Dense` layer.
 
+  When variables are assigned to multiple workers, each worker writes its own
+  section of the checkpoint. These sections are then merged/re-indexed to behave
+  as a single checkpoint. This avoids copying all variables to one worker, but
+  does require that all workers see a common filesystem.
+
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
       checkpoints.
@@ -1263,7 +1270,7 @@ class CheckpointV1(tracking.AutoTrackable):
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+                         dtype=dtypes.int64, trainable=False))
 
   def write(self, file_prefix, session=None):
     """Writes a training checkpoint.
@@ -1538,6 +1545,11 @@ class Checkpoint(tracking.AutoTrackable):
   `Regress` using `tf.train.Checkpoint` will also save all the variables created
   by the `Dense` layer.
 
+  When variables are assigned to multiple workers, each worker writes its own
+  section of the checkpoint. These sections are then merged/re-indexed to behave
+  as a single checkpoint. This avoids copying all variables to one worker, but
+  does require that all workers see a common filesystem.
+
   Attributes:
     save_counter: Incremented when `save()` is called. Used to number
       checkpoints.
@@ -1575,7 +1587,7 @@ class Checkpoint(tracking.AutoTrackable):
         # prevents creating a second dependency named "_save_counter".
         self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
-                         dtype=dtypes.int64))
+                         dtype=dtypes.int64, trainable=False))
 
   def write(self, file_prefix):
     """Writes a training checkpoint.

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -242,6 +243,7 @@ class BatchResource : public ResourceBase {
                        AsyncOpKernel::DoneCallback done_callback) {
     std::unique_ptr<BatchTask> batch_components(new BatchTask);
     batch_components->guid = guid;
+    batch_components->propagated_context = Context(ContextKind::kThread);
     OpInputList tensors;
     TF_RETURN_IF_ERROR(context->input_list("in_tensors", &tensors));
     for (int i = 0; i < tensors.size(); ++i) {
@@ -282,6 +284,8 @@ class BatchResource : public ResourceBase {
   struct BatchTask : public serving::BatchTask {
     // A unique ID to identify this invocation of Batch.
     int64 guid;
+
+    Context propagated_context;
 
     std::vector<Tensor> inputs;
     std::vector<Tensor> captured_inputs;
@@ -475,6 +479,11 @@ class BatchResource : public ResourceBase {
       return;
     }
 
+    // We use the 'propagated_context' from one of the threads which setup one
+    // of the tasks. This will propagate any common context over all the threads
+    // which are running this Session, of which this BatchOp is a part.
+    WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
+
     OpKernelContext* last_task_context =
         batch->task(batch->num_tasks() - 1).context;
 
@@ -557,6 +566,8 @@ class BatchResource : public ResourceBase {
     if (batch->empty()) {
       return;
     }
+
+    WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
     OpKernelContext* last_task_context =
         batch->task(batch->num_tasks() - 1).context;

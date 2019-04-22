@@ -175,7 +175,7 @@ inline void Softmax(const SoftmaxParams& params,
         int16x8_t input_diff_s16 = vsubq_s16(input_s16, max_in_row_s16);
         int32x4_t input_diff_s32_0 = vmovl_s16(vget_low_s16(input_diff_s16));
         int32x4_t input_diff_s32_1 = vmovl_s16(vget_high_s16(input_diff_s16));
-        int8x8_t mask = vmovn_s16(vcgeq_s16(input_diff_s16, diff_min_s16));
+        uint8x8_t mask = vmovn_u16(vcgeq_s16(input_diff_s16, diff_min_s16));
         FixedPointScaledDiffInt32x4 scaled_diff_0 =
             input_beta_multiplier_f0 *
             FixedPointScaledDiffInt32x4::FromRaw(

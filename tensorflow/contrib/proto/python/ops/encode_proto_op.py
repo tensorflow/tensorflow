@@ -11,15 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# =============================================================================
+# ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import
-"""Protocol Buffer encoding from tensors."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.proto.python.ops.gen_encode_proto_op import encode_proto
-from tensorflow.python.framework import ops
-
-ops.NotDifferentiable("EncodeProto")
+# pylint: disable=unused-import
+from tensorflow.python.ops.proto_ops import encode_proto

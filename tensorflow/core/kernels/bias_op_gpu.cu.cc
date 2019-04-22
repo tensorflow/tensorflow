@@ -20,17 +20,15 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bias_op.h"
-#include "tensorflow/core/kernels/bias_op_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
-
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/types.h"
-
+#include "tensorflow/core/kernels/bias_op.h"
+#include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -215,10 +213,10 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   // Check if we have enough shared memory.
   if (shared_memory_size <= max_shared_memory_size) {
     if (data_format == FORMAT_NHWC) {
-      BiasGradNHWC_SharedAtomics<T>
-          <<<config.block_count, config.thread_per_block, shared_memory_size,
-             d.stream()>>>(total_count, output_backprop, bias_backprop,
-                           bias_size);
+      TF_CHECK_OK(CudaLaunchKernel(BiasGradNHWC_SharedAtomics<T>,
+                                   config.block_count, config.thread_per_block,
+                                   shared_memory_size, d.stream(), total_count,
+                                   output_backprop, bias_backprop, bias_size));
     } else {
       // Round up the block count to multiple of bias_size.
       int group_size = (config.block_count + bias_size - 1) / bias_size;

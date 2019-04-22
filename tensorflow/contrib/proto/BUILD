@@ -4,7 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "proto",
@@ -14,5 +14,15 @@ py_library(
     deps = [
         "//tensorflow/contrib/proto/python/ops:decode_proto_op_py",
         "//tensorflow/contrib/proto/python/ops:encode_proto_op_py",
+        "//tensorflow/python:proto_ops",
+    ],
+)
+
+tf_py_test(
+    name = "import_test",
+    srcs = ["import_test.py"],
+    additional_deps = [
+        ":proto",
+        "//tensorflow/python:client_testlib",
     ],
 )

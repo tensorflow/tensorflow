@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -166,13 +167,12 @@ string MemorySpaceString(MemorySpace memory_space) {
 
 namespace {
 
+// Checks that the pointer is to a location on the device it purports to be.
+// PtrT is one of CUdeviceptr or void*.  If it's a CUdeviceptr, then
+// cudaPointerGetAttributes should not fail, and return a memoryType of
+// cudaMemoryTypeDevice.
 template <typename PtrT>
-bool PointerIsValid(const PtrT ptr) {
-  // Checks that the pointer is to a location on the device it purports to be.
-  // PtrT is one of CUdeviceptr or void*.  If it's a CUdeviceptr, then
-  // cudaPointerGetAttributes should not fail, and return a memoryType of
-  // cudaMemoryTypeDevice.
-
+void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
   bool is_host_ptr = !std::is_same<PtrT, CUdeviceptr>::value;
   cudaPointerAttributes attributes;
   cudaError_t err =
@@ -181,7 +181,9 @@ bool PointerIsValid(const PtrT ptr) {
   if (err != cudaSuccess) cudaGetLastError();
   bool points_to_host_memory = (err == cudaErrorInvalidValue ||
                                 attributes.memoryType != cudaMemoryTypeDevice);
-  return (is_host_ptr == points_to_host_memory);
+  CHECK_EQ(is_host_ptr, points_to_host_memory) << absl::StreamFormat(
+      "%s pointer is not actually on %s: %p", name, is_host_ptr ? "CPU" : "GPU",
+      reinterpret_cast<const void*>(ptr));
 }
 
 // Call cuCtxtSynchronize and crash if it doesn't succeed.
@@ -1081,10 +1083,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           uint64 size) {
   ScopedActivateContext activation(context);
   if (size > 0) {
-    CHECK(PointerIsValid(gpu_src))
-        << "Source pointer is not actually on GPU: " << gpu_src;
-    CHECK(PointerIsValid(host_dst))
-        << "Destination pointer is not actually on CPU: " << host_dst;
+    CheckPointerIsValid(gpu_src, "src");
+    CheckPointerIsValid(host_dst, "dst");
   }
   CUresult res = cuMemcpyDtoH(host_dst, gpu_src, size);
   if (res != CUDA_SUCCESS) {
@@ -1105,10 +1105,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           uint64 size) {
   ScopedActivateContext activation(context);
   if (size > 0) {
-    CHECK(PointerIsValid(host_src))
-        << "Source pointer is not actually on CPU: " << host_src;
-    CHECK(PointerIsValid(gpu_dst))
-        << "Destination pointer is not actually on GPU: " << gpu_dst;
+    CheckPointerIsValid(host_src, "src");
+    CheckPointerIsValid(gpu_dst, "dst");
   }
   CUresult res = cuMemcpyHtoD(gpu_dst, host_src, size);
   if (res != CUDA_SUCCESS) {
@@ -1128,10 +1126,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           uint64 size) {
   ScopedActivateContext activation(context);
   if (size > 0) {
-    CHECK(PointerIsValid(gpu_src))
-        << "Source pointer is not actually on GPU: " << gpu_src;
-    CHECK(PointerIsValid(gpu_dst))
-        << "Destination pointer is not actually on GPU: " << gpu_dst;
+    CheckPointerIsValid(gpu_src, "src");
+    CheckPointerIsValid(gpu_dst, "dst");
   }
   CUresult res = cuMemcpyDtoD(gpu_dst, gpu_src, size);
   if (res != CUDA_SUCCESS) {
@@ -1152,10 +1148,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   if (size > 0) {
-    CHECK(PointerIsValid(gpu_src))
-        << "Source pointer is not actually on GPU: " << gpu_src;
-    CHECK(PointerIsValid(host_dst))
-        << "Destination pointer is not actually on CPU: " << host_dst;
+    CheckPointerIsValid(gpu_src, "src");
+    CheckPointerIsValid(host_dst, "dst");
   }
   CUresult res = cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
   if (res != CUDA_SUCCESS) {
@@ -1179,10 +1173,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   if (size > 0) {
-    CHECK(PointerIsValid(host_src))
-        << "Source pointer is not actually on CPU: " << host_src;
-    CHECK(PointerIsValid(gpu_dst))
-        << "Destination pointer is not actually on GPU: " << gpu_dst;
+    CheckPointerIsValid(host_src, "src");
+    CheckPointerIsValid(gpu_dst, "dst");
   }
   CUresult res = cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream);
   if (res != CUDA_SUCCESS) {
@@ -1205,10 +1197,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   if (size > 0) {
-    CHECK(PointerIsValid(gpu_src))
-        << "Source pointer is not actually on GPU: " << gpu_src;
-    CHECK(PointerIsValid(gpu_dst))
-        << "Destination pointer is not actually on GPU: " << gpu_dst;
+    CheckPointerIsValid(gpu_src, "src");
+    CheckPointerIsValid(gpu_dst, "dst");
   }
   CUresult result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   if (result != CUDA_SUCCESS) {

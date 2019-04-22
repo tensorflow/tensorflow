@@ -13,23 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/python/eager/pywrap_tensor.h"
+
 #include <stdlib.h>
 
+#include "structmember.h"  // NOLINT // For PyMemberDef
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
-
-#include "tensorflow/python/eager/pywrap_tensor.h"
-#include "tensorflow/python/eager/pywrap_tfe.h"
-
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/python/lib/core/ndarray_tensor.h"
-
-#include "tensorflow/core/framework/types.h"
-
-#include "structmember.h"  // NOLINT // For PyMemberDef
 
 // forward declare
 struct EagerTensor;
@@ -106,19 +104,19 @@ TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* ctx,
   return new_handle;
 }
 
-// Helper function to convert `v` to an int and store it in `*out`. Returns true
-// on success, false otherwise.
+// Helper function to convert `v` to a tensorflow::DataType and store it in
+// `*out`. Returns true on success, false otherwise.
 // Note that we assume that v is a python int (not long) representing a
-// TF_DataType value.
-bool PyIntToDataType(PyObject* v, int* out) {
+// TF_DataType/tensorflow::DataType value.
+bool PyIntToDataType(PyObject* v, tensorflow::DataType* out) {
 #if PY_MAJOR_VERSION < 3
   if (PyInt_Check(v)) {
-    *out = PyInt_AS_LONG(v);
+    *out = static_cast<tensorflow::DataType>(PyInt_AS_LONG(v));
     return true;
   }
 #else
   if (PyLong_Check(v)) {
-    *out = PyLong_AsLong(v);
+    *out = static_cast<tensorflow::DataType>(PyLong_AsLong(v));
     return true;
   }
 #endif
@@ -208,18 +206,8 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
 #undef RETURN_ERROR
 }
 
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
-  int desired_dtype = -1;
-  if (dtype != Py_None) {
-    if (!PyIntToDataType(dtype, &desired_dtype)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting a DataType value for dtype. Got ",
-                          Py_TYPE(dtype)->tp_name)
-                          .c_str());
-      return nullptr;
-    }
-  }
+TFE_TensorHandle* ConvertToEagerTensor(PyObject* value,
+                                       tensorflow::DataType dtype) {
   tensorflow::Safe_PyObjectPtr value_decrefer;
   if (PyArray_IsScalar(value, Generic)) {
     // Convert numpy scalars to numpy arrays.
@@ -230,14 +218,14 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
   }
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
-    if (desired_dtype >= 0) {
+    if (dtype != tensorflow::DT_INVALID) {
       if (!tensorflow::TF_DataType_to_PyArray_TYPE(
-               static_cast<TF_DataType>(desired_dtype), &desired_np_dtype)
+               static_cast<TF_DataType>(dtype), &desired_np_dtype)
                .ok()) {
-        PyErr_SetString(PyExc_TypeError,
-                        tensorflow::strings::StrCat(
-                            "Invalid dtype argument value ", desired_dtype)
-                            .c_str());
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
+                .c_str());
         return nullptr;
       }
     }
@@ -402,7 +390,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   }
 
   // Extract dtype
-  int desired_dtype = -1;
+  tensorflow::DataType desired_dtype = tensorflow::DT_INVALID;
   if (dtype != Py_None) {
     if (!PyIntToDataType(dtype, &desired_dtype)) {
       PyErr_SetString(PyExc_TypeError,
@@ -416,10 +404,11 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
-          tensorflow::ConvertToEagerTensor(value, dtype)));
+          tensorflow::ConvertToEagerTensor(value, desired_dtype)));
   if (handle == nullptr) return -1;
   TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
-  if (desired_dtype >= 0 && desired_dtype != handle_dtype) {
+  if (desired_dtype != tensorflow::DT_INVALID &&
+      static_cast<TF_DataType>(desired_dtype) != handle_dtype) {
     // Check type compatibility.
     if (tensorflow::IsCompatible(desired_dtype, handle_dtype)) {
       handle = tensorflow::make_safe(tensorflow::EagerCast(
@@ -499,6 +488,10 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 
 // tp_dealloc for EagerTensor.
 void EagerTensor_dealloc(EagerTensor* self) {
+  // Unhook the object from python's GC so that the weakref deleter doesn't
+  // try to re-delete this.
+  PyObject_GC_UnTrack((PyObject*)self);
+
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
   PyObject_ClearWeakRefs((PyObject*)self);

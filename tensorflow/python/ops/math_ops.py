@@ -73,6 +73,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -160,16 +161,16 @@ def argmax_v2(input,
 
   Returns:
     A `Tensor` of type `output_type`.
-	
+
   Usage:
-	```python
-	import tensorflow as tf
-	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
-	b = tf.math.argmax(input = a)
-	c = tf.keras.backend.eval(b)  
-	# c = 4
-	# here a[4] = 166.32 which is the largest element of a across axis 0
-	```
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmax(input = a)
+  c = tf.keras.backend.eval(b)
+  # c = 4
+  # here a[4] = 166.32 which is the largest element of a across axis 0
+  ```
   """
   if axis is None:
     axis = 0
@@ -215,16 +216,16 @@ def argmin_v2(input,
 
   Returns:
     A `Tensor` of type `output_type`.
-	
+
   Usage:
-    	```python
-	import tensorflow as tf
-	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
-	b = tf.math.argmin(input = a)
-	c = tf.keras.backend.eval(b)  
-	# c = 0
-	# here a[0] = 1 which is the smallest element of a across axis 0
-	```
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmin(input = a)
+  c = tf.keras.backend.eval(b)
+  # c = 0
+  # here a[0] = 1 which is the smallest element of a across axis 0
+  ```
   """
   if axis is None:
     axis = 0
@@ -241,6 +242,10 @@ def argmin_v2(input,
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
+  Given a tensor of integer or floating-point values, this operation returns a 
+  tensor of the same type, where each element contains the absolute value of the 
+  corresponding element in the input.
+
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. All
   elements in `x` must be complex numbers of the form \\(a + bj\\). The
@@ -256,8 +261,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
-      values.
+    A `Tensor` or `SparseTensor` the same size, type, and sparsity as `x` with 
+      absolute values.
     Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
@@ -576,8 +581,9 @@ def angle(input, name=None):
   For example:
 
   ```
-  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-  tf.angle(input) ==> [2.0132, 1.056]
+  input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j], dtype=tf.complex64)
+  tf.angle(input).numpy()
+  # ==> array([2.0131705, 1.056345 ], dtype=float32)
   ```
 
   Args:
@@ -2547,9 +2553,20 @@ def matmul(a,
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
+
+    if fwd_compat.forward_compatible(2019, 4, 18):
+      output_may_have_non_empty_batch_shape = (
+          (a_shape is None or len(a_shape) > 2) or
+          (b_shape is None or len(b_shape) > 2))
+      batch_mat_mul_fn = gen_math_ops.batch_mat_mul_v2
+    else:
+      output_may_have_non_empty_batch_shape = (
+          (a_shape is None or len(a_shape) > 2) and
+          (b_shape is None or len(b_shape) > 2))
+      batch_mat_mul_fn = gen_math_ops.batch_mat_mul
+
     if (not a_is_sparse and
-        not b_is_sparse) and ((a_shape is None or len(a_shape) > 2) and
-                              (b_shape is None or len(b_shape) > 2)):
+        not b_is_sparse) and output_may_have_non_empty_batch_shape:
       # BatchMatmul does not support transpose, so we conjugate the matrix and
       # use adjoint instead. Conj() is a noop for real matrices.
       if transpose_a:
@@ -2558,8 +2575,7 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      return batch_mat_mul_fn(a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -2787,9 +2803,28 @@ def add_n(inputs, name=None):
 
   Converts `IndexedSlices` objects into dense tensors prior to adding.
 
+  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`, but it
+  waits for all of its inputs to be ready before beginning to sum.
+  This buffering can result in higher memory consumption when inputs are ready 
+  at different times, since the minimum temporary storage required is
+  proportional to the input size rather than the output size.
+  
+  This op does not [broadcast](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  its inputs. If you need broadcasting, use `tf.math.add` (or the `+` operator)
+  instead.
+
+  For example:
+
+  ```python
+  a = tf.constant([[3, 5], [4, 8]])
+  b = tf.constant([[1, 6], [2, 9]])
+  tf.math.add_n([a, b, a])  # [[7, 16], [10, 25]]
+  ```
+
   Args:
-    inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
-      and type.
+    inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with same
+      shape and type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2826,10 +2861,11 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `tf.math.accumulate_n` performs the same operation as `tf.add_n`, but does not
-  wait for all of its inputs to be ready before beginning to sum. This can
-  save memory if inputs are ready at different times, since minimum temporary
-  storage is proportional to the output size rather than the inputs size.
+  `accumulate_n` performs the same operation as `tf.math.add_n`, but 
+  does not wait for all of its inputs to be ready before beginning to sum. 
+  This approach can save memory if inputs are ready at different times, since 
+  minimum temporary storage is proportional to the output size rather than the 
+  inputs' size.
 
   `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
 
@@ -2848,8 +2884,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.
-    shape: Shape of elements of `inputs`.
-    tensor_dtype: The type of `inputs`.
+    shape: Expected shape of elements of `inputs` (optional). 
+      Also controls the output shape of this op, which may affect type 
+      inference in other ops.
+      A value of `None` means "infer the input shape from the shapes in 
+      `inputs`".
+    tensor_dtype: Expected data type of `inputs` (optional).
+      A value of `None` means "infer the input dtype from `inputs[0]`".
     name: A name for the operation (optional).
 
   Returns:

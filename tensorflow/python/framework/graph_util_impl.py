@@ -243,14 +243,15 @@ def convert_variables_to_constants(sess,
     GraphDef containing a simplified version of the original.
   """
 
-  def has_variable_as_input(node):
-    """Checks if the input node has a variable in `variables_data_map`."""
-    for name in node.input:
-      if name in variables_data_map or (
-          name in identity_ops_input_map and
-          identity_ops_input_map[name] in variables_data_map):
-        return True
-    return False
+  def get_input_name(node):
+    """Gets the name of the first input. Errors if suffix is not :0."""
+    details = node.input[0].split(":")
+    if len(details) == 1 or int(details[1]) == 0:
+      return details[0]
+    # While it is valid for input tensors to have a suffix that is not :0, this
+    # method is used to find the associated ops, not tensors, and therefore it
+    # is not valid.
+    raise ValueError("Tensor name '{0}' is invalid.".format(node.input[0]))
 
   def create_const_op(node_name, dtype, data, data_shape=None):
     """Creates a Const op."""
@@ -268,10 +269,15 @@ def convert_variables_to_constants(sess,
   # removes unneeded nodes like those involved in saving and assignment.
   inference_graph = extract_sub_graph(input_graph_def, output_node_names)
 
+  # Identify the ops in the graph.
+  map_name_to_node = {
+      node.name: node for node in inference_graph.node
+  }
+
   # Get list of variables.
   variable_names = []
   variable_dict_names = []
-  identity_ops_input_map = {}
+  resource_identity_types = {}
   for node in inference_graph.node:
     if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
@@ -285,13 +291,16 @@ def convert_variables_to_constants(sess,
         variable_names.append(variable_name + "/Read/ReadVariableOp:0")
       else:
         variable_names.append(variable_name + ":0")
-    elif node.op == "Identity":
-      # TODO(nupurgarg): Move and reuse get_name from lite/convert.py.
-      # Creates a map of Identity node names to the input names.
-      input_info = node.input[0].split(":")
-      if (len(input_info) == 1 or
-          (len(input_info) == 2 and int(input_info[1]) == 0)):
-        identity_ops_input_map[node.name] = input_info[0]
+    elif node.op in ["ReadVariableOp", "ResourceGather"]:
+      # There can be one or more Identity ops in between the ReadVariableOp and
+      # VarHandleOp.  Store the Identity ops with the associated dtypes.
+      source_op_name = get_input_name(node)
+      while map_name_to_node[source_op_name].op == "Identity":
+        resource_identity_types[source_op_name] = node.attr["dtype"]
+        source_op_name = get_input_name(map_name_to_node[source_op_name])
+      if map_name_to_node[source_op_name].op != "VarHandleOp":
+        raise ValueError("Cannot find the variable that is an input "
+                         "to the ReadVariableOp.")
 
   # Gets map of variables and the associated data.
   if variable_names:
@@ -311,23 +320,22 @@ def convert_variables_to_constants(sess,
       output_node = create_const_op(input_node.name, input_node.attr["dtype"],
                                     data, data.shape)
       how_many_converted += 1
-    elif (input_node.op == "ReadVariableOp" and
-          has_variable_as_input(input_node)):
+    elif input_node.name in resource_identity_types:
+      # Converts the Identities of type RESOURCE_DT to the appropriate type
+      # based on the input they are referencing.
+      output_node.CopyFrom(input_node)
+      output_node.attr["T"].CopyFrom(resource_identity_types[input_node.name])
+    elif input_node.op == "ReadVariableOp":
       # The first branch converts all VarHandleOps of ResourceVariables to
       # constants, so we need to convert the associated ReadVariableOps to
       # Identity ops.
-      #
-      # Handles the following cases:
-      #   Variable --> ReadVariableOp
-      #   Variable --> Identity --> ReadVariableOp
       output_node.op = "Identity"
       output_node.name = input_node.name
       output_node.input.extend([input_node.input[0]])
       output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
       if "_class" in input_node.attr:
         output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    elif (input_node.op == "ResourceGather" and
-          has_variable_as_input(input_node)):
+    elif input_node.op == "ResourceGather":
       # The first branch converts all VarHandleOps of ResourceGather to
       # constants, so we need to convert the associated ResourceGather to Gather
       # ops with a Const axis feeding into it.
