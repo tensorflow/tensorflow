@@ -29,7 +29,7 @@ use cases are available in [Examples](https://www.tensorflow.org/lite/examples).
 To build the example in Xcode, follow the instructions in
 [README.md](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/ios/README.md).
 
-## Create your own Android app
+## Create your own iOS app
 
 To get started quickly writing your own iOS code, we recommend using our
 [iOS image classification example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios)
