@@ -76,6 +76,11 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
 TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index);
 
+// Symmetrically quantized the bias for per-layer ops (i.e. FullyConnected).
+TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
+                                           float input_scale,
+                                           float weight_scale);
+
 // Symmetrically quantizes the bias for ops like Conv and DepthwiseConv.
 // The scale of bias if weight_per_channel_scale[channel] * input_scale
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,

@@ -58,6 +58,11 @@ enum class MemoryStrategy {
   // Greedy strategy uses greedy algorithm to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY,
+
+  // Mincostflow strategy consists of building auxiliary flow graph and solving
+  // the minimum-cost flow problem in it. In the end edges with zero residual
+  // capacity determine assignment of shared objects to tensors.
+  MINCOSTFLOW,
 };
 
 // Calculates the assignement of shared objects to given tensors, including

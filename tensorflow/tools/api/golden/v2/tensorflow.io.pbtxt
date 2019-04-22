@@ -74,7 +74,7 @@ tf_module {
   }
   member_method {
     name: "decode_raw"
-    argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_bytes\', \'out_type\', \'little_endian\', \'fixed_length\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "deserialize_many_sparse"

@@ -109,6 +109,20 @@ def make_decorator(target,
   return decorator_func
 
 
+def _has_tf_decorator_attr(obj):
+  """Checks if object has _tf_decorator attribute.
+
+  This check would work for mocked object as well since it would
+  check if returned attribute has the right type.
+
+  Args:
+    obj: Python object.
+  """
+  return (
+      hasattr(obj, '_tf_decorator') and
+      isinstance(getattr(obj, '_tf_decorator'), TFDecorator))
+
+
 def rewrap(decorator_func, previous_target, new_target):
   """Injects a new target into a function built by make_decorator.
 
@@ -148,7 +162,7 @@ def rewrap(decorator_func, previous_target, new_target):
   cur = decorator_func
   innermost_decorator = None
   target = None
-  while hasattr(cur, '_tf_decorator'):
+  while _has_tf_decorator_attr(cur):
     innermost_decorator = cur
     target = getattr(cur, '_tf_decorator')
     if target.decorated_target is previous_target:
@@ -200,7 +214,7 @@ def unwrap(maybe_tf_decorator):
   while True:
     if isinstance(cur, TFDecorator):
       decorators.append(cur)
-    elif hasattr(cur, '_tf_decorator'):
+    elif _has_tf_decorator_attr(cur):
       decorators.append(getattr(cur, '_tf_decorator'))
     else:
       break

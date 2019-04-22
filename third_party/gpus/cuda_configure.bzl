@@ -666,13 +666,9 @@ def find_cuda_config(repository_ctx, cuda_libraries):
     ] + cuda_libraries)
     if exec_result.return_code:
         auto_configure_fail("Failed to run find_cuda_config.py: %s" % exec_result.stderr)
-    config = {}
-    for line in exec_result.stdout.splitlines():
-        elements = line.split(": ")
-        if len(elements) != 2:
-            auto_configure_fail("Unexpected output from find_cuda_config.py")
-        config[elements[0]] = elements[1]
-    return config
+
+    # Parse the dict from stdout.
+    return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
 
 def _get_cuda_config(repository_ctx):
     """Detects and returns information about the CUDA installation on the system.

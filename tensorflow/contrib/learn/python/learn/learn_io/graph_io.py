@@ -72,7 +72,7 @@ def read_batch_examples(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
@@ -80,7 +80,7 @@ def read_batch_examples(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.local_variables_initializer()` and run the op in a session.
+      `tf.compat.v1.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples. In order to have
       predictable and repeatable order of reading and enqueueing, such as in
@@ -140,7 +140,7 @@ def read_keyed_batch_examples(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
@@ -148,7 +148,7 @@ def read_keyed_batch_examples(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.local_variables_initializer()` and run the op in a session.
+      `tf.compat.v1.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples. In order to have
       predictable and repeatable order of reading and enqueueing, such as in
@@ -215,7 +215,7 @@ def read_keyed_batch_examples_shared_queue(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
@@ -223,7 +223,7 @@ def read_keyed_batch_examples_shared_queue(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.local_variables_initializer()` and run the op in a session.
+      `tf.compat.v1.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -352,7 +352,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     reader: A function or class that returns an object with
       `read` method, (filename tensor) -> (example tensor).
@@ -360,7 +360,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.local_variables_initializer()` and run the op in a session.
+      `tf.compat.v1.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -489,7 +489,7 @@ def read_keyed_batch_features(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
@@ -499,7 +499,7 @@ def read_keyed_batch_features(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() and run the op in a session.
+      tf.compat.v1.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples. In order to have
       predictable and repeatable order of reading and enqueueing, such as in
@@ -578,7 +578,7 @@ def read_keyed_batch_features_shared_queue(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
@@ -588,7 +588,7 @@ def read_keyed_batch_features_shared_queue(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() and run the op in a session.
+      tf.compat.v1.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     feature_queue_capacity: Capacity of the parsed features queue.
@@ -782,7 +782,7 @@ def read_batch_features(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
@@ -792,7 +792,7 @@ def read_batch_features(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() and run the op in a session.
+      tf.compat.v1.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     feature_queue_capacity: Capacity of the parsed features queue. Set this
       value to a small number, for example 5 if the parsed features are large.
@@ -849,7 +849,7 @@ def read_batch_record_features(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-        `Example` records. See `tf.gfile.Glob` for pattern rules.
+        `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int or scalar `Tensor` specifying the batch size to use.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values.
@@ -857,7 +857,7 @@ def read_batch_record_features(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() and run the op in a session.
+      tf.compat.v1.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples. In order to have
       predictable and repeatable order of reading and enqueueing, such as in

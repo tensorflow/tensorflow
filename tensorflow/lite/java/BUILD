@@ -66,7 +66,7 @@ android_library(
 # also include the core `tensorflowlite` runtime.
 android_library(
     name = "tensorflowlite_gpu",
-    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/experimental:gpu_delegate"],
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     manifest = "AndroidManifest.xml",
     visibility = ["//visibility:public"],
     deps = [

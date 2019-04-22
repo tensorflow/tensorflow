@@ -17,13 +17,14 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 
-#include <math.h>
 #include <algorithm>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
+<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
     namespace tensorflow {
@@ -49,6 +50,32 @@ limitations under the License.
         abnormal_detected[1] = 1;
       }
       offset += total_thread_count;
+=======
+#include "tensorflow/core/util/gpu_launch_config.h"
+
+namespace tensorflow {
+
+namespace {
+
+typedef Eigen::GpuDevice GPUDevice;
+
+// A Cuda kernel to check if each element is Inf or Nan. If any exists, the
+// relevant elements in abnormal_detected will be set
+template <typename T>
+__global__ void CheckNumericsKernel(const T *data, int size,
+                                    int abnormal_detected[2]) {
+  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32 total_thread_count = gridDim.x * blockDim.x;
+
+  int32 offset = thread_id;
+
+  while (offset < size) {
+    if (isnan(data[offset])) {
+      abnormal_detected[0] = 1;
+    }
+    if (isinf(data[offset])) {
+      abnormal_detected[1] = 1;
+>>>>>>> google_upstream/master
     }
   }
 

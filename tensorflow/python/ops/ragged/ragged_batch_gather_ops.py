@@ -60,7 +60,7 @@ def batch_gather(params, indices, name=None):
     ```python
     >>> params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
     >>> indices = tf.ragged.constant([[1, 2, 0], [], [], [0, 0]])
-    >>> tf.batch_gather(params, indices)
+    >>> tf.compat.v1.batch_gather(params, indices)
     [['b', 'c', 'a'], [], [], ['e', 'e']]
     ```
   """

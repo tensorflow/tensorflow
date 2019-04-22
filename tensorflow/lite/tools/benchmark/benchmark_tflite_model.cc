@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 
 #ifdef GEMMLOWP_PROFILING
-#include "gemmlowp/profiling/profiler.h"
+#include "profiling/profiler.h"
 #endif
 
 #if defined(__ANDROID__)

@@ -83,6 +83,14 @@ port::StatusOr<void*> GetCufftDsoHandle() {
   return GetDsoHandle("cufft", GetCudaLibVersion());
 }
 
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  return GetDsoHandle("cusolver", GetCudaVersion());
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  return GetDsoHandle("cusparse", GetCudaVersion());
+}
+
 port::StatusOr<void*> GetCurandDsoHandle() {
   return GetDsoHandle("curand", GetCudaLibVersion());
 }
@@ -144,6 +152,16 @@ port::StatusOr<void*> GetCurandDsoHandle() {
 
 port::StatusOr<void*> GetCufftDsoHandle() {
   static auto result = new auto(DsoLoader::GetCufftDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusolverDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusparseDsoHandle());
   return *result;
 }
 

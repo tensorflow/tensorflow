@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tensorflow.data.experimental;
+
+import "tensorflow/core/framework/tensor.proto";
+
+// Each SnapshotRecord represents one batch of pre-processed input data. A batch
+// consists of a list of tensors that we encode as TensorProtos. This message
+// doesn't store the structure of the batch.
+message SnapshotRecord {
+  repeated .tensorflow.TensorProto tensor = 1;
+}

@@ -321,6 +321,8 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
         layers = [keras.layers.InputLayer(input_shape),
                   model] if (i == 1) else [model]
         model = keras.models.Sequential(layers)
+        if i > 1:
+          model.build((None,) + input_shape)
       return model
 
     # example: make_nested_func_model((1,), Dense(10), level=2).summary()

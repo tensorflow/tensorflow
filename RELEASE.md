@@ -1,8 +1,17 @@
+<<<<<<< HEAD
 # Release 1.13.2
 
 ## Bug Fixes and Other Changes
 * TF-RCCL path fix for issue#370
 * The 1.13.2 whl package is built the ROCm2.3 user-bit environment
+=======
+# Release 1.12.2
+
+## Bug Fixes and Other Changes
+
+*   Fixes a potential security vulnerability where carefully crafted GIF images
+    can produce a null pointer dereference during decoding.
+>>>>>>> google_upstream/master
 
 # Release 1.13.0
 

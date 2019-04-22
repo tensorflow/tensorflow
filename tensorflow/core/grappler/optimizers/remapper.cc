@@ -216,7 +216,13 @@ bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
 
 bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
+#ifndef INTEL_MKL
+  // Temporarily disable Matmul fusions if MKL is enabled.
+  // TODO(Intel) renable Matmul fusions when enabled by MKL DNN.
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
+#else
+  return false;
+#endif  // !INTEL_MKL
 }
 
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
@@ -272,7 +278,13 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
+// Temporarily disable fusing Relu6 and Elu if MKL is enabled.
+// TODO(Intel) Enable Relu6 and Elu fusion when MklConv2D supports them.
+#ifndef INTEL_MKL
   return IsRelu(node) || IsRelu6(node) || IsElu(node);
+#else
+  return IsRelu(node);
+#endif  // !INTEL_MKL
 }
 
 bool FindContractionWithBias(const RemapperContext& ctx,

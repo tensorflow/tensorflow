@@ -25,6 +25,7 @@ import collections
 import itertools
 import json
 import os
+import sys
 import threading
 import weakref
 
@@ -220,6 +221,8 @@ def clear_session():
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
+  global _GRAPH
+  _GRAPH = None
   ops.reset_default_graph()
   reset_uids()
   _SESSION.session = None
@@ -242,7 +245,7 @@ def manual_variable_initialization(value):
   variables should be initialized
   as they are instantiated (default), or if
   the user should handle the initialization
-  (e.g. via `tf.initialize_all_variables()`).
+  (e.g. via `tf.compat.v1.initialize_all_variables()`).
 
   Arguments:
       value: Python boolean.
@@ -845,7 +848,7 @@ def is_keras_tensor(x):
       >>> np_var = numpy.array([1, 2])
       >>> K.is_keras_tensor(np_var) # A numpy array is not a symbolic tensor.
       ValueError
-      >>> k_var = tf.placeholder('float32', shape=(1,1))
+      >>> k_var = tf.compat.v1.placeholder('float32', shape=(1,1))
       >>> K.is_keras_tensor(k_var) # A variable indirectly created outside of
       keras is not a Keras tensor.
       False
@@ -2949,7 +2952,15 @@ def print_tensor(x, message=''):
   Returns:
       The same tensor `x`, unchanged.
   """
-  return logging_ops.Print(x, [x], message)
+  if isinstance(x, ops.Tensor) and hasattr(x, 'graph'):
+    with get_graph().as_default():
+      op = logging_ops.print_v2(message, x, output_stream=sys.stdout)
+      with ops.control_dependencies([op]):
+        return array_ops.identity(x)
+  else:
+    logging_ops.print_v2(message, x, output_stream=sys.stdout)
+    return x
+
 
 
 # GRAPH MANIPULATION
@@ -3201,7 +3212,9 @@ class EagerExecutionFunction(object):
       else:
         if hasattr(update, 'op'):
           update = update.op
-        updates_ops.append(update)
+        if update is not None:
+          # `update.op` may have been None in certain cases.
+          updates_ops.append(update)
 
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
@@ -4320,8 +4333,6 @@ def conv2d(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow data format
-          for inputs/kernels/outputs.
       dilation_rate: tuple of 2 integers.
 
   Returns:
@@ -4369,8 +4380,6 @@ def conv2d_transpose(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
       dilation_rate: Tuple of 2 integers.
 
   Returns:
@@ -4384,8 +4393,6 @@ def conv2d_transpose(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
-  if isinstance(output_shape, (tuple, list)):
-    output_shape = array_ops.stack(output_shape)
 
   # `atrous_conv2d_transpose` only supports NHWC format, even on GPU.
   if data_format == 'channels_first' and dilation_rate != (1, 1):
@@ -4399,7 +4406,9 @@ def conv2d_transpose(x,
     output_shape = (output_shape[0], output_shape[2], output_shape[3],
                     output_shape[1])
   if output_shape[0] is None:
-    output_shape = (array_ops.shape(x)[0],) + tuple(output_shape[1:])
+    output_shape = (shape(x)[0],) + tuple(output_shape[1:])
+
+  if isinstance(output_shape, (tuple, list)):
     output_shape = array_ops.stack(list(output_shape))
 
   padding = _preprocess_padding(padding)
@@ -4612,8 +4621,6 @@ def conv3d(x,
       strides: strides tuple.
       padding: string, `"same"` or `"valid"`.
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
       dilation_rate: tuple of 3 integers.
 
   Returns:
@@ -4659,8 +4666,6 @@ def conv3d_transpose(x,
       strides: strides tuple.
       padding: string, "same" or "valid".
       data_format: string, `"channels_last"` or `"channels_first"`.
-          Whether to use Theano or TensorFlow/CNTK data format
-          for inputs/kernels/outputs.
 
   Returns:
       A tensor, result of transposed 3D convolution.

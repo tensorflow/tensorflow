@@ -67,6 +67,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
 
@@ -138,6 +139,8 @@ load(
     "tf_additional_rocdl_deps",
     "tf_additional_rocdl_srcs",
     "tf_additional_minimal_lib_srcs",
+    "tf_additional_monitoring_hdrs",
+    "tf_additional_monitoring_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_numa_copts",
     "tf_additional_numa_deps",
@@ -226,6 +229,7 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
+    "protobuf/trace_events.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -590,6 +594,7 @@ filegroup(
         "platform/cpu_feature_guard.h",
         "platform/error.h",
         "platform/fingerprint.h",
+        "platform/monitoring.h",
         "platform/net.h",
         "platform/notification.h",
         "platform/prefetch.h",
@@ -601,7 +606,7 @@ filegroup(
         "platform/stacktrace_handler.h",
         "platform/strong_hash.h",
         "platform/subprocess.h",
-    ],
+    ] + tf_additional_monitoring_hdrs(),
     visibility = ["//visibility:private"],
 )
 
@@ -1402,6 +1407,7 @@ cc_library(
         ":framework",
         ":lib",
         ":math_ops_op_lib",
+        ":protos_all_cc",
     ],
     alwayslink = 1,
 )
@@ -1696,6 +1702,7 @@ filegroup(
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/profiler:mobile_srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2327,6 +2334,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/denormal.h",
     "platform/host_info.h",
     "platform/platform.h",
+    "platform/monitoring.h",
     "platform/protobuf_internal.h",
     "platform/setround.h",
     "platform/snappy.h",
@@ -2387,6 +2395,7 @@ cc_library(
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "platform/**/env_time.cc",
+            "platform/**/monitoring.cc",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/rocm_rocdl_path.cc",
             "platform/**/device_tracer.cc",
@@ -2402,7 +2411,11 @@ cc_library(
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/rocm.h",
+<<<<<<< HEAD
             "platform/**/rocm_rocdl_path.cc",
+=======
+            "platform/**/monitoring.cc",
+>>>>>>> google_upstream/master
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
@@ -2414,7 +2427,7 @@ cc_library(
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
         tf_additional_proto_srcs(),
-    ),
+    ) + tf_additional_monitoring_srcs(),
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     defines = LIB_INTERNAL_DEFINES,
@@ -3065,12 +3078,14 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/constant_folding.h",
     "common_runtime/copy_tensor.h",
     "common_runtime/costmodel_manager.h",
+    "common_runtime/placer_inspection_required_ops_utils.h",
     "common_runtime/debugger_state_interface.h",
     "common_runtime/device_resolver_local.h",
     "common_runtime/dma_helper.h",
     "common_runtime/executor.h",
     "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
+    "common_runtime/isolate_placer_inspection_required_ops_pass.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_function_call_op.h",
     "common_runtime/lower_if_op.h",
@@ -3132,6 +3147,9 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
+        "common_runtime/inspecting_placer.cc",
+        "common_runtime/inspecting_placer.h",
+        "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
         "common_runtime/local_device.cc",
         "common_runtime/lower_function_call_op.cc",
         "common_runtime/lower_functional_ops.cc",
@@ -3144,6 +3162,8 @@ tf_cuda_library(
         "common_runtime/parallel_concat_optimizer.cc",
         "common_runtime/partitioning_utils.cc",
         "common_runtime/placer.cc",
+        "common_runtime/placer_inspection_required_ops_utils.cc",
+        "common_runtime/placer_inspection_required_ops_utils.h",
         "common_runtime/pool_allocator.cc",
         "common_runtime/process_function_library_runtime.cc",
         "common_runtime/process_state.cc",
@@ -3185,6 +3205,7 @@ tf_cuda_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
     ] + mkl_deps(),
@@ -3254,7 +3275,6 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":core_cpu_internal",
-        ":device_tracer",
         ":framework",
         ":framework_internal",
         ":graph",
@@ -3264,6 +3284,8 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/profiler/lib:profiler_graph_lib",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
     alwayslink = 1,
 )
@@ -3290,9 +3312,6 @@ cc_library(
 tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
-    hdrs = [
-        "platform/device_tracer.h",
-    ],
     copts = tf_copts(),
     cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = [
@@ -3302,7 +3321,10 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        # "//tensorflow/stream_executor/lib",
     ] + tf_additional_device_tracer_deps(),
+    alwayslink = True,
 )
 
 tf_proto_library_cc(
@@ -3906,8 +3928,10 @@ tf_cc_tests(
         "common_runtime/collective_rma_local_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
+        "common_runtime/isolate_placer_inspection_required_ops_pass_test.cc",
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
+        "common_runtime/placer_inspection_required_ops_utils_test.cc",
         "common_runtime/placer_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/threadpool_device_test.cc",
@@ -4012,6 +4036,8 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4059,12 +4085,12 @@ tf_cc_test(
         "ops/cudnn_rnn_ops_test.cc",
     ],
     deps = [
+        ":core",
         ":framework",
         ":lib",
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/core",
     ],
 )
 
@@ -5093,6 +5119,7 @@ tf_cc_test_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/internal:profiler_interface",
     ],
 )
 

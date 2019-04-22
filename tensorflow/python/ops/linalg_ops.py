@@ -89,8 +89,8 @@ def cholesky_solve(chol, rhs, name=None):
   # Solve 10 separate 2x2 linear systems:
   A = ... # shape 10 x 2 x 2
   RHS = ... # shape 10 x 2 x 1
-  chol = tf.cholesky(A)  # shape 10 x 2 x 2
-  X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+  chol = tf.linalg.cholesky(A)  # shape 10 x 2 x 2
+  X = tf.linalg.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
   # tf.matmul(A, X) ~ RHS
   X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -103,7 +103,7 @@ def cholesky_solve(chol, rhs, name=None):
 
   Args:
     chol:  A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-      Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
+      Cholesky factorization of `A`, e.g. `chol = tf.linalg.cholesky(A)`.
       For that reason, only the lower triangular parts (including the diagonal)
       of the last two dimensions of `chol` are used.  The strictly upper part is
       assumed to be zero and not accessed.

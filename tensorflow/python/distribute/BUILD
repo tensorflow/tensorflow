@@ -144,6 +144,8 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -239,7 +241,6 @@ py_library(
         ":reduce_util",
         ":shared_variable_creator",
         ":values",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -251,7 +252,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -777,9 +778,9 @@ distribute_py_test(
     ],
     deps = [
         "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
@@ -902,10 +903,14 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+<<<<<<< HEAD
         # Failure due to Rccl Op does not support eager mode, should remove when
         # PR400 is submitted
         "no_rocm",
         "no_cuda",
+=======
+        "no_windows_gpu",  # TODO(b/130551176)
+>>>>>>> google_upstream/master
     ],
 )
 

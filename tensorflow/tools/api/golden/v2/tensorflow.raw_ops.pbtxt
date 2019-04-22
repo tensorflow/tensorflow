@@ -294,7 +294,7 @@ tf_module {
   }
   member_method {
     name: "BatchDatasetV2"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "BatchFFT"
@@ -851,6 +851,10 @@ tf_module {
   member_method {
     name: "DecodeJpeg"
     argspec: "args=[\'contents\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "DecodePaddedRaw"
+    argspec: "args=[\'input_bytes\', \'fixed_length\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "DecodePng"
@@ -2306,7 +2310,7 @@ tf_module {
   }
   member_method {
     name: "PaddedBatchDatasetV2"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\', \'output_shapes\', \'parallel_copy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "PaddingFIFOQueue"

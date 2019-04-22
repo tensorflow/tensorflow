@@ -162,8 +162,8 @@ py_library(
 )
 
 py_library(
-    name = "component_api_helper",
-    srcs = ["component_api_helper.py"],
+    name = "module_util",
+    srcs = ["module_util.py"],
     srcs_version = "PY2AND3",
 )
 

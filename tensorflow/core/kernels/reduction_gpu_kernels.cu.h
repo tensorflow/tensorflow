@@ -20,6 +20,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <sstream>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
 #include "third_party/cub/device/device_reduce.cuh"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
 
+<<<<<<< HEAD
 #include <sstream>
 
 #if GOOGLE_CUDA
@@ -46,15 +49,17 @@ namespace gpuprim = ::cub;
 namespace gpuprim = ::hipcub;
 #endif
 
+=======
+>>>>>>> google_upstream/master
 namespace tensorflow {
 namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-struct Sqrt {
+struct SqrtOfReal {
   __host__ __device__ T operator()(const T& a) const {
-    return Eigen::numext::sqrt(a);
+    return T(Eigen::numext::sqrt(Eigen::numext::real(a)));
   }
 };
 
@@ -891,8 +896,8 @@ struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
                      const functor::EuclideanNormReducer<T>& reducer) {
     typedef gpuprim::TransformInputIterator<T, Square<T>, T*> inputIterType;
     inputIterType input_itr((T*)in.data(), Square<T>());
-    typedef TransformOutputIterator<T, T, Sqrt<T>> outputIterType;
-    outputIterType output_itr((T*)out.data(), Sqrt<T>());
+    typedef TransformOutputIterator<T, T, SqrtOfReal<T>> outputIterType;
+    outputIterType output_itr((T*)out.data(), SqrtOfReal<T>());
     ReduceImpl<T, Sum<T>, outputIterType, inputIterType, ReductionAxes>(
         ctx, output_itr, input_itr, in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,

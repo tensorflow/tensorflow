@@ -1864,12 +1864,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      if (ShapeUtil::IsZeroElementArray(in)) {
-        return in;
-      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
-      result.set_dimensions(result.dimensions_size() - 1,
-                            fft_length[fft_rank - 1] / 2 + 1);
+      // Preserve the size of zero-sized dimensions.
+      if (fft_length[fft_rank - 1] != 0) {
+        result.set_dimensions(result.dimensions_size() - 1,
+                              fft_length[fft_rank - 1] / 2 + 1);
+      }
       return result;
     }
     case IRFFT: {
@@ -1890,8 +1890,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      if (in.dimensions(in.dimensions_size() - 1) !=
-          fft_length[fft_rank - 1] / 2 + 1) {
+      // The size of zero-sized dimensions is preserved.
+      if ((in.dimensions(in.dimensions_size() - 1) != 0 ||
+           fft_length[fft_rank - 1] != 0) &&
+          in.dimensions(in.dimensions_size() - 1) !=
+              fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
@@ -2741,45 +2744,27 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
 }
 
-// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
-// "degenerate" cases, as with binary elementwise ops.
 /* static */ StatusOr<Shape> ShapeInference::InferClampShape(
     const Shape& min, const Shape& operand, const Shape& max) {
   TF_RETURN_IF_ERROR(ExpectArray(min, "clamp min"));
   TF_RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
   TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
-  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
-      !ShapeUtil::SameElementTypeIgnoringFpPrecision(max, operand)) {
-    return InvalidArgument("Clamp with different operand types: %s, %s, %s.",
-                           ShapeUtil::HumanString(min),
-                           ShapeUtil::HumanString(operand),
-                           ShapeUtil::HumanString(max));
+
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand)) {
+    return InvalidArgument(
+        "Clamp with different shapes: %s, %s, %s.", ShapeUtil::HumanString(min),
+        ShapeUtil::HumanString(operand), ShapeUtil::HumanString(max));
   }
-  if (((ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
-        ShapeUtil::IsScalar(min)) &&
-       (ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
-        ShapeUtil::IsScalar(max)))) {
-    return operand;
-  }
-  if (ShapeUtil::IsScalar(operand)) {
-    if (ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
-      return ShapeUtil::ChangeElementType(min, operand.element_type());
-    } else if (ShapeUtil::IsScalar(min)) {
-      return ShapeUtil::ChangeElementType(max, operand.element_type());
-    } else if (ShapeUtil::IsScalar(max)) {
-      return ShapeUtil::ChangeElementType(min, operand.element_type());
-    }
-  }
-  return Unimplemented("%s, %s <clamp> %s is not implemented.",
-                       min.ShortDebugString(), max.ShortDebugString(),
-                       operand.ShortDebugString());
+  return operand;
 }
 
-// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
-// "degenerate" cases, as with binary elementwise ops, as well as scalar
-// broadcast from all operands, not just the predicate.
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
+  TF_RETURN_IF_ERROR(ExpectArray(pred, "select pred"));
+  TF_RETURN_IF_ERROR(ExpectArray(on_true, "select on-true"));
+  TF_RETURN_IF_ERROR(ExpectArray(on_false, "select on-false"));
+
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false)) {
     return InvalidArgument(
         "Operands to select must be the same shape; got %s and %s.",
@@ -2790,38 +2775,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred));
   }
-  if (Shape::Equal()
-          .IgnoreElementType()
-          .IgnoreLayout()
-          .IgnoreDynamicDimension()(pred, on_true) ||
-      ShapeUtil::IsScalar(pred)) {
-    // By this stage we know that pred's element type is PRED. Therefore, this
-    // check restricts pred to be a PRED scalar, or a PRED array with the same
-    // dimensions as on_true and on_false.
-    Shape inferred_shape = ShapeUtil::ChangeElementType(
-        on_true, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
-
-    // Propagate dynamic dimensions if pred is not a scalar.
-    if (!ShapeUtil::IsScalar(pred)) {
-      for (int i = 0; i < inferred_shape.rank(); i++) {
-        if (pred.is_dynamic_dimension(i)) {
-          inferred_shape.set_dynamic_dimension(i, true);
-        }
-      }
-    }
-
-    if (inferred_shape.IsTuple()) {
-      return InvalidArgument(
-          "Select operation is not supported for tuples: %s."
-          " Use tuple-select instead.",
-          ShapeUtil::HumanString(inferred_shape));
-    }
-    return inferred_shape;
+  if (!Shape::Equal()
+           .IgnoreElementType()
+           .IgnoreLayout()
+           .IgnoreDynamicDimension()(pred, on_true)) {
+    return InvalidArgument(
+        "Operands to select and predicate must be the same shape; got %s and "
+        "%s.",
+        ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(pred));
   }
-  return InvalidArgument(
-      "Select operation with non-scalar predicate with dimensionality "
-      "different from the other operands: %s.",
-      ShapeUtil::HumanString(pred));
+
+  return ShapeUtil::ChangeElementType(
+      pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferTupleSelectShape(

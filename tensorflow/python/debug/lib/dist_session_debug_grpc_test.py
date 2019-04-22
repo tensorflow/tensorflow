@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for debugger functionalities in tf.Session with grpc:// URLs.
+"""Tests for debugger functionalities in tf.compat.v1.Session with grpc:// URLs.
 
 This test focus on grpc:// debugging of distributed (gRPC) sessions.
 """

@@ -344,7 +344,7 @@ class ResourceVariable(variables.VariableV1):
   with tf.control_dependencies([other_assign]):
     # Will print 2.0 because the value was read before other_assign ran. If
     # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
-    tf.Print(b, [b]).eval()
+    tf.compat.v1.Print(b, [b]).eval()
   ```
   """
 
@@ -1268,7 +1268,7 @@ class ResourceVariable(variables.VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -1321,7 +1321,7 @@ class ResourceVariable(variables.VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = ref.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -1374,7 +1374,7 @@ class ResourceVariable(variables.VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_update(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 

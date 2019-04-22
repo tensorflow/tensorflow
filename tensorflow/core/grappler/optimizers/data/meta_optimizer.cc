@@ -85,8 +85,8 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         "filter_fusion", "filter_with_random_uniform_fusion",
         "map_and_filter_fusion", "hoist_random_uniform", "map_parallelization",
         "map_and_batch_fusion", "map_vectorization", "make_numa_aware",
-        "latency_all_edges", "make_sloppy", "pruning", "function", "shape",
-        "arithmetic", "dependency"}) {
+        "latency_all_edges", "make_sloppy", "parallel_batch", "pruning",
+        "function", "shape", "arithmetic", "dependency"}) {
     TF_RETURN_IF_ERROR(
         ApplyOptimization(optimization, cluster, &optimized_item));
   }

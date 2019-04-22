@@ -179,6 +179,7 @@ class PythonObjectToProtoVisitor(object):
   def __call__(self, path, parent, children):
     # The path to the object.
     lib_path = 'tensorflow.%s' % path if path else 'tensorflow'
+    _, parent = tf_decorator.unwrap(parent)
 
     # A small helper method to construct members(children) protos.
     def _AddMember(member_name, member_obj, proto):
@@ -199,7 +200,10 @@ class PythonObjectToProtoVisitor(object):
         else:
           new_member = proto.member.add()
           new_member.name = member_name
-          new_member.mtype = _NormalizeType(str(type(member_obj)))
+          if tf_inspect.ismodule(member_obj):
+            new_member.mtype = "<type \'module\'>"
+          else:
+            new_member.mtype = _NormalizeType(str(type(member_obj)))
 
     parent_corner_cases = _CORNER_CASES.get(path, {})
 

@@ -17,15 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLACER_H_
 
 #include <string>
-#include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -55,12 +54,12 @@ namespace tensorflow {
 // builder.
 class Placer {
  public:
-  // A map from graph node names to numerical IDs (in a Graph object).
-  typedef std::unordered_map<string, int> NodeNameToIdMap;
-
   // Creates an instance of the Placer algorithm for the given
   // Graph "graph" (nodes in which may or may not be assigned) on the
   // given DeviceSet "devices".
+  // "function_name" should be set to the name of the function whose body is
+  // represented by "graph". If "graph" is not representing a function body,
+  // "function_name" should be empty.
   //
   // If non-null, default_device is used where possible as a placement for nodes
   // which do not have a device specified, ahead of other devices which would
@@ -68,12 +67,15 @@ class Placer {
   //
   // The "graph", "devices", and "default_device" pointer arguments are borrowed
   // by this Placer, and must outlive it.
-  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device,
-         bool allow_soft_placement, bool log_device_placement);
+  Placer(Graph* graph, const string& function_name,
+         const FunctionLibraryDefinition* flib_def, const DeviceSet* devices,
+         const Device* default_device, bool allow_soft_placement,
+         bool log_device_placement);
 
-  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device);
+  Placer(Graph* graph, const string& function_name, const DeviceSet* devices,
+         const Device* default_device);
 
-  Placer(Graph* graph, const DeviceSet* devices);
+  Placer(Graph* graph, const string& function_name, const DeviceSet* devices);
 
   ~Placer();
 
@@ -90,9 +92,11 @@ class Placer {
   bool CanAssignToDevice(const string& candidate_device_name,
                          const std::vector<Device*>& devices) const;
 
-  Graph* const graph_;              // Not owned.
-  const DeviceSet* const devices_;  // Not owned.
-  const Device* default_device_;    // Not owned.
+  Graph* const graph_;  // Not owned.
+  const string function_name_;
+  const FunctionLibraryDefinition* const flib_def_;  // Not owned.
+  const DeviceSet* const devices_;                   // Not owned.
+  const Device* default_device_;                     // Not owned.
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 

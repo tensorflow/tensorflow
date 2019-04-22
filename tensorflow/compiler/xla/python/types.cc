@@ -72,7 +72,7 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
     case U64:
       return py::format_descriptor<uint64>::format();
     case F16:
-      return std::string("float16");
+      return std::string("e");
     case F32:
       return py::format_descriptor<float>::format();
     case F64:
