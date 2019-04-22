@@ -134,7 +134,7 @@ RewritePatternMatcher::RewritePatternMatcher(
 }
 
 /// Try to match the given operation to a pattern and rewrite it.
-void RewritePatternMatcher::matchAndRewrite(Operation *op) {
+bool RewritePatternMatcher::matchAndRewrite(Operation *op) {
   for (auto &pattern : patterns) {
     // Ignore patterns that are for the wrong root or are impossible to match.
     if (pattern->getRootKind() != op->getName() ||
@@ -144,6 +144,7 @@ void RewritePatternMatcher::matchAndRewrite(Operation *op) {
     // Try to match and rewrite this pattern. The patterns are sorted by
     // benefit, so if we match we can immediately rewrite and return.
     if (pattern->matchAndRewrite(op, rewriter))
-      return;
+      return true;
   }
+  return false;
 }

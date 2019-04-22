@@ -53,6 +53,7 @@ func @materialize_read_1d_partially_specialized(%dyn1 : index, %dyn2 : index, %d
 
 // CHECK-LABEL: func @materialize_read(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
 func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
+  // CHECK-NEXT:  %[[C0:.*]] = constant 0 : index
   // CHECK-NEXT:  %0 = alloc(%arg0, %arg1, %arg2, %arg3) : memref<?x?x?x?xf32>
   // CHECK-NEXT:  affine.for %[[I0:.*]] = 0 to %arg0 step 3 {
   // CHECK-NEXT:    affine.for %[[I1:.*]] = 0 to %arg1 {
@@ -67,8 +68,6 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:          affine.for %[[I4:.*]] = 0 to 3 {
   // CHECK-NEXT:            affine.for %[[I5:.*]] = 0 to 4 {
   // CHECK-NEXT:              affine.for %[[I6:.*]] = 0 to 5 {
-  // CHECK-NEXT:                %[[C0:.*]] = constant 0 : index
-  // CHECK-NEXT:                %[[C1:.*]] = constant 1 : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
   // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D0]]]
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
@@ -78,7 +77,7 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   //
   // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D1]]]
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
-  // CHECK-NEXT:                {{.*}} = select 
+  // CHECK-NEXT:                {{.*}} = select
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, %[[C0]] : index
   // CHECK-NEXT:                %[[L1:.*]] = select
   //
@@ -127,6 +126,7 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
 
 // CHECK-LABEL:func @materialize_write(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
 func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
+  // CHECK-NEXT:  %[[C0:.*]] = constant 0 : index
   // CHECK-NEXT:  %cst = constant splat<vector<5x4x3xf32>, 1.000000e+00> : vector<5x4x3xf32>
   // CHECK-NEXT:  %0 = alloc(%arg0, %arg1, %arg2, %arg3) : memref<?x?x?x?xf32>
   // CHECK-NEXT:  affine.for %[[I0:.*]] = 0 to %arg0 step 3 {
@@ -143,8 +143,6 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:          affine.for %[[I4:.*]] = 0 to 3 {
   // CHECK-NEXT:            affine.for %[[I5:.*]] = 0 to 4 {
   // CHECK-NEXT:              affine.for %[[I6:.*]] = 0 to 5 {
-  // CHECK-NEXT:                %[[C0:.*]] = constant 0 : index
-  // CHECK-NEXT:                %[[C1:.*]] = constant 1 : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
   // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D0]]]
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, {{.*}} : index

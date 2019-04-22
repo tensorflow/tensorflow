@@ -331,8 +331,9 @@ public:
   explicit RewritePatternMatcher(OwningRewritePatternList &&patterns,
                                  PatternRewriter &rewriter);
 
-  /// Try to match the given operation to a pattern and rewrite it.
-  void matchAndRewrite(Operation *op);
+  /// Try to match the given operation to a pattern and rewrite it. Return
+  /// true if any pattern matches.
+  bool matchAndRewrite(Operation *op);
 
 private:
   RewritePatternMatcher(const RewritePatternMatcher &) = delete;
@@ -347,9 +348,10 @@ private:
 };
 
 /// Rewrite the specified function by repeatedly applying the highest benefit
-/// patterns in a greedy work-list driven manner.
+/// patterns in a greedy work-list driven manner. Return true if no more
+/// patterns can be matched in the result function.
 ///
-void applyPatternsGreedily(Function &fn, OwningRewritePatternList &&patterns);
+bool applyPatternsGreedily(Function &fn, OwningRewritePatternList &&patterns);
 
 } // end namespace mlir
 

@@ -52,6 +52,7 @@ public:
     // support for failable rewrites.
     if (failableRewrite(op, rewriter)) {
       *hadFailure = true;
+      return matchFailure();
     }
 
     return matchSuccess();
