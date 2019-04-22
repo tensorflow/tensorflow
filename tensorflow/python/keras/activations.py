@@ -117,8 +117,8 @@ def selu(x):
   model = models.Sequential()
   model.add(Dense(64, kernel_initializer='lecun_normal', activation='selu',
   input_shape=(28, 28, 1))))
-  model.add(Dense(32, activation='selu'))
-  model.add(Dense(16, activation='selu'))
+  model.add(Dense(32, kernel_initializer='lecun_normal', activation='selu'))
+  model.add(Dense(16, kernel_initializer='lecun_normal', activation='selu'))
   model.add(Dense(n_classes, activation='softmax'))
   ```
 
