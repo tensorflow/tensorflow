@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/while_op.h"
 
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -33,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
-
-const char kPropagateCompileTimeConsts[] = "_xla_propagate_compile_time_consts";
 
 namespace {
 
@@ -530,7 +529,11 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   int resource_index = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      ctx->SetOutput(i, xla::GetTupleElement(while_result, i));
+      if (IsTensorListInput(ctx, i)) {
+        ctx->SetTensorListOutput(i, xla::GetTupleElement(while_result, i));
+      } else {
+        ctx->SetOutput(i, xla::GetTupleElement(while_result, i));
+      }
       ++resource_index;
     } else {
       break;

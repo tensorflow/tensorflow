@@ -21,6 +21,7 @@ import collections as collections_lib
 import threading
 import enum
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
@@ -55,9 +56,10 @@ class CallConvention(enum.Enum):
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  result = metric_obj(value)
-  return metric_obj, result
+  return (metric_obj,
+          distributed_training_utils.call_replica_local_fn(metric_obj, value))
 
 
 def make_variable(name,
@@ -247,21 +249,27 @@ def create_keras_history(tensors):
   Arguments:
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
+
+  Returns:
+    keras_tensors: The Tensors found that came from a Keras Layer.
   """
-  _create_keras_history_helper(tensors, set())
+  _, created_layers = _create_keras_history_helper(tensors, set(), [])
+  return created_layers
 
 
-def _create_keras_history_helper(tensors, processed_ops=None):
+def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
   Arguments:
     tensors: A structure of Tensors for which to create Keras metadata.
-    processed_ops: Set. TensorFlow operations that have already been wrapped
-      in `TensorFlowOpLayer` instances.
+    processed_ops: Set. TensorFlow operations that have already been wrapped in
+      `TensorFlowOpLayer` instances.
+    created_layers: List. The `TensorFlowOpLayer` instances created.
 
   Returns:
-    The updated set of TensorFlow Operations that have been wrapped
-    in `TensorFlowOpLayer` instances.
+    Tuple. First element is the updated set of TensorFlow Operations that
+    have been wrapped in `TensorFlowOpLayer` instances. Second element is
+    a list of the `TensorFlowOpLayer` instances created.
   """
   # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
   # Cannot be imported at top because of circular dependencies.
@@ -282,19 +290,25 @@ def _create_keras_history_helper(tensors, processed_ops=None):
           layer_inputs.append(op_input)
         else:
           # Treat any value not originating from a `keras.Input` as
-          # a constant (Variables currently have `Placeholder` op type
-          # when originating from an eager context
-          # so can't be supported.
-          constants[i] = backend.function([], op_input)([])
-      processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
+          # a constant. Variables cannot be supported.
+          if (distribution_strategy_context.in_cross_replica_context() and
+              not ops.executing_eagerly_outside_functions()):
+            # In Legacy Graph mode, evaluating here makes Session be
+            # configured improperly.
+            constants[i] = op_input
+          else:
+            constants[i] = backend.function([], op_input)([])
+      processed_ops, created_layers = _create_keras_history_helper(
+          layer_inputs, processed_ops, created_layers)
       name = op.name
       node_def = op.node_def.SerializeToString()
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
+      created_layers.append(op_layer)
       op_layer._add_inbound_node(  # pylint: disable=protected-access
           layer_inputs, op.outputs)
       processed_ops.update([op])
-  return processed_ops
+  return processed_ops, created_layers
 
 
 def needs_keras_history(tensors):
@@ -323,6 +337,17 @@ def needs_keras_history(tensors):
 def is_in_call_context():
   """Returns true if inside of a model/layer '__call__'."""
   return getattr(_call_context, 'in_call', False)
+
+
+def is_in_frozen_context():
+  """Returns if currently executing inside a `call` of a frozen Layer.
+
+  A Layer is considered frozen if `layer.trainable=False`.
+
+  Returns:
+    Whether currently inside the `call` of a frozen Layer.
+  """
+  return getattr(_call_context, 'frozen', False)
 
 
 def uses_keras_history(tensors):
@@ -383,14 +408,18 @@ def mark_checked(tensors):
 
 
 @tf_contextlib.contextmanager
-def call_context():
+def call_context(layer):
   """Scope that marks when we are currently inside a Layer/Model's `call`."""
   was_in_call = is_in_call_context()
+  was_frozen = is_in_frozen_context()
   _call_context.in_call = True
+  if not layer.trainable:
+    _call_context.frozen = True
   try:
     yield
   finally:
     _call_context.in_call = was_in_call
+    _call_context.frozen = was_frozen
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):

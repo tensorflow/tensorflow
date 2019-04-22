@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/cwise_op_clip.h"
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 

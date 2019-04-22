@@ -79,7 +79,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   lexicographic order on the tuples `indices[i]`). This is not enforced when
   `SparseTensor` objects are constructed, but most ops assume correct ordering.
   If the ordering of sparse tensor `st` is wrong, a fixed version can be
-  obtained by calling `tf.sparse_reorder(st)`.
+  obtained by calling `tf.sparse.reorder(st)`.
 
   Example: The sparse tensor
 
@@ -113,7 +113,6 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       indices: A 2-D int64 tensor of shape `[N, ndims]`.
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
-
     """
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       indices = ops.convert_to_tensor(
@@ -209,9 +208,8 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     available, or `session` must be specified explicitly.
 
     Args:
-      feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See `tf.Session.run` for a
-        description of the valid feed values.
+      feed_dict: A dictionary that maps `Tensor` objects to feed values. See
+        `tf.Session.run` for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this sparse
         tensor. If none, the default session will be used.
 
@@ -231,7 +229,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     return (self._indices, self._values, self._dense_shape)
 
   @classmethod
-  def _from_components(cls, components):
+  def _from_components(cls, components, metadata):
     return cls(*components)
 
   def _shape_invariant_to_components(self, shape=None):
@@ -243,17 +241,19 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       raise ValueError("Shape invariant for SparseTensor must have the form "
                        "TensorShape([r]), got %r" % shape)
     rank = tensor_shape.dimension_value(shape[0])
-    return [tensor_shape.TensorShape([None, rank]),  # indices
-            tensor_shape.TensorShape([None]),  # values
-            tensor_shape.TensorShape([rank])]  # dense_shape
+    return [
+        tensor_shape.TensorShape([None, rank]),  # indices
+        tensor_shape.TensorShape([None]),  # values
+        tensor_shape.TensorShape([rank])
+    ]  # dense_shape
 
   @property
   def _is_graph_tensor(self):
-    return hasattr(self._values, 'graph')
+    return hasattr(self._values, "graph")
 
 
-SparseTensorValue = collections.namedtuple(
-    "SparseTensorValue", ["indices", "values", "dense_shape"])
+SparseTensorValue = collections.namedtuple("SparseTensorValue",
+                                           ["indices", "values", "dense_shape"])
 tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
 pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
 
@@ -265,8 +265,8 @@ def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
   Args:
     value: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
       registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the
-      type is inferred from the type of `value`.
+    dtype: Optional element type for the returned tensor. If missing, the type
+      is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
 
   Returns:
@@ -281,23 +281,22 @@ def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
     value = SparseTensor.from_value(value)
   if isinstance(value, SparseTensor):
     if dtype and not dtype.is_compatible_with(value.dtype):
-      raise RuntimeError(
-          "Sparse dtype: requested = %s, actual = %s" % (
-              dtype.name, value.dtype.name))
+      raise RuntimeError("Sparse dtype: requested = %s, actual = %s" %
+                         (dtype.name, value.dtype.name))
     return value
-  return ops.internal_convert_to_tensor(
-      value, dtype=dtype, name=name)
+  return ops.internal_convert_to_tensor(value, dtype=dtype, name=name)
 
 
 def is_sparse(x):
   """Check whether `x` is sparse.
 
-  Check whether an object is a `tf.SparseTensor` or `tf.SparseTensorValue`.
+  Check whether an object is a `tf.SparseTensor` or
+  `tf.compat.v1.SparseTensorValue`.
 
   Args:
     x: A python object to check.
 
   Returns:
-    `True` iff `x` is a `tf.SparseTensor` or `tf.SparseTensorValue`.
+    `True` iff `x` is a `tf.SparseTensor` or `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))

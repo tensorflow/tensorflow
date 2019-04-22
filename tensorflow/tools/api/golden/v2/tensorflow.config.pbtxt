@@ -5,10 +5,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "gpu"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "optimizer"
     mtype: "<type \'module\'>"
   }

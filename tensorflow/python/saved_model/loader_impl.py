@@ -353,10 +353,10 @@ class SavedModelLoader(object):
     """Restore SavedModel variable values into the session.
 
     Args:
-      sess: tf.Session to restore variable values.
-      saver: a tf.train.Saver object. Can be None if there are no variables in
-        graph. This may be the saver returned by the load_graph() function, or a
-        default `tf.train.Saver()`.
+      sess: tf.compat.v1.Session to restore variable values.
+      saver: a tf.compat.v1.train.Saver object. Can be None if there are no
+        variables in graph. This may be the saver returned by the load_graph()
+        function, or a default `tf.compat.v1.train.Saver()`.
       import_scope: Optional `string` -- if specified, prepend this string
         followed by '/' to all loaded tensor names. This scope is applied to
         tensor instances loaded into the passed session, but it is *not* written
@@ -383,7 +383,7 @@ class SavedModelLoader(object):
     """Run initialization ops defined in the `MetaGraphDef`.
 
     Args:
-      sess: tf.Session to restore variable values.
+      sess: tf.compat.v1.Session to restore variable values.
       tags: a set of string tags identifying a MetaGraphDef.
       import_scope: Optional `string` -- if specified, prepend this string
         followed by '/' to all loaded tensor names. This scope is applied to
@@ -404,7 +404,7 @@ class SavedModelLoader(object):
     """Load the MetaGraphDef graph and restore variable values into the session.
 
     Args:
-      sess: tf.Session to restore variable values.
+      sess: tf.compat.v1.Session to restore variable values.
       tags: a set of string tags identifying a MetaGraphDef.
       import_scope: Optional `string` -- if specified, prepend this string
         followed by '/' to all loaded tensor names. This scope is applied to

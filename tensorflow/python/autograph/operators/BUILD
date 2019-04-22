@@ -27,6 +27,7 @@ py_library(
         "py_builtins.py",
         "slices.py",
         "special_values.py",
+        "symbols.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -113,6 +114,16 @@ py_test(
 py_test(
     name = "special_values_test",
     srcs = ["special_values_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "symbols_test",
+    srcs = ["symbols_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":operators",

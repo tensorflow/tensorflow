@@ -47,6 +47,7 @@ class Undefined(object):
   """
 
   def __init__(self, symbol_name):
+    # TODO(aqj) Possibly remove this after Symbols are fully integrated.
     self.symbol_name = symbol_name
 
 

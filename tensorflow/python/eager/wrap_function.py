@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -40,14 +41,12 @@ class VariableHolder(object):
   def __init__(self, fn=None, share_variables=False):
     self._fn = fn
 
-    self._variables = []
-
     self._share_variables = share_variables
-    self._variables_by_name = {}
+    self._variables_by_name = data_structures.Mapping()
 
   @property
   def variables(self):
-    return self._variables
+    return self._variables_by_name
 
   def variable_creator_scope(self, next_creator, **kwargs):
     """Creates variables & adds them to collections to match legacy code."""
@@ -55,18 +54,16 @@ class VariableHolder(object):
     v = None
 
     # Get expected variable name.
-    name = kwargs.get("name", None)
-    with ops.name_scope(name, "Variable") as name_scope:
-      name = name_scope
+    with ops.name_scope(kwargs.get("name", None), "Variable") as name:
+      variable_name = ops.name_from_scope_name(name)
+      kwargs["name"] = name
 
     if self._share_variables:
-      v = self._variables_by_name.get(name, None)
+      v = self._variables_by_name.get(variable_name, None)
 
     if v is None:
       v = next_creator(**kwargs)
-      self._variables.append(v)
-      if self._share_variables:
-        self._variables_by_name[name] = v
+      self._variables_by_name[variable_name] = v
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -81,9 +78,11 @@ class VariableHolder(object):
     return self.call_with_variable_creator_scope(self._fn)(*args, **kwargs)
 
   def call_with_variable_creator_scope(self, fn):
+
     def wrapped(*args, **kwargs):
       with variable_scope.variable_creator_scope(self.variable_creator_scope):
         return fn(*args, **kwargs)
+
     return wrapped
 
 
@@ -112,14 +111,14 @@ class WrappedFunction(function.ConcreteFunction):
     """
     with self.graph.as_default():
       collection_variables = (
-          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-          + ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES) +
+          ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
       existing_captures = set(self.graph.internal_captures)
       lifted_variables = {}
       for old_variable in collection_variables:
         if (old_variable._in_graph_mode  # pylint: disable=protected-access
-            and isinstance(old_variable,
-                           resource_variable_ops.ResourceVariable)):
+            and
+            isinstance(old_variable, resource_variable_ops.ResourceVariable)):
           if old_variable.handle in existing_captures:
             continue
           new_variable = def_function.UnliftedInitializerVariable(
@@ -133,18 +132,21 @@ class WrappedFunction(function.ConcreteFunction):
           existing_captures.add(old_variable.handle)
           lifted_variables[old_variable] = new_variable
           # pylint: disable=protected-access
-          self._variable_holder._variables.append(new_variable)
+          variable_name = new_variable.name.split(":")[0]
+          self._variable_holder._variables_by_name[variable_name] = new_variable
           self.graph._weak_variables.append(weakref.ref(new_variable))
           # pylint: enable=protected-access
       # Update the graph's collections, partly for the user and partly so this
       # function is idempotent when it runs again in prune() calls.
-      for collection_name in [ops.GraphKeys.GLOBAL_VARIABLES,
-                              ops.GraphKeys.LOCAL_VARIABLES]:
+      for collection_name in [
+          ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES
+      ]:
         mutable_collection = ops.get_collection_ref(collection_name)
         for index, current in enumerate(mutable_collection):
           mutable_collection[index] = lifted_variables.get(current, current)
 
-  def prune(self, feeds, fetches, name=None):
+  def prune(self, feeds, fetches, name=None, input_signature=None):
+    # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
     flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
     for f in flat_feeds:
@@ -154,38 +156,23 @@ class WrappedFunction(function.ConcreteFunction):
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
     internal_captures = self.graph.internal_captures
-    flat_feeds = [f for f in flat_feeds
-                  if f not in internal_captures]
+    flat_feeds = [f for f in flat_feeds if f not in internal_captures]
 
-    tensor_fetches = []
     operation_fetches = []
     for f in flat_fetches:
-      if isinstance(f, ops.Tensor):
-        tensor_fetches.append(f)
-      elif isinstance(f, ops.Operation):
+      if isinstance(f, ops.Operation):
         operation_fetches.append(f)
-      else:
+      elif not isinstance(f, ops.Tensor):
         raise ValueError("Fetches must be tensors or operations.")
     for f in flat_feeds + flat_fetches:
       if f.graph is not self._func_graph:
-        raise ValueError(
-            "Can only prune function whose feeds and fetches "
-            "are from this graph (%s). Tensor %s from graph %s" % (
-                self._func_graph, f, f.graph))
+        raise ValueError("Can only prune function whose feeds and fetches "
+                         "are from this graph (%s). Tensor %s from graph %s" %
+                         (self._func_graph, f, f.graph))
     with self._func_graph.as_default():
       pruned_graph = func_graph.FuncGraph(name)
-      with ops.control_dependencies(operation_fetches):
-        if tensor_fetches:
-          identity_fetches = array_ops.identity_n(tensor_fetches)
-          sink_tensor = identity_fetches[0]
-        else:
-          identity_fetches = []
-          sink_tensor = array_ops.zeros([])
     lift_map = lift_to_graph.lift_to_graph(
-        [sink_tensor], pruned_graph, sources=flat_feeds + internal_captures)
-    for original_fetch, identity_fetch in zip(
-        tensor_fetches, identity_fetches):
-      lift_map[original_fetch] = lift_map[identity_fetch]
+        flat_fetches, pruned_graph, sources=flat_feeds + internal_captures)
     pruned_graph.outputs.extend(
         lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
     pruned_graph.control_outputs.extend(
@@ -205,10 +192,12 @@ class WrappedFunction(function.ConcreteFunction):
 
     pruned_graph.structured_outputs = nest.map_structure(
         _structured_output_mapping, fetches)
+    pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)
     pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
-    pruned_fn._arg_keywords = []  # pylint: disable=protected-access
+    # TODO(kathywu): Enable keyword arguments if an input signature is specified
+    pruned_fn._arg_keywords = [tensor.op.name for tensor in flat_feeds]  # pylint: disable=protected-access
     return pruned_fn
 
 
@@ -257,12 +246,12 @@ class WrappedGraph(object):
 
   ```
   def add_v1(x):
-    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.compat.v1.AUTO_REUSE):
       v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
     return v + x
 
   def increment_var_v1(x):
-    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.compat.v1.AUTO_REUSE):
       v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
     return v.assign_add(x)
 
@@ -304,9 +293,10 @@ class WrappedGraph(object):
     """Wraps a TF 1.X function and returns an eager-compatible function.
 
     All functions wrapped in the same `WrappedGraph` will have access to the
-    same graph (`tf.get_default_graph` to get the graph object within a
-    function, or `WrappedGraph.graph` to get the graph outside a function).
-    Variables created within the function will be added to the `variables` list.
+    same graph (`tf.compat.v1.get_default_graph` to get the graph object
+    within a function, or `WrappedGraph.graph` to get the graph outside a
+    function). Variables created within the function will be added to the
+    `variables` list.
 
     Function inputs: All inputs to the function must be tensors (nested ok),
     with their shapes and dtypes defined in the `signature` argument.
@@ -347,13 +337,24 @@ class WrappedGraph(object):
     Returns:
       An eager-compatible function.
     """
+    return self._wrap_function(fn, signature=signature, name=name)
+
+  def _wrap_function(self,
+                     fn,
+                     args=None,
+                     kwargs=None,
+                     signature=None,
+                     name=None):
+    """Internal wrap function method with extended func_graph arguments."""
     fn_with_filter_and_scope, returned_ops = _filter_returned_ops(
         self._variable_holder.call_with_variable_creator_scope(fn))
 
     func_graph.func_graph_from_py_func(
         None,  # Name is unused.
         fn_with_filter_and_scope,
-        args=None, kwargs=None, signature=signature,
+        args=args,
+        kwargs=kwargs,
+        signature=signature,
         add_control_dependencies=False,
         func_graph=self.graph)
 
@@ -371,7 +372,8 @@ class WrappedGraph(object):
                                        flat_fn_outputs)
 
     name = name or fn.__name__
-    wrapped_function = self._wrapped_function.prune(fn_inputs, fn_outputs, name)
+    wrapped_function = self._wrapped_function.prune(
+        fn_inputs, fn_outputs, name, self.graph.structured_input_signature)
     self._functions[name] = wrapped_function
     return wrapped_function
 
@@ -426,8 +428,8 @@ def wrap_function(fn, signature, name=None):
 
   Args:
     fn: python function to be wrapped
-    signature: the placeholder and python arguments to be passed to the
-      wrapped function
+    signature: the placeholder and python arguments to be passed to the wrapped
+      function
     name: Optional. The name of the function.
 
   Returns:
@@ -441,7 +443,9 @@ def wrap_function(fn, signature, name=None):
       func_graph.func_graph_from_py_func(
           func_graph_name,
           holder,
-          args=None, kwargs=None, signature=signature,
+          args=None,
+          kwargs=None,
+          signature=signature,
           add_control_dependencies=False,
           collections={}),
       variable_holder=holder,
@@ -461,6 +465,7 @@ def function_from_graph_def(graph_def, inputs, outputs):
   Returns:
     A ConcreteFunction.
   """
+
   def _imports_graph_def():
     importer.import_graph_def(graph_def, name="")
 

@@ -106,6 +106,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.input_tensor_shapes = input_tensor_shapes_;
+  options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
@@ -290,7 +292,10 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     // If tracing if off, the overheads of ScopedAnnotation and ScopedActivity
     // are negligible.
     if (device_->TraceUsingAnnotations()) {
-      tracing::ScopedAnnotation activity(op_name, kernel_->type_string());
+      // 'ScopedActivity' will trace the OpKernel scheduling time on host.
+      tracing::ScopedActivity activity(op_name, kernel_->type_string());
+      // 'ScopedAnnotation' will trace the OpKernel execution time on device.
+      tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
       tracing::ScopedActivity activity(op_name, kernel_->type_string());

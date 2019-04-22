@@ -145,12 +145,12 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/signal",
     ],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

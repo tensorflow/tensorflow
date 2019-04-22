@@ -52,6 +52,8 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
+      const HloCustomCallInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null

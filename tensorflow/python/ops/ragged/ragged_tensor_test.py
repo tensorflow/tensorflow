@@ -728,7 +728,8 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
       * Call __getitem__ with int values in the slice spec wrapped in
         `tf.constant()`.
       * Call __getitem__ with int values in the slice spec wrapped in
-        `tf.placeholder()` (so value is not known at graph construction time).
+        `tf.compat.v1.placeholder()` (so value is not known at graph
+        construction time).
 
     Args:
       rt: The RaggedTensor to test.
@@ -1084,8 +1085,8 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
       expected_repr = (
           'tf.RaggedTensor(values=tf.Tensor([{}], shape=(7,), dtype=string), '
           'row_splits=tf.Tensor([{}], shape=(6,), dtype=int64))'.format(
-              ' '.join(repr(x) for x in values), ' '.join(
-                  repr(x) for x in row_splits)))
+              ' '.join(repr(x) for x in values),
+              ' '.join(repr(x) for x in row_splits)))
       self.assertEqual(str(rt), expected_str)
       self.assertEqual(repr(rt), expected_repr)
     else:
@@ -1229,7 +1230,6 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
         array_ops.placeholder(dtypes.int64, name='a.row_splits'))
     ragged_math_ops.reduce_sum(a)
     self.assertLen(a.consumers(), 1)
-
 
 if __name__ == '__main__':
   googletest.main()

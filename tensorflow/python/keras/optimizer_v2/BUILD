@@ -36,7 +36,11 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
+        "//tensorflow/python/keras:base_layer_utils",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:tf_utils",
     ],
 )
 

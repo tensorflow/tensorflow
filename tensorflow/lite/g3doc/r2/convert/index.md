@@ -21,4 +21,4 @@ conversion process is shown in the diagram below:
 The TensorFlow Lite converter can be used from the [Python API](python_api.md).
 Using the Python API makes it easier to convert models as part of a model
 development pipeline and helps mitigate
-[compatibility](../guide/ops_compatibility.md) issues early on.
+[compatibility](../../guide/ops_compatibility.md) issues early on.

@@ -25,6 +25,7 @@ import org.tensorflow.Graph;
 import org.tensorflow.Operand;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
+import org.tensorflow.Shape;
 import org.tensorflow.op.Ops;
 
 @RunWith(JUnit4.class)
@@ -54,6 +55,31 @@ public final class GeneratedOperationsTest {
       Operand<Integer> x = ops.math().addN(inputs);
       try (Tensor<Integer> result = sess.runner().fetch(x).run().get(0).expect(Integer.class)) {
         assertEquals(6, result.intValue());
+      }
+    }
+  }
+
+  /**
+   * Test for Ops.withControlDependencies.
+   *
+   * <p>Creates an add node with a control dependency to an assign node. In other words, the assign
+   * node is a control input to the add node. When the add node is run, the assign node is expected
+   * to have run beforehand due to the control dependency.
+   */
+  @Test
+  public void testControlDependencies() {
+    try (Graph g = new Graph();
+        Session sess = new Session(g)) {
+      Ops ops = Ops.create(g);
+      Operand<Integer> variable = ops.variable(Shape.scalar(), Integer.class);
+      Operand<?> initVariable = ops.assign(variable, ops.constant(0));
+      ArrayList<Operand<?>> controls = new ArrayList<Operand<?>>();
+      controls.add(ops.assign(variable, ops.constant(3)));
+      Operand<Integer> x =
+          ops.withControlDependencies(controls).math().add(variable, ops.constant(0));
+      sess.runner().addTarget(initVariable).run();
+      try (Tensor<Integer> result = sess.runner().fetch(x).run().get(0).expect(Integer.class); ) {
+        assertEquals(3, result.intValue());
       }
     }
   }

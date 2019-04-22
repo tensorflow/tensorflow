@@ -345,7 +345,7 @@ FunctionDef Swap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
        {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
@@ -360,7 +360,7 @@ FunctionDef EmptyBodySwap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {},
       // Output mapping
@@ -384,6 +384,22 @@ FunctionDef ResourceOutput() {
           {{"mul"}, "Mul", {"x", "two:output:0"}, {{"T", DT_FLOAT}}, {}},
       },
       {{"y_out", "y"}, {"two_x", "mul:z:0"}});
+}
+
+FunctionDef ResourceIdentity() {
+  return FDH::Create(
+      // Name
+      "ResourceIdentity",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {},
+      // Output mapping
+      {{"y", "x"}});
 }
 
 FunctionDef ReadResourceVariable() {
@@ -474,6 +490,83 @@ FunctionDef XYXLessThanOrEqualToN(int64 N) {
           {{"N1"}, "Cast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
           {{"z"}, "LessEqual", {"x", "N1"}, {{"T", "$T"}}},
       });
+}
+
+FunctionDef RandomUniformLess() {
+  const Tensor kZero = test::AsScalar<int32>(0);
+  const Tensor kOne = test::AsScalar<int32>(1);
+  const Tensor k005 = test::AsScalar<float>(0.05);
+
+  return FDH::Define(
+      // Name
+      "RandomUniformLess",
+      // Args
+      {"arg0: int64"},
+      // Return values
+      {"strided_slice: bool"},
+      // Attr def
+      {"T:{float, double, int32, int64, string}"},
+      {{{"random_uniform/shape"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT32}}},
+
+       {{"random_uniform/RandomUniform"},
+        "RandomUniform",
+        {"random_uniform/shape"},
+        {{"T", DT_INT32}, {"Tout", DT_FLOAT}, {"seed", 0}, {"seed2", 0}}},
+
+       {{"Less/y"}, "Const", {}, {{"value", k005}, {"dtype", DT_FLOAT}}},
+
+       {{"Less"},
+        "Less",
+        {"random_uniform/RandomUniform", "Less/y"},
+        {{"T", DT_FLOAT}}},
+
+       {{"strided_slice/stack"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT32}}},
+
+       {{"strided_slice/stack_1"},
+        "Const",
+        {},
+        {{"value", kOne}, {"dtype", DT_INT32}}},
+
+       {{"strided_slice/stack_2"},
+        "Const",
+        {},
+        {{"value", kOne}, {"dtype", DT_INT32}}},
+
+       {{"strided_slice"},
+        "StridedSlice",
+        {"Less", "strided_slice/stack", "strided_slice/stack_1",
+         "strided_slice/stack_2"},
+        {{"Index", DT_INT32},
+         {"T", DT_BOOL},
+         {"begin_mask", 0},
+         {"ellipsis_mask", 0},
+         {"end_mask", 0},
+         {"new_axis_mask", 0},
+         {"shrink_axis_mask", 0}}}});
+}
+
+FunctionDef MakeTensorSliceDataset() {
+  return FDH::Define(
+      // Name
+      "MakeTensorSliceDataset",
+      // Args
+      {"x:Toutput_types"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"Toutput_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TensorSliceDataset",
+        {"x"},
+        {{"Toutput_types", "$Toutput_types"},
+         {"output_shapes", "$output_shapes"}}}});
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

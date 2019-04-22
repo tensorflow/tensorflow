@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
+
 #include <cfloat>
 
 #include "tensorflow/core/framework/register_types.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace {
@@ -391,11 +392,12 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
   if (output_size == 0) return true;
-  MaxPoolForwardNoMaskKernel_NCHW_VECT_C<<<
+  TF_CHECK_OK(CudaLaunchKernel(
+      MaxPoolForwardNoMaskKernel_NCHW_VECT_C,
       (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
-      0, d.stream()>>>(output_size, bottom_data, height, width, channels,
-                       pooled_height, pooled_width, kernel_h, kernel_w,
-                       stride_h, stride_w, pad_t, pad_l, top_data);
+      0, d.stream(), output_size, bottom_data, height, width, channels,
+      pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
+      pad_t, pad_l, top_data));
   return d.ok();
 }
 
@@ -411,19 +413,21 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
   const int output_size = batch * channels * pooled_height * pooled_width;
   if (output_size == 0) return true;
   if (propagate_nans) {
-    MaxPoolForwardNHWC<true>
-        <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-           kThreadsPerBlock, 0, d.stream()>>>(
-            output_size, bottom_data, height, width, channels, pooled_height,
-            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-            top_data, mask, include_batch_in_index);
+    TF_CHECK_OK(CudaLaunchKernel(
+        MaxPoolForwardNHWC<true, T>,
+        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+        kThreadsPerBlock, 0, d.stream(), output_size, bottom_data, height,
+        width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+        stride_h, stride_w, pad_t, pad_l, top_data, mask,
+        include_batch_in_index));
   } else {
-    MaxPoolForwardNHWC<false>
-        <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-           kThreadsPerBlock, 0, d.stream()>>>(
-            output_size, bottom_data, height, width, channels, pooled_height,
-            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-            top_data, mask, include_batch_in_index);
+    TF_CHECK_OK(CudaLaunchKernel(
+        MaxPoolForwardNHWC<false, T>,
+        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+        kThreadsPerBlock, 0, d.stream(), output_size, bottom_data, height,
+        width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+        stride_h, stride_w, pad_t, pad_l, top_data, mask,
+        include_batch_in_index));
   }
   return d.ok();
 }
@@ -439,16 +443,17 @@ bool MaxPoolBackwardNoMask<T>::operator()(
 
   const int bottom_size = batch * channels * height * width;
   if (bottom_size == 0) return true;
-  SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-            kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
+  TF_CHECK_OK(CudaLaunchKernel(
+      SetZero<T>, (bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+      kThreadsPerBlock, 0, d.stream(), bottom_size, bottom_diff));
 
   const int top_size = batch * channels * pooled_height * pooled_width;
-  MaxPoolBackwardNoMaskNHWC<<<(top_size + kThreadsPerBlock - 1) /
-                                  kThreadsPerBlock,
-                              kThreadsPerBlock, 0, d.stream()>>>(
-      top_size, bottom_data, height, width, channels, pooled_height,
+  TF_CHECK_OK(CudaLaunchKernel(
+      MaxPoolBackwardNoMaskNHWC<T>,
+      (top_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock, 0,
+      d.stream(), top_size, bottom_data, height, width, channels, pooled_height,
       pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-      top_diff, bottom_diff);
+      top_diff, bottom_diff));
   return d.ok();
 }
 
@@ -460,12 +465,14 @@ bool MaxPoolBackwardWithArgmax<T>::operator()(
     const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
   if (input_size == 0) return true;
-  SetZero<<<(input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-            kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
-  MaxPoolBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                    kThreadsPerBlock, 0, d.stream()>>>(
-      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff,
-      include_batch_in_index);
+  TF_CHECK_OK(CudaLaunchKernel(
+      SetZero<T>, (input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+      kThreadsPerBlock, 0, d.stream(), input_size, bottom_diff));
+  TF_CHECK_OK(CudaLaunchKernel(
+      MaxPoolBackward<T>,
+      (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
+      0, d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
+      bottom_diff, include_batch_in_index));
   return d.ok();
 }
 
@@ -482,17 +489,19 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
   CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
-    MaxPoolGradBackwardNoMaskNHWC<<<config.block_count, config.thread_per_block,
-                                    0, d.stream()>>>(
-        num_kernels, bottom_data, output_data, pooled_height, pooled_width,
-        channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
-        pad_l, top_diff, bottom_diff);
+    TF_CHECK_OK(
+        CudaLaunchKernel(MaxPoolGradBackwardNoMaskNHWC<T>, config.block_count,
+                         config.thread_per_block, 0, d.stream(), num_kernels,
+                         bottom_data, output_data, pooled_height, pooled_width,
+                         channels, height, width, kernel_h, kernel_w, stride_h,
+                         stride_w, pad_t, pad_l, top_diff, bottom_diff));
   } else {
-    MaxPoolGradBackwardNoMaskNCHW<<<config.block_count, config.thread_per_block,
-                                    0, d.stream()>>>(
-        num_kernels, bottom_data, output_data, pooled_height, pooled_width,
-        channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
-        pad_l, top_diff, bottom_diff);
+    TF_CHECK_OK(
+        CudaLaunchKernel(MaxPoolGradBackwardNoMaskNCHW<T>, config.block_count,
+                         config.thread_per_block, 0, d.stream(), num_kernels,
+                         bottom_data, output_data, pooled_height, pooled_width,
+                         channels, height, width, kernel_h, kernel_w, stride_h,
+                         stride_w, pad_t, pad_l, top_diff, bottom_diff));
   }
   return d.ok();
 }
@@ -505,10 +514,10 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const bool include_batch_in_index) {
   if (input_size == 0) return true;
   CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
-  MaxPoolGradBackward<<<config.block_count, config.thread_per_block, 0,
-                        d.stream()>>>(output_size, top_diff, mask, top_offset,
-                                      bottom_offset, bottom_diff,
-                                      include_batch_in_index);
+  TF_CHECK_OK(CudaLaunchKernel(
+      MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,
+      d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
+      bottom_diff, include_batch_in_index));
   return d.ok();
 }
 

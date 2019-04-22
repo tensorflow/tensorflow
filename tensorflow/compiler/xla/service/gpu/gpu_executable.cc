@@ -132,13 +132,6 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    // If this thunk is about to autotune then wait for all currently executing
-    // thunks to finish.  This reduces noise and thus the probability of
-    // choosing a suboptimal algorithm.
-    if (thunk->WillAutotuneKernel(stream)) {
-      TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
-    }
-
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;

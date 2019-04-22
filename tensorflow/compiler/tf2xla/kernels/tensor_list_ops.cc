@@ -47,16 +47,19 @@ class TensorListLengthOp : public XlaOpKernel {
   explicit TensorListLengthOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp index;
-    OP_REQUIRES_OK(ctx, GetTensorListPushIndex(ctx->Input(0), &index));
-    ctx->SetOutput(0, index);
+    TensorShape buffer_shape;
+    OP_REQUIRES_OK(ctx, GetTensorListBufferShape(ctx->Input(0), &buffer_shape));
+    Tensor length_tensor(DT_INT32, {});
+    length_tensor.scalar<int32>()() =
+        static_cast<int32>(buffer_shape.dim_size(0));
+    ctx->SetConstantOutput(0, length_tensor);
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListLengthOp);
 };
 
-REGISTER_XLA_OP(Name("TensorListLength"), TensorListLengthOp);
+REGISTER_XLA_OP(Name("TensorListLength").IsMetadataOp(), TensorListLengthOp);
 
 // Creates an empty list with size (leading_dim, *element_shape) if
 // element_shape is known at compile time. Otherwise creates one with size

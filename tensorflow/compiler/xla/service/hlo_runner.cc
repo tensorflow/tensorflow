@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -85,9 +84,11 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
   return ParseHloString(hlo_string, config);
 }
 
-HloRunner::HloRunner(se::Platform* platform) {
+HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
+  backend_options.set_intra_op_parallelism_threads(
+      intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }

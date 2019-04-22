@@ -45,6 +45,14 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                       const Layout& input, const Layout& filter,
                                       const Layout& output);
 
+// Generates and returns a unique lock per each provided executor.
+// Guarantees that blocks of code both holding a lock for the same provided
+// executor (as given by this function) will not be running concurrently.
+//
+// This is used to prevent other XLA instances from trying to autotune on a
+// device while another thread is using it.
+tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec);
+
 }  // namespace gpu
 }  // namespace xla
 

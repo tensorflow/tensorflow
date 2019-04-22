@@ -41,7 +41,7 @@ class Module(tracking.AutoTrackable):
   ...   def __init__(self, in_features, output_features, name=None):
   ...     super(Dense, self).__init__(name=name)
   ...     self.w = tf.Variable(
-  ...         tf.random_normal([input_features, output_features]), name='w')
+  ...         tf.random.normal([input_features, output_features]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_features]), name='b')
   ...
   ...   def __call__(self, x):
@@ -95,6 +95,14 @@ class Module(tracking.AutoTrackable):
   ```
   """
 
+  # AutoTrackable adds object attributes that users will not expect us to
+  # include when flattening (these reference dependencies reachable via other
+  # object attributes).
+  _TF_MODULE_IGNORED_PROPERTIES = frozenset((
+      "_self_unconditional_checkpoint_dependencies",
+      "_self_unconditional_dependency_names"
+  ))
+
   def __init__(self, name=None):
     if name is None:
       name = camel_to_snake(type(self).__name__)
@@ -136,7 +144,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_IS_VARIABLE))
+    return tuple(self._flatten(predicate=_is_variable))
 
   @property
   def trainable_variables(self):
@@ -151,7 +159,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
+    return tuple(self._flatten(predicate=_is_trainable_variable))
 
   @property
   def submodules(self):
@@ -172,7 +180,7 @@ class Module(tracking.AutoTrackable):
     Returns:
       A sequence of all submodules.
     """
-    return tuple(self._flatten(predicate=_IS_MODULE))
+    return tuple(self._flatten(predicate=_is_module))
 
   def _flatten(self,
                recursive=True,
@@ -233,6 +241,7 @@ class Module(tracking.AutoTrackable):
         self,
         recursive=recursive,
         predicate=predicate,
+        attributes_to_ignore=self._TF_MODULE_IGNORED_PROPERTIES,
         attribute_traversal_key=attribute_traversal_key,
         with_path=with_path)
 
@@ -269,9 +278,17 @@ class Module(tracking.AutoTrackable):
     return tf_decorator.make_decorator(method, method_with_name_scope)
 
 
-_IS_VARIABLE = lambda o: isinstance(o, variables.Variable)
-_IS_TRAINABLE_VARIABLE = lambda o: (_IS_VARIABLE(o) and o.trainable)
-_IS_MODULE = lambda o: isinstance(o, Module)
+def _is_variable(obj):
+  return isinstance(obj, variables.Variable)
+
+
+def _is_trainable_variable(obj):
+  return _is_variable(obj) and getattr(obj, "trainable", False)
+
+
+def _is_module(obj):
+  return isinstance(obj, Module)
+
 _CAMEL_TO_SNAKE_R = re.compile(r"((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))")
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_]([a-zA-Z0-9_])*$")
 
@@ -284,17 +301,11 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-# AutoTrackable adds object attributes that users will not expect us to
-# include when flattening (these reference dependencies reachable via other
-# object attributes).
-AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",
-                             "_unconditional_dependency_names")
-
-
 def _flatten_module(module,
                     recursive,
                     predicate,
                     attribute_traversal_key,
+                    attributes_to_ignore,
                     with_path,
                     module_path=(),
                     seen=None):
@@ -306,7 +317,7 @@ def _flatten_module(module,
   submodules = []
 
   for key in sorted(module_dict, key=attribute_traversal_key):
-    if key in AUTO_CHECKPOINTABLE_ATTRS:
+    if key in attributes_to_ignore:
       continue
 
     for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
@@ -325,7 +336,7 @@ def _flatten_module(module,
         else:
           yield leaf
 
-      if recursive and isinstance(leaf, Module):
+      if recursive and _is_module(leaf):
         # Walk direct properties first then recurse.
         submodules.append((module_path + leaf_path, leaf))
 
@@ -335,6 +346,7 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
+        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,
         with_path=with_path,
         module_path=submodule_path,
         seen=seen)

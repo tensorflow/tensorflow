@@ -31,6 +31,7 @@ namespace internal {
 
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
+string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
@@ -47,7 +48,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
                               "'; dlerror: ", status.error_message());
 #if !defined(PLATFORM_WINDOWS)
   if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
-    message += absl::StrCat("; LD_LIRARY_PATH: ", ld_library_path);
+    message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
   LOG(INFO) << message;
@@ -75,15 +76,23 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
 }
 
 port::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCudaVersion());
+  return GetDsoHandle("cublas", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCudaVersion());
+  return GetDsoHandle("cufft", GetCudaLibVersion());
+}
+
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  return GetDsoHandle("cusolver", GetCudaVersion());
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  return GetDsoHandle("cusparse", GetCudaVersion());
 }
 
 port::StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCudaVersion());
+  return GetDsoHandle("curand", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCuptiDsoHandle() {
@@ -143,6 +152,16 @@ port::StatusOr<void*> GetCurandDsoHandle() {
 
 port::StatusOr<void*> GetCufftDsoHandle() {
   static auto result = new auto(DsoLoader::GetCufftDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusolverDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusparseDsoHandle());
   return *result;
 }
 

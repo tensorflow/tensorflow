@@ -578,6 +578,20 @@ class ShapeUtil {
   static std::vector<std::pair<int64, int64>> DimensionsUnmodifiedByReshape(
       const Shape& input_shape, const Shape& output_shape);
 
+  // Return whether the given reshape instruction leaves the dimensions at the
+  // given input indices unmodified, and returns their output indices.
+  //
+  // Example:
+  //   input_dim_indices = {2, 3}
+  //   input  shape = T[a, b, x, y, cd]
+  //   output shape = T[ab, x, 1, y, c, d]
+  //   return value = {1, 3}
+  //
+  // Precondition: input_dim_indices is sorted.
+  static absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
+      const Shape& from_shape, const Shape& to_shape,
+      absl::Span<const int64> input_dim_indices);
+
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
   // to its input and thus may be replaced with a bitcast.
@@ -624,7 +638,7 @@ class ShapeUtil {
   // continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(Span<int64>) or compatible.
+  // StatusOr<bool>(absl::Span<int64>) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
                                        absl::Span<const int64> base,

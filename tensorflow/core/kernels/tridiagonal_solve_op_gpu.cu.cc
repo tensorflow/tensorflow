@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/cuda_device_functions.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -92,6 +92,8 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
                                         "arguments, got ",
                                         num_rows1, " and ", num_rows2, "."));
   }
+
+  bool EnableInputForwarding() const final { return false; }
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
@@ -199,9 +201,10 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
     CudaLaunchConfig cfg = GetCudaLaunchConfig(1, device);
     bool* not_invertible_dev;
     cudaMalloc(&not_invertible_dev, sizeof(bool));
-    SolveForSizeOneOrTwoKernel<<<cfg.block_count, cfg.thread_per_block, 0,
-                                 device.stream()>>>(m, diagonals, rhs, k,
-                                                    output, not_invertible_dev);
+    TF_CHECK_OK(CudaLaunchKernel(SolveForSizeOneOrTwoKernel<Scalar>,
+                                 cfg.block_count, cfg.thread_per_block, 0,
+                                 device.stream(), m, diagonals, rhs, k, output,
+                                 not_invertible_dev));
     bool not_invertible_host;
     cudaMemcpy(&not_invertible_host, not_invertible_dev, sizeof(bool),
                cudaMemcpyDeviceToHost);

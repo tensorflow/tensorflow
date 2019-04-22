@@ -244,7 +244,7 @@ def convert_inner_node_data(nested, wrap=False):
       unwraps `ListWrapper` objects into lists.
 
   Returns:
-    Strucutre of same type as nested, with lists wrapped/unwrapped.
+    Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
   def _is_atomic_nested(nested):
@@ -318,6 +318,8 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
+  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
   if isinstance(tensor, variables.Variable):
     # Variables that are output of a Keras Layer in Functional API mode
     # should be considered symbolic.
@@ -330,8 +332,6 @@ def is_symbolic_tensor(tensor):
     return tensor._is_graph_tensor  # pylint: disable=protected-access
   if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    return hasattr(ops.convert_to_tensor(tensor), 'graph')
   return False
 
 
@@ -370,3 +370,28 @@ def register_symbolic_tensor_type(cls):
 
 def is_tensor_or_variable(x):
   return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
+
+
+def assert_no_legacy_layers(layers):
+  """Prevent tf.layers.Layers from being used with Keras.
+
+  Certain legacy layers inherit from their keras analogs; however they are
+  not supported with keras and can lead to subtle and hard to diagnose bugs.
+
+  Args:
+    layers: A list of layers to check
+
+  Raises:
+    TypeError: If any elements of layers are tf.layers.Layers
+  """
+
+  # isinstance check for tf.layers.Layer introduces a circular dependency.
+  legacy_layers = [l for l in layers if getattr(l, '_is_legacy_layer', None)]
+  if legacy_layers:
+    layer_str = '\n'.join(['  ' + str(l) for l in legacy_layers])
+    raise TypeError(
+        'The following are legacy tf.layers.Layers:\n{}\nTo use keras as a '
+        'framework (for instance using the Network, Model, or Sequential '
+        'classes), please use the tf.keras.layers implementation instead. '
+        '(Or, if writing custom layers, subclass from tf.keras.layers rather '
+        'than tf.layers)'.format(layer_str))

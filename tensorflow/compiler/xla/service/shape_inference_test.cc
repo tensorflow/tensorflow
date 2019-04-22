@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -114,14 +115,16 @@ TEST_F(ShapeInferenceTest, SelectScalarPredBetweenTuples) {
       HloOpcode::kSelect, pred_, tuple, tuple);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("Use tuple-select"));
+              HasSubstr("Expected array argument for select"));
 }
 
 TEST_F(ShapeInferenceTest, SelectScalarPredBetweenArrays) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kSelect, pred_, matrix_64_48_, matrix_64_48_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(
+      inferred_status.status().error_message(),
+      HasSubstr("Operands to select and predicate must be the same shape"));
 }
 
 TEST_F(ShapeInferenceTest, SelectArrayPredBetweenArrays) {
@@ -149,8 +152,9 @@ TEST_F(ShapeInferenceTest, SelectBadShapes) {
       HloOpcode::kSelect, ShapeUtil::MakeShape(PRED, {64}), matrix_64_48_,
       matrix_64_48_);
   ASSERT_FALSE(inferred_status_error3.ok());
-  ASSERT_THAT(inferred_status_error3.status().error_message(),
-              HasSubstr("with non-scalar predicate with dimensionality"));
+  ASSERT_THAT(
+      inferred_status_error3.status().error_message(),
+      HasSubstr("Operands to select and predicate must be the same shape"));
 
   // Tuples have a TUPLE element type and cannot be the pred of a select.
   auto inferred_status_error4 = ShapeInference::InferTernaryOpShape(
@@ -159,7 +163,7 @@ TEST_F(ShapeInferenceTest, SelectBadShapes) {
       ShapeUtil::MakeTupleShape({f32_, f32_}));
   ASSERT_FALSE(inferred_status_error4.ok());
   ASSERT_THAT(inferred_status_error4.status().error_message(),
-              HasSubstr("pred operand must have PRED element type"));
+              HasSubstr("Expected array argument for select pred"));
 }
 
 TEST_F(ShapeInferenceTest, ClampAllMatrix) {
@@ -179,43 +183,49 @@ TEST_F(ShapeInferenceTest, ClampAllScalar) {
 TEST_F(ShapeInferenceTest, ClampMinScalar) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, f32_, matrix_64_48_, matrix_64_48_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Clamp with different shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxScalar) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, matrix_64_48_, matrix_64_48_, f32_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Clamp with different shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandScalar) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, matrix_64_48_, f32_, matrix_64_48_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Clamp with different shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMinMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, matrix_64_48_, f32_, f32_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Clamp with different shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, f32_, f32_, matrix_64_48_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Clamp with different shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, f32_, matrix_64_48_, f32_);
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Clamp with different shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampBadShapes) {
@@ -561,6 +571,148 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
               HasSubstr("each dimension exactly once"));
+}
+
+namespace fft {
+
+static const char* unsupported_rank = "only supports ranks 1-3";
+static const char* invalid_rank = "requires input of at least same rank";
+static const char* requires_complex_input = "requires complex input type";
+static const char* requires_f32_input = "requires F32 input type";
+static const char* requires_c64_input = "requires C64 input type";
+static const char* dimensions_match = "innermost dimensions match fft_length";
+static const char* innermost_dimension_matches =
+    "innermost dimension matches fft_length/2+1";
+
+static void Pass(const Shape& shape, FftType type,
+                 absl::Span<const int64> length, const Shape& expected_shape) {
+  auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred_shape = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_shape, expected_shape));
+}
+
+static void Fail(const Shape& shape, FftType type,
+                 absl::Span<const int64> length, absl::string_view message) {
+  auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr(std::string(message)));
+}
+
+}  // namespace fft
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestFftRanks) {
+  FftType type = FftType::FFT;
+  Shape shape = ShapeUtil::MakeShape(C64, {16, 8});
+  fft::Fail(shape, type, {}, fft::unsupported_rank);
+  fft::Pass(shape, type, {8}, shape);
+  fft::Pass(shape, type, {16, 8}, shape);
+  fft::Fail(shape, type, {32, 16, 8}, fft::invalid_rank);
+  fft::Fail(shape, type, {64, 32, 16, 8}, fft::unsupported_rank);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestFftTypes) {
+  FftType type = FftType::FFT;
+  Shape shape_f32 = ShapeUtil::MakeShape(F32, {16, 8});
+  Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
+  fft::Fail(shape_f32, type, {16, 8}, fft::requires_complex_input);
+  fft::Fail(shape_c128, type, {16, 8}, fft::requires_complex_input);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestIfftRanks) {
+  FftType type = FftType::IFFT;
+  Shape shape = ShapeUtil::MakeShape(C64, {16, 8});
+  fft::Fail(shape, type, {}, fft::unsupported_rank);
+  fft::Pass(shape, type, {8}, shape);
+  fft::Pass(shape, type, {16, 8}, shape);
+  fft::Fail(shape, type, {32, 16, 8}, fft::invalid_rank);
+  fft::Fail(shape, type, {64, 32, 16, 8}, fft::unsupported_rank);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestIfftTypes) {
+  FftType type = FftType::IFFT;
+  Shape shape_f32 = ShapeUtil::MakeShape(F32, {16, 8});
+  Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
+  fft::Fail(shape_f32, type, {16, 8}, fft::requires_complex_input);
+  fft::Fail(shape_c128, type, {16, 8}, fft::requires_complex_input);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestRfftRanks) {
+  FftType type = FftType::RFFT;
+  Shape shape_in = ShapeUtil::MakeShape(F32, {16, 8});
+  Shape shape_out = ShapeUtil::MakeShape(C64, {16, 5});
+  fft::Fail(shape_in, type, {}, fft::unsupported_rank);
+  fft::Pass(shape_in, type, {8}, shape_out);
+  fft::Pass(shape_in, type, {16, 8}, shape_out);
+  fft::Fail(shape_in, type, {32, 16, 8}, fft::invalid_rank);
+  fft::Fail(shape_in, type, {64, 32, 16, 8}, fft::unsupported_rank);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestRfftDimensions) {
+  FftType type = FftType::RFFT;
+  Shape shape = ShapeUtil::MakeShape(F32, {16, 8});
+  fft::Fail(shape, type, {4}, fft::dimensions_match);
+  fft::Fail(shape, type, {16, 4}, fft::dimensions_match);
+  fft::Fail(shape, type, {8, 8}, fft::dimensions_match);
+  fft::Fail(shape, type, {8, 16}, fft::dimensions_match);
+
+  Shape zero_shape_in = ShapeUtil::MakeShape(F32, {16, 0});
+  Shape zero_shape_out = ShapeUtil::MakeShape(C64, {16, 0});
+  fft::Pass(zero_shape_in, type, {0}, zero_shape_out);
+  fft::Pass(zero_shape_in, type, {16, 0}, zero_shape_out);
+
+  Shape even_shape_in = ShapeUtil::MakeShape(F32, {16, 8});
+  Shape odd_shape_in = ShapeUtil::MakeShape(F32, {16, 9});
+  Shape shape_out = ShapeUtil::MakeShape(C64, {16, 5});
+  fft::Pass(even_shape_in, type, {16, 8}, shape_out);
+  fft::Pass(odd_shape_in, type, {16, 9}, shape_out);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestRfftTypes) {
+  FftType type = FftType::RFFT;
+  Shape shape_c64 = ShapeUtil::MakeShape(C64, {16, 8});
+  Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
+  fft::Fail(shape_c64, type, {16, 8}, fft::requires_f32_input);
+  fft::Fail(shape_c128, type, {16, 8}, fft::requires_f32_input);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestIrfftRanks) {
+  FftType type = FftType::IRFFT;
+  Shape shape_in = ShapeUtil::MakeShape(C64, {16, 5});
+  Shape shape_out = ShapeUtil::MakeShape(F32, {16, 8});
+  fft::Fail(shape_in, type, {}, fft::unsupported_rank);
+  fft::Pass(shape_in, type, {8}, shape_out);
+  fft::Pass(shape_in, type, {16, 8}, shape_out);
+  fft::Fail(shape_in, type, {32, 16, 8}, fft::invalid_rank);
+  fft::Fail(shape_in, type, {64, 32, 16, 8}, fft::unsupported_rank);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestIrfftDimensions) {
+  FftType type = FftType::IRFFT;
+  Shape shape = ShapeUtil::MakeShape(C64, {16, 5});
+  fft::Fail(shape, type, {5}, fft::innermost_dimension_matches);
+  fft::Fail(shape, type, {16, 5}, fft::innermost_dimension_matches);
+  fft::Fail(shape, type, {8, 8}, fft::dimensions_match);
+  fft::Fail(shape, type, {8, 9}, fft::dimensions_match);
+
+  Shape zero_shape_in = ShapeUtil::MakeShape(C64, {16, 0});
+  Shape zero_shape_out = ShapeUtil::MakeShape(F32, {16, 0});
+  fft::Pass(zero_shape_in, type, {0}, zero_shape_out);
+  fft::Pass(zero_shape_in, type, {16, 0}, zero_shape_out);
+
+  Shape even_shape_out = ShapeUtil::MakeShape(F32, {16, 8});
+  Shape odd_shape_out = ShapeUtil::MakeShape(F32, {16, 9});
+  fft::Pass(shape, type, {16, 8}, even_shape_out);
+  fft::Pass(shape, type, {16, 9}, odd_shape_out);
+}
+
+TEST_F(ShapeInferenceTest, InferFftShapeTestIrfftTypes) {
+  FftType type = FftType::IRFFT;
+  Shape shape_f32 = ShapeUtil::MakeShape(F32, {16, 8});
+  Shape shape_c128 = ShapeUtil::MakeShape(C128, {16, 8});
+  fft::Fail(shape_f32, type, {16, 8}, fft::requires_c64_input);
+  fft::Fail(shape_c128, type, {16, 8}, fft::requires_c64_input);
 }
 
 TEST_F(ShapeInferenceTest, MapThatChangesElementType) {

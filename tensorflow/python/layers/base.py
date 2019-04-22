@@ -64,8 +64,8 @@ def keras_style_scope():
 
     def __init__(self, name):
       super(RNNModel, self.).__init__(name=name)
-      self.rnn = tf.nn.rnn_cell.MultiRNNCell(
-        [tf.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
+      self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
+        [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 
     def call(self, input, state):
       return self.rnn(input, state)
@@ -339,10 +339,10 @@ class Layer(base_layer.Layer):
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
         an instance of `PartitionedVariable` is returned.  Available
-        partitioners include `tf.fixed_size_partitioner` and
-        `tf.variable_axis_size_partitioner`.  For more details, see the
-        documentation of `tf.get_variable` and the  "Variable Partitioners
-        and Sharding" section of the API guide.
+        partitioners include `tf.compat.v1.fixed_size_partitioner` and
+        `tf.compat.v1.variable_axis_size_partitioner`.  For more details, see
+        the documentation of `tf.compat.v1.get_variable` and the  "Variable
+        Partitioners and Sharding" section of the API guide.
       **kwargs: Additional keyword arguments.
 
     Returns:
@@ -562,6 +562,11 @@ class Layer(base_layer.Layer):
   def __setattr__(self, value, name):
     # By-pass the automatic dependency tracking performed by the parent Layer.
     super(trackable.Trackable, self).__setattr__(value, name)
+
+  @property
+  def _is_legacy_layer(self):
+    """Used by keras to check compatibility. This should not be overridden."""
+    return True
 
 
 def _add_elements_to_collection(elements, collection_list):

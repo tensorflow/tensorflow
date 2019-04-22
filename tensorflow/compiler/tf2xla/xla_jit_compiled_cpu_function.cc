@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -120,7 +121,7 @@ XlaJitCompiledCpuFunction::Compile(
       cpu_executable->buffer_assignment();
 
   // Compute buffer infos and the result index, needed to run the raw function.
-  std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
+  std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
       xla::cpu::CreateBufferInfosFromBufferAssignment(buffer_assignment);
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);

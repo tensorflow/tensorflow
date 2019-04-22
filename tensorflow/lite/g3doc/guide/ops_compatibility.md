@@ -999,7 +999,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indices of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input tensor
 }
 ```
 

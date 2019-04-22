@@ -263,6 +263,7 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
+    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -296,6 +297,11 @@ tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
+    disabled_backends = [
+        # TODO(b/129396575): Fails on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -869,6 +875,8 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    tags = ["config-cuda-only"],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -914,6 +922,8 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    tags = ["config-cuda-only"],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1067,7 +1077,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
-    shard_count = 5,
+    shard_count = 1,
     # Times out in fastbuild mode.
     tags = ["optonly"],
     deps = [

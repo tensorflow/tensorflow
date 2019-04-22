@@ -90,7 +90,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   @property
   def _dtypes_to_test(self):
-    # TODO(langmore) Test tf.float16 once tf.matrix_solve works in 16bit.
+    # TODO(langmore) Test tf.float16 once tf.linalg.solve works in 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
   @property

@@ -465,7 +465,7 @@ def _SeluGrad(op, grad):
 
 @ops.RegisterGradient("Softplus")
 def _SoftplusGrad(op, grad):
-  return gen_nn_ops.softplus_grad(grad, op.inputs[0])
+  return grad * math_ops.sigmoid(op.inputs[0])
 
 
 @ops.RegisterGradient("SoftplusGrad")

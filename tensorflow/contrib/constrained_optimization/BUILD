@@ -42,6 +42,10 @@ py_test(
     name = "candidates_test",
     srcs = ["python/candidates_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        # TODO(b/129496144): Re-enable MSAN test.
+        "nomsan",
+    ],
     deps = [
         ":constrained_optimization",
         "//tensorflow/python:client_testlib",

@@ -31,6 +31,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -44,6 +45,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.parameters(
       (lambda: constant_op.constant(37.0), structure.TensorStructure,
        [dtypes.float32], [[]]),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(3,), size=0),
+       structure.TensorArrayStructure, [dtypes.variant], [None, 3]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        structure.SparseTensorStructure, [dtypes.variant], [None]),
@@ -79,6 +83,20 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           variables.Variable(100.0), 42.0,
           np.array(42.0, dtype=np.float32)
       ], lambda: [constant_op.constant([1.0, 2.0]), constant_op.constant(37)]),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(3,), size=0),
+       lambda: [
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(3,), size=0),
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(3,), size=10)
+       ],
+       lambda: [
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.int32, element_shape=(3,), size=0),
+           tensor_array_ops.TensorArray(
+               dtype=dtypes.float32, element_shape=(), size=0)
+       ]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
        lambda: [
@@ -137,6 +155,8 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       (lambda: constant_op.constant(37.0),),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),),
+      (lambda: tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, element_shape=(), size=1).write(0, 7)),
       (lambda: {"a": constant_op.constant(37.0),
                 "b": constant_op.constant([1, 2, 3])},),
       (lambda: {"a": constant_op.constant(37.0),
@@ -149,8 +169,15 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testRoundTripConversion(self, value_fn):
     value = value_fn()
     s = structure.Structure.from_value(value)
-    before = self.evaluate(value)
-    after = self.evaluate(s._from_tensor_list(s._to_tensor_list(value)))
+    def maybe_stack_ta(v):
+      if isinstance(v, tensor_array_ops.TensorArray):
+        return v.stack()
+      else:
+        return v
+
+    before = self.evaluate(maybe_stack_ta(value))
+    after = self.evaluate(
+        maybe_stack_ta(s._from_tensor_list(s._to_tensor_list(value))))
 
     flat_before = nest.flatten(before)
     flat_after = nest.flatten(after)
@@ -343,6 +370,18 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("SparseTensor", dtypes.int32, tensor_shape.matrix(2, 2),
        sparse_tensor.SparseTensor,
        structure.SparseTensorStructure(dtypes.int32, [2, 2])),
+      ("TensorArray0", dtypes.int32, tensor_shape.as_shape([None, True, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=None, infer_shape=True)),
+      ("TensorArray1", dtypes.int32, tensor_shape.as_shape([True, None, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=None)),
+      ("TensorArray2", dtypes.int32, tensor_shape.as_shape([True, False, 2, 2]),
+       tensor_array_ops.TensorArray,
+       structure.TensorArrayStructure(
+           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=False)),
       ("Nest",
        {"a": dtypes.float32, "b": (dtypes.int32, dtypes.string)},
        {"a": tensor_shape.scalar(),

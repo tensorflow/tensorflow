@@ -54,9 +54,8 @@ class TridiagonalSolveOpTest(test.TestCase):
             expected,
             diags_format="compact",
             transpose_rhs=False,
-            conjugate_rhs=False,
-            use_gpu=True):
-    with self.cached_session(use_gpu=use_gpu):
+            conjugate_rhs=False):
+    with self.cached_session(use_gpu=True):
       result = linalg_impl.tridiagonal_solve(diags, rhs, diags_format,
                                              transpose_rhs, conjugate_rhs)
       self.assertAllClose(self.evaluate(result), expected)
@@ -67,11 +66,10 @@ class TridiagonalSolveOpTest(test.TestCase):
                      expected,
                      diags_format="compact",
                      transpose_rhs=False,
-                     conjugate_rhs=False,
-                     use_gpu=True):
+                     conjugate_rhs=False):
     self._test(
         _tfconst(diags), _tfconst(rhs), _tfconst(expected), diags_format,
-        transpose_rhs, conjugate_rhs, use_gpu)
+        transpose_rhs, conjugate_rhs)
 
   def _assertRaises(self, diags, rhs, diags_format="compact"):
     with self.assertRaises(ValueError):
@@ -157,14 +155,15 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[5, -2, -5, 3])
 
   def testNotInvertible(self):
+    if test.is_gpu_available(cuda_only=True):
+      # CuSparse gtsv routine doesn't raise errors for non-invertible
+      # matrices.
+      return
     with self.assertRaises(errors_impl.InvalidArgumentError):
       self._testWithLists(
           diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]],
           rhs=[1, 2, 3, 4],
-          expected=[8, -3.5, 0, -4],
-          # CuSparse gtsv routine doesn't raise errors for non-invertible
-          # matrices.
-          use_gpu=False)
+          expected=[8, -3.5, 0, -4])
 
   def testDiagonal(self):
     self._testWithLists(

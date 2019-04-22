@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
@@ -80,7 +81,8 @@ class ToSparse(Layer):
 
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
-class InternalCompositeTest(keras_parameterized.TestCase):
+class InternalCompositeTest(keras_parameterized.TestCase,
+                            ragged_test_util.RaggedTensorTestCase):
 
   def test_model_with_internal_ragged_tensors(self):
     # Create a model that accepts an input, converts it to Ragged, and
@@ -88,7 +90,7 @@ class InternalCompositeTest(keras_parameterized.TestCase):
     layers = [ToRagged(padding=0), ToDense(default_value=-1)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
 
-    # Define some training data with additional padding.
+    # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0]])
     expected_output = np.array([[1, -1], [2, 3]])
     output = model.predict(input_data)
@@ -100,7 +102,7 @@ class InternalCompositeTest(keras_parameterized.TestCase):
     layers = [ToSparse(), ToDense(default_value=-1)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
 
-    # Define some training data with additional padding.
+    # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0]])
     expected_output = np.array([[1, -1, -1], [2, 3, -1]])
     output = model.predict(input_data)
@@ -127,6 +129,69 @@ class InternalCompositeTest(keras_parameterized.TestCase):
     # If the model trained, the loss stored at history[0] should be different
     # than the one stored at history[-1].
     self.assertNotEqual(history.history["loss"][-1], history.history["loss"][0])
+
+  def test_model_with_ragged_tensor_outputs(self):
+    # Create a model that accepts an input, converts it to Ragged, and
+    # converts the ragged tensor back to a dense tensor.
+    layers = [ToRagged(padding=0)]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+
+    # Define some input data with additional padding.
+    input_data = np.array([[1, 0, 0], [2, 3, 0]])
+    output = model.predict(input_data)
+
+    expected_values = [[1], [2, 3]]
+    self.assertRaggedEqual(expected_values, output)
+
+  def test_model_with_ragged_tensor_rebatched_outputs(self):
+    # Create a model that accepts an input, converts it to Ragged, and
+    # converts the ragged tensor back to a dense tensor.
+    layers = [ToRagged(padding=0)]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+
+    # Define some input data with additional padding.
+    input_data = np.array([[1, 0, 0], [2, 3, 0], [4, 0, 0], [5, 6, 0]])
+    output = model.predict(input_data, batch_size=2)
+
+    expected_values = [[1], [2, 3], [4], [5, 6]]
+    self.assertRaggedEqual(expected_values, output)
+
+  def test_model_with_sparse_tensor_outputs(self):
+    # Create a model that accepts an input, converts it to Ragged, and
+    # converts the ragged tensor back to a dense tensor.
+    layers = [ToSparse()]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+
+    # Define some input data with additional padding.
+    input_data = np.array([[1, 0, 0], [2, 3, 0]])
+    output = model.predict(input_data)
+
+    expected_indices = np.array([[0, 0], [1, 0], [1, 1]])
+    expected_values = np.array([1, 2, 3])
+    expected_dense_shape = np.array([2, 3])
+
+    self.assertAllEqual(output.indices, expected_indices)
+    self.assertAllEqual(output.values, expected_values)
+    self.assertAllEqual(output.dense_shape, expected_dense_shape)
+
+  def test_model_with_sparse_tensor_rebatched_outputs(self):
+    # Create a model that accepts an input, converts it to Ragged, and
+    # converts the ragged tensor back to a dense tensor.
+    layers = [ToSparse()]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+
+    # Define some input data with additional padding.
+    input_data = np.array([[1, 0, 0], [2, 3, 0], [4, 0, 0], [5, 6, 0]])
+    output = model.predict(input_data, batch_size=2)
+
+    expected_indices = np.array([[0, 0], [1, 0], [1, 1], [2, 0], [3, 0], [3,
+                                                                          1]])
+    expected_values = np.array([1, 2, 3, 4, 5, 6])
+    expected_dense_shape = np.array([4, 3])
+
+    self.assertAllEqual(output.indices, expected_indices)
+    self.assertAllEqual(output.values, expected_values)
+    self.assertAllEqual(output.dense_shape, expected_dense_shape)
 
 
 if __name__ == "__main__":

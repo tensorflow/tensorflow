@@ -28,6 +28,7 @@ import time
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -1188,7 +1189,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1199,7 +1200,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1210,7 +1211,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
@@ -1226,7 +1227,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1247,7 +1248,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
@@ -1263,7 +1264,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
@@ -2307,7 +2308,9 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         newshape = self.evaluate(yshape)
         self.assertAllEqual(single_shape, newshape)
 
+  # half_pixel_centers unsupported in ResizeBilinear
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/127616992")
   def testTensorArguments(self):
     img_shape = [1, 6, 4, 1]
     single_shape = [6, 4, 1]
@@ -2389,6 +2392,8 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
             expected_dtype = dtypes.float32
           self.assertEqual(y.dtype, expected_dtype)
 
+  # half_pixel_centers not supported by XLA
+  @test_util.disable_xla("b/127616992")
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
     # This test is also conducted with int8, so 127 is the maximum
@@ -3343,6 +3348,8 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     self._assertReturns(x, x_shape, y, y_shape)
 
 
+# half_pixel_centers not supported by XLA
+@test_util.disable_all_xla("b/127616992")
 class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -3406,7 +3413,6 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
@@ -3414,7 +3420,6 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension
@@ -3877,6 +3882,43 @@ class JpegTest(test_util.TensorFlowTestCase):
       [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
       # Cmyk jpeg image has 4 channels.
       self.assertEqual(image_shape.tolist(), [256, 128, 4])
+
+  def testRandomJpegQuality(self):
+    # Previous implementation of random_jpeg_quality had a bug.
+    # This unit test tests the fixed version, but due to forward compatibility
+    # this test can only be done when fixed version is used.
+    if compat.forward_compatible(2019, 4, 4):
+      # Test jpeg quality dynamic randomization.
+      with ops.Graph().as_default(), self.test_session():
+        np.random.seed(7)
+        path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
+        jpeg = io_ops.read_file(path)
+        image = image_ops.decode_jpeg(jpeg)
+        random_jpeg_image = image_ops.random_jpeg_quality(image, 40, 100)
+        with self.cached_session(use_gpu=True) as sess:
+          # Test randomization.
+          random_jpeg_images = [sess.run(random_jpeg_image) for _ in range(5)]
+          are_images_equal = []
+          for i in range(1, len(random_jpeg_images)):
+            # Most of them should be different if randomization is occurring
+            # correctly.
+            are_images_equal.append(
+                np.array_equal(random_jpeg_images[0], random_jpeg_images[i]))
+          self.assertFalse(all(are_images_equal))
+
+  def testAdjustJpegQuality(self):
+    # Test if image_ops.adjust_jpeg_quality works when jpeq quality
+    # is an int (not tensor) for backward compatibility.
+    with ops.Graph().as_default(), self.test_session():
+      np.random.seed(7)
+      jpeg_quality = np.random.randint(40, 100)
+      path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
+      jpeg = io_ops.read_file(path)
+      image = image_ops.decode_jpeg(jpeg)
+      adjust_jpeg_quality_image = image_ops.adjust_jpeg_quality(
+          image, jpeg_quality)
+      with self.cached_session(use_gpu=True) as sess:
+        sess.run(adjust_jpeg_quality_image)
 
 
 class PngTest(test_util.TensorFlowTestCase):

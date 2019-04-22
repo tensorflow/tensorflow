@@ -126,7 +126,7 @@ class LocalClient : public Client {
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
   StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
-      const Literal& literal, int device_ordinal,
+      const LiteralSlice& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
@@ -146,7 +146,7 @@ class LocalClient : public Client {
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with
   // Client::TransferToInfeed.
-  Status TransferToInfeedLocal(const Literal& literal, int device_ordinal);
+  Status TransferToInfeedLocal(const LiteralSlice& literal, int device_ordinal);
 
   // Transfer and return a value of the given shape from the outfeed of the
   // given device.
