@@ -24,10 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/random_op_gpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
-<<<<<<< HEAD
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-=======
->>>>>>> google_upstream/master
 
 namespace tensorflow {
 
@@ -82,7 +79,7 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
                                              FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
-#if GOOGLE_CUDA  
+#if GOOGLE_CUDA
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
 #else // TENSORFLOW_USE_ROCM#
   hipMemcpyToSymbol(HIP_SYMBOL(thread_counter), &zero, sizeof(int));

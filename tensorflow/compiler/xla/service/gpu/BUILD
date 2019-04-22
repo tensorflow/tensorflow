@@ -643,27 +643,13 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-<<<<<<< HEAD
     srcs = if_cuda_is_configured([
-           "cusolver_context.cc"
-           ]),
+        "cusolver_context.cc"]
+    ),
     hdrs = if_cuda_is_configured([
-          "cusolver_context.h"
-       ]),
+        "cusolver_context.h"]
+    ),
     deps =  if_cuda_is_configured([
-             "//tensorflow/compiler/xla:statusor",
-             "//tensorflow/compiler/xla:types",
-             "//tensorflow/compiler/xla:util",
-             "//tensorflow/core:lib",
-             "//tensorflow/core:stream_executor_no_cuda",
-              "//tensorflow/stream_executor:blas",
-              "@local_config_cuda//cuda:cuda_headers",
-              "@local_config_cuda//cuda:cusolver",
-     ]),
-=======
-    srcs = ["cusolver_context.cc"],
-    hdrs = ["cusolver_context.h"],
-    deps = [
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -674,8 +660,7 @@ cc_library(
     ] + if_static(
         ["@local_config_cuda//cuda:cusolver"],
         ["//tensorflow/stream_executor/cuda:cusolver_stub"],
-    ),
->>>>>>> google_upstream/master
+    )),
 )
 
 cc_library(

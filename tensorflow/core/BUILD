@@ -2411,11 +2411,8 @@ cc_library(
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/rocm.h",
-<<<<<<< HEAD
             "platform/**/rocm_rocdl_path.cc",
-=======
             "platform/**/monitoring.cc",
->>>>>>> google_upstream/master
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",

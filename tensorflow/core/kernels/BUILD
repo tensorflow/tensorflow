@@ -3033,13 +3033,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ] + if_cuda([
+    ] + if_cuda_is_configured([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-<<<<<<< HEAD
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cusolver",
-    ])
-=======
     ] + if_static(
         [
             "@local_config_cuda//cuda:cusolver",
@@ -3049,8 +3044,7 @@ tf_kernel_library(
             "//tensorflow/stream_executor/cuda:cusolver_stub",
             "//tensorflow/stream_executor/cuda:cublas_stub",
         ],
-    ),
->>>>>>> google_upstream/master
+    )),
 )
 
 tf_kernel_library(

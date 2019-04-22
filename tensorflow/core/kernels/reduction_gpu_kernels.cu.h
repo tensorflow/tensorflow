@@ -40,17 +40,12 @@ limitations under the License.
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
 
-<<<<<<< HEAD
-#include <sstream>
-
 #if GOOGLE_CUDA
 namespace gpuprim = ::cub;
 #elif TENSORFLOW_USE_ROCM
 namespace gpuprim = ::hipcub;
 #endif
 
-=======
->>>>>>> google_upstream/master
 namespace tensorflow {
 namespace functor {
 

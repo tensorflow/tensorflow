@@ -22,14 +22,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
-<<<<<<< HEAD
-#include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/core/kernels/split_lib_gpu.h"
-=======
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
->>>>>>> google_upstream/master
 
 namespace tensorflow {
 namespace functor {

@@ -23,10 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/kernels/avgpooling_op.h"
->>>>>>> google_upstream/master
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {

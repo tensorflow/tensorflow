@@ -19,10 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
->>>>>>> google_upstream/master
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {

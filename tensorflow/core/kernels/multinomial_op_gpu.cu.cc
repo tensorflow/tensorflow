@@ -28,15 +28,12 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-<<<<<<< HEAD
 
 #if GOOGLE_CUDA
 namespace gpuprim = ::cub;
 #elif TENSORFLOW_USE_ROCM
 namespace gpuprim = ::hipcub;
 #endif
-=======
->>>>>>> google_upstream/master
 
 namespace tensorflow {
 

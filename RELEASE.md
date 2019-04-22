@@ -1,17 +1,15 @@
-<<<<<<< HEAD
-# Release 1.13.2
-
-## Bug Fixes and Other Changes
-* TF-RCCL path fix for issue#370
-* The 1.13.2 whl package is built the ROCm2.3 user-bit environment
-=======
 # Release 1.12.2
 
 ## Bug Fixes and Other Changes
 
 *   Fixes a potential security vulnerability where carefully crafted GIF images
     can produce a null pointer dereference during decoding.
->>>>>>> google_upstream/master
+
+# Release 1.13.2
+
+## Bug Fixes and Other Changes
+* TF-RCCL path fix for issue#370
+* The 1.13.2 whl package is built the ROCm2.3 user-bit environment
 
 # Release 1.13.0
 
@@ -421,7 +419,7 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
   * [`tf.contrib.estimator.RNNEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNClassifier)
 * The [distributions.Bijector](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/distributions/bijectors/Bijector)
   API supports broadcasting for Bijectors with new API changes.
-  
+
 ## Breaking Changes
   * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
     `variable_scope(tf.get_variable_scope(), ...)`.
@@ -900,7 +898,7 @@ Samuel He, Sandeep Dcunha, sandipmgiri, Sang Han, scott, Scott Mudge, Se-Won Kim
 Simone Cirillo, Steffen Schmitz, Suvojit Manna, Sylvus, Taehoon Lee, Ted Chang, Thomas Deegan,
 Till Hoffmann, Tim, Toni Kunic, Toon Verstraelen, Tristan Rice, Urs KöSter, Utkarsh Upadhyay,
 Vish (Ishaya) Abrams, Winnie Tsang, Yan Chen, Yan Facai (颜发才), Yi Yang, Yong Tang,
-Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武 
+Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.

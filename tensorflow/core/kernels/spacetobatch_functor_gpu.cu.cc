@@ -20,10 +20,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/kernels/spacetobatch_functor.h"
->>>>>>> google_upstream/master
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {

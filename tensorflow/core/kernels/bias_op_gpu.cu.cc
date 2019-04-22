@@ -20,13 +20,6 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/framework/register_types.h"
-<<<<<<< HEAD
-#include "tensorflow/core/kernels/bias_op.h"
-#include "tensorflow/core/kernels/bias_op_gpu.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
-
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
