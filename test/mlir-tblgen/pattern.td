@@ -29,7 +29,7 @@ def : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 // CHECK: GeneratedConvert0(MLIRContext *context) : RewritePattern("op_a", 1, context) {}
 
 // CHECK: struct MatchedState : public PatternState {
-// CHECK:   Value* input;
+// CHECK:   Value *input;
 // CHECK:   IntegerAttr attr;
 // CHECK: };
 

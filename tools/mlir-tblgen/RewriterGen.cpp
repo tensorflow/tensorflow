@@ -41,19 +41,12 @@ using namespace llvm;
 using namespace mlir;
 using namespace mlir::tblgen;
 
-static const char *const tblgenNamePrefix = "tblgen_";
-
-// Returns the bound value for the given op result `symbol`.
-static Twine getBoundResult(const StringRef &symbol) {
-  return tblgenNamePrefix + symbol;
-}
-
-// Returns the bound value for the given op argument `symbol`.
+// Returns the bound symbol for the given op argument or op named `symbol`.
 //
-// Arguments bound in the source pattern are grouped into a transient
-// `PatternState` struct. This struct can be accessed in both `match()` and
-// `rewrite()` via the local variable named as `s`.
-static Twine getBoundArgument(const StringRef &symbol) {
+// Arguments and ops bound in the source pattern are grouped into a
+// transient `PatternState` struct. This struct can be accessed in both
+// `match()` and `rewrite()` via the local variable named as `s`.
+static Twine getBoundSymbol(const StringRef &symbol) {
   return Twine("s.") + symbol;
 }
 
@@ -85,7 +78,7 @@ namespace {
 class PatternSymbolResolver {
 public:
   PatternSymbolResolver(const StringMap<Argument> &srcArgs,
-                        const StringSet<> &srcResults);
+                        const StringSet<> &srcOperations);
 
   // Marks the given `symbol` as bound.  Returns false if the `symbol` is
   // already bound.
@@ -105,8 +98,8 @@ private:
 } // end anonymous namespace
 
 PatternSymbolResolver::PatternSymbolResolver(const StringMap<Argument> &srcArgs,
-                                             const StringSet<> &srcResults)
-    : sourceArguments(srcArgs), sourceOps(srcResults) {}
+                                             const StringSet<> &srcOperations)
+    : sourceArguments(srcArgs), sourceOps(srcOperations) {}
 
 bool PatternSymbolResolver::add(StringRef symbol) {
   return resultOps.insert(symbol).second;
@@ -121,12 +114,12 @@ std::string PatternSymbolResolver::query(StringRef symbol) const {
   {
     auto it = sourceArguments.find(symbol);
     if (it != sourceArguments.end())
-      return getBoundArgument(symbol).str();
+      return getBoundSymbol(symbol).str();
   }
   {
     auto it = sourceOps.find(symbol);
     if (it != sourceOps.end())
-      return getBoundResult(symbol).str();
+      return getBoundSymbol(symbol).str();
   }
   return {};
 }
@@ -235,7 +228,7 @@ PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
                                raw_ostream &os)
     : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper),
       symbolResolver(pattern.getSourcePatternBoundArgs(),
-                     pattern.getSourcePatternBoundResults()),
+                     pattern.getSourcePatternBoundOps()),
       nextValueId(0), os(os) {
   matchCtx.withBuilder("mlir::Builder(ctx)");
   rewriteCtx.withBuilder("rewriter");
@@ -274,7 +267,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   // If the operand's name is set, set to that variable.
   auto name = tree.getOpName();
   if (!name.empty())
-    os.indent(indent) << formatv("{0} = op{1};\n", getBoundResult(name), depth);
+    os.indent(indent) << formatv("{0} = op{1};\n", getBoundSymbol(name), depth);
 
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     auto opArg = op.getArg(i);
@@ -330,7 +323,7 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
   // Capture the value
   auto name = tree.getArgName(index);
   if (!name.empty()) {
-    os.indent(indent) << getBoundArgument(name) << " = op" << depth
+    os.indent(indent) << getBoundSymbol(name) << " = op" << depth
                       << "->getOperand(" << index << ");\n";
   }
 }
@@ -380,7 +373,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
   // Capture the value
   auto name = tree.getArgName(index);
   if (!name.empty()) {
-    os.indent(indent) << getBoundArgument(name) << " = attr;\n";
+    os.indent(indent) << getBoundSymbol(name) << " = attr;\n";
   }
 
   indent -= 2;
@@ -404,10 +397,6 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
       handleVerifyUnusedValue(resultTree, i);
     }
   }
-
-  for (auto &res : pattern.getSourcePatternBoundResults())
-    os.indent(4) << formatv("mlir::Operation* {0}; (void){0};\n",
-                            getBoundResult(res.first()));
 
   emitOpMatch(tree, 0);
 
@@ -472,8 +461,11 @@ void PatternEmitter::emit(StringRef rewriteName) {
       os.indent(4) << namedAttr->attr.getStorageType() << " " << fieldName
                    << ";\n";
     } else {
-      os.indent(4) << "Value* " << fieldName << ";\n";
+      os.indent(4) << "Value *" << fieldName << ";\n";
     }
+  }
+  for (const auto &result : pattern.getSourcePatternBoundOps()) {
+    os.indent(4) << "Operation *" << result.getKey() << ";\n";
   }
   os << "  };\n";
 
@@ -564,9 +556,9 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
   }
 
   auto name = tree.getArgName(0);
-  pattern.ensureArgBoundInSourcePattern(name);
+  pattern.ensureBoundInSourcePattern(name);
 
-  return getBoundArgument(name).str();
+  return getBoundSymbol(name).str();
 }
 
 void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
@@ -587,8 +579,8 @@ std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
     auto enumCase = leaf.getAsEnumAttrCase();
     return handleConstantAttr(enumCase, enumCase.getSymbol());
   }
-  pattern.ensureArgBoundInSourcePattern(argName);
-  std::string result = getBoundArgument(argName).str();
+  pattern.ensureBoundInSourcePattern(argName);
+  std::string result = getBoundSymbol(argName).str();
   if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
     return result;
   }
@@ -758,7 +750,7 @@ std::string PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
   bool printingAttr = false;
   for (int i = 0, e = resultTree.getNumArgs(); i != e; ++i) {
     auto name = resultTree.getArgName(i);
-    pattern.ensureArgBoundInSourcePattern(name);
+    pattern.ensureBoundInSourcePattern(name);
     const auto &val = boundedValues.find(name);
     if (val->second.dyn_cast<NamedAttribute *>() && !printingAttr) {
       os << "}, {";
@@ -767,7 +759,7 @@ std::string PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
     }
     if (!first)
       os << ",";
-    os << getBoundArgument(name);
+    os << getBoundSymbol(name);
     first = false;
   }
   if (!printingAttr)

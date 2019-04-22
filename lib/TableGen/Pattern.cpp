@@ -186,17 +186,9 @@ tblgen::DagNode tblgen::Pattern::getResultPattern(unsigned index) const {
   return tblgen::DagNode(cast<llvm::DagInit>(results->getElement(index)));
 }
 
-bool tblgen::Pattern::isArgBoundInSourcePattern(llvm::StringRef name) const {
-  return boundArguments.find(name) != boundArguments.end();
-}
-
-bool tblgen::Pattern::isResultBoundInSourcePattern(llvm::StringRef name) const {
-  return boundResults.count(name);
-}
-
-void tblgen::Pattern::ensureArgBoundInSourcePattern(
-    llvm::StringRef name) const {
-  if (!isArgBoundInSourcePattern(name))
+void tblgen::Pattern::ensureBoundInSourcePattern(llvm::StringRef name) const {
+  if (boundArguments.find(name) == boundArguments.end() &&
+      boundOps.find(name) == boundOps.end())
     PrintFatalError(def.getLoc(),
                     Twine("referencing unbound variable '") + name + "'");
 }
@@ -206,8 +198,8 @@ tblgen::Pattern::getSourcePatternBoundArgs() {
   return boundArguments;
 }
 
-llvm::StringSet<> &tblgen::Pattern::getSourcePatternBoundResults() {
-  return boundResults;
+llvm::StringSet<> &tblgen::Pattern::getSourcePatternBoundOps() {
+  return boundOps;
 }
 
 const tblgen::Operator &tblgen::Pattern::getSourceRootOp() {
@@ -268,7 +260,7 @@ void tblgen::Pattern::collectBoundArguments(DagNode tree) {
   // results generated from this op. It should be remembered as bound results.
   auto treeName = tree.getOpName();
   if (!treeName.empty())
-    boundResults.insert(treeName);
+    boundOps.insert(treeName);
 
   // TODO(jpienaar): Expand to multiple matches.
   for (unsigned i = 0; i != numTreeArgs; ++i) {

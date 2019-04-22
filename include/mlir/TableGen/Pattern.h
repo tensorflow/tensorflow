@@ -205,23 +205,15 @@ public:
   // Returns the DAG tree root node of the `index`-th result pattern.
   DagNode getResultPattern(unsigned index) const;
 
-  // Returns true if an argument with the given `name` is bound in source
-  // pattern.
-  bool isArgBoundInSourcePattern(llvm::StringRef name) const;
-
-  // Returns true if an argument with the given `name` is bound as result of
-  // op in pattern.
-  bool isResultBoundInSourcePattern(llvm::StringRef name) const;
-
-  // Checks whether an argument with the given `name` is bound in source
-  // pattern. Prints fatal error if not; does nothing otherwise.
-  void ensureArgBoundInSourcePattern(llvm::StringRef name) const;
+  // Checks whether an argument or op with the given `name` is bound in
+  // source pattern. Prints fatal error if not; does nothing otherwise.
+  void ensureBoundInSourcePattern(llvm::StringRef name) const;
 
   // Returns a reference to all the bound arguments in the source pattern.
   llvm::StringMap<Argument> &getSourcePatternBoundArgs();
 
-  // Returns a reference to all the bound results in the source pattern.
-  llvm::StringSet<> &getSourcePatternBoundResults();
+  // Returns a reference to all the bound ops in the source pattern.
+  llvm::StringSet<> &getSourcePatternBoundOps();
 
   // Returns the op that the root node of the source pattern matches.
   const Operator &getSourceRootOp();
@@ -247,11 +239,11 @@ private:
   // All operators.
   RecordOperatorMap *recordOpMap;
 
-  // All bound arguments.
+  // All bound op arguments.
   llvm::StringMap<Argument> boundArguments;
 
-  // All bound results.
-  llvm::StringSet<> boundResults;
+  // All bound ops.
+  llvm::StringSet<> boundOps;
 };
 
 } // end namespace tblgen
